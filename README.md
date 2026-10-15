@@ -1,71 +1,60 @@
 # adb-converter
 
-Accelon3 `.adb` 資料庫的工具集與規格文件。
+Accelon3 `.adb` 資料庫的**解析 / 匯出 / 重建**工具（Bun + TypeScript），附規格書與驗證。
 
-* **[SPEC.md](SPEC.md) — `.adb` 技術說明書（中文，以 Delphi 原始碼為權威依據）**
-* [PASCAL-NOTES.md](PASCAL-NOTES.md) — 讀 `sourcecode\`（Delphi 7）原始碼的逐單元筆記
-* [FORMAT.md](FORMAT.md) — 早期英文逆向筆記與驗證表
-* `ts/` — Bun/TypeScript CLI（`analyze` / `inspect` / `export` / `bench`）
-* `cmd/`, `internal/` — Go 版原型（純標準庫，零外部依賴；目前作為對照實作）
+## 現在能做什麼
 
-## 用法（Bun）
+| 能力 | 指令 | 驗證狀態 |
+|---|---|---|
+| 舊 ADB → **完全合法的 XML** + 完整圖片 | `extract.ts` | Python(expat) 逐檔驗證：yinshun 45/45、13j 1/1、DFB_J/boyang/kangxizidian 全通過；圖片零遺漏 |
+| **只憑 XML 重建 ADB**（舊程式可讀） | `rebuild-adb.ts` | `13j.adb` 重建後與原檔**逐位元組相同**（SHA-256 一致）；`yinshun-small.adb` 已由 **accelon3.exe 實機開啟、圖片正常** |
+| 新舊 ADB **逐 block 比對** | `compare-adb.ts` | 逐容器、逐區塊（按名稱配對），區分「必須相同」與「允許不同」 |
+| 反向索引複刻對拍 | `compare-index.ts` | yinshun **9,516 token / 7,256,439 命中，逐位置完全一致** |
+| XML 結構掃描 | `xml-lint.ts` | 93 庫已掃；`mismatch=18,348`、`entity=11,870`、`unterminated=464` 等已量化 |
+
+## 快速開始
 
 ```bash
 cd ts
-bun run src/cli.ts analyze D:\accelon3\yinshun\yinshun.adb --top 12   # 結構 + metainfo
-bun run src/cli.ts inspect D:\accelon3\yinshun\yinshun.adb           # 容器/行表摘要
-bun run src/cli.ts export  D:\accelon3\yinshun\yinshun.adb -o out    # 匯出 XML
-bun run src/cli.ts export  x.adb -o out --text adbjs                 # 逐位元組比對 JS 移植用
-bun run test/verify.ts                                              # 12 項黃金測試
-bun run test/index-match.ts                                         # 反向索引對拍認證
-bun run tools/compare-index.ts <adb> --json index.json              # 重建索引並與 adb 內建索引逐位置比對
-bun run tools/xml-lint.ts <adb|目錄>                              # XML 結構檢查（標籤堆疊/裸 &/屬性/宣告）
+
+# 1) 匯出合法 XML + 圖片
+bun run tools/extract.ts D:\accelon3\yinshun\yinshun.adb -o ../build/xyinshun
+
+# 2) 只憑 XML 重建 ADB（不需要原檔）
+bun run tools/rebuild-adb.ts ../build/xyinshun -o ../build/newyinshun.adb
+
+# 3) 逐 block 比對
+bun run tools/compare-adb.ts D:\accelon3\yinshun\yinshun.adb ../build/newyinshun.adb
+
+# 4) 產生給舊 accelon3.exe 的驗收檔（前 10 文件 + 用到的圖片 + logo）
+bun run test:small          # -> ../build/yinshun-small.adb
+
+# 5) 測試
+bun run test/verify.ts      # XML 黃金測試 12 項
+bun run test/index-match.ts # 反向索引認證
 ```
 
-反向索引複刻（Delphi `TIndexer` 的 TS 版，見 [SPEC.md](SPEC.md) §15）：對 `yinshun.adb` 重建
-**9,516 個 token / 7,256,439 個命中，逐 token、逐位置與 adb 內建索引完全一致**（`test/index-match.ts` 認證）。
+舊版 CLI（結構分析/匯出）仍可用：`bun run src/cli.ts analyze|inspect|export|bench <adb>`
 
-`export` 的文本語義（兩者都已用獨立參考逐位元組驗證，見 [SPEC.md](SPEC.md) §7.4）：
+## 文件
 
-| `--text` | 佈局 | 每塊行首 BOM | 跨塊代理對 | 行首 CR/LF |
-|---|---|---|---|---|
-| `delphi`（預設） | 固定步長網格（`i*srcblocksize`） | 保留 | 保留成一個字 | 跳過 |
-| `adbjs` | 緊密拼接 | 丟棄 | 轉成兩個 U+FFFD | 不跳 |
-
-`analyze` 會輸出：容器清單與大小、文字塊統計（塊數/壓縮/解壓/末塊）、行表與其他 tables 條數、
-**unigram token 統計**（distinct/命中數/覆蓋率/CJK-ASCII 分佈/top N）、標籤清單與命中數、
-**resources（圖片）統計**（數量/位元組/副檔名分佈）、**`集` 標題**與 **`檔` 文件清單與檔名**。
-
-全庫掃描（93 個庫、11.24 GiB、47 億字、37 秒）：
-
-```bash
-bun run tools/scan-corpus.ts D:\accelon3    # -> build/corpus-scan.tsv
-bun run tools/corpus-summary.ts             # 彙總表（見 SPEC.md §14）
-```
-
-範例（yinshun.adb，23.8 MiB，約 82 ms）：
-
-```
-text    : 1081 blocks, 8.2 MiB compressed -> 16.9 MiB text (8,847,831 chars)
-tokens  : 9516 distinct, 7,256,439 hits; unigram 5712 distinct / 7,235,148 hits / 99.7%
-          top: ，485377  的208635  。204939  是118657  一96937
-tags    : 129 distinct -> 段41660 頁16994 聯13920 註11854 釋11853 節1570 經1563
-resources: 457 files, 2.1 MiB, images 456 (99.2%)  .png:456
-```
+* **[HANDOVER.md](HANDOVER.md) — 技術交件（先看這份）**：管線、工具、驗證結果、規則摘要、限制
+* [SPEC.md](SPEC.md) — `.adb` 協定規格（§15 索引複刻、§17 管線與驗證狀態）
+* [PASCAL-NOTES.md](PASCAL-NOTES.md) — Delphi 原始碼逐單元筆記
+* [FORMAT.md](FORMAT.md) — 早期英文逆向筆記
+* [TODO.md](TODO.md) — 待辦與後續計畫
 
 ## 需求
 
-* Bun ≥ 1.1（`bun run`）
-* 匯出/深度分析需要 bzip2 解碼器：優先用 `libbz2`（`bun:ffi`，路徑可用 `ABX_LIBBZ2` 指定），
-  找不到時回退到內附的純 JS 解碼器 `ts/src/vendor/bzip2.js`（可由 adbjs 的 MIT 授權程式碼而來）。
+* Bun ≥ 1.1
+* bzip2：優先用 `libbz2`（`bun:ffi`，可用 `ABX_LIBBZ2` 指定路徑）；解壓有內附純 JS 後備（`ts/src/vendor/bzip2.js`，MIT），**壓縮必須有 libbz2**
 
-## 用舊 Accelon3.exe 驗收的小型測試檔
+## 已知限制（詳見 HANDOVER.md §5）
 
-`ash
-cd ts
-bun run test:small        # 抽取 yinshun 前 10 個文件 -> build/yinshun-small.adb
-`
+* yinshun 獨立建庫時 `caches` 剩 `序`、`圖` 兩鍵不同（cached 旗標的動態宣告時機；來源疑在 adb 之外的建庫定義檔）
+* per-tag `tfDontCare`（`/圖` 3 筆，規格允許 postings 不同）
+* Pascal 行尾越界讀的行為差異；XML 合法化修復不可逆
 
-產物：uild/yinshun-small.adb（約 3.55 MiB、42,280 行、51 張圖含 yinshun_logo.png）、uild/yinshun-small-report.json、以及子集抽取目錄 uild/yinshun-small/（XML + resources + manifest）。
+## 注意
 
-驗收方式：用舊的 accelon3.exe 開啟 uild/yinshun-small.adb，確認可瀏覽、搜尋、顯示圖片。程式改動後重跑 un run test:small 即可重新產生同一份檔案再測。
+`*.adb`、`*.xml`、`build/`、`sourcecode/`、`accelon3/` **不進版控**（見 `.gitignore`）——資料檔與中間產物只留在本機。
