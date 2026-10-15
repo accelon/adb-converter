@@ -124,3 +124,27 @@ export function tntTrim(s: string): string {
   void cpLen;
   return s.slice(a, b);
 }
+
+/**
+ * Sentence-ish break used to bound a search snippet: the summary reads outward
+ * from a hit until one of these, so it ends on a natural boundary. Covers the
+ * CJK punctuation in this corpus plus ASCII sentence marks and the XML
+ * delimiters (a snippet must not run through a tag).
+ */
+export function isPunctuation(cp: number): boolean {
+  if (cp === 0x2c || cp === 0x2e || cp === 0x3b || cp === 0x3a || cp === 0x21 || cp === 0x3f) return true; // , . ; : ! ?
+  if (cp === 0x3c || cp === 0x3e || cp === 0x2f || cp === 0x22 || cp === 0x27 || cp === 0x28 || cp === 0x29) return true; // < > / " ' ( )
+  if (cp === 0x5b || cp === 0x5d || cp === 0x7b || cp === 0x7d) return true; // [ ] { }
+  if (cp >= 0x3000 && cp <= 0x303f) return true;   // CJK symbols and punctuation
+  if (cp >= 0xff00 && cp <= 0xff0f) return true;   // fullwidth ，．！？…
+  if (cp >= 0xff1a && cp <= 0xff20) return true;
+  if (cp >= 0xfe10 && cp <= 0xfe1f) return true;   // vertical forms
+  if (cp >= 0xfe30 && cp <= 0xfe4f) return true;   // CJK compatibility forms
+  if (cp >= 0x2000 && cp <= 0x206f) return true;   // general punctuation (—…“”)
+  return false;
+}
+
+/** Whitespace, including the ideographic space U+3000. */
+export function isWhitespace(cp: number): boolean {
+  return cp === 0x20 || cp === 0x09 || cp === 0x0a || cp === 0x0d || cp === 0x3000 || (cp >= 0xf0b && cp <= 0xf11);
+}

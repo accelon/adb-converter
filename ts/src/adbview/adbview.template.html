@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>adb viewer</title>
+<style>
+  :root {
+    --bg: #1e1e1e; --panel: #252526; --panel2: #2d2d30; --line: #3c3c3c;
+    --fg: #d8d8d8; --dim: #909090; --accent: #5aa9ff; --warn: #e0a54a; --err: #e06c75;
+    --fs: 15px;               /* base font size */
+    --left: 25fr;             /* column widths, draggable; 0fr = hidden */
+    --center: 50fr;
+    --right: 25fr;
+    --minSide: 15;            /* percent: below this a side snaps shut */
+  }
+  * { box-sizing: border-box; }
+  /* The page itself never scrolls: header + main fill the viewport exactly, and
+     only the panes that need it (document text, search results, token list)
+     scroll. `overflow: hidden` on both html and body kills the page scrollbar. */
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: var(--fs)/1.6 "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+    display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr);
+  }
+  body.dragging::after {
+    content: "放開以開啟 .adb"; position: fixed; inset: 0; z-index: 50;
+    display: grid; place-items: center; font-size: 26px;
+    background: rgba(90,169,255,.12); border: 3px dashed var(--accent);
+  }
+  header {
+    display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  header h1 {
+    font-size: 20px; margin: 0; font-weight: 700; letter-spacing: .01em;
+    color: #7cc0ff; text-shadow: 0 0 14px rgba(90,169,255,.35);
+  }
+  header h1 .accent { color: #ffd479; text-shadow: 0 0 14px rgba(255,212,121,.35); }
+  .dbname {
+    color: var(--accent); font-weight: 600; font-size: 16px; background: none;
+    border: 1px dashed transparent; border-radius: 4px; padding: 1px 6px; cursor: pointer; font-family: inherit;
+  }
+  .dbname:hover { border-color: var(--accent); background: rgba(90,169,255,.08); }
+  body.loaded #file { display: none; }   /* after a database is open the picker is redundant */
+  .status { font-size: 13px; color: var(--dim); margin-left: auto; }
+  .status.err { color: var(--err); }
+  .status.busy { color: var(--warn); }
+  .sideToggle {
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 4px; cursor: pointer; font: inherit; font-size: 15px; padding: 2px 9px; line-height: 1.4;
+  }
+  .sideToggle:hover { border-color: var(--accent); }
+  .sideToggle.off { opacity: .45; }
+  #advToggle.on { border-color: var(--accent); background: #2b3b4d; box-shadow: 0 0 8px rgba(90,169,255,.35); }
+  /* the side toggles show their state by being dimmed when collapsed */
+  #toggleLeft.off, #toggleRight.off { opacity: .45; }
+  /* advanced-only tabs: token browser (left) and the file/meta panes (right) */
+  .advOnly { display: none; }
+  .tabBtn[hidden] { display: none !important; }
+  body.advanced .advOnly { display: inline-block; }
+
+  main {
+    display: grid;
+    /* draggable: default left / middle / right; a hidden side becomes 0fr.
+       Height comes from the body grid row (1fr), so no 100vh arithmetic. */
+    grid-template-columns: var(--left) 6px var(--center) 6px var(--right);
+    gap: 0; background: var(--line);
+    min-height: 0; overflow: hidden;
+  }
+  .col { background: var(--bg); display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; }
+  /* the visible grip between columns */
+  .splitter { background: var(--line); cursor: col-resize; position: relative; }
+  .splitter:hover, .splitter.dragging { background: var(--accent); }
+  .splitter::after {
+    content: ''; position: absolute; inset: 45% 1px; background: var(--dim); border-radius: 1px;
+  }
+  .splitter:hover::after { background: #fff; }
+  body.colDragging { cursor: col-resize; user-select: none; }
+  /* narrow screens: collapse both sides regardless of stored width */
+  @media (max-width: 900px) {
+    main { grid-template-columns: 0 0 1fr 0 0; }
+    .splitter { display: none; }
+  }
+
+  /* panes: the column owns the height, the pane content scrolls where needed */
+  .pane { border-bottom: 1px solid var(--line); padding: 10px 12px; overflow: hidden; min-height: 0; display: flex; flex-direction: column; }
+  /* a flex display would otherwise defeat the hidden attribute */
+  .pane[hidden] { display: none; }
+  .pane.scroll { overflow: auto; display: block; }
+  .pane h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 0 0 8px; flex: 0 0 auto; }
+  .pane.grow { flex: 1 1 auto; min-height: 0; }
+  .pane.fixed { flex: 0 0 auto; }
+  .dim { color: var(--dim); }
+  .note { color: var(--dim); font-size: 13px; margin: 8px 0 0; }
+
+  /* tabs (left column) */
+  .tabs { display: flex; gap: 4px; padding: 8px 10px 0; background: var(--bg); }
+  .tabBtn {
+    background: var(--panel); color: var(--dim); border: 1px solid var(--line); border-bottom: none;
+    border-radius: 6px 6px 0 0; padding: 6px 14px; cursor: pointer; font: inherit; font-size: 14px;
+  }
+  .tabBtn.active { background: var(--bg); color: var(--fg); border-color: var(--accent); font-weight: 600; }
+  .tabPane { display: none; }
+  .tabPane.active { display: block; }
+  /* a tab pane that hosts its own scroller fills the pane and lets it scroll */
+  .tabs-host { overflow: hidden; }
+  .tabs-host .tabPane.active { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  .scrollArea { overflow: auto; min-height: 0; flex: 1 1 auto; }
+  #searchList { overflow: auto; min-height: 0; flex: 1 1 auto; }
+  #tokenRows { overflow: auto; min-height: 0; flex: 1 1 auto; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th { text-align: left; color: var(--dim); font-weight: 500; padding: 2px 10px 2px 0; white-space: nowrap; vertical-align: top; }
+  td { word-break: break-word; }
+  table.cap td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+  ul { margin: 0; padding-left: 18px; font-size: 14px; }
+
+  .docItem, .clsChip, .vaChip, .hitBar button {
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 5px; cursor: pointer; font: inherit;
+  }
+  .docItem { display: block; width: 100%; text-align: left; padding: 6px 10px; margin-bottom: 4px; font-size: 15px; }
+  .docItem:hover, .clsChip:hover, .vaChip:hover, .hitBar button:hover { background: var(--panel2); border-color: var(--accent); }
+  .docItem.active { border-color: var(--accent); background: #2b3b4d; }
+  .docName { display: block; font-weight: 600; }
+  .kv { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; padding: 1px 0; }
+  .kv span { color: var(--dim); }
+  #tokenClasses { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+  .clsChip { width: auto; margin: 0; font-size: 13px; padding: 3px 9px; }
+  .clsChip.dim { opacity: .6; }
+  #tokenRows { overflow: auto; flex: 1 1 auto; }
+  .tokenRow {
+    display: flex; align-items: baseline; gap: 10px; padding: 3px 6px;
+    border-bottom: 1px solid #2a2a2a; cursor: pointer; font-size: 17px;
+  }
+  .tokenRow:hover { background: var(--panel2); }
+  .tokName { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tokSize { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .dirty { color: var(--warn); font-weight: 700; }
+  .vaList { display: flex; flex-wrap: wrap; gap: 4px; max-height: 170px; overflow: auto; }
+  .vaChip { width: auto; margin: 0; font-size: 12px; font-variant-numeric: tabular-nums; padding: 2px 8px; }
+  .postingHead { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .tokBig { font-size: 22px; font-weight: 700; }
+  .docHead { font-weight: 600; margin-bottom: 8px; font-size: 15px; }
+
+  /* document text (hard line breaks, one row per line) */
+  .docBar { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .docTools { display: flex; align-items: center; gap: 4px; margin-left: auto; font-size: 12px; color: var(--dim); }
+  .mini {
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 4px;
+    cursor: pointer; font: inherit; font-size: 12px; padding: 1px 7px;
+  }
+  .mini:hover { border-color: var(--accent); }
+  .docBody { overflow: auto; min-height: 0; flex: 1 1 auto; font-size: var(--fsdoc, 16px); }
+  /* the middle pane only ever scrolls its document body */
+  #docText { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+  .docLine { display: flex; gap: 10px; padding: 1px 3px; border-radius: 3px; }
+  .docLine:hover { background: #262626; }
+  .docLine.hitLine { background: #33302a; }
+  .lineText { white-space: pre; }   /* hard-wrapped lines: never soft wrap by default */
+  mark.docHit { background: #7a4a00; color: #ffd479; border-radius: 2px; padding: 0 2px; }
+
+  .thumbGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
+  .thumb { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 4px; text-align: center; }
+  .thumb img { max-width: 100%; max-height: 62px; display: block; margin: 0 auto 2px; }
+  .thumb span { font-size: 10px; color: var(--dim); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  input[type=file] { color: var(--fg); font: inherit; font-size: 13px; }
+
+  /* full text search */
+  .searchBar { display: flex; gap: 6px; margin-bottom: 8px; }
+  .searchBar input {
+    flex: 1 1 auto; background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 5px; padding: 7px 10px; font: inherit; font-size: 16px; min-width: 0;
+  }
+  .searchBar input:focus { outline: none; border-color: var(--accent); }
+  .searchBar button {
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 5px; cursor: pointer; font: inherit; padding: 0 10px;
+  }
+  .searchBar button:hover { border-color: var(--accent); }
+  .snippet {
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid transparent;
+    border-radius: 5px; padding: 6px 9px; margin-bottom: 6px; cursor: pointer; font-size: 15px;
+  }
+  .snippet:hover { background: var(--panel2); }
+  .snippet.active { border-left-color: var(--accent); background: #2b3b4d; }
+  .snippetHead { font-size: 11.5px; color: var(--dim); margin-bottom: 2px; }
+  .snippet mark { background: #7a4a00; color: #ffd479; border-radius: 2px; padding: 0 2px; }
+  /* search groups (tree tier 1: 書/集…) */
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; max-height: 8.6em; overflow: auto; }
+  .chips:empty { display: none; }
+  .chip {
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 4px;
+    cursor: pointer; font: inherit; font-size: 12px; padding: 1px 7px; white-space: nowrap;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.active { border-color: var(--accent); background: #2b3b4d; }
+  .chip b { font-variant-numeric: tabular-nums; }
+  .chip.zero { opacity: .45; }
+
+  /* directory tree: fixed row height, depth shown by a 30%-lightness colour dot */
+  .tRow {
+    display: flex; align-items: center; gap: 4px; padding: 1px 4px; border-radius: 3px;
+    cursor: pointer; font-size: 13px; line-height: 1.5; white-space: nowrap;
+  }
+  .tRow:hover { background: #262626; }
+  .tTwisty { width: 12px; text-align: center; color: var(--dim); flex: 0 0 auto; font-size: 11px; }
+  .tDot { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
+  .tTag { color: var(--dim); font-size: 11px; flex: 0 0 auto; }
+  /* the tag name (書/章/節…) is not shown in the directory: the colour block
+     already carries the depth, and the name would only repeat it */
+  #dirTree .tTag { display: none; }
+  .tName { overflow: hidden; text-overflow: ellipsis; }
+  .tCount { margin-left: auto; color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .tCount.hit { color: #ffd479; font-weight: 600; }
+  #dirTree { padding: 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>accelon<span class="accent">26</span></h1>
+  <button class="sideToggle" id="toggleLeft" title="顯示／隱藏左欄">◧</button>
+  <button class="sideToggle" id="toggleRight" title="顯示／隱藏右欄">◨</button>
+  <button class="sideToggle" id="advToggle" title="進階模式：顯示 token 瀏覽與檔案資訊分頁">🧑‍💻</button>
+  <input type="file" id="file" accept=".adb">
+  <button class="dbname" id="dbname" title="開啟其他資料庫" hidden>（未開啟）</button>
+  <span class="status" id="status"></span>
+</header>
+
+<main>
+  <!-- 左：由 <樹> 決定的分頁（目錄／頻次／西文），加上全文搜尋 -->
+  <section class="col" id="colLeft">
+    <div class="tabs">
+      <button class="tabBtn active" data-tab="dir">目錄</button>
+      <button class="tabBtn" data-tab="freq" hidden>頻次</button>
+      <button class="tabBtn" data-tab="latin" hidden>西文</button>
+      <button class="tabBtn advOnly" data-tab="token">token</button>
+    </div>
+    <div class="pane grow tabs-host">
+      <div class="tabPane active" data-tab="dir">
+        <div class="searchBar">
+          <input type="search" id="query" placeholder="輸入詞（例：象曰、Buddha）" autocomplete="off" spellcheck="false">
+          <button id="queryClear" title="清除">✕</button>
+        </div>
+        <div id="dirMeta" class="note"></div>
+        <div id="dirTree" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div>
+      </div>
+      <div class="tabPane" data-tab="freq">
+        <div class="searchBar">
+          <input type="search" id="freqQuery" placeholder="輸入詞（分段命中統計）" autocomplete="off" spellcheck="false">
+          <button id="freqClear" title="清除">✕</button>
+        </div>
+        <div id="freqMeta" class="note"></div>
+        <div id="freqList" class="scrollArea"></div>
+      </div>
+      <div class="tabPane" data-tab="latin">
+        <div class="searchBar">
+          <input type="search" id="latinQuery" placeholder="輸入詞（限西文）" autocomplete="off" spellcheck="false">
+          <button id="latinClear" title="清除">✕</button>
+        </div>
+        <div id="latinMeta" class="note"></div>
+        <div id="latinList" class="scrollArea"></div>
+      </div>
+      <div class="tabPane" data-tab="token">
+        <div id="tokenSummary"></div>
+        <div id="tokenClasses"></div>
+        <div class="dim" id="tokenTitle">尚未載入</div>
+        <div class="note" id="tokenMore"></div>
+        <div id="tokenRows"></div>
+      </div>
+    </div>
+  </section>
+  <div class="splitter" id="splitLeft" title="拖曳調整左欄寬度（拖到 15% 以下即隱藏）"></div>
+
+  <!-- 中：文件文字（硬分行；命中直接塗紅） ------------------------------------>
+  <section class="col">
+    <div class="pane grow">
+      <div class="docBar">
+        <h2 style="margin:0">文件內容（硬分行；未渲染 XML）</h2>
+        <span class="docTools">
+          字級
+          <button class="mini" id="fsDown" title="縮小">−</button>
+          <span id="fsValue" class="dim">16</span>
+          <button class="mini" id="fsUp" title="放大">＋</button>
+          <button class="mini" id="fsAuto" title="自動選一個大部份行都不軟換行的字級">不換行</button>
+          <button class="mini" id="fsReset" title="回到預設">預設</button>
+        </span>
+      </div>
+      <div id="docText"><p class="dim">點左側 token，會自動跳到該 token 在文中的位置並只塗紅它。</p></div>
+    </div>
+  </section>
+  <div class="splitter" id="splitRight" title="拖曳調整右欄寬度（拖到 15% 以下即隱藏）"></div>
+
+  <!-- 右：摘要 ＋ META / 容量 / 文件 / 圖片（後四者在進階模式才顯示） ------------>
+  <section class="col" id="colRight">
+    <div class="tabs">
+      <button class="tabBtn active" data-tab="sum">摘要</button>
+      <button class="tabBtn advOnly" data-tab="meta">META</button>
+      <button class="tabBtn advOnly" data-tab="capacity">容量</button>
+      <button class="tabBtn advOnly" data-tab="docs">文件</button>
+      <button class="tabBtn advOnly" data-tab="images">圖片</button>
+    </div>
+    <div class="pane grow tabs-host">
+      <div class="tabPane active" data-tab="sum">
+        <div id="searchMeta" class="note"></div>
+        <div id="searchList" class="scrollArea"></div>
+        <div id="searchMore" class="note"></div>
+      </div>
+      <div class="tabPane" data-tab="meta">
+        <div id="meta" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div>
+        <h2 style="margin-top:14px">容器</h2>
+        <ul id="containers"></ul>
+      </div>
+      <div class="tabPane" data-tab="capacity"><div id="capacity" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div></div>
+      <div class="tabPane" data-tab="docs"><div id="docs" class="scrollArea"></div></div>
+      <div class="tabPane" data-tab="images"><div id="resources" class="scrollArea"></div></div>
+    </div>
+  </section>
+</main>
+
+<script>/*__VIEWER_BUNDLE__*/</script>
+</body>
+</html>
