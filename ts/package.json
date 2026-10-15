@@ -1,0 +1,17 @@
+{
+  "name": "abx",
+  "version": "0.1.0",
+  "description": "abx - Accelon3 .adb to XML exporter (TypeScript/Bun prototype)",
+  "type": "module",
+  "bin": { "abx": "./src/cli.ts" },
+  "scripts": {
+    "export": "bun run src/cli.ts export",
+    "inspect": "bun run src/cli.ts inspect",
+    "bench": "bun run src/cli.ts bench",
+    "test": "bun run test/verify.ts",
+    "test:index": "bun run test/index-match.ts",
+    "test:small": "bun run tools/make-small.ts D:\\accelon3\\yinshun\\yinshun.adb --docs 10"
+  },
+  "engines": { "bun": ">=1.1" },
+  "license": "Apache-2.0"
+}

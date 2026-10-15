@@ -1,0 +1,20 @@
+# 中間產物、資料檔一律不上傳
+*.adb
+*.xml
+*.bin
+*.tsv
+build/
+ts/build/
+accelon3/
+*.log
+*.tmp
+*.zip
+
+# Delphi 參考原始碼（非本次產出，保留在本機）
+sourcecode/
+
+# 匯出/測試產物
+*_small/
+*-small/
+*-small.adb
+*-small-report.json
