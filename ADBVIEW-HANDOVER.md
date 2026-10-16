@@ -719,7 +719,10 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
    → panic；panic 回溯時 deferred `release()` 又想拿同一把鎖 → 整個 goroutine 卡住，前端
    `Runtime.evaluate` 逾時 60 s。症狀是「頁面看起來沒反應、Go 沒崩」。修法：寫入前先 `make` map；
    教訓是**鎖的臨界區裡不要有可能 panic 的動作**。
-10. **共用 promise 的探測**：`hostCall()` 原本用 `probed` 旗標，兩個呼叫同時進來時，第二個會在探測
+10. **Windows 命令列的中文會變亂碼**：`bun run tools/release.ts --items "改名為…"` 經 PowerShell 傳進去
+    後，release_notes.json 變成亂碼（而且已經 commit）。**中文一律用 `--items-file notes.txt`**（UTF-8），
+    release.ts 也會對亂碼字元發警告並中止。凡是「把中文當參數傳給子行程」都要小心。
+11. **共用 promise 的探測**：`hostCall()` 原本用 `probed` 旗標，兩個呼叫同時進來時，第二個會在探測
     還沒完成前看到 `probed=true / call=null` → 誤判「沒有宿主」（下拉整個空的）。修法：把探測做成
     一個共用的 promise，所有人 await 同一個。
 
@@ -740,6 +743,16 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
   `application.ScreenNearestPhysicalRect` 找出對應的 Wails 螢幕 → 拿它的 `WorkArea`；
   游標問不到（外接螢幕被拔掉的座標、拿不到游標）→ 主螢幕 → 第一張。
 * **第一次啟動**：全螢幕（`win.Fullscreen()`）；記下的「還原框」是夾進工作區後置中的預設大小。
+* **視窗要有標準 Windows 標題列**（作者 2026-10 指出全螢幕時「沒有窗口標題、不能關也不能縮放」）：
+  Wails 的全螢幕在 Windows 上是把樣式換成 `WS_POPUP`（**沒有標題列**），所以
+  **F11 切換全螢幕、Esc 離開全螢幕**（`ts/src/adbview/window-keys.ts` → `AdbHost.ToggleFullscreen`），
+  離開後樣式回復成 `WS_OVERLAPPEDWINDOW`（標題列／可縮放／可關／可最大化，測試有斷言）。
+  第一次以全螢幕啟動時，畫面頂端會出現 7 秒提示：「全螢幕中：按 Esc 或 F11 回到視窗（Alt+F4 關閉）」；
+  `#brand` 的 hover hint 也一直寫著「F11 全螢幕／Esc 回視窗」。`WindowInfo().style` 可以看樣式位元
+  （caption／resizable／sysMenu／maximizeBox／popupOnly），排錯時先看它。
+* **相對位置用「啟動時選的那張螢幕」**算（不是「視窗框最近的那張」）：平台有時會把視窗再挪幾十像素，
+  剛好跨過螢幕邊界時「最近的那張」會在兩張之間跳，存下來的相對位置就會在兩個座標系之間擺盪
+  （實測：{DISPLAY2,99,0} ⇄ {DISPLAY1,70,38} 交替）。改用啟動螢幕後立刻收斂 ✓。
 * **之後啟動**：恢復上次的狀態與框，位置＝工作區原點 ＋ 相對位置，**並夾進工作區**
   （大小不超過工作區、位置不越界）—— 這是「上次在外接螢幕、這回那張不在了」的解藥
   （`clampWindowState`，有單元測試）。
@@ -852,7 +865,8 @@ https://shutonggui.cn/accelon26/accelon26.exe 的 built time 比用戶運行中�
 **發佈（作者說「發布」時）**：
 
 ```powershell
-cd ts; bun run tools/release.ts --items "改進A;修正B" [--title "…"]
+cd ts; bun run tools/release.ts --items-file notes.txt        # 一行一項（UTF-8，中文請用這個）
+# 或 bun run tools/release.ts --items "ascii-only;…" [--title "…"]
 #  1) append 到 wails/release_notes.json  2) 先建 HTML 再 go build（-ldflags 注入建置時間）
 #  3) 用 -version 驗 exe 裡真的是 ldflags 的時間  4) 印上傳指示並 HEAD 一次線上的 Last-Modified
 # 然後把 build/desktop/accelon26.exe 上傳到 https://shutonggui.cn/accelon26/accelon26.exe

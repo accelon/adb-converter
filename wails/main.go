@@ -49,6 +49,12 @@ func main() {
 	// Wails 會用自己的值覆寫 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS，所以只能從
 	// WindowsOptions 傳進去；預設不開任何除錯埠，只有環境變數要求時才開。
 	var windows application.WindowsOptions
+	// WebView2 的使用者資料目錄：預設共用（正常情況只有一個行程）；自動化測試會用
+	// ACCELON26_WEBVIEW_DIR 給每個行程各自一個，這樣每個行程才有**自己的** DevTools 埠
+	// （同一個 WebView2 環境只有第一個行程拿得到 remote-debugging-port）。
+	if dir := os.Getenv("ACCELON26_WEBVIEW_DIR"); dir != "" {
+		windows.WebviewUserDataPath = dir
+	}
 	debugPort := os.Getenv("ACCELON26_DEBUG_PORT")
 	if *debugPortFlag != "" {
 		debugPort = *debugPortFlag // 更新時由舊行程指定，避免兩個行程搶同一個埠
@@ -108,7 +114,8 @@ func main() {
 	app.OnShutdown(tracker.save)
 	host.SetWindowInfo(tracker.info) // 測試／排錯用（UI 不需要知道）
 	host.SetQuit(func() { app.Quit() })
-	host.StartUpdateChecker() // 背景檢查線上更新（含清掉上次留下的 .old）
+	host.SetToggleFullscreen(win.ToggleFullscreen) // Esc／F11 切換全螢幕
+	host.StartUpdateChecker()                      // 背景檢查線上更新（含清掉上次留下的 .old）
 
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		wa, screenName, ok := launchWorkArea(app)

@@ -167,6 +167,20 @@ export async function desktopReleaseNotes(since: string): Promise<DesktopRelease
   return notes ?? [];
 }
 
+/** 目前是不是全螢幕（桌面版才有；網頁版永遠 false）。 */
+export async function desktopIsFullscreen(): Promise<boolean> {
+  const c = await hostCall();
+  if (!c) return false;
+  return !!(await c.ByName('main.AdbHost.IsFullscreen'));
+}
+
+/** 切換全螢幕（Esc／F11）。回傳切換後是不是全螢幕。 */
+export async function desktopToggleFullscreen(): Promise<boolean> {
+  const c = await hostCall();
+  if (!c) return false;
+  return !!(await c.ByName('main.AdbHost.ToggleFullscreen'));
+}
+
 /** one host file, in the shape the rest of the viewer already understands */
 function hostSource(e: HostAdb): AdbSource {
   const name = e.name || e.dbcname || e.dbname || e.path;

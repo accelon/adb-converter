@@ -252,6 +252,7 @@ async function bootDesktop(): Promise<void> {
   // 左上角：桌面版顯示建置時間（hover hint），有新版本時閃動、點擊更新，更新後顯示改版說明。
   // 網頁版沒有宿主，initDesktopBrand 直接返回（左上角就只是一行標題）。
   void initDesktopBrand((msg, kind) => setStatus(msg, kind ?? 'info'));
+  void initDesktopWindowKeys();   // F11 全螢幕／Esc 回視窗（全螢幕時沒有標題列）
   const srcs = await desktopSources();
   if (!srcs.length) return;
   for (const s of srcs) catalogAdd(s, s.name);
@@ -500,6 +501,7 @@ import { initTextPane, renderTextPane, textState } from './text-pane';
 import { logoState, updateDocLogo } from './logo';
 import { desktopSources, hostState } from './host';
 import { initDesktopBrand } from './update-ui';
+import { initDesktopWindowKeys } from './window-keys';
 
 export { ADV_KEY, COLS_KEY, DEFAULT_COLS, MAX_SIDE, MIN_SIDE, advanced, applyCols, attachSplitter, boot, defaultLeftTab, readAdvanced, readCols, saveCols, setAdvanced, setSide, showTab, toggleSide };
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -190,6 +191,30 @@ func pickLaunchScreen(screens []screenChoice, cursorX, cursorY int, hasCursor bo
 	return screens[0], true
 }
 
+// windowStyleInfo 讀視窗的 Win32 樣式，用來確認「有標題列、可以縮放、可以關、可以最大化」
+// （全螢幕時 Wails 會換成 WS_POPUP，那時沒有標題列是正常的，按 Esc／F11 會回復）。
+func windowStyleInfo(title string) map[string]any {
+	name, err := syscall.UTF16PtrFromString(title)
+	if err != nil {
+		return nil
+	}
+	hwnd := w32.FindWindowW(nil, name)
+	if hwnd == 0 {
+		return map[string]any{"found": false}
+	}
+	style := uint32(w32.GetWindowLong(hwnd, w32.GWL_STYLE))
+	return map[string]any{
+		"found":       true,
+		"style":       fmt.Sprintf("0x%08X", style),
+		"caption":     style&w32.WS_CAPTION != 0,
+		"resizable":   style&w32.WS_THICKFRAME != 0,
+		"sysMenu":     style&w32.WS_SYSMENU != 0,
+		"minimizeBox": style&w32.WS_MINIMIZEBOX != 0,
+		"maximizeBox": style&w32.WS_MAXIMIZEBOX != 0,
+		"popupOnly":   style&w32.WS_OVERLAPPEDWINDOW == 0,
+	}
+}
+
 // containsInclusive 與 Rect.Contains 相同，只是右／下邊界也算在內
 // （游標剛好停在螢幕角落或工具列邊緣時，不要因為差一格就掉回主螢幕）。
 func containsInclusive(r application.Rect, x, y int) bool {
@@ -364,9 +389,19 @@ func (t *windowTracker) save() {
 	if g == nil {
 		return
 	}
-	scr := screenOfRect(t.app, application.Rect{X: g.X, Y: g.Y, Width: g.W, Height: g.H})
+	// **用啟動時選的那張螢幕**（而不是「視窗框最近的那張」）來算相對位置：
+	// 平台可能把視窗挪幾十像素，剛好跨過螢幕邊界時，「最近的那張」會在兩張之間跳，
+	// 存下來的相對位置就會在兩個座標系之間擺盪。用啟動螢幕＝使用者看到的那張才穩定。
+	t.mu.Lock()
+	launch, work := t.launchScreen, t.launchWork
+	t.mu.Unlock()
 	out := windowState{W: g.W, H: g.H, State: st}
-	if scr != nil {
+	if launch != "" && work.Width > 0 && work.Height > 0 {
+		out.Screen = launch
+		out.RelX = g.X - work.X
+		out.RelY = g.Y - work.Y
+		out = clampWindowState(out, work)
+	} else if scr := screenOfRect(t.app, application.Rect{X: g.X, Y: g.Y, Width: g.W, Height: g.H}); scr != nil {
 		out.Screen = scr.Name
 		out.RelX = g.X - scr.WorkArea.X
 		out.RelY = g.Y - scr.WorkArea.Y
@@ -407,6 +442,7 @@ func (t *windowTracker) info() map[string]any {
 		out["lastAny"] = *t.cur
 	}
 	out["trackerState"] = t.stateLocked()
+	out["style"] = windowStyleInfo("accelon26") // 標題列／縮放／關閉／最大化（診斷用）
 	if t.launchScreen != "" {
 		out["launchScreen"] = t.launchScreen
 		out["launchWorkArea"] = t.launchWork

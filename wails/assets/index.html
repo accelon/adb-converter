@@ -44,6 +44,19 @@
     0%, 100% { color: #7cc0ff; text-shadow: 0 0 14px rgba(90,169,255,.35); }
     50% { color: #ffd479; text-shadow: 0 0 22px rgba(255,212,121,.85); }
   }
+  /* 全螢幕提示（第一次啟動是全螢幕、沒有標題列，要告訴使用者怎麼回視窗） */
+  .fsHint {
+    position: fixed; z-index: 70; left: 50%; top: 10px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--accent);
+    border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.5); font-size: 14px;
+    transition: opacity .4s ease;
+  }
+  .fsHint.gone { opacity: 0; pointer-events: none; }
+  .fsHint button {
+    background: transparent; color: var(--accent); border: 1px solid var(--line);
+    border-radius: 6px; font: inherit; font-size: 13px; padding: 2px 10px; cursor: pointer;
+  }
   /* 改版說明（更新後顯示一次） */
   #notesBox {
     position: fixed; z-index: 60; left: 50%; top: 12%; transform: translateX(-50%);
@@ -4985,6 +4998,18 @@ designed by C.S.Yap`;
     const notes = await c.ByName("main.AdbHost.ReleaseNotes", since);
     return notes ?? [];
   }
+  async function desktopIsFullscreen() {
+    const c = await hostCall();
+    if (!c)
+      return false;
+    return !!await c.ByName("main.AdbHost.IsFullscreen");
+  }
+  async function desktopToggleFullscreen() {
+    const c = await hostCall();
+    if (!c)
+      return false;
+    return !!await c.ByName("main.AdbHost.ToggleFullscreen");
+  }
   function hostSource(e) {
     const name = e.name || e.dbcname || e.dbname || e.path;
     return {
@@ -5033,7 +5058,7 @@ designed by C.S.Yap`;
     el.title = brandTitle(info);
   }
   function brandTitle(info, update = false) {
-    const parts = ["accelon26", `built ${info.buildTimeText}`];
+    const parts = ["accelon26", `built ${info.buildTimeText}`, "F11 全螢幕／Esc 回視窗"];
     if (info.buildSource === "file")
       parts.push("（檔案時間，非發佈建置）");
     if (update) {
@@ -5129,6 +5154,64 @@ designed by C.S.Yap`;
           flashUpdate(now, onStatus);
       })();
     }, POLL_MS);
+  }
+
+  // src/adbview/window-keys.ts
+  var HINT_MS = 7000;
+  var fullscreenNow = false;
+  var hint = null;
+  var hintTimer = 0;
+  function showHint(text) {
+    if (!hint) {
+      hint = document.createElement("div");
+      hint.id = "fsHint";
+      hint.className = "fsHint";
+      const span2 = document.createElement("span");
+      span2.className = "fsHintText";
+      const close = document.createElement("button");
+      close.textContent = "知道了";
+      close.onclick = () => hideHint();
+      hint.append(span2, close);
+      document.body.appendChild(hint);
+    }
+    const span = hint.querySelector(".fsHintText");
+    if (span)
+      span.textContent = text;
+    hint.classList.remove("gone");
+    window.clearTimeout(hintTimer);
+    hintTimer = window.setTimeout(() => hideHint(), HINT_MS);
+  }
+  function hideHint() {
+    if (!hint)
+      return;
+    hint.classList.add("gone");
+  }
+  async function initDesktopWindowKeys() {
+    window.addEventListener("keydown", onKeyDown, true);
+    fullscreenNow = await desktopIsFullscreen();
+    if (fullscreenNow)
+      showHint("全螢幕中：按 Esc 或 F11 回到視窗（Alt+F4 關閉）");
+  }
+  function onKeyDown(ev) {
+    if (ev.key === "F11" || ev.code === "F11") {
+      ev.preventDefault();
+      desktopToggleFullscreen().then((full) => {
+        fullscreenNow = full;
+        if (full)
+          showHint("全螢幕中：按 Esc 或 F11 回到視窗（Alt+F4 關閉）");
+        else
+          hideHint();
+      });
+      return;
+    }
+    if ((ev.key === "Escape" || ev.key === "Esc") && fullscreenNow) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      desktopToggleFullscreen().then((full) => {
+        fullscreenNow = full;
+        hideHint();
+      });
+    }
   }
 
   // src/adbview/ui.ts
@@ -5313,6 +5396,7 @@ designed by C.S.Yap`;
   }
   async function bootDesktop() {
     initDesktopBrand((msg, kind) => setStatus(msg, kind ?? "info"));
+    initDesktopWindowKeys();
     const srcs = await desktopSources();
     if (!srcs.length)
       return;
@@ -5876,13 +5960,13 @@ designed by C.S.Yap`;
     };
     return lower(to) - lower(from);
   }
-  function hitBadge(count, total, where = "", hint = "") {
+  function hitBadge(count, total, where = "", hint2 = "") {
     const share = total ? count / total : 0;
     const shareTier = share >= 0.3 ? 4 : share >= 0.1 ? 3 : share >= 0.03 ? 2 : 1;
     const absTier = count >= 1000 ? 4 : count >= 300 ? 3 : count >= 50 ? 2 : 1;
     const tier = Math.max(shareTier, absTier);
     const big = count >= 1000 ? " big" : "";
-    const title = `${where}${fmtInt(count)} 筆命中（占全體 ${(share * 100).toFixed(1)}%${hint}）`;
+    const title = `${where}${fmtInt(count)} 筆命中（占全體 ${(share * 100).toFixed(1)}%${hint2}）`;
     return `<span class="tCount hit t${tier}${big}" title="${title}">${fmtInt(count)}</span>`;
   }
   function dirPaneShown() {

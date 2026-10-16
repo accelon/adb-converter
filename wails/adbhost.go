@@ -128,6 +128,8 @@ type AdbHost struct {
 
 	// winInfo 由 main 在建立視窗後注入（window.go）。UI 不需要它，測試與多螢幕排錯用。
 	winInfo func() map[string]any
+	// 全螢幕切換（Esc／F11 用）：main 注入，UI 不需要知道是 Wails 還是別的。
+	toggleFullscreen func()
 
 	// 更新（update.go）：背景檢查的快取結果、-updated-from 的值、結束應用程式的回呼。
 	updateSt    UpdateStatus
@@ -137,6 +139,35 @@ type AdbHost struct {
 
 // SetWindowInfo 注入視窗診斷（main 在建立視窗前後設定）。
 func (h *AdbHost) SetWindowInfo(f func() map[string]any) { h.winInfo = f }
+
+// SetToggleFullscreen 注入「切換全螢幕」（main 在建立視窗後設定）。
+func (h *AdbHost) SetToggleFullscreen(f func()) {
+	h.mu.Lock()
+	h.toggleFullscreen = f
+	h.mu.Unlock()
+}
+
+// ToggleFullscreen 切換全螢幕（Esc／F11）。Wails 的全螢幕會把 WS_OVERLAPPEDWINDOW 換成
+// WS_POPUP，所以全螢幕時沒有標題列、也不能縮放；切回來就會回復。
+func (h *AdbHost) ToggleFullscreen() bool {
+	h.mu.Lock()
+	f := h.toggleFullscreen
+	h.mu.Unlock()
+	if f != nil {
+		f()
+	}
+	return h.IsFullscreen()
+}
+
+// IsFullscreen 目前是不是全螢幕（UI 顯示提示用）。
+func (h *AdbHost) IsFullscreen() bool {
+	if h.winInfo == nil {
+		return false
+	}
+	info := h.winInfo()
+	v, _ := info["fullscreen"].(bool)
+	return v
+}
 
 // WindowInfo 回傳視窗現況：位置、大小、狀態（normal/maximised/fullscreen）、所在螢幕、
 // 工作區、上次的 normal 幾何，以及狀態檔路徑。沒有視窗（例如 -selftest）時回空 map。

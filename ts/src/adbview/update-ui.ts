@@ -23,7 +23,7 @@ export function showBrandBuildTime(info: DesktopAppInfo): void {
 
 /** hover hint 的文字：建置時間 + （有新版時的）更新提示。 */
 function brandTitle(info: DesktopAppInfo, update = false): string {
-  const parts = ['accelon26', `built ${info.buildTimeText}`];
+  const parts = ['accelon26', `built ${info.buildTimeText}`, 'F11 全螢幕／Esc 回視窗'];
   if (info.buildSource === 'file') parts.push('（檔案時間，非發佈建置）');
   if (update) {
     parts.push(`有新版本：線上 ${info.remoteBuildTime.slice(0, 16).replace('T', ' ')} — 點這裡更新`);

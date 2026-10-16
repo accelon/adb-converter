@@ -44,6 +44,19 @@
     0%, 100% { color: #7cc0ff; text-shadow: 0 0 14px rgba(90,169,255,.35); }
     50% { color: #ffd479; text-shadow: 0 0 22px rgba(255,212,121,.85); }
   }
+  /* 全螢幕提示（第一次啟動是全螢幕、沒有標題列，要告訴使用者怎麼回視窗） */
+  .fsHint {
+    position: fixed; z-index: 70; left: 50%; top: 10px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--accent);
+    border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.5); font-size: 14px;
+    transition: opacity .4s ease;
+  }
+  .fsHint.gone { opacity: 0; pointer-events: none; }
+  .fsHint button {
+    background: transparent; color: var(--accent); border: 1px solid var(--line);
+    border-radius: 6px; font: inherit; font-size: 13px; padding: 2px 10px; cursor: pointer;
+  }
   /* 改版說明（更新後顯示一次） */
   #notesBox {
     position: fixed; z-index: 60; left: 50%; top: 12%; transform: translateX(-50%);

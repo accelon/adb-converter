@@ -61,6 +61,18 @@ const STATE_DIR = resolve(ROOT, 'build/tmp-state-test');
 const STATE_FILE = resolve(STATE_DIR, 'window.json');
 const norm = (p: string) => p.toLowerCase().replaceAll(String.fromCharCode(92), '/');
 
+/** 每一個行程的環境：自己的 WebView2 資料目錄與狀態目錄（同一個 WebView2 環境只有第一個
+ *  行程拿得到 DevTools 埠，所以測試一定要一個行程一個目錄）。 */
+function guiEnv(stateDir: string, port: number, extra: Record<string, string> = {}): Record<string, string> {
+  return {
+    ...process.env,
+    ACCELON26_DEBUG_PORT: String(port),
+    ACCELON26_STATE_DIR: stateDir,
+    ACCELON26_WEBVIEW_DIR: resolve(stateDir, 'webview-' + port),
+    ...extra,
+  } as Record<string, string>;
+}
+
 /** 等某個 DevTools 埠沒人回應（前一個行程的 WebView2 有時還留著）。 */
 async function waitPortFree(port: number, timeoutMs = 20000): Promise<void> {
   const until = Date.now() + timeoutMs;
@@ -92,7 +104,7 @@ async function startGui(stateDir: string, opts: { spawn?: boolean; env?: Record<
     cwd: CWD,
     // ACCELON26_DEBUG_PORT: the host reads this itself (Wails overwrites WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS)
     // ACCELON26_STATE_DIR: where it remembers the window geometry
-    env: { ...process.env, ACCELON26_DEBUG_PORT: String(port), ACCELON26_STATE_DIR: stateDir, ...(opts.env ?? {}) },
+    env: guiEnv(stateDir, port, opts.env ?? {}),
     stdout: 'pipe', stderr: 'pipe',
   }) : ({ exitCode: null, kill: () => undefined } as any); // spawn:false → 接上「更新程式啟動的那個行程」
   let wsurl = '';
@@ -330,6 +342,9 @@ if (existsSync(blocksAdb)) {
 const info1 = await gui.windowInfo();
 ok('第一次啟動是全螢幕', info1.fullscreen === true && info1.state === 'fullscreen',
   `state=${info1.state} ${info1.w}x${info1.h}@${info1.x},${info1.y}`);
+ok('第一次啟動是全螢幕時有提示（按 Esc／F11 回視窗）',
+  (await gui.evalIn<string>(`document.getElementById('fsHint')?.textContent ?? ''`)).includes('Esc'),
+  await gui.evalIn<string>(`document.getElementById('fsHint')?.textContent ?? '(沒有提示)'`));
 ok('知道自己落在哪張螢幕（含工作區）', !!info1.screen && !!info1.workArea,
   `screen=${info1.screen} primary=${info1.screenPrimary} work=${info1.workArea?.Width}x${info1.workArea?.Height}@${info1.workArea?.X},${info1.workArea?.Y}`);
 ok('狀態檔寫在 ACCELON26_STATE_DIR（不碰使用者的 %AppData%）',
@@ -374,6 +389,26 @@ ok('恢復的位置在啟動螢幕的工作區內（不會跑到畫面外）', i
   `got (${info3.x},${info3.y}) ${info3.w}x${info3.h}｜工作區 ${wa.X},${wa.Y} ${wa.Width}x${wa.Height}`);
 ok('恢復的位置接近要求（平台可能差幾十像素）', Math.abs(info3.x - wantX) <= 60 && Math.abs(info3.y - wantY) <= 60,
   `got (${info3.x},${info3.y}) want (${wantX},${wantY})`);
+
+// 視窗要有標準 Windows 標題列：可以關、可以縮放、可以最大化（作者 2026-10 指出全螢幕沒有標題列）
+const st3 = info3.style ?? {};
+ok('視窗有標題列／可以縮放／可以關／可以最大化',
+  st3.caption === true && st3.resizable === true && st3.sysMenu === true && st3.maximizeBox === true,
+  `style=${st3.style} caption=${st3.caption} resizable=${st3.resizable} sysMenu=${st3.sysMenu} maximizeBox=${st3.maximizeBox}`);
+
+// F11 進全螢幕、Esc 回視窗（全螢幕時 Wails 用 WS_POPUP，沒有標題列是正常的）
+const pressKey = async (k: string, code: number) => {
+  await gui3.evalIn(`(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(k)}, code: ${JSON.stringify(k)}, bubbles: true })); return 1; })()`);
+  await Bun.sleep(800);
+};
+await pressKey('F11', 122);
+const fsOn = await gui3.windowInfo();
+ok('F11 進入全螢幕', fsOn.fullscreen === true, `fullscreen=${fsOn.fullscreen} style=${fsOn.style?.style}`);
+await pressKey('Escape', 27);
+const fsOff = await gui3.windowInfo();
+ok('Esc 離開全螢幕並把標題列還回來（可以關／縮放／最大化）',
+  fsOff.fullscreen === false && fsOff.style?.caption === true && fsOff.style?.resizable === true && fsOff.style?.maximizeBox === true,
+  `fullscreen=${fsOff.fullscreen} style=${fsOff.style?.style} caption=${fsOff.style?.caption} resizable=${fsOff.style?.resizable}`);
 await gui3.close();
 
 // 穩定性：上面那次關掉時記下的設定，再啟動一次、再關掉，兩次的設定要一樣（不會每次漂移）
@@ -465,7 +500,7 @@ const oldBuild = app5?.buildTime ?? '';
 await waitPortFree(PORT + 2);
 const proc7 = Bun.spawn([oldExe, '-updated-from', oldBuild], {
   cwd: ROOT,
-  env: { ...process.env, ACCELON26_DEBUG_PORT: String(PORT + 2), ACCELON26_STATE_DIR: notesDir },
+  env: guiEnv(notesDir, PORT + 2),
   stdout: 'pipe', stderr: 'pipe',
 });
 const gui8 = await startGui(notesDir, { spawn: false, port: PORT + 2 });
@@ -479,6 +514,26 @@ for (let i = 0; i < 30; i++) {
 }
 ok('更新後顯示改版說明（notesBox）', notesVisible, notesText);
 ok('新版啟動時把上次留下的 .old 清掉', !existsSync(oldExe + '.old'), oldExe + '.old');
+
+// 真正的改版說明（release_notes.json 內容）：假裝從很久以前那一版更新上來，應該列出這一版的每一項
+await waitPortFree(PORT + 3);
+const proc9 = Bun.spawn([oldExe, '-updated-from', '2000-01-01T00:00:00Z'], {
+  cwd: ROOT,
+  env: guiEnv(notesDir, PORT + 3),
+  stdout: 'pipe', stderr: 'pipe',
+});
+const gui9 = await startGui(notesDir, { spawn: false, port: PORT + 3 });
+let realNotes = '';
+for (let i = 0; i < 30; i++) {
+  realNotes = await gui9.evalIn<string>(`document.getElementById('notesBox')?.textContent ?? ''`);
+  if (realNotes) break;
+  await Bun.sleep(300);
+}
+const firstItem = 'exe 改名為 accelon26';
+ok('改版說明列出 release_notes.json 的每一項', realNotes.includes(firstItem),
+  realNotes.replace(/\s+/g, ' ').slice(0, 140));
+await gui9.close();
+try { proc9.kill(); } catch { /* already gone */ }
 await gui8.close();
 try { proc7.kill(); } catch { /* already gone */ }
 server.stop(true);
