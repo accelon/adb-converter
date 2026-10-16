@@ -395,6 +395,34 @@ try {
     && headerUi.chips === 1 && headerUi.activeChips === 1 && headerUi.closes === 1 && !!headerUi.activeName,
     JSON.stringify(headerUi));
 
+  // 最右上一定有一個下拉：這次工作階段選過的 adb（只讀 header）。狀態列只顯示錯誤／忙碌。
+  const pickUi = await cdp.eval<{
+    pickLast: boolean; options: string[]; selected: string; catalog: { name: string; file: string; open: boolean }[];
+    statusHidden: boolean; statusApi: string; statusDom: string;
+  }>(`
+    (() => {
+      const h = document.getElementById('header');
+      const sel = document.getElementById('dbPick');
+      const st = window.__adbview.state();
+      return {
+        pickLast: h.lastElementChild === sel,
+        options: [...sel.options].map((o) => o.textContent),
+        selected: sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].textContent : '',
+        catalog: st.catalog,
+        statusHidden: document.getElementById('status').hidden,
+        statusApi: window.__adbview.status().slice(0, 40),
+        statusDom: document.getElementById('status').textContent.slice(0, 40),
+      };
+    })()
+  `);
+  ok('右上（header 最後一個元素）是「開啟過的 adb」下拉，選中目前的庫',
+    pickUi.pickLast && pickUi.catalog.length === 1 && pickUi.catalog[0].open
+    && pickUi.options.length === 1 && pickUi.selected === pickUi.catalog[0].name,
+    `選項 ${JSON.stringify(pickUi.options)}、選中「${pickUi.selected}」、catalog ${JSON.stringify(pickUi.catalog)}`);
+  ok('狀態列只顯示錯誤／忙碌（載入後的「N 詞、M 文件」不再顯示）',
+    pickUi.statusHidden && pickUi.statusDom === '' && pickUi.statusApi.length > 0,
+    `#status hidden=${pickUi.statusHidden}、DOM「${pickUi.statusDom}」、API 仍記得「${pickUi.statusApi}」`);
+
   // 全文搜尋：輸入 → 摘要 → 點摘要才聯動本文（輸入本身不動本文）
   const search = await cdp.eval<{
     meta: string; metaOk: boolean; snippets: number; marked: string; clicked: boolean;
@@ -569,9 +597,12 @@ try {
     `${dirState.dirRows} 列在 DOM，pane ${dirState.pane}，loading=${dirState.loading}｜${dirState.meta}${dirState.err ? ' ERR ' + dirState.err.slice(0, 120) : ''}`);
   ok('目錄樹列出 <樹> 的節點', !dirTabShown || tree.rows >= 2,
     `${tree.rows} 列（twisty ${tree.twisty}），第一層標籤 ${JSON.stringify(tree.labels)}｜${tree.meta}`);
-  const dirState2 = await cdp.eval<{ tiers: string[]; nodes: number; roots: number }>(`window.__adbview.state().dirInfo`);
-  ok('預設目錄＝第一個有 t= 的 <樹>', dirState2?.tiers?.length > 0 && dirState2.nodes > 0,
-    `${dirState2?.roots} 根 / ${dirState2?.nodes} 節點，層級 ${JSON.stringify(dirState2?.tiers)}`);
+  const dirState2 = await cdp.eval<{ tiers: string[]; nodes: number; roots: number } | null>(`window.__adbview.state().dirInfo`);
+  // 沒有 s="*" 的庫不建樹（dirInfo 為 null）—— 這一項只在有目錄樹的庫上成立
+  ok('預設目錄＝第一個有 t= 的 <樹>', !dirTabShown || (dirState2?.tiers?.length > 0 && dirState2.nodes > 0),
+    dirTabShown
+      ? `${dirState2?.roots} 根 / ${dirState2?.nodes} 節點，層級 ${JSON.stringify(dirState2?.tiers)}`
+      : '此庫沒有 s="*" → 不建目錄樹');
 
   // 目錄樹的列是「捲到底才掛上 DOM」（lazy-list）：先確認機制，再把整棵樹掛完，
   // 因為後面幾組斷言要看全部（fgdict 6,966 列，全掛上是 3.5 萬個節點）。
@@ -1522,6 +1553,28 @@ try {
 
   const res = await cdp.eval<string>(`document.querySelector('#resources').textContent.replace(/\\s+/g,' ').trim().slice(0, 70)`);
   ok('resources pane reports state on file://', res.length > 0, res);
+
+  // 餵一個不是 .adb 的檔：錯誤是狀態列唯一還顯示的東西，而且不能把例外丟出來
+  await cdp.send('DOM.setFileInputFiles', { files: [HTML], nodeId: await (async () => {
+    const doc = await cdp.send('DOM.getDocument');
+    const q = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#file' });
+    return q.nodeId;
+  })() });
+  await cdp.eval('document.querySelector("#file").dispatchEvent(new Event("change"))');
+  let badShown = false;
+  for (let i = 0; i < 25; i++) {
+    badShown = await cdp.eval<boolean>("!document.getElementById('status').hidden");
+    if (badShown) break;
+    await Bun.sleep(200);
+  }
+  const badOpen = await cdp.eval<{ text: string; chips: number; db: string; catalog: number }>(`
+    ({ text: document.getElementById('status').textContent.slice(0, 40),
+      chips: document.querySelectorAll('#dbTabs .dbChip').length,
+      db: window.__adbview.state().db, catalog: window.__adbview.state().catalog.length })
+  `);
+  ok('餵非 .adb：狀態列顯示錯誤，原本的庫不受影響',
+    badShown && /開啟失敗/.test(badOpen.text) && badOpen.chips === 1 && !!badOpen.db,
+    `狀態「${badOpen.text}」、chip ${badOpen.chips}、db ${badOpen.db}、catalog ${badOpen.catalog}`);
 
   const errors = cdp.logs.filter((l) => l.startsWith('exception'));
   // 走訪目錄不按 Ctrl 不該多開分頁（需求三）。放在最後：它會改變本文狀態，而前面的

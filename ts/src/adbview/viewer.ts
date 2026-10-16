@@ -15,7 +15,7 @@ import {
   SearchSession, searchSummary, loadTrees, loadTree, buildTree, flattenTree, parseScope, loadInstanceAttrs,
   type SearchResult, type TreeNode, type SearchTree,
 } from './search';
-import { MAX_DBS, alreadyOpen, detachLoaded, openDbs, registerOpenDb, saveLoaded, switchTo } from './dbs';
+import { alreadyOpen, catalogAdd, detachLoaded, registerOpenDb, saveLoaded, switchTo } from './dbs';
 import { showTab } from './ui';
 import { appendTokenRows, renderContainers, renderDocs, renderMeta, renderResources, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { dirActive, dirError, dirLoading, dirTrees, folioCache, labelTables, loadDirectoryTrees, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, resetScopes, setDirError, setDirLoading, syncTreeTabs, treePhases } from './scopes';
@@ -62,11 +62,33 @@ export function displayName(name: string): string {
   return nul >= 0 ? units + '…' : units;
 }
 
+let lastStatus = '';
+
+/**
+ * The header's status line.
+ *
+ * Only errors and "working…" reach the reader (author 2026-10: 用戶不需要「庫名：N 詞、
+ * M 文件」這類資訊). The running commentary is still REMEMBERED — `statusText()` is what
+ * `__adbview.status()` / `state().status` report, so tests and diagnostics keep seeing
+ * the last message while the header stays clean.
+ */
 export function setStatus(msg: string, kind: 'info' | 'err' | 'busy' = 'info') {
+  lastStatus = msg;
   const el = $('#status');
+  if (!el) return;
+  if (kind === 'info') {
+    el.hidden = true;
+    el.textContent = '';
+    el.className = 'status';
+    return;
+  }
+  el.hidden = false;
   el.textContent = msg;
   el.className = 'status ' + kind;
 }
+
+/** the last message, whether or not it was shown (diagnostics/tests) */
+export const statusText = (): string => lastStatus;
 
 
 // ------------------------------------------------------------------- open
@@ -96,16 +118,20 @@ export async function openFile(file: File): Promise<'opened' | 'existing' | 'ref
   // callers often dispatch one as well). Without this guard the second run would
   // rebuild and discard the directory trees the first one produced.
   if (opening) return 'busy';
-  // Peek at the header FIRST: a database beyond MAX_DBS must be refused before any
-  // state is touched (the database being read has to stay exactly as it is). Only the
-  // container headers are read here; the heavy loading happens below.
+  // Peek at the header FIRST (only the container headers; the heavy loading happens
+  // below). The same peek is what the dropdown needs, so the file is remembered in the
+  // catalogue here — there is no cap: a sixth database evicts the least recently used.
   {
-    const probe = await AdbReader.open(new BlobIO(file));
-    const wantName = probe.header.dbcname || probe.header.dbname;
-    if (!openDbs.some((d) => d.name === wantName) && openDbs.length >= MAX_DBS) {
-      setStatus('最多同時開啟 ' + MAX_DBS + ' 個資料庫（先關掉一個）', 'err');
+    let probe;
+    try {
+      probe = await AdbReader.open(new BlobIO(file));
+    } catch (e) {
+      // not an .adb (or unreadable): report it instead of rejecting out of openFile
+      setStatus('開啟失敗：' + (e as Error).message, 'err');
       return 'refused';
     }
+    const wantName = probe.header.dbcname || probe.header.dbname;
+    catalogAdd(file, wantName);
     // The picker fires `change` twice for one pick, and the second run would load the
     // file again — discarding the snapshot of the database being left (its tabs were
     // lost that way). If this exact file is already open, just switch to it.

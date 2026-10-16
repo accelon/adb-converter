@@ -269,6 +269,13 @@
 .dbTabs .dbChipClose { opacity: 0; margin-left: 2px; }
 .dbTabs .dbChip.active .dbChipClose { opacity: .6; }
 .dbTabs .dbChipClose:hover { opacity: 1; color: #ff6b6b; }
+/* 最右上：所有開啟過的 adb。margin-left:auto 讓它永遠貼齊右邊（狀態列平常是隱藏的） */
+.dbPick {
+  margin-left: auto; max-width: 24ch; font: inherit; font-size: 13px;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 2px 6px; cursor: pointer;
+}
+.dbPick:hover { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -281,6 +288,10 @@
   <button class="dbAdd" id="dbAdd" title="開啟 .adb（最多同時 5 個）">＋</button>
   <span class="dbTabs" id="dbTabs"></span>
   <span class="status" id="status"></span>
+  <!-- 右上：這次工作階段選過／拖過的 adb（只讀 header），選一個就加入上面的分頁 -->
+  <select class="dbPick" id="dbPick" title="開啟過的 adb：選一個就加入分頁（最多同時保留 5 個，最久沒用的先讓位）">
+    <option value="">（用 ＋ 開啟 .adb）</option>
+  </select>
 </header>
 
 <main id="main">

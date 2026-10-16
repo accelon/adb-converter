@@ -53,9 +53,12 @@ function renderContainers(r: AdbReader) {
 const THUMB_LIMIT = 48;
 
 async function renderResources() {
-  const c = reader?.containers.get('resources');
+  // the reader is a GLOBAL: capturing it keeps a database switch that lands mid-render
+  // from reading resources out of the wrong container ("no resources container")
+  const r = reader;
+  const c = r?.containers.get('resources');
   const box = $('#resources');
-  if (!c || !c.count) { box.innerHTML = '<p class="dim">（此庫沒有 resources）</p>'; return; }
+  if (!r || !c || !c.count) { box.innerHTML = '<p class="dim">（此庫沒有 resources）</p>'; return; }
   const n = Math.min(c.count, THUMB_LIMIT);
   box.innerHTML = `<p class="note">${fmtInt(c.count)} 個資源，${fmtBytes(c.totalBlockSize)}（未壓縮，可直接讀單一資源）</p>
     <p class="note" id="thumbNote">載入前 ${n} 張縮圖…</p>`;
@@ -63,7 +66,8 @@ async function renderResources() {
   list.className = 'thumbGrid';
   box.appendChild(list);
   for (let i = 0; i < n; i++) {
-    const { name, bytes } = await reader!.resourceBytes(i);
+    if (r !== reader) return;      // another database took over
+    const { name, bytes } = await r.resourceBytes(i);
     const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
     const cell = document.createElement('div');
     cell.className = 'thumb';

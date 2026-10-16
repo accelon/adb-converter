@@ -98,7 +98,25 @@ async function loadDirectoryTrees() {
   const phase: Record<string, number> = { trees: 0, load: 0, build: 0, instances: 0 };
   treePhases = phase;
   const declared = session?.trees?.length ? session.trees : await loadTrees(reader);
-  for (const t of declared) {
+  // Only the 目錄 pane's own tree is built — it is the last consumer. The search
+  // grouping reads the indexer's own string tables now (search.ts groupNames →
+  // caches/<tag>), so nothing else needs a walked tree. A database without `s="*"`
+  // has no 目錄 pane at all, and per the author (2026-10 「可以拿掉背景建樹」) nothing
+  // is built for it: fgdict's 88k tree instances were ~160 ms of background work for
+  // a pane that cannot be opened.
+  // the 目錄 pane is the EXACT `s="*"` tree (syncTreeTabs: /^\*$/); `*u=文` / `*詞`
+  // are 頻次／全文 panes with their own scopes and never enter dirTrees
+  const wanted = declared.filter((t) => /^\*$/.test(t.scope) && t.tiers.length > 0);
+  if (!wanted.length) {
+    dirTrees = [];
+    dirActive = -1;
+    phase.skipped = 1;          // diagnostics: nothing to build for this database
+    syncTreeTabs();
+    phase.trees = performance.now() - tTree0;
+    treePhases = phase;
+    return;
+  }
+  for (const t of wanted) {
     if (!t.tiers.length) continue;
     // The indexer may have stored the tier-1 names as a string table (`caches/書`
     // for fgdict: 7 entries in instance order). When the table lines up with the
@@ -154,11 +172,9 @@ async function loadDirectoryTrees() {
       parentOf,
     });
   }
-  // The 目錄 pane shows the FULL-TEXT tree (`s="*"`); 頻次 and 西文 have their own
-  // panes driven by their own scopes. Fall back to the first tree with tiers.
-  dirActive = dirTrees.findIndex((d) => d.tree.fullText && d.tree.tiers.length > 0);
-  if (dirActive < 0) dirActive = dirTrees.findIndex((d) => d.tree.tiers.length > 0);
-  if (dirActive < 0) dirActive = 0;
+  // Every entry built above IS a full-text (`s="*"`) tree: 頻次 and 西文 have their own
+  // panes driven by their own scopes and never look at dirTrees.
+  dirActive = dirTrees.length ? 0 : -1;
   syncTreeTabs();
   // Render only when the 目錄 pane exists AND is on screen. fgdict declares no
   // `s="*"` (so the tab is hidden) and its folio tree holds 88k instances: building

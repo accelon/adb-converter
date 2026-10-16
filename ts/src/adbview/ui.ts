@@ -5,7 +5,7 @@
  * ./viewer and the other split modules as ESM live bindings; a module OWNS the
  * state it declares, and other modules get/set it through that module's exports.
  */
-import { $, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, setStatus, tokens } from './viewer';
+import { $, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, setStatus, tokens, statusText } from './viewer';
 import { DOCFS_DEFAULT, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, fitDebugInfo, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, renderDocTabs, setDocFont } from './doc-pane';
 import { cursorNode, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
 import { appendTokenRows, renderContainers, renderDocs, renderMeta, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
@@ -203,12 +203,13 @@ let picking: File[] | null = null;     // the pick currently loading, if any
 let queuedPick: File[] | null = null;  // a genuinely new pick that arrived meanwhile
 
 /**
- * Open every picked file in turn, honouring the MAX_DBS limit.
+ * Take a pick: every file enters the dropdown's catalogue (header read only) and the
+ * ones that fit are loaded right away.
  *
  * The file input fires `change` twice for one pick (and the browser tests dispatch
  * one more). Running the list twice would race itself: the second run sees
- * `openFile() === 'busy'` for everything and its skip count comes out short. So a
- * pick that is still on the way in is remembered, and the same pick is ignored.
+ * `openFile() === 'busy'` for everything. So a pick that is still on the way in is
+ * remembered, and the same pick is ignored.
  */
 async function openPicked(files: File[]): Promise<void> {
   if (picking) {
@@ -217,24 +218,23 @@ async function openPicked(files: File[]): Promise<void> {
     return;
   }
   picking = files;
-  let refused = 0, opened = 0;
   try {
+    // Every picked file goes into the dropdown's catalogue (header read only). The ones
+    // that fit are loaded right away; the rest wait there for the reader to choose —
+    // choosing one then evicts the least recently used database (author 2026-10).
+    for (const f of files) await catalogAddFile(f);
+    // ONE file = the reader wants to see it now: it opens even when five are already
+    // open (the least recently used gives way). A multi-file pick loads while there is
+    // room and leaves the rest in the dropdown.
+    const always = files.length === 1;
     for (const f of files) {
+      if (!always && openDbs.length >= MAX_DBS) break;
       const r = await openFile(f);
       dbLog.push('pick ' + f.name + ' -> ' + r);
       if (dbLog.length > 40) dbLog.shift();
-      if (r === 'refused') refused++;
-      else if (r === 'opened') opened++;
     }
   } finally {
     picking = null;
-  }
-  // When nothing at all got in, `openFile` has already said why ("最多同時開啟 5 個…"):
-  // repeating it as "略過 N 個" would only bury the useful sentence.
-  if (refused > 0 && files.length > 1 && opened > 0) {
-    // "只開前 N 個" would be a lie when a file replaced a same-named database: the
-    // honest statement is how many were picked and how many could not be taken.
-    setStatus(`一次選了 ${fmtInt(files.length)} 個（最多 ${fmtInt(MAX_DBS)} 個庫），略過 ${fmtInt(refused)} 個`, 'err');
   }
   const next = queuedPick;
   queuedPick = null;
@@ -353,6 +353,7 @@ function boot() {
     if (f) void openFile(f);
   });
   initTextPane();   // Ctrl+點樹節點／本文分頁 → 右欄文字內容
+  renderDbPick();   // the dropdown starts with its 「用 ＋ 開啟 .adb」 hint
   setStatus('請選擇或拖入 .adb 檔案（13j / yinshun 皆可直接開啟）', 'info');
   installDebugApi();
 }
@@ -370,7 +371,7 @@ export function installDebugApi(): void {
     center: document.documentElement.style.getPropertyValue('--center'),
     right: document.documentElement.style.getPropertyValue('--right'),
   } }),
-  status: () => $('#status').textContent,
+  status: () => statusText(),
   /** mount every 目錄樹 row (rows are mounted lazily; tests assert on the whole tree) */
   growTree: growTreeFully,
   setDocFont, autoFitFont, docFont: () => readDocFont(),
@@ -411,6 +412,8 @@ export function installDebugApi(): void {
     advanced,
     rightTab: $('#colRight .tabBtn.active')?.getAttribute('data-tab') ?? null,
     text: textState(),
+    catalog: catalogState(),
+    dbPick: ($('#dbPick') as HTMLSelectElement | null)?.value ?? '',
     logo: logoState(),
     leftTab: $('#colLeft .tabBtn.active')?.getAttribute('data-tab') ?? null,
     treePhases,
@@ -467,7 +470,7 @@ export function installDebugApi(): void {
 
 import { loadTree } from './search';
 
-import { MAX_DBS, dbLog, openDbs, setDbHooks } from './dbs';
+import { MAX_DBS, catalogAddFile, catalogState, dbLog, openDbs, renderDbPick, setDbHooks } from './dbs';
 import { initTextPane, renderTextPane, textState } from './text-pane';
 import { logoState, updateDocLogo } from './logo';
 

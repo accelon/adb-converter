@@ -130,6 +130,11 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   要清空用輸入框的 ✕（`#queryClear`／`#termsClear`／`#freqClear`／`#latinClear`／`#folioClear`），Enter 則立即重搜。
   `#query` 與四個 pane 的輸入框（`wireOwnSearch`）共用這個規則。
 
+  **狀態列只顯示錯誤與「讀取中」**（作者 2026-10「取消 span.status（用戶不需要此信息）」）：
+  `setStatus(msg, 'info')` 不再寫進 DOM（`#status` 設 `hidden`），但訊息仍記在 `lastStatus`，
+  `__adbview.status()`／`state().status` 讀得到，所以測試與診斷不受影響。載入後的
+  「庫名：N 詞、M 文件」、「已關閉資料庫」、「一次選了 N 個」都不再出現在畫面上。
+
   點某節點的**命中數**（tCount）→ 右欄摘要切成**該節點 realm 內**的命中（標題會說「…範圍內 N 筆」）；
   **重新輸入一個不同的詞 → 這個約束就取消**，摘要回到整個結果（作者 2026-10）。
   實作要點：scope 記的是「產生這份結果的那個查詢」（`lastQuery`），**不是輸入框當下的文字** ——
@@ -238,15 +243,20 @@ viewer.ts 剩 197 行——但啟動後 **`Runtime.evaluate` timeout（頁面卡
 `snapshotDocPane/restoreDocPane`（**本文分頁在 slot 裡** → 關掉資料庫就等於關掉它所有分頁）、
 `snapshotScopes/restoreScopes`（樹、folio）、`snapshotSummary/restoreSummary`、`snapshotLink/restoreLink`、`snapshotPanes/restorePanes`。
 
-UI：`#dbAdd`＝固定在 chip 列左邊的「＋」（`#file` 選完就隱藏，`display:none`；按鈕位置不隨開啟數變動）、
-`#dbTabs`＝每個已開庫一個 chip，**順序永遠是開啟順序**（切換只改顏色，按鈕不跳位），
+UI：`#dbAdd`＝固定在 chip 列左邊的「＋」（`#file` 選完就隱藏，`display:none`）、
+`#dbTabs`＝每個已開庫一個 chip，**最後開啟的放最左邊**（作者 2026-10），其餘維持相對順序（切換只改顏色，不重排）、
 **只有 active 的 chip 顯示 ✕**（關閉該庫＝連同它所有本文分頁）。chip 字級 13px 固定，不隨 active 變。
 切換／關閉後由 `ui.ts` 的 `refreshAll()` 重畫（每個 pane 交給自己的 `showTab()` 重跑）；全部關完呼叫 `clearDbUi()`。
 
-**一次選多個**：`#file` 有 `multiple`，`openPicked()` 逐檔 `await openFile()`（它回傳 `opened／existing／refused／busy`，就是拿來數「略過幾個」的），
-超過上限的那幾個回 `refused`，狀態列說「一次選了 6 個（最多 5 個庫），略過 2 個」。
-**同一次挑選的 change 會來兩次**（瀏覽器行為，測試又常自己 dispatch 一次）→ `picking`＋檔名／大小／mtime 簽章把重複的那一次丟掉，
-否則第二輪每個檔案都拿到 `busy`，略過數會少算。
+**最右上的下拉 `#dbPick`**（作者 2026-10「最右上邊一定要有一個 dropdown」）：列出**這次工作階段選過／拖過的每一個 adb**，
+只讀 header（`catalogAddFile()` → `AdbReader.open(new BlobIO(file))`，幾 KiB）所以**未載入的庫也在清單裡**，字尾標「（未載入）」；
+同名不同檔（13j.adb 與 1839.adb 都是十三經）會補上檔名 `十三經｜1839.adb`。選一個就加入 `dbTabs`：已載入的直接切換，
+未載入的當場載入。**沒有「拒絕」了**：`MAX_DBS = 5` 滿了就讓**最久沒用**的那個 slot 讓位（它的本文分頁跟著消失，跟按 ✕ 同義）。
+瀏覽器版不能列資料夾，所以來源只有使用者自己選的檔；未來的 wails3 版會自動列出與執行檔同資料夾的 adb（同一份清單模型即可）。
+
+**一次選多個**：`#file` 有 `multiple`。`openPicked()` 先把每一檔加進 catalog（只讀 header），再把**還有空位**的載入；
+選**單一個**檔时一律載入（就算已經 5 個，最久沒用的讓位）——「選了就是要看它」。其餘留在下拉裡等讀者挑。
+**同一次挑選的 change 會來兩次**（瀏覽器行為，測試又常自己 dispatch 一次）→ `picking`＋檔名／大小／mtime 簽章把重複的那一次丟掉。
 
 **庫名相同時**：`alreadyOpen()` 比對「檔名＋大小＋mtime」→ 同一個檔案只是**切換**過去；
 **不同檔案但庫名相同則取代那個 chip**（`registerOpenDb` 回 `replaced`），狀態列明說「十三經：13j.adb 取代了同名的庫（它的舊分頁已關閉）」。
@@ -287,10 +297,11 @@ UI：`#dbAdd`＝固定在 chip 列左邊的「＋」（`#file` 選完就隱藏�
 診斷：`state().dirRows`（現在掛了幾列）＋ `#dirTree .moreRows` 的提示；測試端有
 `window.__adbview.growTree()` 先把整棵樹掛完再斷言（見 `file-protocol-test.ts` 的「目錄樹分批掛上 DOM」）。
 
-**沒有 `s="*"` 就沒有目錄樹**（作者 2026-10）：「不指定 s="*" 就不必顯示目錄樹」。
+**沒有 `s="*"` 就沒有目錄樹**（作者 2026-10）：「不指定 s="*" 就不必顯示目錄樹」，接著「可以拿掉背景建樹」。
 唯一的判斷是 `dirPaneShown()`（`#colLeft .tabBtn[data-tab=dir]` 可不可見）：`renderDirTree()`
-開頭就檢查，不顯示時直接清空 `#dirTree` 與 `#dirMeta`（免得換庫後留著上一個庫的列），
-`loadDirectoryTrees()` 的背景渲染也用同一個判斷。fgdict（`$詞`／`*詞`／`頁.n`，沒有 `s="*"`）
+開頭就檢查，不顯示時直接清空 `#dirTree` 與 `#dirMeta`（免得換庫後留著上一個庫的列）。
+**而且連資料都不建了**：`loadDirectoryTrees()` 只建「宣告了 `s="*"` 的那棵樹」（`dirTrees` 現在只放這種），
+沒有就 `dirTrees=[]`、`dirActive=-1`、`treePhases.skipped=1` 直接返回 —— fgdict 的 88k 實例／~160 ms 背景建樹整批省掉。fgdict（`$詞`／`*詞`／`頁.n`，沒有 `s="*"`）
 因此 **0 列**在 DOM，左欄也真的沒有「目錄」這個分頁。
 **樹的資料仍然建**（`dirTrees`，作者 2026-10 確認「照建不畫 ok」）：現在它只服務目錄樹面板
 （`paintTreeActive`／展開集合／`dirInfo` 診斷），**搜尋分組不再需要它**——`groupNames()`
@@ -436,9 +447,9 @@ DOM 列數也固定。
 
 | 測試 | 結果 |
 |---|---|
-| `file-protocol-test.ts`（13j） | **73/73** |
-| `file-protocol-test.ts`（yinshun） | **82/82** |
-| `file-protocol-test.ts`（fgdict） | **85/85** |
+| `file-protocol-test.ts`（13j） | **78/78** |
+| `file-protocol-test.ts`（yinshun） | **78/78** |
+| `file-protocol-test.ts`（fgdict） | **90/90** |
 | `test/tree.test.ts` | 40/40 |
 | `test/search.test.ts`（13j） | 19/19 |
 | `test/adbview.test.ts` / `test/vapa.test.ts` | 22/22、13/13 |
@@ -456,6 +467,10 @@ DOM 列數也固定。
 * **本輪新增**：Ctrl+點本文分頁＝複製到右欄、Shift+點＝搬到右欄（中間讓出）、右欄捲動不連動左樹
 * fgdict 沒有 `s="*"`（目錄樹面板隱藏）：樹的形狀斷言（幾本書／逐層展開）用 `dirTabShown` 跳過，
   由 13j／yinshun 覆蓋
+* **本輪新增**：右上 `#dbPick`（header 最後一個元素）列出這次工作階段的所有 adb、選中目前的庫
+* **本輪新增**：狀態列只顯示錯誤／忙碌（載入後 `#status` 是空的，`__adbview.status()` 仍記得最後訊息）
+* **本輪新增**：餵非 .adb → 狀態列顯示「開啟失敗」，原本的庫不受影響，而且不丟例外
+* **本輪新增**：沒有 `s="*"` 的庫完全不建樹（`treePhases.instances = 0`）
 
 ## 7. 待辦事項
 

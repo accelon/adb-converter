@@ -10,7 +10,8 @@
  * fixed ＋ button (#dbAdd) to its left that opens another file. Click a chip to switch to
  * it; the ACTIVE chip carries the ✕ that closes it (and every tab that used it).
  */
-import { $, escapeHtml, restoreCore, snapshotCore } from './viewer';
+import { $, escapeHtml, openFile, restoreCore, snapshotCore } from './viewer';
+import { AdbReader, BlobIO } from './adb';
 import { restoreDocPane, snapshotDocPane } from './doc-pane';
 import { restorePanes, snapshotPanes } from './panes';
 import { restoreScopes, snapshotScopes } from './scopes';
@@ -24,10 +25,27 @@ export interface DbSlot {
   id: number;
   name: string;
   file: File;
+  /** MRU stamp: the largest is the most recently used (eviction takes the smallest) */
+  usedAt: number;
   core: unknown; docPane: unknown; scopes: unknown; summary: unknown; link: unknown; panes: unknown; text: unknown;
 }
 
+/**
+ * One .adb the reader has picked (or dropped) in this session. Only its HEADER is
+ * read — the dropdown lists databases that are not loaded yet.
+ */
+export interface CatalogEntry {
+  key: string;          // file identity: name + size + mtime
+  file: File;
+  name: string;         // 庫名 from the header
+  usedAt: number;
+}
+
 export const openDbs: DbSlot[] = [];
+/** every database this session has offered (see CatalogEntry) */
+export const catalog: CatalogEntry[] = [];
+const fileKey = (f: File): string => f.name + ':' + f.size + ':' + f.lastModified;
+let useSeq = 0;
 /** diagnostics: what each save/restore saw (state().dbLog) */
 export const dbLog: string[] = [];
 let activeId = 0;
@@ -95,19 +113,125 @@ function loadFrom(slot: DbSlot): void {
   loadedId = slot.id;
 }
 
-/** called by openFile once the new database is loaded and rendered */
-export function registerOpenDb(file: File, name: string): { ok: boolean; reason?: string; replaced?: boolean } {
-  const same = openDbs.findIndex((d) => d.name === name);
-  if (same < 0 && openDbs.length >= MAX_DBS) {
-    return { ok: false, reason: '最多同時開啟 ' + MAX_DBS + ' 個資料庫（先關掉一個）' };
+/** the loaded slot of a catalog entry, if it is loaded */
+export const slotOf = (e: CatalogEntry): DbSlot | null =>
+  openDbs.find((s) => fileKey(s.file) === e.key && s.name === e.name) ?? null;
+
+/** remember a picked file (the caller already peeked its header for the name) */
+export function catalogAdd(file: File, name: string): CatalogEntry {
+  const key = fileKey(file);
+  const hit = catalog.find((e) => e.key === key && e.name === name);
+  if (hit) return hit;
+  const e: CatalogEntry = { key, file, name, usedAt: ++useSeq };
+  catalog.push(e);
+  renderDbPick();
+  return e;
+}
+
+/**
+ * Header peek (a few KiB) so the dropdown can name a file that is NOT loaded yet —
+ * this is what "只讀 header 就好" means. A file that is not an .adb keeps its name so
+ * the reader can see what failed.
+ */
+export async function catalogAddFile(file: File): Promise<CatalogEntry> {
+  const key = fileKey(file);
+  const hit = catalog.find((e) => e.key === key);
+  if (hit) return hit;
+  let name = file.name;
+  try {
+    const probe = await AdbReader.open(new BlobIO(file));
+    name = probe.header.dbcname || probe.header.dbname || file.name;
+  } catch { /* keep the file name */ }
+  return catalogAdd(file, name);
+}
+
+/**
+ * The dropdown (#dbPick) at the top right: every database this session has offered.
+ * Loaded ones come first (most recently used first), then the ones that are only
+ * known by header; the ACTIVE database is what the box displays.
+ */
+export function renderDbPick(): void {
+  const sel = $('#dbPick') as HTMLSelectElement | null;
+  if (!sel) return;
+  const active = activeSlot();
+  const shown = [...catalog].sort((a, b) => {
+    const ao = slotOf(a) ? 1 : 0, bo = slotOf(b) ? 1 : 0;
+    if (ao !== bo) return bo - ao;
+    return b.usedAt - a.usedAt;
+  });
+  // two different files can carry the same 庫名 (13j.adb and 1839.adb are both 十三經):
+  // show the file name so the reader can tell them apart
+  const dup = new Map<string, number>();
+  for (const e of catalog) dup.set(e.name, (dup.get(e.name) ?? 0) + 1);
+  sel.innerHTML = shown.length
+    ? shown.map((e) => {
+      const s = slotOf(e);
+      const label = e.name + ((dup.get(e.name) ?? 0) > 1 ? '｜' + e.file.name : '') + (s ? '' : '（未載入）');
+      return '<option value="' + e.key + '"' + (s && s === active ? ' selected' : '') + '>'
+        + escapeHtml(label) + '</option>';
+    }).join('')
+    : '<option value="">（用 ＋ 開啟 .adb）</option>';
+  sel.onchange = () => {
+    const e = catalog.find((x) => x.key === sel.value);
+    if (e) void openCatalogEntry(e);
+  };
+}
+
+/** the open slot with the smallest MRU stamp (never `except`) */
+function worstSlot(except: DbSlot | null): DbSlot | null {
+  let out: DbSlot | null = null;
+  for (const s of openDbs) {
+    if (s === except) continue;
+    if (!out || s.usedAt < out.usedAt) out = s;
   }
-  const slot: DbSlot = { id: ++seq, name, file, core: null, docPane: null, scopes: null, summary: null, link: null, panes: null, text: null };
+  return out;
+}
+
+/**
+ * A pick from the dropdown: switch to it when it is already loaded, otherwise load it.
+ * When five are open the LEAST RECENTLY USED one gives way — its 本文分頁 live inside
+ * its slot, so they go with it (that is the documented meaning of closing a database).
+ */
+export async function openCatalogEntry(e: CatalogEntry): Promise<void> {
+  e.usedAt = ++useSeq;
+  const slot = slotOf(e);
+  if (slot) {
+    slot.usedAt = ++useSeq;
+    switchTo(slot.id);
+    return;
+  }
+  while (openDbs.length >= MAX_DBS) {
+    const lru = worstSlot(null);
+    if (!lru) break;
+    dbLog.push('evict ' + lru.name);
+    closeDb(lru.id);
+  }
+  await openFile(e.file);
+  renderDbPick();
+}
+
+/** diagnostics: the dropdown's contents */
+export const catalogState = (): { name: string; file: string; open: boolean }[] =>
+  catalog.map((e) => ({ name: e.name, file: e.file.name, open: !!slotOf(e) }));
+
+/** called by openFile once the new database is loaded and rendered */
+export function registerOpenDb(file: File, name: string): { ok: boolean; replaced?: boolean } {
+  const same = openDbs.findIndex((d) => d.name === name);
+  const slot: DbSlot = { id: ++seq, name, file, usedAt: ++useSeq, core: null, docPane: null, scopes: null, summary: null, link: null, panes: null, text: null };
   saveInto(slot);
   if (same >= 0) openDbs[same] = slot;
-  else openDbs.push(slot);
+  else openDbs.unshift(slot);      // 最後開啟的放 dbTabs 的最左邊
+  // At most MAX_DBS stay: the least recently USED one goes (its 本文分頁 go with it).
+  while (openDbs.length > MAX_DBS) {
+    const lru = worstSlot(slot);
+    if (!lru) break;
+    dbLog.push('evict ' + lru.name);
+    openDbs.splice(openDbs.indexOf(lru), 1);
+  }
   activeId = slot.id;
   loadedId = slot.id;
   renderDbTabs();
+  renderDbPick();
   // A DIFFERENT file carrying the same database name REPLACES that chip (two chips
   // with one name could not be told apart). The caller tells the reader so the
   // vanished tabs of the old file are not a mystery.
@@ -115,9 +239,11 @@ export function registerOpenDb(file: File, name: string): { ok: boolean; reason?
 }
 
 /**
- * One chip per open database, ALWAYS in insertion order: making another one active
- * only restyles them (the buttons must not jump around). The ✕ sits on the active
- * chip so closing is always in the same place relative to the name that is in use.
+ * One chip per open database, in `openDbs` order: a newly opened database goes to the
+ * LEFT (作者 2026-10), the others keep their relative order (switching only restyles
+ * them, the buttons do not jump). The ✕ sits on the active chip so closing is always in
+ * the same place relative to the name that is in use. At most MAX_DBS are kept — the
+ * least recently used one is evicted when a sixth is opened.
  */
 export function renderDbTabs(): void {
   const box = $('#dbTabs');
@@ -143,11 +269,14 @@ export function renderDbTabs(): void {
 export function switchTo(id: number): void {
   const target = openDbs.find((d) => d.id === id);
   const cur = activeSlot();
-  if (!target || target === cur) return;
+  if (!target) return;
+  target.usedAt = ++useSeq;        // 「保留最後使用的 5 個」
+  if (target === cur) { renderDbTabs(); renderDbPick(); return; }
   if (cur) saveInto(cur);
   loadFrom(target);
   hooks.refresh();
   renderDbTabs();
+  renderDbPick();
 }
 
 export function closeDb(id: number): void {
@@ -156,11 +285,13 @@ export function closeDb(id: number): void {
   const wasActive = openDbs[at] === activeSlot();
   openDbs.splice(at, 1);
   if (wasActive) {
-    const next = openDbs[openDbs.length - 1];
+    // the most recently used of what is left becomes active
+    const next = openDbs.reduce<DbSlot | null>((a, d) => (!a || d.usedAt > a.usedAt ? d : a), null);
     if (next) { loadFrom(next); hooks.refresh(); }
     else hooks.clear();
   }
   renderDbTabs();
+  renderDbPick();
 }
 
 /** ✕ next to the active database's name */
