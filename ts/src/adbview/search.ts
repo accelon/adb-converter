@@ -353,6 +353,8 @@ export async function loadTree(
   tree: SearchTree,
   opts: {
     label?: (va: number, vaEnd: number, attrs: Record<string, string>, tag: string) => Promise<string>;
+    /** label only the entry tier now; the caller resolves deeper tiers as it draws them */
+    entryLabelsOnly?: boolean;
     attrsAt?: (va: number) => Promise<Record<string, string>>;
   } = {},
 ): Promise<TreeInstance[]> {
@@ -447,7 +449,7 @@ export async function loadTree(
   const MAX_LABEL_NODES = 20_000;
   for (let i = 0; i < out.length; i++) {
     const inst = out[i];
-    if (opts.label && i < MAX_LABEL_NODES) {
+    if (opts.label && i < MAX_LABEL_NODES && (opts.entryLabelsOnly ? inst.depth === 0 : true)) {
       const attrs = await readAttrs(inst.va);
       inst.label = await opts.label(inst.va, inst.vaEnd, attrs, inst.tag);
     }

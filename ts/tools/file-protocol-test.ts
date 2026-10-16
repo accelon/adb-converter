@@ -860,6 +860,44 @@ try {
     ok('此庫沒有 s="*u=…" 樹，頻次分頁隱藏', !freq.hasTab && !freq.openTab,
       `hidden=${!freq.hasTab}, active=${freq.openTab}`);
   }
+  // ---- 檢索命中數徽章要跟著輸入即時重繪（不是上一次的數字） -----------------
+  const badgeMoves = await cdp.eval<any>(`
+    (async () => {
+      const wait = async (fn, n = 40) => { for (let i = 0; i < n; i++) { if (fn()) return true; await new Promise(r => setTimeout(r, 200)); } return false; };
+      const dirTab = document.querySelector('#colLeft .tabBtn[data-tab="dir"]');
+      if (!dirTab || getComputedStyle(dirTab).display === 'none') return { skipped: true };
+      dirTab.click();
+      await wait(() => document.querySelector('#dirTree .tRow'));
+      const db = window.__adbview.state().db;
+      const words = db === '13j' ? ['象曰', '乾'] : ['大乘', '涅槃'];
+      const q = document.querySelector('#query');
+      const rowBadges = () => [...document.querySelectorAll('#dirTree .tRow')]
+        .map(r => (r.querySelector('.tCount.hit')?.textContent ?? '').trim());
+      q.value = words[0];
+      q.dispatchEvent(new Event('input'));
+      await wait(() => rowBadges().some(v => v));
+      const a = rowBadges();
+      q.value = words[1];
+      q.dispatchEvent(new Event('input'));
+      // the same rows must show the NEW query's numbers (or none, if that word misses)
+      await wait(() => JSON.stringify(rowBadges()) !== JSON.stringify(a));
+      const b = rowBadges();
+      const childOnly = [...document.querySelectorAll('#dirTree .tCount')].filter(e => !e.classList.contains('hit')).length;
+      q.value = '';
+      q.dispatchEvent(new Event('input'));
+      await new Promise(r => setTimeout(r, 600));
+      const cleared = [...document.querySelectorAll('#dirTree .tCount.hit')].length;
+      return { skipped: false, words, a: a.filter(Boolean).slice(0, 5), b: b.filter(Boolean).slice(0, 5), childOnly, cleared };
+    })()
+  `);
+  if (!badgeMoves.skipped) {
+    ok('目錄命中數徽章隨輸入即時重繪（不是上一次的數字）',
+      JSON.stringify(badgeMoves.a) !== JSON.stringify(badgeMoves.b),
+      `${JSON.stringify(badgeMoves.words)}：${JSON.stringify(badgeMoves.a)} → ${JSON.stringify(badgeMoves.b)}`);
+    ok('清空輸入後命中徽章收起', badgeMoves.cleared === 0,
+      `清空後 hit 徽章 ${badgeMoves.cleared} 個、子節點數徽章 ${badgeMoves.childOnly} 個`);
+  }
+
   // ---- 使用者測試報告（fgdict）的回歸 --------------------------------------
   // 全文／頻次面板：筆數與段名同一行、頁籤名＝段名、把查詢詞塗紅、摘要聯動該段
   // 原書分頁：頁籤名＝頁碼、不塗紅、把 <_頁> 捲進畫面、連點不重複開分頁

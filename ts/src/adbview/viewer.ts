@@ -270,6 +270,7 @@ async function runSearch(query: string) {
     summaryResult = null;
     snippetScope = null;
     snippetShown = SNIPPET_LIMIT;
+    refreshTreeHits();   // no search: the badges go back to the child counts
     $('#searchList').innerHTML = '';
     $('#searchMeta').textContent = '';
     $('#searchMore').textContent = '';
@@ -287,6 +288,7 @@ async function runSearch(query: string) {
   lastResult = res;
   summaryResult = res;
   snippetShown = SNIPPET_LIMIT;
+  refreshTreeHits();   // the badges are hit counts: repaint them with THIS result
   await renderSearchResult(res, seq);
 }
 
@@ -366,6 +368,20 @@ async function renderSnippets(seq: number) {
     ? `顯示前 ${fmtInt(show.length)} 筆（${scopeNote}共 ${fmtInt(pool.length)} 筆）；捲到底載入更多`
     : `${scopeNote}共 ${fmtInt(pool.length)} 筆`;
   // No auto-jump: the document is linked by an explicit click (requirement 一).
+}
+
+/**
+ * Repaint the directory tree's hit badges after the query changed.
+ *
+ * The badges are the search hit counts, so they must move with the input; they used
+ * to stay on the previous query (or on the child count) until a node was reopened.
+ * Only the rendered rows are rebuilt, and only when the 目錄 pane is on screen.
+ */
+function refreshTreeHits(): void {
+  const btn = $('#colLeft .tabBtn[data-tab="dir"]') as HTMLElement | null;
+  if (!btn || btn.hidden || getComputedStyle(btn).display === 'none' || !dirTrees.length) return;
+  if (!$('#dirTree')) return;
+  void renderDirTree();
 }
 
 /**
@@ -794,8 +810,11 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   const name = opts.name || token || (useNode ? node!.name : (el.element.text || doc.name || reader?.header.dbname || ''));
   const cur = docSession();
   const covers = !!cur && realm.to > realm.from && realm.from >= cur.realm.from && realm.to <= cur.realm.to;
+  // Ctrl/Cmd means "open a NEW document tab" (requirement 三): it must open one even
+  // when the current tab already covers the realm, otherwise the key silently does
+  // nothing on a node inside the tab being read.
   const s = opts.newTab
-    ? sessionFor(realm, name, firstLink || !covers)
+    ? sessionFor(realm, name, true)
     : (firstLink || !covers ? sessionFor(realm, name, false) : cur!);
 
   s.doc = doc;
@@ -1417,9 +1436,27 @@ async function labelTableFor(tag: string): Promise<{ vas: number[]; names: strin
       if (names.some(Boolean)) break;
     }
   }
-  const table = names.length === vas.length && names.some(Boolean) ? { vas, names } : null;
+  // Always keep the VA list: when the values are not stored (yinshun has neither
+  // `caches/<tag>` nor `<tag>.n`), the caller resolves the label from the LINE TABLE
+  // with `wrappedText` — one line read instead of `nodeLabel`'s VA walk (~150 µs).
+  const table = vas.length ? { vas, names: names.length === vas.length ? names : [] } : null;
   labelTables.set(tag, table);
   return table;
+}
+
+/**
+ * One node's label: the stored table first, then the text its tag wraps (read from
+ * the LINE TABLE — \`nodeLabel\` walks the VA space and costs ~150 µs per node).
+ */
+async function labelFor(tag: string, va: number, vaEnd: number): Promise<string> {
+  const table = await labelTableFor(tag);
+  if (table) {
+    const i = lowerBound(table.vas, va);
+    if (table.vas[i] === va && table.names[i]) return table.names[i];
+    const wrapped = await wrappedText(tag, va, table.vas);
+    if (wrapped) return wrapped;
+  }
+  return (await mapper!.nodeLabel(va, vaEnd)) || '';
 }
 
 async function loadDirectoryTrees() {
@@ -1443,19 +1480,16 @@ async function loadDirectoryTrees() {
     const namesOk = firstNames.length > 0 && firstNames.length === firstVas.length;
     const tLoad = performance.now();
     const instances = await loadTree(reader, t, {
-      // no per-instance source read at all: the instance's own `t=` is read from the
-      // attributes container by loadTree, and the LABEL comes from a table
+      // Only the ENTRY tier is labelled here: yinshun's deeper tiers are ~20,000
+      // labels ≈ 2.7 s, and nobody sees them until a node is expanded. The renderer
+      // resolves a row's label when it draws it (and fills `d.labels` for the row).
+      entryLabelsOnly: true,
       label: async (va, vaEnd, _attrs, tag) => {
-        const table = await labelTableFor(tag);
-        if (table) {
-          const i = lowerBound(table.vas, va);
-          if (table.vas[i] === va && table.names[i]) return table.names[i];
-        }
         if (namesOk) {
           const i = lowerBound(firstVas, va);
           if (firstVas[i] === va && firstNames[i]) return firstNames[i];
         }
-        return mapper!.nodeLabel(va, vaEnd);
+        return labelFor(tag, va, vaEnd);
       },
     });
     phase.load += performance.now() - tLoad;
@@ -1616,14 +1650,18 @@ async function renderDirTree() {
       : '<p class="dim">此庫沒有 <code>&lt;樹&gt;</code> 宣告。</p>';
     return;
   }
-  if (!d.loaded) {
-    for (const node of iterNodes(d.roots)) {
-      if (d.labels.has(node.va)) continue;
-      d.labels.set(node.va, node.label || (await mapper.nodeLabel(node.va, node.vaEnd)));
-    }
-    d.loaded = true;
-  }
   const rows = flattenTree(d.roots, (n) => d.open.has(n.va));
+  // Labels are resolved for the ROWS BEING DRAWN (the entry tier first, a node's
+  // children when it is expanded) instead of for every node up front.
+  for (const r of rows) {
+    const n = r.node;
+    if (d.labels.has(n.va)) continue;
+    // the row's text comes from `d.labels`, so it must be filled even when the node
+    // already carries a label
+    n.label = n.label || (await labelFor(n.tag, n.va, n.vaEnd));
+    d.labels.set(n.va, n.label);
+  }
+  d.loaded = true;
   // While a search is active the badge is ALWAYS the hit count of this node's realm
   // (`[va, vaEnd)`) — the same number whether the node is open or collapsed. The
   // child count is only shown when there is no search to report on.
