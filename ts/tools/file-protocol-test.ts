@@ -695,7 +695,11 @@ try {
       const ctrlCount = beforeCtrlTabs;
       void ctrlCount;
       target.querySelector('.tName').dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true }));
-      await new Promise((r) => setTimeout(r, 1400));
+      // The link is ASYNC and can be slow: this is the last book, so its first page
+      // decodes blocks at the very end of the 24 MB database. A fixed 1400 ms sleep
+      // read the tab count before the tab existed (measured: the same click landed
+      // 1.2 s later, during the next step). Poll for it instead.
+      for (let i = 0; i < 40 && spec() === beforeCtrlTabs; i++) await new Promise((r) => setTimeout(r, 250));
       const tabNew = spec() - beforeCtrlTabs;
       // Ctrl+點箭頭不該展開全部子孫：把一本書打開後 Ctrl+點它的箭頭，應該收合
       const b2 = books()[2];
@@ -922,7 +926,11 @@ try {
         const word = out.db === 'fgdict' ? '法王' : '大乘';
         fq.value = word;
         fq.dispatchEvent(new Event('input'));
-        await wait(() => document.querySelector('#freqList .tCount.hit'), 80);
+        // wait for THIS query to be rendered: the pane already shows hit badges from
+        // the earlier block's query (大乘), so a badge-based wait returns the STALE row
+        // and its handler would paint the previous word.
+        await wait(() => (document.querySelector('#freqMeta').textContent ?? '').includes(word), 80);
+        await wait(() => document.querySelector('#freqList .tCount.hit'), 20);
         const r0 = document.querySelector('#freqList .snippet');
         const b0 = r0?.querySelector('b');
         const c0 = r0?.querySelector('.tCount.hit');
@@ -934,8 +942,10 @@ try {
         const rowCount = Number((row?.querySelector('.tCount.hit')?.textContent ?? '0').replace(/[^0-9]/g, ''));
         const before = st().docTabs.length;
         row?.click();
-        await wait(() => document.querySelector('#docText mark.docHit'), 40);
-        await new Promise(r => setTimeout(r, 600));
+        // poll for the QUERY to be painted (not merely for any mark): the page has to
+        // move to the hit first, which can take a moment on a 22k-segment dictionary
+        await wait(() => (document.querySelector('#docText mark.docHit')?.textContent ?? '').includes(word), 40);
+        await new Promise(r => setTimeout(r, 400));
         out.freq = {
           word, rowName, rowCount, sameLine, found: !!row,
           tabName: st().docTabs[st().docTab]?.name ?? '',
@@ -988,7 +998,8 @@ try {
     const f = report.freq;
     ok('全文：命中數與段名同一行（不再分行）', f.sameLine, `row=${JSON.stringify(f.rowName)} count=${f.rowCount}`);
     ok('全文：點段名→本文頁籤名為段名', f.found && f.tabName === f.rowName, `tab=${JSON.stringify(f.tabName)} row=${JSON.stringify(f.rowName)}`);
-    ok('全文：內文把查詢詞塗紅', f.marks > 0 && f.markText.includes(f.word), `「${f.word}」→ ${f.marks} 個 mark ${JSON.stringify(f.markText)}`);
+    ok('全文：內文把查詢詞塗紅', f.marks > 0 && f.markText.includes(f.word),
+      `「${f.word}」→ ${f.marks} 個 mark ${JSON.stringify(f.markText)}｜pinned=${f.pin}`);
     ok('全文：摘要聯動該段的命中', f.sumItems > 0 && /範圍內/.test(f.sumMeta), `${f.sumItems} 筆｜${f.sumMeta}`);
   }
   if (report.folio) {
