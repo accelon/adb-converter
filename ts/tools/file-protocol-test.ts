@@ -980,6 +980,24 @@ try {
           newTabs: st().docTabs.length - before,
         };
       }
+      // 使用者回報：全文輸入「法喜」點「二食」→ 摘要的兩個 mark 必須是「法喜」。
+      // （walk 漂移時 summary 的 span 會塗到隔壁字：實測塗成「帖見」「止觀」。）
+      if (out.db === 'fgdict') {
+        const fq2 = document.querySelector('#freqQuery');
+        fq2.value = '法喜';
+        fq2.dispatchEvent(new Event('input'));
+        await wait(() => (document.querySelector('#freqMeta').textContent ?? '').includes('法喜'), 80);
+        const row2 = [...document.querySelectorAll('#freqList .snippet')]
+          .find((r) => r.querySelector('b')?.textContent === '二食');
+        row2?.click();
+        await wait(() => document.querySelectorAll('#searchList .snippet mark').length > 0, 40);
+        await new Promise((r) => setTimeout(r, 400));
+        out.faxi = {
+          found: !!row2,
+          marks: [...document.querySelectorAll('#searchList .snippet mark')].map((m) => m.textContent),
+          snippets: document.querySelectorAll('#searchList .snippet').length,
+        };
+      }
       const folioTab = document.querySelector('#colLeft .tabBtn[data-tab="folio"]');
       if (folioTab && !folioTab.hidden) {
         folioTab.click();
@@ -1023,6 +1041,12 @@ try {
     ok('全文：內文把查詢詞塗紅', f.marks > 0 && f.markText.includes(f.word),
       `「${f.word}」→ ${f.marks} 個 mark ${JSON.stringify(f.markText)}｜pinned=${f.pin}`);
     ok('全文：摘要聯動該段的命中', f.sumItems > 0 && /範圍內/.test(f.sumMeta), `${f.sumItems} 筆｜${f.sumMeta}`);
+  }
+  if (report.faxi) {
+    const fx = report.faxi;
+    ok('全文：摘要的塗紅就是查詢詞（法喜／二食，walk 漂移也不例外）',
+      fx.found && fx.marks.length === 2 && fx.marks.every((m) => m === '法喜'),
+      `二食=${fx.found}｜${JSON.stringify(fx.marks)}｜${fx.snippets} 筆摘要`);
   }
   if (report.folio) {
     const p = report.folio;

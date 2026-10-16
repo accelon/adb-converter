@@ -270,7 +270,8 @@ viewer.ts 剩 197 行——但啟動後 **`Runtime.evaluate` timeout（頁面卡
   `AdbReader.cachedStrings(key)` 就是這個入口。fgdict 的書名（P0）與詞條名都靠它解決。
 * **fgdict 的 VA walk 漂移很大**：`elementAt(219386)` 會回傳別的區塊的第一個元素（walk VA 與
   儲存 VA 差 >1000），所以 fgdict 上 **VA→PA 的走訪不可信**；行表（`linesVirtual`/`linesPhysical`）
-  與 `caches`／`tags` 才是 ground truth。跳行用 `lineOfVa(va)`（`edgeLine` ＋「VA 等於某行結尾時
+  與 `caches`／`tags` 才是 ground truth。**摘要的 snippet 也一樣**：`searchSummary(…, { phrase })` 會用
+  `lineOfVa` ＋ 文字搜尋定位並塗紅，否則會顯示並塗到隔壁字（實測：搜「法喜」的兩筆顯示「帖見」「止觀」）。跳行用 `lineOfVa(va)`（`edgeLine` ＋「VA 等於某行結尾時
   屬於下一行」的修正），塗紅則對「節點標籤連結」改用「在該行原文中找詞條字串」(`markPhraseInLine`)。
 * **本文分頁標籤**顯示「詞名／來源節點名」（`shortLabel` 截 8 字，完整名在 tooltip），
   不再顯示 `Fgdict1.xml` 這種對讀者無意義的檔名。
@@ -309,9 +310,9 @@ DOM 列數也固定。
 
 | 測試 | 結果 |
 |---|---|
-| `file-protocol-test.ts`（13j） | **64/64** |
-| `file-protocol-test.ts`（yinshun） | **68/68** |
-| `file-protocol-test.ts`（fgdict） | **68/68**（書名 P0 已由 `caches/書` 解決） |
+| `file-protocol-test.ts`（13j） | **68/68** |
+| `file-protocol-test.ts`（yinshun） | **77/77** |
+| `file-protocol-test.ts`（fgdict） | **80/80** |
 | `test/tree.test.ts` | 40/40 |
 | `test/search.test.ts`（13j） | 19/19 |
 | `test/adbview.test.ts` / `test/vapa.test.ts` | 22/22、13/13 |
@@ -378,6 +379,8 @@ DOM 列數也固定。
 * **🌲 展開樹**：使用者要求的是 `🪾`（U+1FABE，Unicode 16），但多數字型沒有這個字
   （headless Chrome 直接顯示空框），所以按鈕用 `🌲`（U+1F332，通用）。
 * `.gitignore` 已排除 `*.adb`、`build/`、`sourcecode/`，所以資料庫與建置產物不會進版控。
+* **`.ts` 是 CRLF**（`search.ts` 787 個 `\r\n`、0 個 LF）。用 Node 做字串替換時要按檔案的實際行尾組 pattern，
+  否則 `old_string` 會找不到（踩過）；反過來我拆檔時寫出的是 LF，所以現在模組間行尾不一致（功能無害）。
 
 ## 9. 主要資料庫
 

@@ -122,7 +122,8 @@ async function renderSnippets(seq: number) {
   const show = pool.slice(0, snippetShown);
   const cards: string[] = [];
   for (const hit of show) {
-    const s = await searchSummary(mapper, hit.va, hit.units);
+    // pass the query: the snippet then anchors on the line table (walk-independent)
+    const s = await searchSummary(mapper, hit.va, hit.units, { phrase: res.query });
     if (seq !== searchSeq) return;        // superseded while building snippets
     if (!s) { cards.push(`<div class="snippet"><div class="snippetHead">VA ${fmtInt(hit.va)}：無法定位</div></div>`); continue; }
     const before = escapeHtml(s.text.slice(0, s.start));

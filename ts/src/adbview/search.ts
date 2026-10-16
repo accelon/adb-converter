@@ -733,8 +733,23 @@ export async function searchSummary(
   mapper: VaPaMapper,
   va: number,
   units: number,
-  opts: { limit?: number; maxLeft?: number } = {},
+  opts: { limit?: number; maxLeft?: number; phrase?: string } = {},
 ): Promise<{ text: string; start: number; end: number; line: number } | null> {
+  // Drift-free path: when the caller knows WHAT was searched for, anchor the snippet
+  // on the LINE TABLE (exact) and find the phrase by text. Everything below is
+  // anchored on the mapper's walk, which drifts on some databases (fgdict by >1000
+  // VA) — searching 法喜 then displayed and marked 帖見 instead.
+  if (opts.phrase) {
+    const line = await mapper.lineOfVa(va);
+    const lineText = await mapper.lineText(line);
+    const at = lineText ? lineText.indexOf(opts.phrase) : -1;
+    if (at >= 0) {
+      const pad = 30;
+      const from = Math.max(0, at - pad);
+      const to = Math.min(lineText.length, at + opts.phrase.length + pad);
+      return { text: lineText.slice(from, to), start: at - from, end: at - from + opts.phrase.length, line };
+    }
+  }
   const el = await mapper.elementAt(va);
   if (!el) return null;
   const line = el.element.line ?? 0;
