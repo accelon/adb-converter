@@ -68,6 +68,17 @@ async function hostRead(path: string, offset: number, length: number): Promise<U
   return decodeBase64(b64 || '');
 }
 
+/**
+ * One bzip2 source block, decompressed AND decoded in Go (one call) — see
+ * wails/decompress.go: Go's compress/bzip2 is the 「有 Go 版就用 Go」 path.
+ */
+async function hostDecompressText(path: string, offset: number, length: number): Promise<string> {
+  const c = await hostCall();
+  if (!c) return '';
+  const text = await c.ByName('main.AdbHost.DecompressText', path, offset, length) as string;
+  return typeof text === 'string' ? text : '';
+}
+
 /** one host file, in the shape the rest of the viewer already understands */
 function hostSource(e: HostAdb): AdbSource {
   const name = e.name || e.dbcname || e.dbname || e.path;
@@ -83,6 +94,8 @@ function hostSource(e: HostAdb): AdbSource {
         },
       };
     },
+    // native bzip2: the host does both the decompression and the UTF-16 decoding
+    decompressText: (offset: number, length: number) => hostDecompressText(e.path, offset, length),
   };
 }
 

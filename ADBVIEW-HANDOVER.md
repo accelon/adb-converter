@@ -601,6 +601,10 @@ UI 怎麼可能不知道 Go 層：`ts/src/adbview/adb.ts` 定義 `ByteSource`／
 * `Open(path)`／`Close(path)`／`CloseAll()`：白名單（必須 `.adb` 且位於**當前工作目錄之內**）、
   映射快取＋引用計數（webview 會從多個 goroutine 呼叫，內部 `sync.Mutex`）。
 * `ReadBase64(path, offset, length)`：**UI 唯一的讀取入口**，回傳映射切片的 base64；越界／負數回 error 不 panic。
+* `DecompressText(path, offset, length)`：**bzip2 有 Go 版就用 Go**（作者 2026-10）。adb 的 source 每個
+  block 都是獨立 bzip2 stream，所以標準庫 `compress/bzip2` 剛好夠用；一次呼叫做完**解壓＋UTF-16LE 解碼
+  ＋截到第一個 NUL**，回字串（比回 base64 的展開位元組小）。前端 `sourceText` 有宿主就走這條，
+  沒有宿主（`file://`）才退回 TypeScript 的 vendored bzip2 —— `host.ts` 就是那個開關。
 * mmap 直呼 `kernel32.dll`（`CreateFileMappingW`／`MapViewOfFile`／`UnmapViewOfFile`），不引入 `golang.org/x/sys`。
 * **不做任何 adb 解析**（除了 256 位元組檔頭）：沒有事件、沒有 socket、沒有自訂協議。
 
@@ -634,8 +638,14 @@ tools/desktop-test.ts --gui（11/11 passed，節錄）：
   ok  下拉已含工作目錄的兩個 adb          ["佛光大辭典","十三經","印順法師佛學著作集"]
   ok  啟動時沒有把每個 adb 都載入（只讀檔頭）1 個已載入
   ok  開第一個 adb 是用 mmap 讀的        reads=17 ioMs=75.8 parseMs=52.3 totalMs=109.8
-  ok  從下拉選另一個 adb 會載入它        fgdict → yinshun：wall 219 ms、開檔 95 ms（19 次讀取，io 73.9 ms）
+  ok  從下拉選另一個 adb 會載入它        fgdict → yinshun：wall 206 ms、開檔 110 ms（19 次讀取，io 89.6 ms）
+  ok  Go 的 bzip2 與 TypeScript 的 bzip2 對同一批 source block 逐字相同  blocks [0,1,51,101]（第 0 塊 8192 字）
+  ok  視窗頁面啟動／下拉已含工作目錄的 adb／啟動只載入 1 個／開檔有 reads+ioMs
+  （共 13 項全過；`tools/desktop-test.ts --gui`）
 ```
+
+**bzip2 兩條路必須等價**：`tools/desktop-test.ts` 拿同一批 source block（13j 的第 0／1／51／101 塊）
+分別用 Go 的 `compress/bzip2`（經宿主 binding）與 TypeScript 的 vendored bzip2 解壓＋解碼，**逐字相同**。
 
 ### 10.4 效能：mmap 很快，**跨語言邊界才是瓶頸**（實測，別被直覺騙了）
 
@@ -654,8 +664,16 @@ runtime（JSON + base64 + 訊息傳遞），在執行中的 exe 裡用 `build/pr
 也就是：**每次呼叫固定成本 ~0.9 ms，之後約 60 MB/s**（base64 字串的搬運與解碼）。開 fgdict 要讀
 ~2.4 MB 的表 → 桌面 **109.8 ms**（17 次讀取、io 75.8 ms），同一顆庫在瀏覽器走 `Blob.slice` 是 **~49 ms**
 （`ioMs` 只有 15 ms，因為 `Blob.slice` 每次呼叫幾乎不用錢）。**桌面版的價值是「啟動就列出工作目錄的庫」
-與不用挑檔，不是原始讀取速度**。（要再快就得動這個邊界：加大分塊是「開檔變快、翻頁變慢」的取捨；
-`BlobIO.CHUNK` 目前 128 KiB 是兩者的折衷。）
+與不用挑檔，不是原始讀取速度**。（要再快就得動這個邊界：加大分塊是「開檔變快、翻頁變慢」的取捨；`BlobIO.CHUNK` 目前 128 KiB 是兩者的折衷。）
+
+**bzip2 搬去 Go 之後，實測沒有比較快**（同一批 4 個 source block，桌面版視窗內量）：
+**TypeScript 7.4 ms vs Go 18.4 ms**（Go 的數字含跨語言運輸）。扣掉運輸（每次 ~0.9 ms＋~60 MB/s）之後，
+Go 標準庫每個 block 仍約 3 ms，vendored JS 約 1.9 ms —— `compress/bzip2` 是參考版實作（沒有 SIMD），
+而 vendored JS 是同一份參考解碼器經 V8 JIT。所以這條路目前是**照作者指定「有 Go 版就用 Go」如實實作，
+但效能上還沒有好處**；它真正的好處是把解壓移出 UI 執行緒（瀏覽器版是在主執行緒解壓，會卡畫面）。
+要讓 Go 真的快，三條路：(1) 退回 TypeScript（把 `hostSource()` 的 `decompressText` 拿掉即可）；
+(2) Go 批次＋平行解壓（`DecompressManyText`，攤掉運輸固定成本）；(3) 換 `github.com/dsnet/compress/bzip2`
+（module cache 裡沒有，要連網抓一次）。
 
 ### 10.5 踩到的坑（下一輪別再踩）
 
@@ -669,6 +687,8 @@ runtime（JSON + base64 + 訊息傳遞），在執行中的 exe 裡用 `build/pr
    修法：補 import ＋ `state().host.error` 讓它能被看見。
 4. 更新 HTML 後**必須重跑 `tools/build-desktop.ts` 再 `go build`**：HTML 是內嵌的，只 rebuild 其中一邊不會生效。
 5. `wails/assets/index.html` 是**建置產物**（來自 `tools/build-desktop.ts`）；`//go:embed all:assets` 需要它存在。
+6. `physicalBytes()`（adb.ts）目前**沒有任何呼叫者**（原本就不存在），所以 Go 端只做 `DecompressText`、
+   沒有做回原生位元組的版本 —— 保持 Go 層最薄；哪天真要用再加。
 
 ### 10.6 檔案
 

@@ -39,6 +39,12 @@ export const CLASS_LABELS = ['漢字', '英數', '數字', '其他'];
 export interface ByteSource {
   readonly size: number;
   slice(start: number, end: number): { arrayBuffer(): Promise<ArrayBuffer> };
+  /**
+   * Optional: the source can decompress a bzip2 block itself. The desktop host does
+   * (Go's compress/bzip2 — see wails/decompress.go), a browser Blob cannot, so the
+   * viewer falls back to its own bzip2 in that case.
+   */
+  decompressText?(offset: number, length: number): Promise<string>;
 }
 
 /**
@@ -56,6 +62,8 @@ export interface AdbSource extends ByteSource {
 export interface AdbIO {
   readonly size: number;
   read(offset: number, length: number): Promise<Uint8Array>;
+  /** native bzip2, when the transport has one (desktop host); absent on file:// */
+  decompressText?(offset: number, length: number): Promise<string>;
   close?(): void;
 }
 
@@ -74,7 +82,14 @@ export class BlobIO implements AdbIO {
   maxRead = 0;
   /** reads served from the chunk cache instead of the blob */
   cached = 0;
-  constructor(private blob: ByteSource) { this.size = blob.size; }
+  constructor(private blob: ByteSource) {
+    this.size = blob.size;
+    // the host decompresses in Go when it can; file:// has no such capability
+    if (blob.decompressText) this.decompressText = blob.decompressText.bind(blob);
+  }
+
+  /** native bzip2 for one block, when the source offers it (see ByteSource) */
+  decompressText?: (offset: number, length: number) => Promise<string>;
 
   /**
    * Metadata (container name tables, attribute tables) is read in thousands of
@@ -408,14 +423,7 @@ export class AdbReader {
     if (hit !== undefined) return hit;
     const c = this.containers.get('source');
     if (!c) throw new Error('no source container');
-    const raw = await this.readBlock('source', index);
-    const bytes = this.header.compression === 0 ? raw : this.bunzip(raw);
-    const units = Math.floor(bytes.length / 2);
-    let end = units;
-    for (let i = 0; i < units; i++) {
-      if (bytes[i * 2] === 0 && bytes[i * 2 + 1] === 0) { end = i; break; }
-    }
-    const text = decodeUtf16(bytes.subarray(0, end * 2));
+    const text = await this.blockText(index);
     // Bounded cache: a reader who keeps jumping around would otherwise keep every
     // decoded block of a 24 MB database alive, and the resulting GC churn is felt
     // as jank on every link. 256 blocks ≈ 4 MB of strings.
@@ -486,6 +494,31 @@ export class AdbReader {
       out.set(bytes.subarray(from - base, to - base), from - paStart);
     }
     return out;
+  }
+
+  /** UTF-16LE bytes → string, trimmed at the first NUL code unit */
+  private unitText(bytes: Uint8Array): string {
+    const units = Math.floor(bytes.length / 2);
+    let end = units;
+    for (let i = 0; i < units; i++) {
+      if (bytes[i * 2] === 0 && bytes[i * 2 + 1] === 0) { end = i; break; }
+    }
+    return decodeUtf16(bytes.subarray(0, end * 2));
+  }
+
+  /**
+   * The text of one source block. The desktop host decompresses AND decodes UTF-16 in
+   * Go (one call, no base64 of the expanded bytes); everywhere else the vendored JS
+   * bzip2 does the work.
+   */
+  private async blockText(index: number): Promise<string> {
+    if (this.header.compression === 0) return this.unitText(await this.readBlock('source', index));
+    const c = this.containers.get('source');
+    if (this.io.decompressText && c) {
+      const r = blockRange(c, index);
+      return this.io.decompressText(r.start, r.end - r.start);
+    }
+    return this.unitText(this.bunzip(await this.readBlock('source', index)));
   }
 
   private bunzip(src: Uint8Array): Uint8Array {

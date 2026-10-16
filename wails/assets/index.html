@@ -1093,7 +1093,10 @@ designed by C.S.Yap`;
     constructor(blob) {
       this.blob = blob;
       this.size = blob.size;
+      if (blob.decompressText)
+        this.decompressText = blob.decompressText.bind(blob);
     }
+    decompressText;
     chunks = new Map;
     static CHUNK = 128 * 1024;
     async read(offset, length) {
@@ -1330,17 +1333,7 @@ designed by C.S.Yap`;
       const c = this.containers.get("source");
       if (!c)
         throw new Error("no source container");
-      const raw = await this.readBlock("source", index);
-      const bytes = this.header.compression === 0 ? raw : this.bunzip(raw);
-      const units = Math.floor(bytes.length / 2);
-      let end = units;
-      for (let i = 0;i < units; i++) {
-        if (bytes[i * 2] === 0 && bytes[i * 2 + 1] === 0) {
-          end = i;
-          break;
-        }
-      }
-      const text = decodeUtf16(bytes.subarray(0, end * 2));
+      const text = await this.blockText(index);
       if (this.srcTextCache.size >= 256) {
         const oldest = this.srcTextCache.keys().next().value;
         if (oldest !== undefined)
@@ -1398,6 +1391,27 @@ designed by C.S.Yap`;
         out.set(bytes.subarray(from - base, to - base), from - paStart);
       }
       return out;
+    }
+    unitText(bytes) {
+      const units = Math.floor(bytes.length / 2);
+      let end = units;
+      for (let i = 0;i < units; i++) {
+        if (bytes[i * 2] === 0 && bytes[i * 2 + 1] === 0) {
+          end = i;
+          break;
+        }
+      }
+      return decodeUtf16(bytes.subarray(0, end * 2));
+    }
+    async blockText(index) {
+      if (this.header.compression === 0)
+        return this.unitText(await this.readBlock("source", index));
+      const c = this.containers.get("source");
+      if (this.io.decompressText && c) {
+        const r = blockRange(c, index);
+        return this.io.decompressText(r.start, r.end - r.start);
+      }
+      return this.unitText(this.bunzip(await this.readBlock("source", index)));
     }
     bunzip(src) {
       let pos = 0;
@@ -4861,6 +4875,13 @@ designed by C.S.Yap`;
     const b64 = await c.ByName("main.AdbHost.ReadBase64", path, offset, length);
     return decodeBase64(b64 || "");
   }
+  async function hostDecompressText(path, offset, length) {
+    const c = await hostCall();
+    if (!c)
+      return "";
+    const text = await c.ByName("main.AdbHost.DecompressText", path, offset, length);
+    return typeof text === "string" ? text : "";
+  }
   function hostSource(e) {
     const name = e.name || e.dbcname || e.dbname || e.path;
     return {
@@ -4874,7 +4895,8 @@ designed by C.S.Yap`;
             return u8.buffer;
           }
         };
-      }
+      },
+      decompressText: (offset, length) => hostDecompressText(e.path, offset, length)
     };
   }
   async function desktopSources() {

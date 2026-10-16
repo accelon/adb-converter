@@ -8,10 +8,12 @@
  * 13j.adb and fgdict.adb live) and check the listing + the read timing it prints.
  * --gui: also start the real window with WebView2's remote debugger and drive the SAME
  * page the browser suite drives — the dropdown must already contain the working
- * directory's databases before anything is clicked.
+ * directory's databases before anything is clicked, and Go's compress/bzip2 must agree
+ * with the TypeScript vendor bzip2 on real source blocks.
  */
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
+import { AdbReader, SyncIO, blockRange } from '../src/adbview/adb';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
@@ -152,6 +154,47 @@ ok('從下拉選另一個 adb 會載入它（換掉原本的）',
 ok('桌面宿主的開檔成本有被量到（reads/ioMs 都有值）',
   picked.skipped || (picked.open.reads > 0 && picked.open.ioMs > 0 && picked.open.totalMs > 0),
   picked.skipped ? '只有一個資料庫' : `totalMs=${picked.open.totalMs?.toFixed?.(1)} ioMs=${picked.open.ioMs?.toFixed?.(1)}`);
+// ---- Go bzip2（桌面）與 TypeScript bzip2（file:// 的退路）必須逐字相同 ----------
+// 作者：「bzip2 解壓，有 Go 版就用 Go，沒有才退回 typescript」—— 兩條路要驗到等價。
+const blocksAdb = resolve(CWD, '13j.adb');
+if (existsSync(blocksAdb)) {
+  const reader = await AdbReader.open(new SyncIO(blocksAdb));
+  const src = reader.containers.get('source');
+  const count = src?.count ?? 0;
+  const idxs = [0, 1, Math.floor(count / 2), count - 1].filter((i) => i >= 0 && i < count);
+  const ranges: number[][] = [];
+  const jsTexts: string[] = [];
+  for (const i of idxs) {
+    const r = blockRange(src!, i);
+    ranges.push([r.start, r.end - r.start]);
+    jsTexts.push(await reader.sourceText(i));      // TypeScript 的 vendor bzip2
+  }
+  const callGo = `(async () => {
+    const m = await new Function('u', 'return import(u)')('/wails/runtime.js');
+    const out = [];
+    for (const [off, len] of ${JSON.stringify(ranges)}) {
+      out.push(await m.Call.ByName('main.AdbHost.DecompressText', ${JSON.stringify(blocksAdb.replace(/\\/g, '/'))}, off, len));
+    }
+    return out;
+  })()`;
+  const goTexts = await evalIn<string[]>(callGo);
+  ok('Go 的 bzip2 與 TypeScript 的 bzip2 對同一批 source block 逐字相同',
+    jsTexts.length === goTexts.length && jsTexts.every((x, i) => x === goTexts[i]) && (jsTexts[0]?.length ?? 0) > 0,
+    `blocks ${JSON.stringify(idxs)}（第 0 塊 ${jsTexts[0]?.length ?? 0} 字）`);
+  // 兩條路的耗時（JS 含 node fs 讀取，Go 含跨語言運輸，只是同一個數量級的量級參考）
+  reader.clearTextCache();
+  const tJs = performance.now();
+  for (const i of idxs) await reader.sourceText(i);
+  const jsMs = performance.now() - tJs;
+  const tGo = performance.now();
+  await evalIn(callGo);
+  const goMs = performance.now() - tGo;
+  console.log(`      ${idxs.length} 個 block：JS bzip2 ${jsMs.toFixed(1)} ms vs Go bzip2 ${goMs.toFixed(1)} ms（含各自 I/O／運輸）`);
+  ok('Go 的 bzip2 也有被量到', goMs >= 0 && jsMs >= 0, `JS ${jsMs.toFixed(1)} ms / Go ${goMs.toFixed(1)} ms`);
+} else {
+  console.log('      （' + blocksAdb + ' 不存在，略過 Go bzip2 對照）');
+}
+
 proc.kill();
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
