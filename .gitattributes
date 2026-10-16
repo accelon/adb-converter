@@ -1,0 +1,13 @@
+# 純文字檔一律 LF（作者 2026-10：純文字檔統一成 unix 風格）
+* text=auto eol=lf
+
+# 二進位（這幾種不會出現在版控裡，列出來是為了將來不會被 eol 轉換）
+*.adb binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.bzip2 binary
