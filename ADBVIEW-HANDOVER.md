@@ -666,14 +666,30 @@ runtime（JSON + base64 + 訊息傳遞），在執行中的 exe 裡用 `build/pr
 （`ioMs` 只有 15 ms，因為 `Blob.slice` 每次呼叫幾乎不用錢）。**桌面版的價值是「啟動就列出工作目錄的庫」
 與不用挑檔，不是原始讀取速度**。（要再快就得動這個邊界：加大分塊是「開檔變快、翻頁變慢」的取捨；`BlobIO.CHUNK` 目前 128 KiB 是兩者的折衷。）
 
-**bzip2 搬去 Go 之後，實測沒有比較快**（同一批 4 個 source block，桌面版視窗內量）：
-**TypeScript 7.4 ms vs Go 18.4 ms**（Go 的數字含跨語言運輸）。扣掉運輸（每次 ~0.9 ms＋~60 MB/s）之後，
-Go 標準庫每個 block 仍約 3 ms，vendored JS 約 1.9 ms —— `compress/bzip2` 是參考版實作（沒有 SIMD），
-而 vendored JS 是同一份參考解碼器經 V8 JIT。所以這條路目前是**照作者指定「有 Go 版就用 Go」如實實作，
-但效能上還沒有好處**；它真正的好處是把解壓移出 UI 執行緒（瀏覽器版是在主執行緒解壓，會卡畫面）。
-要讓 Go 真的快，三條路：(1) 退回 TypeScript（把 `hostSource()` 的 `decompressText` 拿掉即可）；
-(2) Go 批次＋平行解壓（`DecompressManyText`，攤掉運輸固定成本）；(3) 換 `github.com/dsnet/compress/bzip2`
-（module cache 裡沒有，要連網抓一次）。
+**bzip2：Go 的解碼器略快，但「跨語言邊界」讓單塊呼叫變慢**（同一批真實 source block，純解壓、迴圈內無 I/O）：
+
+| 資料集 | TypeScript vendored bzip2 | Go compress/bzip2（單核） | Go 平行 14 核 |
+|---|---|---|---|
+| 13j 32 塊（0.27→0.50 MiB） | 36.0 ms／14 MiB/s | 30.2 ms／17 MiB/s（中位數 1.01 ms/塊） | 7.6 ms／66 MiB/s（4.0×） |
+| yinshun 128 塊（0.97→2.00 MiB） | 136.3 ms／15 MiB/s | 110.7 ms／18 MiB/s（1.00 ms/塊） | 23.1 ms／86 MiB/s（4.8×） |
+
+所以：(1) Go 的解碼器本身只快 **~1.2×**；(2) 但**單塊走 binding 反而慢 2.4×** —— 在 exe 內量到
+Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎全是運輸（每次固定 ~0.9 ms ＋
+把**解壓後**的文字搬過邊界；解壓後的位元組本來就比壓縮後大 2–3 倍）。mmap 本身沒問題：
+`BenchmarkReadBase64_128KiB` = 87 µs/128 KiB（1.5 GB/s，in-process）。
+
+**結論／選項**：
+
+| 情境 | 目前最快的路 |
+|---|---|
+| 單塊（`sourceText` 現在的用法） | **TypeScript 解壓**（傳壓縮位元組、解碼 1.2 ms） |
+| 一次很多塊（整份文件預取、搜尋暖機） | **Go 批次＋平行**（128 塊：平行 23 ms ＋ 一次運 2 MiB ≈ 58 ms vs TS 136 ms，約 **2.3×**） |
+
+量測工具（可重跑）：`cd ts && bun run tools/bzip2-bench.ts [--adb … --blocks N]` 把真實 block 寫到
+`build/bzip2-blocks/*.bin` 並量 TypeScript 解碼；`cd wails && go test -count=1 -run TestBzip2Throughput -v`
+對同一批位元組量 Go 單核／平行（`wails/bzip2_bench_test.go`，另有 benchmark）。
+目前程式**照作者指示「有 Go 版就用 Go」**（`hostSource()` 的 `decompressText`）：要讓單塊走回 TypeScript，
+把那兩行拿掉即可；要讓 Go 真的贏，需要一個批次 API（Go 平行解壓 ＋ 一次回傳多塊）。
 
 ### 10.5 踩到的坑（下一輪別再踩）
 
