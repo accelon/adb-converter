@@ -781,22 +781,28 @@ try {
       const waitText = async (sel, re) => { for (let i = 0; i < 60; i++) { if (re.test(document.querySelector(sel).textContent)) return true; await new Promise(r => setTimeout(r, 250)); } return false; };
       await waitText('#freqMeta', /命中/);
       await waitFreq(() => !!document.querySelector('#freqList .snippetHead'));
-      // 西文 pane has its own input as well
+      // 西文 pane has its own input as well — but only databases that declare a
+      // s="~…" tree have that tab at all (fgdict does not)
+      const latinTab = document.querySelector('#colLeft .tabBtn[data-tab="latin"]');
+      const latinHasTab = !!latinTab && !latinTab.hidden;
       const lq = document.querySelector('#latinQuery');
       const latinHasInput = !!lq;
-      lq.value = '';
-      lq.dispatchEvent(new Event('input'));
-      document.querySelector('#colLeft .tabBtn[data-tab="latin"]')?.click();
-      for (let i = 0; i < 50; i++) {
-        if (document.querySelectorAll('#latinList .snippet').length > 0) break;
-        await new Promise(r => setTimeout(r, 200));
+      let latinNoQuery = 0, latinFiltered = 0, latinMeta = '';
+      if (latinHasTab) {
+        lq.value = '';
+        lq.dispatchEvent(new Event('input'));
+        latinTab.click();
+        for (let i = 0; i < 50; i++) {
+          if (document.querySelectorAll('#latinList .snippet').length > 0) break;
+          await new Promise(r => setTimeout(r, 200));
+        }
+        latinNoQuery = document.querySelectorAll('#latinList .snippet').length;
+        lq.value = 'a';
+        lq.dispatchEvent(new Event('input'));
+        await new Promise(r => setTimeout(r, 700));
+        latinFiltered = document.querySelectorAll('#latinList .snippet').length;
+        latinMeta = document.querySelector('#latinMeta').textContent.slice(0, 70);
       }
-      const latinNoQuery = document.querySelectorAll('#latinList .snippet').length;
-      lq.value = 'a';
-      lq.dispatchEvent(new Event('input'));
-      await new Promise(r => setTimeout(r, 700));
-      const latinFiltered = document.querySelectorAll('#latinList .snippet').length;
-      const latinMeta = document.querySelector('#latinMeta').textContent.slice(0, 70);
       await new Promise(r => setTimeout(r, 400));
       const rows = [...document.querySelectorAll('#freqList .snippet')];
       const nums = rows.map(r => Number((r.querySelector('.snippetHead')?.textContent ?? '0').replace(/[^0-9]/g, '')));
@@ -813,21 +819,28 @@ try {
         countsSorted, zerosHidden,
         meta: document.querySelector('#freqMeta').textContent.slice(0, 80),
         jumped: window.__adbview.state().lastReveal,
-        latinHasInput, latinNoQuery, latinFiltered, latinMeta,
+        latinHasInput, latinHasTab, latinNoQuery, latinFiltered, latinMeta,
       };
     })()
   `);
   // 13j declares no s="*u=…" tree, so the 頻次 tab is hidden there by design
   if (freq.hasTab) {
-    ok('左欄有「頻次」分頁（由 <樹> 控制）', freq.tabName === '頻次', `tab=${JSON.stringify(freq.tabName)}`);
+    // *u=… declares a per-attribute segment (頻次); a bare *tag declares per-tag
+    // segments and is labelled 全文. Both are the same pane.
+    ok('左欄有分段分頁（由 <樹> 控制）', freq.tabName === '頻次' || freq.tabName === '全文',
+      `tab=${JSON.stringify(freq.tabName)}`);
     ok('頻次：未輸入條件時列出段名', freq.openTab && freq.noQueryItems > 0 && !!freq.sample,
       `${freq.noQueryItems} 段，例：${JSON.stringify(freq.sample)}`);
     ok('頻次：有條件時按段分群、依命中數排序、0 不顯示',
       freq.countsSorted && freq.zerosHidden && /命中/.test(freq.meta),
       `${freq.withQueryItems} 段有命中；排序正確=${freq.countsSorted}；無 0=${freq.zerosHidden}｜${freq.meta}`);
     ok('頻次：點段會聯動內文', !!freq.jumped, String(freq.jumped));
-    ok('西文：有自己的輸入區與內容', freq.latinHasInput && freq.latinNoQuery > 0,
-      `未輸入  個；輸入『a』後  個｜`);
+    if (freq.latinHasTab) {
+      ok('西文：有自己的輸入區與內容', freq.latinHasInput && freq.latinNoQuery > 0,
+        `未輸入 ${freq.latinNoQuery} 個；輸入『a』後 ${freq.latinFiltered} 個｜${freq.latinMeta}`);
+    } else {
+      ok('此庫沒有 s="~…" 樹，西文分頁隱藏', !freq.latinHasTab, 'hidden=true');
+    }
   } else {
     // No s="*u=…" tree: the 頻次 button must be hidden and its pane inactive.
     // (`freq.hasTab` is computed from the button's own hidden state.)
@@ -922,6 +935,9 @@ try {
         realmOk: !!dr && st.docTabs.length >= 1,
         realm: dr,
         tab: st.docTabs[st.docTab],
+        pageBefore: st.docPage,
+        pageAfter: st2.docPage,
+        pagerLog: JSON.stringify(st2.pagerLog),
         info: info.slice(0, 70),
       };
     })()
@@ -936,7 +952,7 @@ try {
     paging.pages <= 1
       ? (paging.nav === false)
       : (paging.clickMoved && paging.textChanged && paging.back),
-    `${paging.pages} 頁：${paging.lineFirst} → ${paging.lineSecond} → ${paging.lineFirst}（pager ${paging.nav ? '顯示' : '隱藏'}）｜realm=${JSON.stringify(paging.realm)} tab=${JSON.stringify(paging.tab)} lines=${paging.pageLines}`);
+    `${paging.pages} 頁 ${paging.pageBefore}→${paging.pageAfter}：${paging.lineFirst} → ${paging.lineSecond} → ${paging.lineFirst}（pager ${paging.nav ? '顯示' : '隱藏'}）｜realm=${JSON.stringify(paging.realm)} lines=${paging.pageLines}｜${paging.pagerLog}`);
   // 預設：右欄關閉、欄寬狀態存 localStorage、本文不顯示行號
   const layout = await cdp.eval<{ right: number; left: number; stored: string; lineNo: boolean; fs: number; fsApplied: string }>(`
     (() => {

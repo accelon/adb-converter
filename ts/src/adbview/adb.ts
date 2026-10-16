@@ -396,6 +396,13 @@ export class AdbReader {
       if (bytes[i * 2] === 0 && bytes[i * 2 + 1] === 0) { end = i; break; }
     }
     const text = decodeUtf16(bytes.subarray(0, end * 2));
+    // Bounded cache: a reader who keeps jumping around would otherwise keep every
+    // decoded block of a 24 MB database alive, and the resulting GC churn is felt
+    // as jank on every link. 256 blocks ≈ 4 MB of strings.
+    if (this.srcTextCache.size >= 256) {
+      const oldest = this.srcTextCache.keys().next().value;
+      if (oldest !== undefined) this.srcTextCache.delete(oldest);
+    }
     this.srcTextCache.set(index, text);
     return text;
   }

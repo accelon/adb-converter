@@ -98,7 +98,7 @@
   .tabs { display: flex; gap: 4px; padding: 8px 10px 0; background: var(--bg); }
   .tabBtn {
     background: var(--panel); color: var(--dim); border: 1px solid var(--line); border-bottom: none;
-    border-radius: 6px 6px 0 0; padding: 6px 14px; cursor: pointer; font: inherit; font-size: 14px;
+    border-radius: 6px 6px 0 0; padding: 0; margin-right: 6px; cursor: pointer; font: inherit; font-size: 14px;
   }
   .tabBtn.active { background: var(--bg); color: var(--fg); border-color: var(--accent); font-weight: 600; }
   .tabPane { display: none; }
@@ -238,9 +238,18 @@
   #dirTree .tTag { display: none; }
   .tName { overflow: hidden; text-overflow: ellipsis; }
   .tCount { margin-left: auto; color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
-  .tCount.hit { color: #ffd479; font-weight: 600; }
-  /* the node whose text the middle pane currently shows */
+  /* Hit badges are graded by how much of the result sits in that realm: the
+     bigger the share, the louder the colour (亮紅 for the heaviest nodes). */
+  .tCount.hit { color: #ff8a80; font-weight: 600; }
+  .tCount.hit.t2 { color: #ff6b6b; }
+  .tCount.hit.t3 { color: #ff3b30; }
+  .tCount.hit.t4 { color: #ff1744; font-weight: 700; font-size: 12.5px; text-shadow: 0 0 6px rgba(255,23,68,.5); }
+  .tCount.hit.big { font-size: 13px; }
+  /* the node whose text the middle pane currently shows, and the node the middle
+     of the document pane sits on (with its ancestors lit) */
   .tRow.active { background: #2b3b4d; }
+  .tRow.ancestor { background: rgba(90,169,255,.10); }
+  .tRow.current { background: #2b3b4d; outline: 1px solid var(--accent); border-radius: 3px; }
   #dirTree { padding: 0; }
 </style>
 </head>
@@ -256,11 +265,13 @@
 </header>
 
 <main>
-  <!-- 左：由 <樹> 決定的分頁（目錄／頻次／西文），加上全文搜尋 -->
+  <!-- 左：每個 <樹 s="…"> 一頁（目錄／名詞／全文．頻次／原書分頁／西文） -->
   <section class="col" id="colLeft">
     <div class="tabs">
       <button class="tabBtn active" data-tab="dir">目錄</button>
+      <button class="tabBtn" data-tab="terms" hidden>名詞</button>
       <button class="tabBtn" data-tab="freq" hidden>頻次</button>
+      <button class="tabBtn" data-tab="folio" hidden>原書分頁</button>
       <button class="tabBtn" data-tab="latin" hidden>西文</button>
       <button class="tabBtn advOnly" data-tab="token">token</button>
     </div>
@@ -273,6 +284,15 @@
         <div id="dirMeta" class="note"></div>
         <div id="dirTree" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div>
       </div>
+      <!-- 名詞：s="$詞"（tag 包裹）。詞條＝<詞> 的實例，字典式查詢。 -->
+      <div class="tabPane" data-tab="terms">
+        <div class="searchBar">
+          <input type="search" id="termsQuery" placeholder="輸入詞條（名詞）" autocomplete="off" spellcheck="false">
+          <button id="termsClear" title="清除">✕</button>
+        </div>
+        <div id="termsMeta" class="note"></div>
+        <div id="termsList" class="scrollArea"></div>
+      </div>
       <div class="tabPane" data-tab="freq">
         <div class="searchBar">
           <input type="search" id="freqQuery" placeholder="輸入詞（分段命中統計）" autocomplete="off" spellcheck="false">
@@ -280,6 +300,15 @@
         </div>
         <div id="freqMeta" class="note"></div>
         <div id="freqList" class="scrollArea"></div>
+      </div>
+      <!-- 原書分頁：s="頁.n"（tag.attr）。列出 <頁> 的 n 值，可直接選或輸入頁碼跳到原書 folio。 -->
+      <div class="tabPane" data-tab="folio">
+        <div class="searchBar">
+          <input type="search" id="folioQuery" placeholder="輸入原書頁碼（例：1、25）或標籤" autocomplete="off" spellcheck="false">
+          <button id="folioClear" title="清除">✕</button>
+        </div>
+        <div id="folioMeta" class="note"></div>
+        <div id="folioList" class="scrollArea"></div>
       </div>
       <div class="tabPane" data-tab="latin">
         <div class="searchBar">
@@ -304,6 +333,7 @@
   <section class="col">
     <div class="pane grow">
       <div class="docBar">
+        <button class="mini" id="treeReveal" title="展開樹：展開目錄樹並捲到目前捲動位置對應的節點">🌲</button>
         <h2 style="margin:0">文件內容（硬分行；未渲染 XML）</h2>
         <span class="docTools">
           字級

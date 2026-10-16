@@ -57,6 +57,8 @@ interface DirTree {
   nodes: number;
   labels: Map<number, string>;
   open: Set<number>;
+  /** child VA -> parent VA, for lighting the ancestors of the scroll cursor */
+  parentOf: Map<number, number>;
   loaded: boolean;
 }
 let dirTrees: DirTree[] = [];
@@ -123,6 +125,8 @@ async function openFile(file: File) {
   // a new database invalidates every derived line/VA cache and every open tab
   boundsCache.clear();
   paintAsked.clear();
+  folioCache = null;
+  cursorNode = null;
   docTabs = [];
   docActive = 0;
   pinnedHit = null;
@@ -318,6 +322,9 @@ async function renderSnippets(seq: number) {
   list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
     el.onclick = (ev) => {
       list.querySelectorAll('.snippet').forEach((x) => x.classList.toggle('active', x === el));
+      // the summary is the reader's context: make sure the right column is visible
+      setSide('right', true);
+      showTab('sum', 'right');
       // Ctrl (Cmd) + click opens the hit in a NEW document tab
       void revealHit(
         Number(el.dataset.va),
@@ -342,6 +349,7 @@ async function renderSnippets(seq: number) {
  * header can say which node is being shown.
  */
 async function showNodeHits(realm: { from: number; to: number }, label: string, count: number): Promise<void> {
+  setSide('right', true);       // the summary must be visible to be useful
   showTab('sum', 'right');
   const meta = $('#searchMeta');
   if (!lastResult) {
@@ -496,6 +504,10 @@ const PAGE_LINES = 200;
 let lastDocLines: string[] = [];
 /** one paint retry per target line per tab (see paintHit) */
 const paintAsked = new Map<number, number>();
+/** cost of the last link (diagnostics: state().lastLink) */
+let lastLink: { va: number; ensureMs: number; totalMs: number; rows: number } | null = null;
+/** what the pager buttons did (diagnostics: state().pagerLog) */
+const pagerLog: string[] = [];
 
 const docSession = (): DocSession | null => docTabs[docActive] ?? null;
 
@@ -596,17 +608,40 @@ function pageOfLine(realm: { from: number; to: number }, line: number): number {
   return Math.max(0, Math.min(b.pages - 1, Math.floor((line - b.first) / PAGE_LINES)));
 }
 
-/** the deepest directory node that contains a VA (its realm is the node's range) */
-function nodeContaining(va: number): { realm: { from: number; to: number }; name: string } | null {
-  const d = dirTrees[dirActive];
-  if (!d) return null;
-  let best: TreeNode | null = null;
-  for (const n of iterNodes(d.roots)) {
-    if (n.va <= va && va < n.vaEnd && (!best || n.depth > best.depth)) best = n;
+/**
+ * The deepest directory node that contains a VA (its realm is the node's range).
+ *
+ * Siblings are disjoint and VA-ascending, so this is a descent with a binary
+ * search per level — O(depth × log width) instead of walking every node (fgdict
+ * has 29,614 of them, and this runs on every link AND on every scroll settle).
+ */
+function deepestNode(va: number, roots = dirTrees[dirActive]?.roots ?? []): TreeNode | null {
+  let cur: TreeNode | null = null;
+  let list = roots;
+  for (let guard = 0; guard < 32 && list.length; guard++) {
+    let lo = 0, hi = list.length - 1, at = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (list[mid].va <= va) { at = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    if (at < 0) break;
+    const n = list[at];
+    if (va >= n.vaEnd) break;
+    cur = n;
+    list = n.children;
   }
-  return best
-    ? { realm: { from: best.va, to: best.vaEnd }, name: d.labels.get(best.va) || best.label || ('#' + best.index) }
-    : null;
+  return cur;
+}
+
+/** a node's display name (labels are resolved lazily per tree) */
+function nodeLabelOf(node: TreeNode): string {
+  const d = dirTrees[dirActive];
+  return (d && (d.labels.get(node.va) || node.label)) || '#' + node.index;
+}
+
+function nodeContaining(va: number): { realm: { from: number; to: number }; name: string; node: TreeNode } | null {
+  const n = deepestNode(va);
+  return n ? { realm: { from: n.va, to: n.vaEnd }, name: nodeLabelOf(n), node: n } : null;
 }
 
 /** the session showing exactly this realm, if there is one */
@@ -662,11 +697,12 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
     const dt = await fetchPage(b.first, b.last);
     s.cache = { page: s.page, dt, key };
   }
-  // The mapper's line numbers and the rendered page can disagree by a line at a
-  // document boundary (fgdict). Keep the pinned line ON the page, so the hit is
-  // always visibly marked instead of pointing at a row that was never rendered.
+  // Following a hit: the mapper's line numbers and the rendered page can disagree
+  // by a line at a document boundary (fgdict), so snap the pinned line ONTO the
+  // page it was followed to. This must NOT happen when the reader turns a page —
+  // otherwise paging away from the pinned hit would drag the pane straight back.
   const nums = s.cache.dt.lineNumbers;
-  if (s.pinned && nums.length) {
+  if (targetLine !== undefined && s.pinned && nums.length) {
     if (s.pinned.line < nums[0]) s.pinned.line = nums[0];
     else if (s.pinned.line > nums[nums.length - 1]) s.pinned.line = nums[nums.length - 1];
   }
@@ -732,8 +768,11 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   lastReveal = `va=${va} units=${u} element=${el.element.va}/${el.element.vaUnits}`;
   docActive = docTabs.indexOf(s);
 
+  const tLink = performance.now();
   const auto = (await ensurePage(s, line)).auto;
-  syncTreeActive();
+  const ensureMs = performance.now() - tLink;
+  paintTreeActive();
+  lastLink = { va, ensureMs: Math.round(ensureMs), totalMs: Math.round(performance.now() - tLink), rows: s.cache?.dt?.lines.length ?? 0 };
   // On the first render of a database, keep the user's size but otherwise pick
   // one that keeps most hard lines from soft-wrapping.
   if (!docFontSized) {
@@ -767,13 +806,66 @@ async function showLine(line: number, va: number, units?: number): Promise<void>
   await ensurePage(s, line);
 }
 
+/** the tree node that the MIDDLE of the document pane currently sits on */
+let cursorNode: TreeNode | null = null;
+let cursorPending = false;
+
 /**
- * Refresh the directory rows so the "active" highlight follows the document tab
- * that was just linked (the tree is only re-rendered on fold/search otherwise).
+ * Light the tree for the scroll cursor WITHOUT re-rendering it.
+ *
+ * The rendered rows can be thousands (an expanded dictionary) and the tree must
+ * not move or expand by itself, so this only toggles classes: the cursor node is
+ * `current` and every rendered ancestor of it is `ancestor`.
  */
-function syncTreeActive(): void {
-  if (!dirTrees.length || dirLoading) return;
-  void renderDirTree();
+function paintTreeActive(): void {
+  const box = $('#dirTree');
+  if (!box) return;
+  const d = dirTrees[dirActive];
+  const path = new Set<number>();
+  if (d && cursorNode) {
+    for (let va: number | undefined = cursorNode.va; va !== undefined; va = d.parentOf.get(va)) {
+      path.add(va);
+      if (path.size > 64) break;
+    }
+  }
+  box.querySelectorAll<HTMLElement>('.tRow').forEach((el) => {
+    const va = Number(el.dataset.va);
+    const isCursor = !!cursorNode && va === cursorNode.va;
+    el.classList.toggle('current', isCursor);
+    el.classList.toggle('ancestor', !isCursor && path.has(va));
+  });
+}
+
+/**
+ * The line in the vertical MIDDLE of the document pane drives the tree highlight
+ * (the first line would light up the node that is scrolling out of view).
+ */
+function syncCursorFromScroll(): void {
+  const body = document.querySelector<HTMLElement>('#docText .docBody');
+  if (!body || !mapper) return;
+  const mid = body.scrollTop + body.clientHeight / 2;
+  let midLine = -1;
+  for (const row of body.querySelectorAll<HTMLElement>('.docLine')) {
+    const top = row.offsetTop;
+    if (top <= mid && mid < top + row.offsetHeight) { midLine = Number(row.id.slice(1)); break; }
+  }
+  if (midLine < 0) return;
+  const node = deepestNode(mapper.linesVirtual[midLine] ?? 0);
+  if (node === cursorNode) return;
+  cursorNode = node;
+  paintTreeActive();
+}
+
+/** reopen the tree along the cursor path and scroll that row into view (button) */
+async function revealCursorInTree(): Promise<void> {
+  const d = dirTrees[dirActive];
+  if (!d || !cursorNode) return;
+  for (let va: number | undefined = d.parentOf.get(cursorNode.va); va !== undefined; va = d.parentOf.get(va)) {
+    d.open.add(va);
+  }
+  await renderDirTree();
+  const row = $('#dirTree .tRow[data-va="' + cursorNode.va + '"]') as HTMLElement | null;
+  row?.scrollIntoView({ block: 'center' });
 }
 
 /** render one page: tab strip, header, rows, pager. */
@@ -783,6 +875,7 @@ function renderDoc(s: DocSession): void {
   lastDocLines = dt.lines;
   // The pinned line is marked HERE (synchronously) so the row exists with its
   // hitLine class the moment the page is in the DOM; paintHit only adds the mark.
+  // the pinned line is marked only while it is ON this page (see ensurePage)
   const rows = dt.lines.map((line, k) => {
     const n = dt.lineNumbers[k];
     const cls = 'docLine' + (s.pinned && n === s.pinned.line ? ' hitLine' : '');
@@ -798,9 +891,29 @@ function renderDoc(s: DocSession): void {
     + '<div class="docBody">' + rows + '</div>';
   renderDocTabs(s);
   renderPager(s, b);
-  document.querySelector<HTMLElement>('#docText .docBody')?.scrollTo(0, 0);
+  const body = document.querySelector<HTMLElement>('#docText .docBody');
+  body?.scrollTo(0, 0);
+  // the middle-line cursor follows the pane, so re-read it after every render and
+  // after every programmatic scroll (paintHit) — throttled to one frame
+  if (body && !docScrollWired.has(body)) {
+    docScrollWired.add(body);
+    body.addEventListener('scroll', scheduleCursorSync, { passive: true });
+  }
   if (s.pinned) void paintHit(s.pinned.va, s.pinned.units);
   else if (dt.lineNumbers.length) document.getElementById('L' + nFirst)?.scrollIntoView({ block: 'start' });
+  scheduleCursorSync();
+}
+
+/** the .docBody elements that already carry the scroll listener (one per render) */
+const docScrollWired = new WeakSet<Element>();
+
+function scheduleCursorSync(): void {
+  if (cursorPending) return;
+  cursorPending = true;
+  requestAnimationFrame(() => {
+    cursorPending = false;
+    syncCursorFromScroll();
+  });
 }
 
 /** the document tab strip: one chip per linked node, ✕ to close, ＋ for a new one */
@@ -840,7 +953,7 @@ async function switchDocTab(i: number): Promise<void> {
   pinnedHit = t.pinned;
   if (t.cache) renderDoc(t);
   else await ensurePage(t);
-  syncTreeActive();
+  paintTreeActive();
 }
 
 /** close a tab; the remaining tabs keep their own page */
@@ -860,7 +973,7 @@ function closeDocTab(i: number): void {
   }
   docActive = Math.max(0, Math.min(docActive > i ? docActive - 1 : docActive, docTabs.length - 1));
   void switchDocTab(docActive);
-  syncTreeActive();
+  paintTreeActive();
 }
 
 /** the page (網頁分頁) controls at the bottom of the pane */
@@ -870,13 +983,25 @@ function renderPager(s: DocSession, b: { first: number; last: number; total: num
   bar.hidden = b.pages < 2;
   const prev = $('#pagePrev') as HTMLButtonElement | null;
   const next = $('#pageNext') as HTMLButtonElement | null;
+  // Resolve the session AT CLICK TIME: an async render of an older tab must not be
+  // able to leave the pager wired to a tab that is no longer on screen.
+  const step = (delta: number, ev: MouseEvent) => {
+    const cur = docSession();
+    if (!cur) return;
+    const pb = pageBounds(cur.realm, cur.page);
+    const to = cur.page + delta;
+    pagerLog.push('step ' + delta + ' tab=' + docTabs.indexOf(cur) + ' page=' + cur.page + '/' + pb.pages + ' to=' + to);
+    if (pagerLog.length > 10) pagerLog.shift();
+    if (to < 0 || to > pb.pages - 1) return;
+    void goPage(cur, to, !ev.shiftKey);
+  };
   if (prev) {
     prev.setAttribute('aria-disabled', s.page <= 0 ? 'true' : 'false');
-    prev.onclick = (ev) => { if (s.page > 0) void goPage(s, s.page - 1, !(ev as MouseEvent).shiftKey); };
+    prev.onclick = (ev) => step(-1, ev as MouseEvent);
   }
   if (next) {
     next.setAttribute('aria-disabled', s.page >= b.pages - 1 ? 'true' : 'false');
-    next.onclick = (ev) => { if (s.page < b.pages - 1) void goPage(s, s.page + 1, !(ev as MouseEvent).shiftKey); };
+    next.onclick = (ev) => step(1, ev as MouseEvent);
   }
   const info = $('#pageInfo');
   if (info) info.textContent = '第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁　行 ' + fmtInt(b.first) + '–' + fmtInt(b.last) + '（共 ' + fmtInt(b.total) + ' 行）　' + displayName(s.name).slice(0, 40);
@@ -914,23 +1039,10 @@ async function paintHit(va: number, units?: number): Promise<void> {
     if (el?.element.line !== undefined) scrollToVa(va);
     return;
   }
-  if (spans.some((x) => !document.getElementById('L' + x.line))) {
-    const target = Math.min(...spans.map((x) => x.line));
-    // Guard against re-entering the same page forever: ensurePage renders the
-    // page, and renderDoc paints the pinned hit again. Only ask for a DIFFERENT
-    // page, and at most once per document, so a span that legitimately falls
-    // outside every page cannot spin the pane.
-    const asked = paintAsked.get(s.id);
-    const page = pageOfLine(s.realm, target);
-    if (page !== s.page) {
-      await ensurePage(s, target);
-      spans = units && units > 1 ? await mapper.phraseSpans(va, units) : await mapper.lineSpans(va);
-    } else if (asked !== target) {
-      paintAsked.set(s.id, target);
-      await ensurePage(s, target);
-      spans = units && units > 1 ? await mapper.phraseSpans(va, units) : await mapper.lineSpans(va);
-    }
-  }
+  // The page is chosen by the LINK (linkTo follows the hit explicitly), never by
+  // the painter: if the hit is not on the page now on screen, there is simply
+  // nothing to mark. Moving the page here made 上一頁／下一頁 impossible.
+  if (spans.some((x) => !document.getElementById('L' + x.line))) return;
   let firstMark: HTMLElement | null = null;
   for (const sp of spans) {
     const row = document.getElementById('L' + sp.line);
@@ -956,6 +1068,7 @@ async function paintHit(va: number, units?: number): Promise<void> {
     if (!firstMark) firstMark = mark;
   }
   (firstMark ?? document.getElementById('L' + (spans[0]?.line ?? 0)))?.scrollIntoView({ block: 'center' });
+  scheduleCursorSync();
 }
 
 // ------------------------------------------------------------ document font
@@ -1169,9 +1282,12 @@ async function loadDirectoryTrees() {
       byTag.set(node.tag, list);
     }
     for (const [tag, labels] of byTag) mapper.treeLabels.set(tag, labels);
+    const parentOf = new Map<number, number>();
+    for (const n of iterNodes(roots)) for (const c of n.children) parentOf.set(c.va, n.va);
     dirTrees.push({
       tree: t, roots, nodes: countNodes(roots),
       labels: new Map<number, string>(), open: new Set<number>(), loaded: false,
+      parentOf,
     });
   }
   // The 目錄 pane shows the FULL-TEXT tree (`s="*"`); 頻次 and 西文 have their own
@@ -1190,24 +1306,51 @@ function countNodes(ns: TreeNode[]): number {
 }
 
 /**
- * The left column's tabs are declared by the database's `<樹>` tags:
+ * The left column's tabs are declared by the database's `<樹>` tags — one tab per
+ * declaration, named after the scope:
  *
- *   s="*"          → 目錄   full-text search + the directory tree
- *   s="*u=文"      → 頻次   hits grouped by `<文>`, sorted by hit count
- *   s="~00602000"  → 西文   the U+0060..U+2000 (Latin-ish) slice
+ *   s="*"          → 目錄        the tier tree + full-text search
+ *   s="$詞"        → 名詞        the `<詞>` instances as a term list (dictionary lookup)
+ *   s="*u=文"      → 頻次        hits per `<tag u="文">` segment, sorted by count
+ *   s="*詞"        → 全文        hits per `<詞>` segment (tag-name segment)
+ *   s="頁.n"       → 原書分頁    the `<頁>` instances labelled by their `n` attribute
+ *   s="~00602000"  → 西文        the codepoint slice
  *
- * A database that declares fewer trees simply gets fewer tabs.
+ * A database that declares fewer trees gets fewer tabs, and the first available one
+ * becomes the active pane (fgdict has no `s="*"` tree, so it lands on 名詞).
  */
 function syncTreeTabs() {
-  // Left-column tabs are decided by the SCOPE of each `<樹>`, not by their order:
-  //   s="*u=…" → 頻次（by segment）   s="~…" → 西文   s="*" → 目錄
-  // The trees no longer get chips of their own: each one IS a left-column tab.
-  const freqBtn = $('#colLeft .tabBtn[data-tab="freq"]') as HTMLButtonElement | null;
-  const latinBtn = $('#colLeft .tabBtn[data-tab="latin"]') as HTMLButtonElement | null;
-  if (freqBtn) freqBtn.hidden = !dirTrees.some((d) => /^\*u=/.test(d.tree.scope));
-  if (latinBtn) latinBtn.hidden = !dirTrees.some((d) => /^~/.test(d.tree.scope));
+  const kindOf = (scope: string): string => {
+    if (/^\*$/.test(scope)) return 'dir';
+    if (/^\$/.test(scope)) return 'terms';
+    if (/^\*u=/.test(scope) || /^\*[^u]/.test(scope)) return 'freq';
+    if (/^~/.test(scope)) return 'latin';
+    if (/^[^*/~$]+\.[^.]+$/.test(scope)) return 'folio';
+    return '';
+  };
+  const present = new Map<string, string>();          // kind -> scope
+  for (const d of dirTrees) {
+    const k = kindOf(d.tree.scope);
+    if (k && !present.has(k)) present.set(k, d.tree.scope);
+  }
+  for (const kind of ['dir', 'terms', 'freq', 'folio', 'latin']) {
+    const scope = present.get(kind);
+    const btn = $(`#colLeft .tabBtn[data-tab="${kind}"]`) as HTMLButtonElement | null;
+    if (!btn) continue;
+    btn.hidden = !scope;
+    if (scope) {
+      // `*u=…` counts hits per attribute segment (頻次), `*tag` per tag (全文)
+      btn.textContent = kind === 'freq' ? (/^\*u=/.test(scope) ? '頻次' : '全文') : btn.textContent;
+      btn.title = 's="' + scope + '"';
+    }
+  }
+  // keep the active tab sane: a dictionary has no 目錄 pane at all
+  const active = $('#colLeft .tabBtn.active') as HTMLButtonElement | null;
+  if (!active || active.hidden) {
+    const first = ['dir', 'terms', 'freq', 'folio', 'latin'].find((k) => present.has(k));
+    if (first) showTab(first, 'left');
+  }
 }
-
 /**
  * Hits inside a node's realm `[from, to)`.
  *
@@ -1218,14 +1361,17 @@ function syncTreeTabs() {
 function realmHits(from: number, to: number): number {
   const hits = lastResult?.hits;
   if (!hits?.length) return 0;
-  let lo = 0, hi = hits.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (hits[mid].va < from) lo = mid + 1; else hi = mid;
-  }
-  let n = 0;
-  for (let i = lo; i < hits.length && hits[i].va < to; i++) n++;
-  return n;
+  // hits are VA-ascending, so the count is the difference of two lower bounds —
+  // a node with thousands of hits must not cost a scan on every rendered row
+  const lower = (v: number) => {
+    let lo = 0, hi = hits.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (hits[mid].va < v) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  };
+  return lower(to) - lower(from);
 }
 
 /** Compact directory tree: 30% colours per depth, no growing whitespace. */
@@ -1246,22 +1392,32 @@ async function renderDirTree() {
     d.loaded = true;
   }
   const rows = flattenTree(d.roots, (n) => d.open.has(n.va));
-  // the node whose text the middle pane is showing (its row gets marked)
-  const activeRealm = docSession()?.realm;
+  // While a search is active the badge is ALWAYS the hit count of this node's realm
+  // (`[va, vaEnd)`) — the same number whether the node is open or collapsed. The
+  // child count is only shown when there is no search to report on.
+  const searching = !!lastResult;
+  const totalHits = lastResult?.hits.length ?? 0;
   box.innerHTML = rows.map((r) => {
     const n = r.node;
     const open = d.open.has(n.va);
     const twisty = r.hasChildren ? (open ? '▾' : '▸') : '·';
-    // When a search is active the badge shows the hits inside this node's REALM
-    // (`[va, vaEnd)`); otherwise it shows the number of collapsed children.
-    // Clicking the hit badge shows those hits as a summary (it does NOT move the
-    // 摘要 pane's scope of its own accord).
-    const hits = realmHits(n.va, n.vaEnd);
-    const badge = hits > 0
-      ? `<span class="tCount hit" title="此節點範圍內 ${fmtInt(hits)} 筆命中（點一下顯示這些命中）">${fmtInt(hits)}</span>`
-      : (r.hasChildren && !open ? `<span class="tCount">${fmtInt(n.children.length)}</span>` : '');
-    const active = !!activeRealm && n.va >= activeRealm.from && n.va < activeRealm.to;
-    return `<div class="tRow${active ? ' active' : ''}" data-va="${n.va}">
+    const hits = searching ? realmHits(n.va, n.vaEnd) : 0;
+    let badge = '';
+    if (searching) {
+      if (hits > 0) {
+        // graded by BOTH the share of the whole result and the absolute count, so
+        // the heaviest nodes shout and a big number never looks small
+        const share = totalHits ? hits / totalHits : 0;
+        const shareTier = share >= 0.3 ? 4 : share >= 0.1 ? 3 : share >= 0.03 ? 2 : 1;
+        const absTier = hits >= 1000 ? 4 : hits >= 300 ? 3 : hits >= 50 ? 2 : 1;
+        const tier = Math.max(shareTier, absTier);
+        const big = hits >= 1000 ? ' big' : '';
+        badge = `<span class="tCount hit t${tier}${big}" title="此節點範圍內 ${fmtInt(hits)} 筆命中（占全體 ${(share * 100).toFixed(1)}%；點一下顯示這些命中）">${fmtInt(hits)}</span>`;
+      }
+    } else if (r.hasChildren && !open) {
+      badge = `<span class="tCount">${fmtInt(n.children.length)}</span>`;
+    }
+    return `<div class="tRow" data-va="${n.va}">
       <span class="tTwisty">${twisty}</span>
       <span class="tDot" style="background:${depthColor(n.depth)}"></span>
       <span class="tTag">${escapeHtml(n.tag)}</span>
@@ -1269,6 +1425,7 @@ async function renderDirTree() {
       ${badge}
     </div>`;
   }).join('');
+  paintTreeActive();
   box.querySelectorAll<HTMLElement>('.tRow').forEach((el) => {
     const va = Number(el.dataset.va);
     const node = findNode(d.roots, va);
@@ -1549,6 +1706,159 @@ async function nameSegs(segs: { from: number; to: number; name: string }[]): Pro
   }
 }
 
+/**
+ * The instances of one tag as VA segments. Read straight from the `tags`
+ * container, so a 22,648-entry dictionary needs no source scan.
+ */
+async function tagSegments(tag: string): Promise<{ from: number; to: number; name: string }[]> {
+  if (!reader) return [];
+  const c = reader.containers.get('tags');
+  const at = c?.names.indexOf(tag) ?? -1;
+  if (at < 0) return [];
+  const vas = (await reader.decodeBlockList('tags', at)).slice().sort((a, b) => a - b);
+  const max = reader.header.maxBlockOffset;
+  return vas.map((va, i) => ({ from: va, to: i + 1 < vas.length ? vas[i + 1] : max, name: '' }));
+}
+
+/** hits per segment (segments are VA-ascending and disjoint) */
+function countHitsPerSegment(segs: { from: number; to: number }[], hits: readonly { va: number }[]): number[] {
+  const counts = new Array<number>(segs.length).fill(0);
+  for (const h of hits) {
+    let lo = 0, hi = segs.length - 1, at = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (segs[mid].from <= h.va) { at = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    if (at >= 0 && h.va < segs[at].to) counts[at]++;
+  }
+  return counts;
+}
+
+/** the raw `s=` of the first declared tree whose scope matches */
+function treeScope(re: RegExp): string {
+  return dirTrees.find((d) => re.test(d.tree.scope))?.tree.scope ?? '';
+}
+
+/**
+ * 名詞 (`s="$詞"`): the `<詞>` instances as a dictionary term list.
+ *
+ * No query: the first slice of terms (name = the wrapped text, i.e. the headword).
+ * With a query: the terms whose realm holds a hit, then — because this is the
+ * dictionary lookup — the terms whose HEADWORD contains the query are listed
+ * first. 全文 (`s="*詞"`) is the same data without that headword filter.
+ */
+async function renderTerms(): Promise<void> {
+  const meta = $('#termsMeta');
+  const list = $('#termsList');
+  if (!reader || !mapper || !session) { list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>'; return; }
+  const tag = treeScope(/^\$/).replace(/^\$/, '').trim();
+  const segs = tag ? await tagSegments(tag) : [];
+  if (!segs.length) {
+    meta.textContent = '';
+    list.innerHTML = '<p class="dim">此庫沒有 <code>&lt;樹 s="$…"&gt;</code> 的詞條。</p>';
+    return;
+  }
+  const q = ($('#termsQuery') as HTMLInputElement).value.trim();
+  if (!q) {
+    // names are a source walk each, so only the shown slice is resolved
+    const slice = segs.slice(0, 200);
+    await nameSegs(slice);
+    meta.textContent = `${fmtInt(segs.length)} 個詞條（<${tag}>）：未輸入條件，列出前 ${fmtInt(slice.length)} 個`;
+    list.innerHTML = slice.map((s) => `<div class="snippet" data-va="${s.from}">
+        <div><b>${escapeHtml(displayName(s.name))}</b></div></div>`).join('');
+  } else {
+    const res = await session.search(q);
+    const counts = countHitsPerSegment(segs, res.hits);
+    const withHits = segs
+      .map((s, i) => ({ ...s, count: counts[i] }))
+      .filter((s) => s.count > 0)
+      .sort((a, b) => b.count - a.count);
+    const shown = withHits.slice(0, 200);
+    await nameSegs(shown);
+    const byName = shown.filter((s) => displayName(s.name).includes(q));
+    const out = byName.length ? byName : shown;
+    meta.textContent = `「${q}」：${fmtInt(withHits.length)} 個詞條有命中`
+      + (byName.length
+        ? `，其中 ${fmtInt(byName.length)} 個詞條名直接含「${q}」`
+        : '（沒有詞條名直接符合，列出有命中的詞條）')
+      + (shown.length < withHits.length ? `；僅列前 ${fmtInt(shown.length)}` : '');
+    list.innerHTML = out.map((s) => `<div class="snippet" data-va="${s.from}">
+        <div class="snippetHead">${fmtInt(s.count)} 筆</div>
+        <div><b>${escapeHtml(displayName(s.name))}</b></div></div>`).join('')
+      || '<p class="dim">沒有命中。</p>';
+  }
+  list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
+    el.onclick = (ev) => void revealHit(Number(el.dataset.va), tag, 1, mods(ev));
+  });
+}
+
+/** the `頁.n` folio list: label + the VA of that `<頁>` instance (cached) */
+let folioCache: { label: string; va: number }[] | null = null;
+
+async function folioEntries(): Promise<{ label: string; va: number }[]> {
+  if (folioCache) return folioCache;
+  const spec = treeScope(/^[^*/~$]+\.[^.]+$/);
+  const dot = spec.lastIndexOf('.');
+  if (!reader || dot <= 0) return [];
+  const av = await reader.attributeValues(spec);
+  const tagsC = reader.containers.get('tags');
+  if (!av?.values?.length || !tagsC) return [];
+  const byTag = new Map<string, number[]>();
+  const out: { label: string; va: number }[] = [];
+  for (let i = 0; i < av.values.length; i++) {
+    const t = av.tags[i] || spec.slice(0, dot);
+    const inst = ((av.pointers?.[i] ?? 0) & 0xffffff) - 1;
+    if (inst < 0) continue;
+    let list = byTag.get(t);
+    if (!list) {
+      const at = tagsC.names.indexOf(t);
+      if (at < 0) continue;
+      list = await reader.decodeBlockList('tags', at);
+      byTag.set(t, list);
+    }
+    const va = list[inst];
+    if (va === undefined) continue;
+    out.push({ label: av.values[i], va });
+  }
+  out.sort((a, b) => a.label.localeCompare(b.label, 'en', { numeric: true }));
+  folioCache = out;
+  return out;
+}
+
+/**
+ * 原書分頁 (`s="頁.n"`): the `<頁>` instances labelled by their `n` attribute.
+ * Pick a folio from the list or type its label; either way the text jumps there.
+ */
+async function renderFolio(): Promise<void> {
+  const meta = $('#folioMeta');
+  const list = $('#folioList');
+  if (!reader) { list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>'; return; }
+  const entries = await folioEntries();
+  if (!entries.length) {
+    meta.textContent = '';
+    list.innerHTML = '<p class="dim">此庫沒有 <code>&lt;樹 s="標籤.屬性"&gt;</code> 的原書分頁。</p>';
+    return;
+  }
+  const q = ($('#folioQuery') as HTMLInputElement).value.trim();
+  let hit = entries;
+  if (q) {
+    const rank = (l: string) => (l === q ? 0 : l.startsWith(q) ? 1 : 2);
+    hit = entries.filter((e) => e.label.includes(q));
+    hit.sort((a, b) => rank(a.label) - rank(b.label));   // exact match first
+  }
+  const shown = hit.slice(0, 300);
+  meta.textContent = `${fmtInt(entries.length)} 個原書分頁`
+    + (q ? `；「${q}」符合 ${fmtInt(hit.length)} 個` : `（可輸入頁碼，列出前 ${fmtInt(shown.length)} 個）`)
+    + (shown.length < hit.length ? `；僅列前 ${fmtInt(shown.length)}` : '');
+  list.innerHTML = shown.map((e) => `<div class="snippet${q && e.label === q ? ' active' : ''}" data-va="${e.va}">
+      <div><b>${escapeHtml(e.label)}</b></div></div>`).join('')
+    || '<p class="dim">沒有符合的頁碼。</p>';
+  list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
+    const label = (el.textContent ?? '').trim();
+    el.onclick = (ev) => void revealHit(Number(el.dataset.va), '原書分頁 ' + label, 1, mods(ev));
+  });
+}
+
 const PAGE = 300;
 let tokenOffset = 0;
 let tokenList: TokenRow[] = [];
@@ -1737,6 +2047,13 @@ function showTab(name: string, col: 'left' | 'right' = 'left') {
   root.querySelectorAll('.tabBtn').forEach((b) => b.classList.toggle('active', (b as HTMLElement).dataset.tab === name));
   root.querySelectorAll('.tabPane').forEach((p) => p.classList.toggle('active', (p as HTMLElement).dataset.tab === name));
   if (col === 'right' && dirTrees.length) void renderDirTree();   // built lazily
+  // left panes are built on demand: each one walks its own tree/attribute table
+  if (col === 'left') {
+    if (name === 'freq') void renderFreq();
+    else if (name === 'terms') void renderTerms();
+    else if (name === 'folio') void renderFolio();
+    else if (name === 'latin') void renderLatin();
+  }
 }
 
 // ------------------------------------------------------------------ advanced mode
@@ -1778,6 +2095,10 @@ function boot() {
   $('#toggleLeft').onclick = () => toggleSide('left');
   $('#toggleRight').onclick = () => toggleSide('right');
   ($('#advToggle') as HTMLButtonElement).onclick = () => setAdvanced(!advanced);
+  // 🪾 left of the 文件內容 title: only on demand does the tree open up to the node
+  // the document pane is sitting on, and scroll it into view
+  const treeReveal = $('#treeReveal') as HTMLButtonElement | null;
+  if (treeReveal) treeReveal.onclick = () => { void revealCursorInTree(); };
   setAdvanced(readAdvanced());
   window.addEventListener('resize', applyCols);
 
@@ -1843,14 +2164,12 @@ function boot() {
   };
   wireOwnSearch('#freqQuery', '#freqClear', () => void renderFreq());
   wireOwnSearch('#latinQuery', '#latinClear', () => void renderLatin());
+  wireOwnSearch('#termsQuery', '#termsClear', () => void renderTerms());
+  wireOwnSearch('#folioQuery', '#folioClear', () => void renderFolio());
 
+  // every left pane is built on demand — showTab() dispatches to its renderer
   $('#colLeft').querySelectorAll<HTMLElement>('.tabBtn').forEach((b) => {
-    b.onclick = () => {
-      showTab(b.dataset.tab!, 'left');
-      // both panes are built on demand (they walk the segment tag's instances)
-      if (b.dataset.tab === 'freq') void renderFreq();
-      if (b.dataset.tab === 'latin') void renderLatin();
-    };
+    b.onclick = () => showTab(b.dataset.tab!, 'left');
   });
   $('#colRight').querySelectorAll<HTMLElement>('.tabBtn').forEach((b) => { b.onclick = () => showTab(b.dataset.tab!, 'right'); });
   showTab('dir', 'left');
@@ -1937,6 +2256,10 @@ document.addEventListener('DOMContentLoaded', boot);
     pagerHidden: ($('#docPager') as HTMLElement | null)?.hidden ?? null,
     docStrip: document.querySelectorAll('#docTabStrip .docTab').length,
     snippetScope: snippetScope ? { from: snippetScope.realm.from, to: snippetScope.realm.to, label: snippetScope.label } : null,
+    lastLink,
+    pagerLog: pagerLog.slice(-4),
+    cursorNode: cursorNode ? { va: cursorNode.va, tag: cursorNode.tag, name: nodeLabelOf(cursorNode) } : null,
+    textCache: reader ? reader.textCacheSize : 0,
     lastFit,
     dirOpen: dirTrees[dirActive] ? dirTrees[dirActive].open.size : 0,
     scopes: dirTrees.map((d) => d.tree.scope),

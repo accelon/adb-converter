@@ -58,6 +58,33 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   本文分頁列（`#docTabs`）在有一頁以上時顯示，✕ 關閉、＋ 新開。
   **原本 Ctrl＋點節點名展開全部子孫，已改為 Alt＋點**（Ctrl 讓給「開新分頁」）。
 
+四）**左欄＝每個 `<樹 s="…">` 一頁**，頁名由 scope 決定（`syncTreeTabs`）：
+
+  | scope | 分頁 | 內容 |
+  |---|---|---|
+  | `*` | 目錄 | `t=` 層級樹＋全文搜尋 |
+  | `$詞` | 名詞 | `<詞>` 的每個實例＝一個詞條；有輸入時先列「詞條名含搜尋詞」者（字典查詢） |
+  | `*u=文` | 頻次 | 依屬性分段，命中數排序、0 不顯示 |
+  | `*詞` | 全文 | 依標籤分段（同一個 pane，只是頁名不同） |
+  | `頁.n` | 原書分頁 | `<頁>` 的 `n` 值清單（fgdict 6,959 個），可用選的或**輸入頁碼**跳過去 |
+  | `~…` | 西文 | 碼點範圍 |
+
+  fgdict 因此是「名詞／全文／原書分頁」三頁（沒有 `s="*"` 就沒有目錄頁），
+  13j 只有目錄，yinshun 是目錄／頻次／西文。每個 pane 都是**按到才建**（`showTab` 分派）。
+
+五）**tCount（命中數）**：有搜尋時**永遠**顯示該節點 realm `[va, vaEnd)` 內的命中數，
+  **與節點開合無關**（沒有搜尋時才顯示子節點數）。顏色分四級：
+  由「占全體命中的比例」與「絕對數量」取較高者（`t1`…`t4`），
+  最多命中的最亮（亮紅 `#ff1744` ＋ 微光暈），≥1000 再加一級字級。
+  點 tCount 把右欄「摘要」切到該 realm。
+
+六）**本文捲動 → 目錄樹同步**：以畫面**中間那一行**（不是第一行）為準，
+  對應節點標為 `current`、其所有祖先標為 `ancestor`（只是亮起，**不捲過去、不自動展開**）。
+  要展開並捲到該節點，按「文件內容」標題左邊的 🌲「展開樹」小按鈕（`#treeReveal`）。
+
+七）**摘要聯動**會**強制打開右欄**（`setSide('right', true)` ＋ 切到「摘要」頁），
+  因為右欄藏起來時摘要就沒有意義。
+
 ## 3. 檔案地圖
 
 | 檔案 | 角色 |
@@ -88,11 +115,11 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   |---|---|---|
   | `*` | 全文 | ✅ 分頁「目錄」（搜尋摘要移到右欄「摘要」） |
   | `*u=文` | **屬性過濾**（attr `u`, value `文`） | ✅ 分頁「頻次」（yinshun 6,978 段／40 個標籤） |
-  | `*文` | **標籤名** → `<文>` 的實例 | 未接（fgdict 是 `*詞`，22,648 段） |
+  | `*文` | **標籤名** → `<文>` 的實例 | ✅ 分頁「全文」（fgdict `*詞`：5,000 筆命中分布於 1,356／22,648 段） |
   | `~X` | **token 清單**：`settoken(adb, X)` | ⚠️ 分頁「西文」**已接線並有內容**（原本 `renderLatin()` 根本沒被呼叫）；但 X 的語意仍是碼點範圍的猜測，**需要作者確認** |
-  | `$詞` | 標籤包裹（`parsetav` → tag `詞`） | 未接（fgdict 有） |
+  | `$詞` | 標籤包裹（`parsetav` → tag `詞`） | ✅ 分頁「名詞」（fgdict：一個 `<詞>` 一個詞條，輸入時先列詞條名符合者） |
   | `@X` / `^X` / `%` | 字表／主題表／反向連結 | 未接 |
-  | `頁.n` | `tag.attr`：樹從 `<頁>` 起，名字取 `n` 屬性 | 未接（fgdict 有） |
+  | `頁.n` | `tag.attr`：樹從 `<頁>` 起，名字取 `n` 屬性 | ✅ 分頁「原書分頁」（fgdict 6,959 個頁碼，可選可輸入；用 `attributeValues('頁.n')` 的 pointers 對到 `<頁>` 實例 VA） |
 
   另有 `t`（subtree）、`p`（paging）、`o`（columns）三個屬性**尚未讀取**；
   **分頁名應取 `<樹>…</樹>` 的元素內容**（`ss.caption := removetag(getnNodeValue(dn))`），
@@ -115,7 +142,20 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
 
 **本文**：舊版一次渲染 `min(3000 行, 整份文件)`，yinshun 的檔可達 45k 行，
 一次要讀數百個 bzip2 區塊並塞進 DOM。現在**一次只載一頁 200 行**，聯動成本變成
-「讀 1–2 個區塊」的量級；DOM 列數也固定。
+「讀 1–2 個區塊」的量級（實測 `state().lastLink.ensureMs`：fgdict 29–85 ms、yinshun 數十 ms）；
+DOM 列數也固定。
+
+**聯動卡頓（本輪處理）**：
+* **畫家不再自己換頁**：`paintHit` 原本發現命中不在當前頁就呼叫 `ensurePage`，
+  於是「上一頁／下一頁」一翻頁就被拉回命中的那一頁（fgdict 這種映射器行號會漂移的庫特別明顯）。
+  現在**只有「聯動」才跟隨命中**（`linkTo` 明確傳 targetLine），翻頁純粹由 `goPage` 決定。
+* **目錄樹查找 O(depth × log width)**：`deepestNode()` 逐層二分搜尋，取代走訪全樹
+  （fgdict 29,614 節點、每次聯動與每次捲動都跑）。
+* **捲動高亮只改 class**：`paintTreeActive()` 不再重建整棵樹的 DOM。
+* **命中數 O(log n)**：`realmHits` 用兩個二分搜尋取代線性掃描（大節點有數千命中）。
+* **解碼快取上限 256 塊**：`AdbReader.sourceText` 的 `srcTextCache` 原本無上限，
+  長時間跳讀會把整個 24 MB 庫的解碼結果留在記憶體、GC 抖動就變成卡頓。
+* 診斷入口：`state().lastLink`（`ensureMs`／`totalMs`／`rows`）、`state().textCache`。
 
 **自動字級（「不換行」）**：可用寬度必須取**中間欄**（`docTextWidth()`，扣除左右欄與列內 gap）；
 量測必須在**無寬度約束**的容器。**因為有分頁，量測不可以只看當前頁**：
@@ -129,7 +169,7 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
 |---|---|
 | `file-protocol-test.ts`（13j） | **64/64** |
 | `file-protocol-test.ts`（yinshun） | **68/68** |
-| `file-protocol-test.ts`（fgdict） | 62 passed, **2 failed**（皆為同一個 P0：書名 fallback，見 §7） |
+| `file-protocol-test.ts`（fgdict） | 66 passed, **2 failed**（皆為同一個 P0：書名 fallback，見 §7） |
 | `test/tree.test.ts` | 40/40 |
 | `test/search.test.ts`（13j） | 19/19 |
 | `test/adbview.test.ts` / `test/vapa.test.ts` | 22/22、13/13 |
@@ -190,7 +230,13 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
 * 測試用的診斷入口都在 `window.__adbview`（`state()`、`openBreakdown()`、`fitDebug()`、
   `pinnedSpans()`、`treeDebug()`、`debugDoc()`、`setCols()`、`setAdvanced()`、`showTab()`）。
   `state()` 新增 `docTab`／`docTabs`／`docPage`／`docPages`／`docTabPages`／`docPageLines`／
-  `docRealm`／`pagerHidden`／`docStrip`／`snippetScope`／`lastFit`。
+  `docRealm`／`pagerHidden`／`docStrip`／`snippetScope`／`lastFit`／`lastLink`／`pagerLog`／
+  `cursorNode`／`textCache`。
+* **左欄頁名與 scope 綁定**：`syncTreeTabs()` 由 `<樹 s="…">` 決定顯示哪幾頁與頁名
+  （`*`→目錄、`$X`→名詞、`*u=`→頻次、`*X`→全文、`X.y`→原書分頁、`~X`→西文），
+  換庫時「目錄」可能不存在，所以預設頁會自動落到第一個存在的頁。
+* **🌲 展開樹**：使用者要求的是 `🪾`（U+1FABE，Unicode 16），但多數字型沒有這個字
+  （headless Chrome 直接顯示空框），所以按鈕用 `🌲`（U+1F332，通用）。
 * `.gitignore` 已排除 `*.adb`、`build/`、`sourcecode/`，所以資料庫與建置產物不會進版控。
 
 ## 9. 主要資料庫
