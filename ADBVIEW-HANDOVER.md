@@ -171,6 +171,19 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
 
 拆法：子模組 `import { … } from './viewer'`，viewer 端把用到的狀態／函式 `export`；**不要**在子模組寫入 imported binding。
 
+**工具**：`ts/tools/split-viewer.ts <doc-pane|link|summary|scopes|panes|ui>`（依名字自動算 span、import、export；每個模組跑一次，可重複）。
+
+**一輪全拆的實驗結果（2026-10，已回退）**：機械上成功——15 個模組、bundle 189 KiB、`bun build` 無錯、
+viewer.ts 剩 197 行——但啟動後 **`Runtime.evaluate` timeout（頁面卡住）**，來不及在該輪定位，故整批回退，
+只留已驗證的 `paint.ts`（13j 67/67）。下一輪照下列順序做，這些坑都已踩過：
+
+1. **span 不可吃下一個宣告的 doc comment**：end 要用「下一個 span 的 start − 1」，否則重複刪除會切掉下一個函式的頭（症狀：`Unexpected }`）。
+2. **import 掃描要看整個 registry**，不是只看 viewer.ts：已經搬到別的模組的符號仍要從那個模組 import（症狀：`setDocFont is not defined`）。
+3. **ESM 不能寫 imported binding** → 每個模組要提供 setter／reset（`setDocActive`／`resetScopes`／`resetSummary`／`resetLink`／`resetDocPane`…），openFile 改呼叫 reset。
+4. **測試用的 `window.__adbview` 必須延後建立**（包成 `installDebugApi()`，在 `boot()` 最後呼叫）：它是 top-level 讀取所有模組的 binding，循環 import 下會踩 TDZ（症狀：`ReferenceError`、`__adbview` undefined）。
+5. **`document.addEventListener('DOMContentLoaded', boot)` 只能留一處**（留在入口模組或 ui），且 `boot` 只能在所有模組初始化後跑。
+6. 每拆一塊就跑 13j（67）確認；全拆完再跑 yinshun／fgdict。卡住時先用 `build/probe.ts` 抓 `Runtime.exceptionThrown`。
+
 ### 3.1 分區名稱與 id（溝通時直接用；示意圖 [adbview-map.html](adbview-map.html)）
 
 | 統一稱呼 | 選擇器 | 備註 |
