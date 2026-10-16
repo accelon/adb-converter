@@ -30,7 +30,7 @@ let showAllClasses = false;
 let opening = false;
 
 /** the hit the middle pane is currently showing (VA + its element text) */
-let pinnedHit: { va: number; text: string; token: string; units: number } | null = null;
+let pinnedHit: { va: number; text: string; token: string; units: number; line: number } | null = null;
 let lastReveal = '';
 
 /** search state */
@@ -38,8 +38,17 @@ let lastResult: SearchResult | null = null;
 let searchSeq = 0;
 /** index into result.groups, -1 = all groups */
 let activeGroup = -1;
-const SNIPPET_LIMIT = 60;
+/**
+ * How many summaries the 摘要 pane shows after an input update. The requirement
+ * is "只更新摘要（顯示最前面 30 筆）": typing must not touch the document, and
+ * the rest of the hits are revealed by clicking a node's 命中數 badge.
+ */
+const SNIPPET_LIMIT = 30;
 let snippetShown = SNIPPET_LIMIT;
+/** when a node's 命中數 was clicked, the 摘要 pane is scoped to that node */
+let snippetScope: { realm: { from: number; to: number }; label: string } | null = null;
+/** the query that scope belongs to: re-running the SAME query keeps it */
+let snippetScopeQuery = '';
 
 /** directory tree state (one entry per `<樹>` declaration) */
 interface DirTree {
@@ -111,6 +120,13 @@ async function openFile(file: File) {
   dirTrees = [];
   dirError = '';
   docFontSized = false;
+  // a new database invalidates every derived line/VA cache and every open tab
+  boundsCache.clear();
+  paintAsked.clear();
+  docTabs = [];
+  docActive = 0;
+  pinnedHit = null;
+  lastReveal = '';
   const T0 = performance.now();
   const io = new BlobIO(file);
   try {
@@ -201,6 +217,12 @@ async function openFile(file: File) {
     console.error(e);
   } finally {
     opening = false;
+    const tabs = $('#docTabs') as HTMLElement | null;
+    if (tabs) { tabs.hidden = true; }
+    const strip = $('#docTabStrip');
+    if (strip) strip.innerHTML = '';
+    const pager = $('#docPager') as HTMLElement | null;
+    if (pager) pager.hidden = true;
   }
 }
 
@@ -217,6 +239,8 @@ async function runSearch(query: string) {
   const q = query.trim();
   if (!q) {
     lastResult = null;
+    snippetScope = null;
+    snippetShown = SNIPPET_LIMIT;
     $('#searchList').innerHTML = '';
     $('#searchMeta').textContent = '';
     $('#searchMore').textContent = '';
@@ -224,6 +248,13 @@ async function runSearch(query: string) {
   }
   const res = await session.search(q);
   if (seq !== searchSeq) return;          // a newer keystroke won
+  // A keystroke may land while a node-scoped summary is on screen (the debounce
+  // can outlive a click). The same query keeps the scope — that re-search was
+  // already in flight when 命中數 was clicked — only a DIFFERENT query drops it.
+  if (snippetScope && snippetScopeQuery !== q) {
+    snippetScope = null;
+    snippetScopeQuery = '';
+  }
   lastResult = res;
   snippetShown = SNIPPET_LIMIT;
   await renderSearchResult(res, seq);
@@ -231,23 +262,45 @@ async function runSearch(query: string) {
 
 async function renderSearchResult(res: SearchResult, seq: number) {
   const meta = $('#searchMeta');
+  activeGroup = -1;
+  const scoped = snippetScope && snippetScopeQuery === res.query ? snippetScope : null;
+  if (snippetScope && !scoped) {
+    snippetScope = null;
+    snippetScopeQuery = '';
+  }
   if (res.missing.length) {
     meta.textContent = `「${res.query}」：索引中沒有 ${res.missing.map((m) => `「${m}」`).join('、')}`;
     $('#searchList').innerHTML = '';
     $('#searchMore').textContent = '';
     return;
   }
+  if (scoped) {
+    // a node's 命中數 is the active scope: keep its header even when the SAME
+    // query is re-run (the debounce may land just after the click)
+    await showNodeHits(scoped.realm, scoped.label, realmHits(scoped.realm.from, scoped.realm.to));
+    return;
+  }
   const groupInfo = res.groups.length ? `，分 ${fmtInt(res.groups.filter((g) => g.count).length)} 群（依 ${res.groupTag}）` : '';
-  meta.textContent = `${res.tokens.map((t) => t.token).join(' + ')}（詞組，${fmtInt(res.hits.length)} 筆命中${res.truncated ? ' 以上' : ''}${groupInfo}，${res.ms.toFixed(0)} ms）`;
-  activeGroup = -1;
+  const nodeHint = '<span class="dim">｜輸入只更新摘要，本文要點目錄節點的命中數或摘要</span>';
+  meta.innerHTML = escapeHtml(`${res.tokens.map((t) => t.token).join(' + ')}（詞組，${fmtInt(res.hits.length)} 筆命中${res.truncated ? ' 以上' : ''}${groupInfo}，${res.ms.toFixed(0)} ms）`) + nodeHint;
   await renderSnippets(seq);
 }
 
+/**
+ * The 摘要 pane: the first `snippetShown` hits of the current result. With no
+ * scope it lists the whole result (top 30 after an input update); with a scope
+ * (a directory node's 命中數 was clicked) only that node's realm is shown.
+ *
+ * Typing MUST NOT move the document: this function therefore never links to the
+ * text. Only a click on a summary card (or the 命中數 badge) does.
+ */
 async function renderSnippets(seq: number) {
   const res = lastResult;
   if (!res || !mapper) return;
   const list = $('#searchList');
-  const pool = activeGroup >= 0 ? res.hits.filter((h) => inGroup(res, h.va, activeGroup)) : res.hits;
+  const realm = snippetScope?.realm;
+  let pool = activeGroup >= 0 ? res.hits.filter((h) => inGroup(res, h.va, activeGroup)) : res.hits;
+  if (realm) pool = pool.filter((h) => h.va >= realm.from && h.va < realm.to);
   const show = pool.slice(0, snippetShown);
   const cards: string[] = [];
   for (const hit of show) {
@@ -265,25 +318,46 @@ async function renderSnippets(seq: number) {
   list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
     el.onclick = (ev) => {
       list.querySelectorAll('.snippet').forEach((x) => x.classList.toggle('active', x === el));
-      const va = Number(el.dataset.va);
-      const units = Number(el.dataset.units);
-      const target = ev.target as HTMLElement;
-      // clicking the highlighted phrase jumps to that exact occurrence
-      void revealHit(va, lastResult?.tokens.map((t) => t.token).join('') ?? '', units);
-      if (target.tagName === 'MARK') void paintHit(va, units);
+      // Ctrl (Cmd) + click opens the hit in a NEW document tab
+      void revealHit(
+        Number(el.dataset.va),
+        lastResult?.tokens.map((t) => t.token).join('') ?? '',
+        Number(el.dataset.units),
+        mods(ev),
+      );
     };
   });
   const more = $('#searchMore');
+  const scopeNote = snippetScope ? `「${displayName(snippetScope.label)}」內 ` : (activeGroup >= 0 ? '此群 ' : '');
   more.textContent = pool.length > show.length
-    ? `顯示前 ${fmtInt(show.length)} 筆（${activeGroup >= 0 ? '此群 ' : ''}共 ${fmtInt(pool.length)} 筆）；捲到底載入更多`
-    : `${activeGroup >= 0 ? '此群 ' : ''}共 ${fmtInt(pool.length)} 筆`;
-  // auto-select and jump to the first hit (with its phrase length — without
-  // `units` the painter would only mark the first character)
-  const first = list.querySelector<HTMLElement>('.snippet');
-  if (first && pool.length) {
-    first.classList.add('active');
-    await revealHit(pool[0].va, res.tokens.map((t) => t.token).join(''), pool[0].units);
+    ? `顯示前 ${fmtInt(show.length)} 筆（${scopeNote}共 ${fmtInt(pool.length)} 筆）；捲到底載入更多`
+    : `${scopeNote}共 ${fmtInt(pool.length)} 筆`;
+  // No auto-jump: the document is linked by an explicit click (requirement 一).
+}
+
+/**
+ * Show the hits of ONE directory node in the 摘要 pane (a click on its 命中數).
+ *
+ * The node's VA range is the filter, and the label travels with the scope so the
+ * header can say which node is being shown.
+ */
+async function showNodeHits(realm: { from: number; to: number }, label: string, count: number): Promise<void> {
+  showTab('sum', 'right');
+  const meta = $('#searchMeta');
+  if (!lastResult) {
+    meta.textContent = `「${displayName(label)}」：尚未輸入搜尋詞`;
+    return;
   }
+  snippetScope = { realm, label };
+  // the query the user is searching for RIGHT NOW: a debounced search of the same
+  // text may still be in flight, and it must keep this scope rather than replace
+  // the pane with the unscoped result
+  snippetScopeQuery = (($('#query') as HTMLInputElement | null)?.value ?? lastResult.query).trim();
+  snippetShown = SNIPPET_LIMIT;
+  meta.innerHTML = `「${escapeHtml(displayName(label))}」範圍內 <b>${fmtInt(count)}</b> 筆命中（共 ${fmtInt(lastResult.hits.length)} 筆；點摘要才會聯動本文）`;
+  // pass a LIVE sequence number: a re-search may be in flight, and renderSnippets
+  // drops its work when the sequence has moved on
+  await renderSnippets(searchSeq);
 }
 
 /** true when `va` falls inside group `gi`'s VA range */
@@ -381,127 +455,492 @@ function renderDocs() {
   });
 }
 
-/** docText cache so a hit can jump without re-splitting the whole document */
-let docCache: { doc: DocRow; dt: Awaited<ReturnType<VaPaMapper['docText']>>; key: string } | null = null;
+/** true once the document font has been auto-fitted for this database */
+let docFontSized = false;
 
-async function loadDoc(d: DocRow, center?: number, lineRange?: { first: number; last: number }) {
-  const key = center !== undefined ? 'c' + center : lineRange ? `r${lineRange.first}-${lineRange.last}` : 'all';
-  if (docCache && docCache.doc.i === d.i && docCache.key === key) return docCache.dt;
-  const dt = await mapper!.docText(
-    d.vaStart, d.vaEnd, 3000,
-    center !== undefined ? { center, radius: 1500 } : undefined,
-    lineRange,
-  );
-  docCache = { doc: d, dt, key };
-  return dt;
+/**
+ * The middle pane, session state.
+ *
+ * One "document session" = the text of ONE directory node's realm (or a whole
+ * `<檔>` when the link came from the document list / a token) plus the page
+ * (網頁分頁, NOT the book's 葉/folio) that is currently loaded. Ctrl+clicking a
+ * linking control opens another session in a new tab instead of replacing the
+ * one on screen.
+ *
+ * Paging exists because loading a whole window is what made the pane sluggish:
+ * a page is a couple of hundred screen lines, so a link costs a bounded amount
+ * of text and DOM instead of thousands of rows.
+ */
+interface DocSession {
+  id: number;
+  /** the node whose text this tab shows ([from, to) in VA; to <= from = whole doc) */
+  realm: { from: number; to: number };
+  /** label of that node, or the `<檔>` name */
+  name: string;
+  /** 0-based page of the realm that is loaded in the DOM */
+  page: number;
+  /** the `<檔>` the realm lives in */
+  doc: DocRow;
+  pinned: { va: number; text: string; token: string; units: number; line: number } | null;
+  /** last rendered page (per session, so switching tabs does not re-read) */
+  cache: { page: number; dt: Awaited<ReturnType<VaPaMapper['docText']>>; key: string } | null;
+}
+let docTabs: DocSession[] = [];
+let docActive = 0;
+let docSeq = 0;
+
+/** how many hard lines one page holds (the "load only this page" budget) */
+const PAGE_LINES = 200;
+
+/** the lines of the page currently in the DOM, used by autoFitFont */
+let lastDocLines: string[] = [];
+/** one paint retry per target line per tab (see paintHit) */
+const paintAsked = new Map<number, number>();
+
+const docSession = (): DocSession | null => docTabs[docActive] ?? null;
+
+/** Ctrl (or Cmd on a Mac) held on an event: open the link in a NEW tab. */
+const newTabKey = (ev?: { ctrlKey?: boolean; metaKey?: boolean }): boolean =>
+  !!ev && (!!ev.ctrlKey || !!ev.metaKey);
+/** Alt held on an event: the old "expand every descendant" (setOpenAll). */
+const altKey = (ev?: { altKey?: boolean }): boolean => !!ev && !!ev.altKey;
+/** the modifiers a programmatic link should honour */
+const mods = (ev?: { ctrlKey?: boolean; metaKey?: boolean }): { newTab?: boolean } | undefined =>
+  newTabKey(ev) ? { newTab: true } : undefined;
+
+/** the whole-database realm (used when no document row owns the VA) */
+function wholeRealm(): { from: number; to: number } {
+  return { from: 0, to: reader?.header.maxBlockOffset ?? 0 };
+}
+
+/** the `<檔>` that owns a VA (single-file databases have none → one whole doc) */
+function docOfVa(va: number): DocRow {
+  const i = docs.findIndex((d) => va >= d.vaStart && va < d.vaEnd);
+  if (i >= 0) return docs[i];
+  // A VA can drift a few units past the end of its `<檔>` (fgdict does at every
+  // file boundary), so fall back to the nearest document that starts before it —
+  // better than a synthetic whole-database row whose line count disagrees with
+  // the line table.
+  let best = -1;
+  for (let k = 0; k < docs.length; k++) {
+    if (docs[k].vaStart <= va && (best < 0 || docs[k].vaStart > docs[best].vaStart)) best = k;
+  }
+  if (best >= 0) return docs[best];
+  return { i: -1, name: reader?.header.dbname ?? '', vaStart: 0, vaEnd: reader?.header.maxBlockOffset ?? 0 };
+}
+
+/** scroll the 文件 pane to the row of a VA (no content change) */
+function scrollToVa(va: number): void {
+  if (!mapper) return;
+  document.getElementById('L' + mapper.edgeLine(va))?.scrollIntoView({ block: 'center' });
+}
+
+/** first line index whose end is at or past `va` */
+function edgeLine(va: number): number {
+  return mapper ? mapper.edgeLine(va) : 0;
 }
 
 /**
- * Show the document that contains line `line`, windowed around it, then paint
- * the hit at `va`. Works for both multi-file databases (pick the owning 檔) and
- * single-file ones (13j, 42k lines: window the whole thing).
+ * First line index inside a realm. A heading's VA is its own tag, so its line
+ * ends at (or before) that VA: when the edge line ends exactly at the realm
+ * start, the realm really begins on the NEXT line.
  */
-async function showLine(line: number, va: number, units?: number) {
-  if (!mapper || !reader) return;
-  const idx = docs.findIndex((d) => {
-    const vEnd = mapper!.linesVirtual[line] ?? 0;
-    return vEnd >= d.vaStart && vEnd < d.vaEnd;
-  });
-  let d: DocRow;
-  if (docs.length && idx >= 0) {
-    d = docs[idx];
-    $('#docs').querySelectorAll('.docItem').forEach((el) => el.classList.toggle('active', Number((el as HTMLElement).dataset.i) === d.i));
-  } else {
-    d = { i: -1, name: reader.header.dbname, vaStart: 0, vaEnd: reader.header.maxBlockOffset };
+function realmFirstLine(realm: { from: number; to: number }): number {
+  const v = mapper?.linesVirtual ?? [];
+  if (!v.length) return 0;
+  let first = edgeLine(realm.from);
+  if (first < v.length - 1 && v[first] <= realm.from) first++;
+  return Math.min(first, v.length - 1);
+}
+
+/** last line of a realm: the last line that STARTS before the realm ends */
+function realmLastLine(realm: { from: number; to: number }, first: number): number {
+  const v = mapper?.linesVirtual ?? [];
+  if (!v.length) return first;
+  const cut = edgeLine(Math.max(realm.from, realm.to - 1));
+  if (cut < first) return first;
+  // a line whose VA equals the realm end belongs to the NEXT realm
+  const at = mapper!.lineStartOf(cut);
+  return v[cut] >= realm.to && at >= realm.to && cut > first ? cut - 1 : cut;
+}
+
+const boundsCache = new Map<string, { first: number; last: number }>();
+const realmKey = (realm: { from: number; to: number }) => realm.from + ':' + realm.to;
+
+/** the inclusive line range of a realm, plus its page count */
+function boundsOfRealm(realm: { from: number; to: number }): { first: number; last: number; total: number; pages: number } {
+  const key = realmKey(realm);
+  let b = boundsCache.get(key);
+  if (!b) {
+    const first = realmFirstLine(realm);
+    b = { first, last: realmLastLine(realm, first) };
+    boundsCache.set(key, b);
   }
-  // the window must contain every line the hit spans, not just its first line —
-  // a word cut by a hard break lives on two lines
-  const spans = units && units > 1 ? await mapper.phraseSpans(va, units) : await mapper.lineSpans(va);
-  const lines = spans.map((s) => s.line);
-  const first = lines.length ? Math.min(line, ...lines) : line;
-  const last = lines.length ? Math.max(line, ...lines) : line;
+  const total = Math.max(0, b.last - b.first + 1);
+  return { first: b.first, last: b.last, total, pages: Math.max(1, Math.ceil(total / PAGE_LINES)) };
+}
+
+/** the line range of one page of a realm (0-based page) */
+function pageBounds(realm: { from: number; to: number }, page: number): { first: number; last: number; total: number; pages: number } {
+  const b = boundsOfRealm(realm);
+  const p = Math.max(0, Math.min(page, b.pages - 1));
+  const first = Math.min(b.last, b.first + p * PAGE_LINES);
+  const last = Math.min(b.last, first + PAGE_LINES - 1);
+  return { first, last, total: b.total, pages: b.pages };
+}
+
+/** the page of a realm that contains a line (used to follow a hit) */
+function pageOfLine(realm: { from: number; to: number }, line: number): number {
+  const b = boundsOfRealm(realm);
+  if (line <= b.first) return 0;
+  return Math.max(0, Math.min(b.pages - 1, Math.floor((line - b.first) / PAGE_LINES)));
+}
+
+/** the deepest directory node that contains a VA (its realm is the node's range) */
+function nodeContaining(va: number): { realm: { from: number; to: number }; name: string } | null {
+  const d = dirTrees[dirActive];
+  if (!d) return null;
+  let best: TreeNode | null = null;
+  for (const n of iterNodes(d.roots)) {
+    if (n.va <= va && va < n.vaEnd && (!best || n.depth > best.depth)) best = n;
+  }
+  return best
+    ? { realm: { from: best.va, to: best.vaEnd }, name: d.labels.get(best.va) || best.label || ('#' + best.index) }
+    : null;
+}
+
+/** the session showing exactly this realm, if there is one */
+function sessionForRealm(realm: { from: number; to: number }): DocSession | null {
+  return docTabs.find((t) => t.realm.from === realm.from && t.realm.to === realm.to) ?? null;
+}
+
+/** find (or open) the tab for a realm. `fresh` forces a new tab. */
+function sessionFor(realm: { from: number; to: number }, name: string, fresh = false): DocSession {
+  if (!fresh) {
+    const same = sessionForRealm(realm);
+    if (same) return same;
+  }
+  const s: DocSession = { id: ++docSeq, realm, name, page: 0, doc: docOfVa(realm.from), pinned: null, cache: null };
+  docTabs.push(s);
+  return s;
+}
+
+/**
+ * Read one page of a session's realm. The VA range passed to `docText` is the
+ * realm itself, so its `total` is the node's own line count while only one page
+ * is ever rendered.
+ */
+async function fetchPage(pageFirst: number, pageLast: number): Promise<Awaited<ReturnType<VaPaMapper['docText']>>> {
+  const first = Math.max(0, pageFirst);
+  const last = Math.max(first, pageLast);
+  // The VA span is derived from the PAGE's lines, not from a `<檔>`: a directory
+  // node may span several files (yinshun's 書 do), and passing one file's range
+  // would clamp the page to a single line.
+  const v = mapper!.linesVirtual;
+  const vaStart = first > 0 ? (v[first - 1] ?? 0) : 0;
+  const vaEnd = (v[last] ?? reader!.header.maxBlockOffset) + 1;
+  return mapper!.docText(vaStart, vaEnd, last - first + 1, undefined, { first, last });
+}
+
+/**
+ * Make sure the DOM holds the page that contains `targetLine` (or the session's
+ * current page) and render it. The returned `auto` is true when the page had to
+ * move to follow a hit.
+ */
+async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: boolean; ms: number }> {
+  if (!mapper) return { auto: false, ms: 0 };
+  let auto = false;
+  if (targetLine !== undefined && targetLine >= 0) {
+    const p = pageOfLine(s.realm, targetLine);
+    if (p !== s.page) { s.page = p; auto = true; }
+  }
+  const b = pageBounds(s.realm, s.page);
+  s.page = Math.max(0, Math.min(s.page, b.pages - 1));
+  const key = s.doc.i + ':' + b.first + '-' + b.last;
   const t0 = performance.now();
-  const dt = await loadDoc(d, line, last > first ? { first, last } : undefined);
-  renderDocText(d, dt, line, va, units);
+  if (!s.cache || s.cache.key !== key) {
+    const dt = await fetchPage(b.first, b.last);
+    s.cache = { page: s.page, dt, key };
+  }
+  // The mapper's line numbers and the rendered page can disagree by a line at a
+  // document boundary (fgdict). Keep the pinned line ON the page, so the hit is
+  // always visibly marked instead of pointing at a row that was never rendered.
+  const nums = s.cache.dt.lineNumbers;
+  if (s.pinned && nums.length) {
+    if (s.pinned.line < nums[0]) s.pinned.line = nums[0];
+    else if (s.pinned.line > nums[nums.length - 1]) s.pinned.line = nums[nums.length - 1];
+  }
+  renderDoc(s);
+  return { auto, ms: performance.now() - t0 };
+}
+
+/** true when the shown page already covers a line (so a link can just scroll) */
+function showsLine(s: DocSession | null, line: number): boolean {
+  const n = s?.cache?.dt.lineNumbers;
+  return !!n && n.length > 0 && line >= n[0] && line <= n[n.length - 1];
+}
+
+/**
+ * Point the document pane at a VA (the "聯動本文" action).
+ *
+ * `opts.newTab` (Ctrl/Cmd) opens a fresh tab. `opts.mode === 'node'` forces the
+ * realm to be the directory node that contains the VA even when the current tab
+ * already covers it (a terminal node has an empty realm, so it must not become
+ * the tab's realm). Otherwise the current tab is kept when it already contains
+ * the hit, which is what keeps clicks inside one chapter in one tab.
+ */
+async function linkTo(va: number, token: string, units: number | undefined, opts: { newTab?: boolean; mode?: 'reuse' | 'node' | 'hit' } = {}): Promise<void> {
+  if (!mapper) return;
+  const el = await mapper.elementAt(va);
+  if (!el) { setStatus('VA ' + fmtInt(va) + '：找不到對應位置', 'err'); return; }
+  const u = Math.max(1, units ?? el.element.vaUnits);
+
+  const doc = docOfVa(va);
+  const node = nodeContaining(va);
+  const firstLink = docTabs.length === 0;
+  const useNode = !!node && (opts.mode === 'node' || !docTabs.length);
+  // Without a node the realm is the owning `<檔>` — NOT the whole VA space: in a
+  // multi-document database the page range must be expressed in that document's
+  // lines, or every page would be clamped to a single line.
+  const whole: { from: number; to: number } = docs.length ? { from: doc.vaStart, to: doc.vaEnd } : wholeRealm();
+  // A node may drift a few VA units past its `<檔>`'s boundary (fgdict does); the
+  // page range is computed from the line table, so the realm must be clamped to
+  // the document that is actually read, or the page would clamp to one line.
+  const raw = useNode ? node!.realm : whole;
+  const realm = {
+    from: Math.max(raw.from, whole.from),
+    to: Math.min(raw.to, whole.to),
+  };
+  if (realm.to <= realm.from) { realm.from = whole.from; realm.to = whole.to; }
+  const name = useNode ? node!.name : (doc.name || token || el.element.text || reader?.header.dbname || '');
+  const cur = docSession();
+  const covers = !!cur && realm.to > realm.from && realm.from >= cur.realm.from && realm.to <= cur.realm.to;
+  const s = opts.newTab
+    ? sessionFor(realm, name, firstLink || !covers)
+    : (firstLink || !covers ? sessionFor(realm, name, false) : cur!);
+
+  s.doc = doc;
+  // The mapper's walk can drift a few VAs from the stored VA table (fgdict and
+  // yinshun both do), so an element's line may fall outside the realm's line
+  // range. Snap it back inside, or the page would not contain the pinned line.
+  const rb = boundsOfRealm(realm);
+  let line = el.element.line ?? edgeLine(va);
+  if (line < rb.first || line > rb.last) line = edgeLine(va);
+  if (line < rb.first || line > rb.last) line = rb.first;
+  s.pinned = { va, text: el.element.text, token, units: u, line };
+  pinnedHit = s.pinned;
+  lastReveal = `va=${va} units=${u} element=${el.element.va}/${el.element.vaUnits}`;
+  docActive = docTabs.indexOf(s);
+
+  const auto = (await ensurePage(s, line)).auto;
+  syncTreeActive();
   // On the first render of a database, keep the user's size but otherwise pick
   // one that keeps most hard lines from soft-wrapping.
   if (!docFontSized) {
     docFontSized = true;
     if (localStorage.getItem(DOCFS_KEY) === null) autoFitFont();
   }
-  setStatus(`${displayName(d.name)}：第 ${fmtInt(line)} 行（共 ${fmtInt(dt.total)} 行，${(performance.now() - t0).toFixed(0)} ms）`, 'info');
+  // label carries the directory node's name (a tag click has no text of its own)
+  const what = s.name || token || el.element.text;
+  const totalRows = boundsOfRealm(s.realm).total;
+  const pageInfo = s.cache
+    ? '（共 ' + fmtInt(totalRows) + ' 行，第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(pageBounds(s.realm, s.page).pages) + ' 頁' + (auto ? '，自動跟隨命中' : '') + '）'
+    : '';
+  setStatus(displayName(what) + '：第 ' + fmtInt(line) + ' 行' + pageInfo, 'info');
 }
 
-/** true once the document font has been auto-fitted for this database */
-let docFontSized = false;
+/** a search/summary link: the same action, plus the "snippet" token name */
+async function revealHit(va: number, token: string, units?: number, opts: { newTab?: boolean; mode?: 'reuse' | 'node' | 'hit' } = {}): Promise<void> {
+  return linkTo(va, token, units, opts);
+}
+
+/** the public "show the document containing line `line`" entry point (文件 list) */
+async function showLine(line: number, va: number, units?: number): Promise<void> {
+  if (!mapper || !reader) return;
+  const d = docOfVa(va);
+  $('#docs').querySelectorAll('.docItem').forEach((el) => el.classList.toggle('active', Number((el as HTMLElement).dataset.i) === d.i));
+  const s = sessionFor({ from: d.vaStart, to: d.vaEnd }, d.name, false);
+  s.doc = d;
+  s.pinned = { va, text: '', token: d.name, units: Math.max(1, units ?? 1), line };
+  pinnedHit = s.pinned;
+  docActive = docTabs.indexOf(s);
+  await ensurePage(s, line);
+}
 
 /**
- * Render the line rows, mark the target line, and paint the token at `va`.
- *
- * The mark is applied per line via character offsets (mapper.lineSpans), so a
- * token that a hard line break cuts in two is painted on both rows with nothing
- * inserted between them — which is the whole reason VA is continuous.
+ * Refresh the directory rows so the "active" highlight follows the document tab
+ * that was just linked (the tree is only re-rendered on fold/search otherwise).
  */
-function renderDocText(d: DocRow, dt: Awaited<ReturnType<VaPaMapper['docText']>>, highlightLine?: number, hitVa?: number, units?: number) {
+function syncTreeActive(): void {
+  if (!dirTrees.length || dirLoading) return;
+  void renderDirTree();
+}
+
+/** render one page: tab strip, header, rows, pager. */
+function renderDoc(s: DocSession): void {
+  const dt = s.cache?.dt;
+  if (!dt) return;
   lastDocLines = dt.lines;
+  // The pinned line is marked HERE (synchronously) so the row exists with its
+  // hitLine class the moment the page is in the DOM; paintHit only adds the mark.
   const rows = dt.lines.map((line, k) => {
     const n = dt.lineNumbers[k];
-    const cls = 'docLine' + (n === highlightLine ? ' hitLine' : '');
-    return `<div class="${cls}" id="L${n}"><span class="lineText">${escapeHtml(line)}</span></div>`;
+    const cls = 'docLine' + (s.pinned && n === s.pinned.line ? ' hitLine' : '');
+    return '<div class="' + cls + '" id="L' + n + '"><span class="lineText">' + escapeHtml(line) + '</span></div>';
   }).join('');
-  $('#docText').innerHTML = `<div class="docHead">${escapeHtml(displayName(d.name))}
-      <span class="dim">行 ${fmtInt(dt.lineNumbers[0] ?? 0)}–${fmtInt(dt.lineNumbers[dt.lineNumbers.length - 1] ?? 0)}${dt.truncated ? `（共 ${fmtInt(dt.total)} 行，視窗 ${fmtInt(dt.lines.length)} 行）` : `（共 ${fmtInt(dt.total)} 行）`} · source 區塊 ${dt.blockFirst}–${dt.blockLast} · ${fmtInt(dt.text.length)} 字</span></div>
-    <div class="docBody">${rows}</div>`;
-  if (highlightLine !== undefined && hitVa !== undefined) void paintHit(hitVa, units);
-  else if (highlightLine !== undefined) {
-    document.getElementById('L' + highlightLine)?.scrollIntoView({ block: 'center' });
+  const b = pageBounds(s.realm, s.page);
+  const nFirst = dt.lineNumbers[0] ?? 0;
+  const nLast = dt.lineNumbers[dt.lineNumbers.length - 1] ?? 0;
+  $('#docText').innerHTML = '<div class="docHead">' + escapeHtml(displayName(s.name))
+    + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁（每頁 ' + fmtInt(PAGE_LINES) + ' 行）'
+    + ' · 行 ' + fmtInt(nFirst) + '–' + fmtInt(nLast) + ' / 此節點共 ' + fmtInt(b.total) + ' 行'
+    + ' · source 區塊 ' + dt.blockFirst + '–' + dt.blockLast + ' · ' + fmtInt(dt.text.length) + ' 字</span></div>'
+    + '<div class="docBody">' + rows + '</div>';
+  renderDocTabs(s);
+  renderPager(s, b);
+  document.querySelector<HTMLElement>('#docText .docBody')?.scrollTo(0, 0);
+  if (s.pinned) void paintHit(s.pinned.va, s.pinned.units);
+  else if (dt.lineNumbers.length) document.getElementById('L' + nFirst)?.scrollIntoView({ block: 'start' });
+}
+
+/** the document tab strip: one chip per linked node, ✕ to close, ＋ for a new one */
+function renderDocTabs(s: DocSession): void {
+  const bar = $('#docTabs');
+  const strip = $('#docTabStrip');
+  if (!bar || !strip) return;
+  // The strip shows as soon as one tab exists, so the ＋ (and therefore the
+  // Ctrl+click alternative for a new tab) is always reachable.
+  bar.hidden = docTabs.length < 1;
+  strip.innerHTML = docTabs.map((t, i) =>
+    '<span class="docTab' + (i === docActive ? ' active' : '') + '" data-i="' + i + '" title="' + escapeHtml(t.name) + '">'
+    + '<span class="docTabName">' + escapeHtml(displayName(t.name).slice(0, 24)) + '</span>'
+    + '<span class="docTabClose" data-close="' + i + '" title="關閉分頁">✕</span></span>').join('');
+  strip.querySelectorAll<HTMLElement>('.docTab').forEach((el) => {
+    el.onclick = (ev) => {
+      const close = (ev.target as HTMLElement | null)?.closest('.docTabClose') as HTMLElement | null;
+      if (close) { ev.stopPropagation(); closeDocTab(Number(close.dataset.close)); return; }
+      const i = Number(el.dataset.i);
+      if (i !== docActive && docTabs[i]) void switchDocTab(i);
+    };
+  });
+  const add = $('#docTabAdd') as HTMLButtonElement | null;
+  if (add) add.onclick = () => {
+    const r = docSession()?.realm ?? wholeRealm();
+    const n = sessionFor(r, '新分頁', true);
+    docActive = docTabs.indexOf(n);
+    void ensurePage(n, s.cache?.dt?.lineNumbers[0]);
+  };
+}
+
+/** switch to an already loaded tab (no re-read) */
+async function switchDocTab(i: number): Promise<void> {
+  const t = docTabs[i];
+  if (!t) return;
+  docActive = i;
+  pinnedHit = t.pinned;
+  if (t.cache) renderDoc(t);
+  else await ensurePage(t);
+  syncTreeActive();
+}
+
+/** close a tab; the remaining tabs keep their own page */
+function closeDocTab(i: number): void {
+  if (i < 0 || i >= docTabs.length) return;
+  docTabs.splice(i, 1);
+  if (!docTabs.length) {
+    pinnedHit = null;
+    $('#docText').innerHTML = '<p class="dim">點左側節點／摘要，會載入該處的本文（一頁一頁載入）。</p>';
+    const tabs = $('#docTabs') as HTMLElement | null;
+    if (tabs) tabs.hidden = true;
+    const strip = $('#docTabStrip');
+    if (strip) strip.innerHTML = '';
+    const pager = $('#docPager') as HTMLElement | null;
+    if (pager) pager.hidden = true;
+    return;
   }
+  docActive = Math.max(0, Math.min(docActive > i ? docActive - 1 : docActive, docTabs.length - 1));
+  void switchDocTab(docActive);
+  syncTreeActive();
+}
+
+/** the page (網頁分頁) controls at the bottom of the pane */
+function renderPager(s: DocSession, b: { first: number; last: number; total: number; pages: number }): void {
+  const bar = $('#docPager');
+  if (!bar) return;
+  bar.hidden = b.pages < 2;
+  const prev = $('#pagePrev') as HTMLButtonElement | null;
+  const next = $('#pageNext') as HTMLButtonElement | null;
+  if (prev) {
+    prev.setAttribute('aria-disabled', s.page <= 0 ? 'true' : 'false');
+    prev.onclick = (ev) => { if (s.page > 0) void goPage(s, s.page - 1, !(ev as MouseEvent).shiftKey); };
+  }
+  if (next) {
+    next.setAttribute('aria-disabled', s.page >= b.pages - 1 ? 'true' : 'false');
+    next.onclick = (ev) => { if (s.page < b.pages - 1) void goPage(s, s.page + 1, !(ev as MouseEvent).shiftKey); };
+  }
+  const info = $('#pageInfo');
+  if (info) info.textContent = '第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁　行 ' + fmtInt(b.first) + '–' + fmtInt(b.last) + '（共 ' + fmtInt(b.total) + ' 行）　' + displayName(s.name).slice(0, 40);
+}
+
+/**
+ * Turn one page. The page's first line is kept at the top (shift+click keeps the
+ * exact scroll offset instead), so paging walks the text instead of resetting.
+ */
+async function goPage(s: DocSession, page: number, keepLine: boolean): Promise<void> {
+  const keep = keepLine ? s.cache?.dt?.lineNumbers[0] : undefined;
+  s.page = page;
+  await ensurePage(s);
+  if (keep !== undefined) document.getElementById('L' + keep)?.scrollIntoView({ block: 'start' });
+  const b = pageBounds(s.realm, s.page);
+  setStatus(displayName(s.name) + '：第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁（頁＝網頁分頁，每頁 ' + fmtInt(PAGE_LINES) + ' 行）', 'info');
 }
 
 /**
  * Wrap the hit's character range in <mark> inside the already rendered rows.
  * `units` > 1 paints a whole phrase (search); omitted means "one element".
  *
- * If a span's line is not in the DOM (the window was computed before), the
- * document is re-rendered with a range that covers every span — otherwise the
- * second half of a word cut by a hard break would silently stay unpainted.
+ * If a span's line is not on the page currently in the DOM, the pane is moved to
+ * the page that holds it — otherwise the second half of a word cut by a hard
+ * break (or a hit just past the page edge) would silently stay unpainted.
  */
-async function paintHit(va: number, units?: number) {
-  if (!mapper) return;
-  const spans = units && units > 1
-    ? await mapper.phraseSpans(va, units)
-    : await mapper.lineSpans(va);
-  // A headiing TAG carries no inline text span (`lineSpans` skips tags), so a
-  // directory click on `<戊 u="文">` used to produce no mark AND no scroll — the
-  // view stayed on whatever was shown before. Fall back to the line it sits on.
+async function paintHit(va: number, units?: number): Promise<void> {
+  const s = docSession();
+  if (!mapper || !s) return;
+  let spans = units && units > 1 ? await mapper.phraseSpans(va, units) : await mapper.lineSpans(va);
   if (!spans.length) {
+    // A heading TAG carries no inline text span (lineSpans skips tags), so a
+    // directory click on `<戊 u="文">` would produce no mark AND no scroll.
     const el = await mapper.elementAt(va);
-    const line = el?.element.line;
-    if (line !== undefined) document.getElementById('L' + line)?.scrollIntoView({ block: 'center' });
+    if (el?.element.line !== undefined) scrollToVa(va);
     return;
   }
-  if (spans.some((s) => !document.getElementById('L' + s.line))) {
-    const d = docCache?.doc;
-    if (d) {
-      const lines = spans.map((s) => s.line);
-      const first = Math.min(...lines);
-      const last = Math.max(...lines);
-      const dt = await mapper.docText(d.vaStart, d.vaEnd, 3000, undefined, { first, last });
-      docCache = { doc: d, dt, key: `r${first}-${last}` };
-      renderDocText(d, dt, docCacheLine(dt, spans), va, units);
-      return;
+  if (spans.some((x) => !document.getElementById('L' + x.line))) {
+    const target = Math.min(...spans.map((x) => x.line));
+    // Guard against re-entering the same page forever: ensurePage renders the
+    // page, and renderDoc paints the pinned hit again. Only ask for a DIFFERENT
+    // page, and at most once per document, so a span that legitimately falls
+    // outside every page cannot spin the pane.
+    const asked = paintAsked.get(s.id);
+    const page = pageOfLine(s.realm, target);
+    if (page !== s.page) {
+      await ensurePage(s, target);
+      spans = units && units > 1 ? await mapper.phraseSpans(va, units) : await mapper.lineSpans(va);
+    } else if (asked !== target) {
+      paintAsked.set(s.id, target);
+      await ensurePage(s, target);
+      spans = units && units > 1 ? await mapper.phraseSpans(va, units) : await mapper.lineSpans(va);
     }
   }
   let firstMark: HTMLElement | null = null;
-  for (const s of spans) {
-    const row = document.getElementById('L' + s.line);
+  for (const sp of spans) {
+    const row = document.getElementById('L' + sp.line);
     const span = row?.querySelector<HTMLElement>('.lineText');
     if (!span) continue;
     const textNode = span.firstChild;
     if (!textNode || textNode.nodeType !== Node.TEXT_NODE) continue;
     const text = textNode.textContent ?? '';
-    const start = Math.max(0, Math.min(text.length, s.start));
-    const end = Math.max(start, Math.min(text.length, s.end));
+    const start = Math.max(0, Math.min(text.length, sp.start));
+    const end = Math.max(start, Math.min(text.length, sp.end));
     if (end <= start) continue;
     const range = document.createRange();
     range.setStart(textNode, start);
@@ -517,13 +956,6 @@ async function paintHit(va: number, units?: number) {
     if (!firstMark) firstMark = mark;
   }
   (firstMark ?? document.getElementById('L' + (spans[0]?.line ?? 0)))?.scrollIntoView({ block: 'center' });
-}
-
-/** the line to mark as `hitLine` after a re-render (the first span's line) */
-function docCacheLine(dt: Awaited<ReturnType<VaPaMapper['docText']>>, spans: { line: number }[]): number {
-  const wanted = new Set(spans.map((s) => s.line));
-  for (const n of dt.lineNumbers) if (wanted.has(n)) return n;
-  return dt.lineNumbers[0] ?? 0;
 }
 
 // ------------------------------------------------------------ document font
@@ -572,23 +1004,28 @@ function setDocFont(px: number) {
  * back into the calculation.
  */
 const PROBE_FS = 100;
+/** the numbers behind the last auto-fit (diagnostics) */
+let lastFit: Record<string, number | boolean> | null = null;
 const DOC_TEXT_FAMILY = '"Microsoft JhengHei", "Segoe UI", system-ui, sans-serif';
 
 function autoFitFont(sample?: string[]): number {
-  // Widest line that 90% of the document stays within. The window on screen may
-  // be tiny (a jump can render just a couple of rows), so prefer the whole
-  // document when the mapper knows it.
+  // The DOM only holds ONE page, so the numbers must come from the WHOLE document
+  // (its line table) whenever it is available: otherwise the font would change as
+  // the reader pages through the text. `lines` is the fallback.
   const lines = sample ?? lastDocLines;
-  let target = 0;
-  if (!sample && mapper && mapper.lineCount) target = mapper.lineLengthPercentile(0.9, 200_000);
-  if (!target) {
-    const lens = (lines.length ? lines : ['字'.repeat(24)]).map((l) => l.length).sort((a, b) => a - b);
-    target = Math.max(8, lens[Math.min(lens.length - 1, Math.floor(lens.length * 0.9))]);
-  }
-  const reps = (lines.length ? lines : []).filter((l) => l.length <= target && l.length > 0);
-  const probeText = reps.length ? reps.reduce((a, b) => (b.length > a.length ? b : a)) : '字'.repeat(target);
+  const doc = mapper && mapper.lineCount > 0 ? mapper : null;
+  // p90 is the line that must fit (the reader's "no wrapping" line); the cap is a
+  // little wider so a rare outlier line (yinshun has 96-unit lines against p90 =
+  // 45) cannot drag the whole document down to the readable floor.
+  const target = doc && !sample ? doc.lineLengthPercentile(0.9, 200_000) : 0;
+  // The cap is "ordinary long", not "the longest line": 15% over the p90 line. A
+  // line beyond it is a genuine outlier and scrolls sideways instead of dragging
+  // the whole document down to the readable floor.
+  const capLen = doc && !sample ? Math.max(target, Math.round(target * 1.15)) : 0;
+  const realProbe = pickProbeLine(lines, capLen);
+  const probeText = realProbe.text;
   const probeLen = probeText.length || 1;
-  const longest = lines.reduce((a, b) => Math.max(a, b.length), 0);
+  const capLine = Math.max(probeLen, capLen, target, doc ? 0 : longestOf(lines));
 
   // Measurement needs BOTH: a probe that is not clamped by the pane (otherwise
   // the text saturates at the pane width and the scale factor comes out far too
@@ -599,23 +1036,39 @@ function autoFitFont(sample?: string[]): number {
   const measure = makeTextMeasurer();
 
   const measured = measure(probeText);
-  // Scale so the representative line fits on ONE line. The cap considers only
-  // "ordinary long" lines (up to 1.4 × the p90 target): a rare outlier line
-  // (yinshun has single lines of 96 code units against p90 = 45) must not drag
-  // the whole document down to the readable floor — it scrolls sideways instead.
   const scaled = Math.floor((PROBE_FS * containingBlockWidth) / measured);
-  const capLen = Math.max(probeLen, Math.round(target * 1.4));
-  const capLine = lines
-    .filter((l) => l.length > 0 && l.length <= capLen)
-    .reduce((a, b) => Math.max(a, b.length), 0);
-  const capped = capLine > 0
-    ? Math.floor((PROBE_FS * containingBlockWidth) / (measured * (capLine / probeLen)))
-    : scaled;
+  const capped = Math.floor((PROBE_FS * containingBlockWidth) / (measured * (capLine / probeLen)));
   const size = Math.max(DOCFS_READABLE_MIN, Math.min(scaled, capped));
+  lastFit = { width: containingBlockWidth, target, capLen, capLine, probeLen, measured, real: realProbe.real, scaled, capped, size };
   const fitted = setDocFont(Math.max(DOCFS_MIN, Math.min(DOCFS_MAX, size)));
   pendingProbeCleanup?.();
   pendingProbeCleanup = null;
   return fitted;
+}
+
+/** the longest of a list of lines (fallback when the mapper is unavailable) */
+function longestOf(lines: string[]): number {
+  return lines.reduce((a, b) => Math.max(a, b.length), 0);
+}
+
+/**
+ * The line the font is measured against: the longest REAL text line available,
+ * capped at the document's "ordinary long line" length.
+ *
+ * Real text matters: a synthetic run of CJK is up to ~25% wider per character
+ * than a line of prose (punctuation and Latin are narrower), so measuring a
+ * made-up line would shrink the font more than the reader needs. Cached lines
+ * from the current page are preferred because they cost nothing to read; the
+ * synthetic run is only the last resort (a page of one-character lines).
+ */
+function pickProbeLine(lines: string[], capLen: number): { text: string; real: boolean } {
+  const limit = capLen > 0 ? capLen : Math.max(8, longestOf(lines));
+  let best = '';
+  for (const l of lines) {
+    if (l.length > best.length && l.length <= limit) best = l;
+  }
+  if (best.length >= 8) return { text: best, real: true };
+  return { text: '字'.repeat(Math.max(8, limit)), real: false };
 }
 
 /**
@@ -683,8 +1136,7 @@ function docTextWidth(): number {
   return Math.max(1, body.clientWidth - gutter);
 }
 
-/** the lines currently rendered, used by autoFitFont */
-let lastDocLines: string[] = [];
+// (lastDocLines lives with the document session state, above)
 
 // ------------------------------------------------------------------ directory tree
 /**
@@ -794,17 +1246,22 @@ async function renderDirTree() {
     d.loaded = true;
   }
   const rows = flattenTree(d.roots, (n) => d.open.has(n.va));
+  // the node whose text the middle pane is showing (its row gets marked)
+  const activeRealm = docSession()?.realm;
   box.innerHTML = rows.map((r) => {
     const n = r.node;
     const open = d.open.has(n.va);
     const twisty = r.hasChildren ? (open ? '▾' : '▸') : '·';
     // When a search is active the badge shows the hits inside this node's REALM
     // (`[va, vaEnd)`); otherwise it shows the number of collapsed children.
+    // Clicking the hit badge shows those hits as a summary (it does NOT move the
+    // 摘要 pane's scope of its own accord).
     const hits = realmHits(n.va, n.vaEnd);
     const badge = hits > 0
-      ? `<span class="tCount hit" title="此節點範圍內 ${fmtInt(hits)} 筆命中">${fmtInt(hits)}</span>`
+      ? `<span class="tCount hit" title="此節點範圍內 ${fmtInt(hits)} 筆命中（點一下顯示這些命中）">${fmtInt(hits)}</span>`
       : (r.hasChildren && !open ? `<span class="tCount">${fmtInt(n.children.length)}</span>` : '');
-    return `<div class="tRow" data-va="${n.va}">
+    const active = !!activeRealm && n.va >= activeRealm.from && n.va < activeRealm.to;
+    return `<div class="tRow${active ? ' active' : ''}" data-va="${n.va}">
       <span class="tTwisty">${twisty}</span>
       <span class="tDot" style="background:${depthColor(n.depth)}"></span>
       <span class="tTag">${escapeHtml(n.tag)}</span>
@@ -816,14 +1273,14 @@ async function renderDirTree() {
     const va = Number(el.dataset.va);
     const node = findNode(d.roots, va);
     const hasKids = !!node?.children.length;
-    const toggle = () => {
-      if (d.open.has(va)) {
-        // Collapsing closes the WHOLE branch: otherwise a Ctrl-expanded subtree
-        // pops back open the next time this node is expanded.
+    const setOpen = (open: boolean) => {
+      if (open) {
+        d.open.add(va);
+      } else {
+        // Collapsing closes the WHOLE branch: otherwise an expanded subtree pops
+        // back open the next time this node is expanded.
         d.open.delete(va);
         for (const x of iterNodes(node?.children ?? [])) d.open.delete(x.va);
-      } else {
-        d.open.add(va);
       }
       void renderDirTree();
     };
@@ -832,22 +1289,40 @@ async function renderDirTree() {
       d.open.add(va);
       void renderDirTree();
     };
-    // Hit zone comes from `closest`, not `ev.target.classList`: the click may land
-    // on a text node inside the span, and the row also holds the count badge.
-    //   name          -> toggle the directory
-    //   Ctrl/Cmd+name -> expand every descendant
-    //   colour block / tag name / count -> jump the document to this node
+    // Hit zones come from `closest`, not `ev.target.classList`: the click may
+    // land on a text node inside the span.
+    //   tTwisty / tDot / tName  開得起來就開，並聯動本文；開著就只關，不動本文
+    //   Ctrl/Cmd + 上述任一       聯動本文時改開一個新的本文分頁
+    //   Alt + tTwisty/tName        展開全部子孫（舊版是 Ctrl）
+    //   tCount                    顯示該節點命中的摘要（不移動本文）
     el.onclick = (ev) => {
       const t = ev.target as HTMLElement | null;
-      const onTwisty = !!t?.closest('.tTwisty');
-      const onName = !!t?.closest('.tName');
-      if (onTwisty || onName) {
-        if (!hasKids) return;
-        if ((ev.ctrlKey || ev.metaKey) && onName) openAll();
-        else toggle();
+      const onCount = !!t?.closest('.tCount');
+      const onNode = !!t?.closest('.tTwisty') || !!t?.closest('.tDot') || !!t?.closest('.tName');
+      if (!onCount && !onNode) return;
+      const label = node?.label || `VA ${va}`;
+      const wantsNewTab = newTabKey(ev);
+
+      // 點 tCount：顯示該節點命中的摘要（功能二：輸入只更新摘要，這裡才是看命中）
+      if (onCount) {
+        void showNodeHits({ from: va, to: node?.vaEnd ?? va }, label, realmHits(va, node?.vaEnd ?? va));
+        void revealHit(va, label, 1, { newTab: wantsNewTab, mode: 'node' });
         return;
       }
-      void revealHit(va, node?.label || `VA ${va}`, 1);
+
+      // 聯動本文（點色塊/名稱/開合箭頭都是同一個「打開並聯動」動作）
+      const link = () => void revealHit(va, label, 1, { newTab: wantsNewTab, mode: 'node' });
+      const open = d.open.has(va);
+
+      if (altKey(ev) && (t?.closest('.tTwisty') || t?.closest('.tName'))) {
+        // Alt：展開全部子孫（舊版是 Ctrl）；沒有子節點時退回一般開合
+        if (hasKids) { openAll(); link(); return; }
+      }
+      // 可開就開；已開就只關（收合整枝）。無論開或關，點的是節點本身，
+      // 都要聯動本文（點節點名／色塊／箭頭＝同一個「打開並聯動」動作）。
+      if (open) setOpen(false);
+      else if (hasKids) setOpen(true);
+      link();
     };
   });
   const head = $('#dirMeta');
@@ -1122,18 +1597,6 @@ async function showToken(t: TokenRow, targetVa?: number) {
   await revealHit(first, t.name);
 }
 
-/** Jump to a hit in the text and paint only that token. */
-async function revealHit(va: number, token: string, units?: number) {
-  if (!mapper) return;
-  const t0 = performance.now();
-  const el = await mapper.elementAt(va);
-  if (!el) { setStatus(`VA ${fmtInt(va)}：找不到對應位置`, 'err'); return; }
-  pinnedHit = { va, text: el.element.text, token, units: Math.max(1, units ?? el.element.vaUnits) };
-  lastReveal = `va=${va} units=${units} element=${el.element.va}/${el.element.vaUnits}`;
-  await showLine(el.element.line ?? 0, va, units);
-  setStatus(`${displayName(token)}：VA ${fmtInt(va)} → 行 ${fmtInt(el.element.line ?? 0)}（區塊 ${el.block}，${(performance.now() - t0).toFixed(0)} ms）`, 'info');
-}
-
 function binarySearch(xs: number[], v: number): number {
   let lo = 0, hi = xs.length - 1, best = -1;
   while (lo <= hi) { const m = (lo + hi) >> 1; if (xs[m] <= v) { best = m; lo = m + 1; } else hi = m - 1; }
@@ -1352,17 +1815,41 @@ function boot() {
   $('#searchList').addEventListener('scroll', (ev) => {
     const el = ev.target as HTMLElement;
     if (!lastResult) return;
-    if (el.scrollTop + el.clientHeight > el.scrollHeight - 200 && snippetShown < lastResult.hits.length) {
+    const pool = snippetScope
+      ? lastResult.hits.filter((h) => h.va >= snippetScope!.realm.from && h.va < snippetScope!.realm.to).length
+      : lastResult.hits.length;
+    if (el.scrollTop + el.clientHeight > el.scrollHeight - 200 && snippetShown < pool) {
       snippetShown += SNIPPET_LIMIT;
       void renderSnippets(searchSeq);
     }
   });
 
+  // 頻次 and 西文 have their OWN inputs (the two panes are independent searches);
+  // both re-render on input, with the same small debounce as the 目錄 box.
+  const wireOwnSearch = (inputSel: string, clearSel: string, run: () => void) => {
+    const input = $(inputSel) as HTMLInputElement | null;
+    if (!input) return;
+    let t: number | undefined;
+    input.oninput = () => {
+      window.clearTimeout(t);
+      t = window.setTimeout(run, 120);
+    };
+    input.onkeydown = (ev) => {
+      if (ev.key === 'Enter') { window.clearTimeout(t); run(); }
+      if (ev.key === 'Escape') { input.value = ''; run(); }
+    };
+    const clear = $(clearSel) as HTMLButtonElement | null;
+    if (clear) clear.onclick = () => { input.value = ''; run(); input.focus(); };
+  };
+  wireOwnSearch('#freqQuery', '#freqClear', () => void renderFreq());
+  wireOwnSearch('#latinQuery', '#latinClear', () => void renderLatin());
+
   $('#colLeft').querySelectorAll<HTMLElement>('.tabBtn').forEach((b) => {
     b.onclick = () => {
       showTab(b.dataset.tab!, 'left');
-      // the 頻次 pane is built on demand (it walks the segment tag's instances)
+      // both panes are built on demand (they walk the segment tag's instances)
       if (b.dataset.tab === 'freq') void renderFreq();
+      if (b.dataset.tab === 'latin') void renderLatin();
     };
   });
   $('#colRight').querySelectorAll<HTMLElement>('.tabBtn').forEach((b) => { b.onclick = () => showTab(b.dataset.tab!, 'right'); });
@@ -1436,6 +1923,21 @@ document.addEventListener('DOMContentLoaded', boot);
     leftTab: $('#colLeft .tabBtn.active')?.getAttribute('data-tab') ?? null,
     dirActive,
     dirRows: document.querySelectorAll('#dirTree .tRow').length,
+    // the middle pane: one entry per linked node (Ctrl+click opens another)
+    docTab: docActive,
+    docTabs: docTabs.map((t) => ({
+      name: t.name, from: t.realm.from, to: t.realm.to, page: t.page,
+      pagelines: t.cache?.dt?.lines.length ?? 0,
+    })),
+    docPage: docSession() ? docSession()!.page + 1 : 0,
+    docPages: docSession() ? pageBounds(docSession()!.realm, docSession()!.page).pages : 0,
+    docTabPages: docSession() ? boundsOfRealm(docSession()!.realm).pages : 0,
+    docPageLines: docSession()?.cache?.dt?.lines.length ?? 0,
+    docRealm: docSession()?.realm ?? null,
+    pagerHidden: ($('#docPager') as HTMLElement | null)?.hidden ?? null,
+    docStrip: document.querySelectorAll('#docTabStrip .docTab').length,
+    snippetScope: snippetScope ? { from: snippetScope.realm.from, to: snippetScope.realm.to, label: snippetScope.label } : null,
+    lastFit,
     dirOpen: dirTrees[dirActive] ? dirTrees[dirActive].open.size : 0,
     scopes: dirTrees.map((d) => d.tree.scope),
     freqHidden: ($('#colLeft .tabBtn[data-tab="freq"]') as HTMLButtonElement | null)?.hidden ?? null,

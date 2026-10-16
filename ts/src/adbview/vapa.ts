@@ -148,6 +148,25 @@ export class VaPaMapper {
   lineStartOf(i: number): number { return i > 0 ? (this.linesEnds?.[i - 1] ?? 0) : 0; }
 
   /**
+   * The line a VA belongs to: the first line whose END is at or past it.
+   *
+   * This is the paging primitive. It is a binary search over the line table (a
+   * line "ends" at its own VA, so the table is ascending) and therefore works for
+   * a line whose contents the mapper has not walked yet — pagination needs to know
+   * *where* a node's lines are, not what is in them.
+   */
+  edgeLine(va: number): number {
+    const v = this.linesV;
+    if (!v || !v.length) return 0;
+    let lo = 0, hi = v.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (v[mid] < va) lo = mid + 1; else hi = mid;
+    }
+    return Math.min(lo, v.length - 1);
+  }
+
+  /**
    * Length (in code units) of the `p`-th percentile line of the whole document.
    * Used to pick a document font size at which most hard lines fit the pane, so
    * the reader does not fight soft wrapping. `sample` caps the scan (lines are
@@ -165,6 +184,28 @@ export class VaPaMapper {
     lens.sort((a, b) => a - b);
     return lens[Math.min(lens.length - 1, Math.floor(lens.length * p))] ?? 0;
   }
+  /**
+   * Longest sampled line that is still at most `maxUnits` code units — the
+   * "ordinary long line" of the document, in contrast to a rare outlier.
+   *
+   * The viewer needs it for its auto font size: the page in the DOM is only a
+   * couple of hundred lines, so deriving the cap from the page would make the
+   * font change while paging. Reading it from the line table keeps the answer
+   * stable for the whole document.
+   */
+  lineLengthMaxUnder(maxUnits: number, sample = 200_000): number {
+    const ends = this.linesEnds;
+    if (!ends || !ends.length) return 0;
+    const step = Math.max(1, Math.floor(ends.length / sample));
+    let best = 0;
+    for (let i = 0; i < ends.length; i += step) {
+      const s = i > 0 ? ends[i - 1] : 0;
+      const len = Math.max(0, (ends[i] - s) >> 1);
+      if (len > best && len <= maxUnits) best = len;
+    }
+    return best;
+  }
+
   /** text of a PA range (cross-block safe), used for search summaries */
   async readSpan(block: number, paStart: number, paEnd: number): Promise<string> {
     return this.reader.textSpan(block, paStart, paEnd);

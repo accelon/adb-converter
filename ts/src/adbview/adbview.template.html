@@ -155,6 +155,31 @@
   .docBody { overflow: auto; min-height: 0; flex: 1 1 auto; font-size: var(--fsdoc, 16px); }
   /* the middle pane only ever scrolls its document body */
   #docText { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+
+  /* document tabs: one per linked node. Ctrl/cmd + a linking click opens a new
+     one instead of replacing the current one. */
+  .docTabs { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; flex: 0 0 auto; }
+  .docTabs[hidden] { display: none; }
+  .docTabStrip { display: flex; align-items: stretch; gap: 4px; flex-wrap: wrap; min-width: 0; }
+  .docTab {
+    display: flex; align-items: center; gap: 6px; max-width: 240px;
+    background: var(--panel); color: var(--dim); border: 1px solid var(--line); border-bottom: none;
+    border-radius: 6px 6px 0 0; padding: 3px 6px 3px 10px; cursor: pointer; font: inherit; font-size: 12.5px;
+  }
+  .docTab:hover { color: var(--fg); }
+  .docTab.active { background: var(--bg); color: var(--fg); border-color: var(--accent); font-weight: 600; }
+  .docTabName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .docTabClose { color: var(--dim); font-size: 11px; padding: 0 2px; border-radius: 3px; }
+  .docTabClose:hover { color: var(--err); background: var(--panel2); }
+  /* the page (網頁分頁), NOT the book's folio */
+  .docPager {
+    display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
+    margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--line);
+    font-size: 12.5px; color: var(--dim);
+  }
+  .docPager .mini[aria-disabled="true"] { opacity: .4; cursor: default; }
+  .docPager .mini[aria-disabled="true"]:hover { border-color: var(--line); }
+  .pagerInfo { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .docLine { display: flex; gap: 10px; padding: 1px 3px; border-radius: 3px; }
   .docLine:hover { background: #262626; }
   .docLine.hitLine { background: #33302a; }
@@ -214,6 +239,8 @@
   .tName { overflow: hidden; text-overflow: ellipsis; }
   .tCount { margin-left: auto; color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
   .tCount.hit { color: #ffd479; font-weight: 600; }
+  /* the node whose text the middle pane currently shows */
+  .tRow.active { background: #2b3b4d; }
   #dirTree { padding: 0; }
 </style>
 </head>
@@ -287,7 +314,16 @@
           <button class="mini" id="fsReset" title="回到預設">預設</button>
         </span>
       </div>
+      <div class="docTabs" id="docTabs" hidden>
+        <div class="docTabStrip" id="docTabStrip"></div>
+        <button class="mini" id="docTabAdd" title="新分頁（Ctrl+點任何聯動處也可以）">＋</button>
+      </div>
       <div id="docText"><p class="dim">點左側 token，會自動跳到該 token 在文中的位置並只塗紅它。</p></div>
+      <div class="docPager" id="docPager" hidden>
+        <button class="mini" id="pagePrev" title="上一頁（網頁分頁，不是原書的葉）">◀ 上一頁</button>
+        <span class="pagerInfo" id="pageInfo"></span>
+        <button class="mini" id="pageNext" title="下一頁（網頁分頁，不是原書的葉）">下一頁 ▶</button>
+      </div>
     </div>
   </section>
   <div class="splitter" id="splitRight" title="拖曳調整右欄寬度（拖到 15% 以下即隱藏）"></div>

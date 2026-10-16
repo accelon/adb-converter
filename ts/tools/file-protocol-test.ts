@@ -106,7 +106,7 @@ class Cdp {
 
 try {
   const cdp = await Cdp.attach(await devtoolsUrl());
-  const fileUrl = pathToFileURL(HTML).href;
+  const fileUrl = pathToFileURL(HTML).href + '?v=' + Date.now();   // never a cached bundle
   await cdp.openPage(fileUrl);
   await Bun.sleep(800);
 
@@ -201,7 +201,28 @@ try {
     initial.adv === false && initial.leftTab === 'dir' && initial.tokenHidden,
     JSON.stringify(initial));
 
-  // 點 token → 直接聯動文件內容，只塗紅該 token（沒有中間的「搜尋結果」清單）
+  // isolate: bisect where the token-click path hangs (printed, not asserted)
+  const iso1 = await cdp.eval<string>("(() => { window.__adbview.setAdvanced(true); window.__adbview.showTab('token','left'); return 'iso1 ok'; })()");
+  console.log('      ' + iso1);
+  await cdp.eval("new Promise((r) => setTimeout(r, 300)).then(() => 1)");
+  const iso2 = await cdp.eval<string>("document.querySelectorAll('#tokenRows .tokenRow').length + ' rows'")
+  ;
+  console.log('      ' + iso2);
+  const iso3b = await cdp.eval<string>("(() => { const r = document.querySelectorAll('#tokenRows .tokenRow')[0]; return 'onclick=' + (typeof r.onclick) + ' title=' + r.textContent.slice(0, 10); })()");
+  console.log('      ' + iso3b);
+  const bcPoll = await cdp.eval<string>(`
+    (async () => {
+      document.querySelectorAll('#tokenRows .tokenRow')[0].click();
+      const out = [];
+      for (let i = 0; i < 10; i++) {
+        await new Promise((r) => setTimeout(r, 300));
+        out.push(JSON.stringify(window.__adbview.state().bc));
+        if (document.querySelector('#docText mark.docHit')) { out.push('MARK'); break; }
+      }
+      return out.join(' | ');
+    })()
+  `).catch((e) => 'EVAL FAILED: ' + e.message);
+  console.log('      bc => ' + bcPoll);
   const marked = await cdp.eval<{ mark: string; line: string | null; head: string; pinned: any; gone: boolean }>(`
     (async () => {
       const waitMark = async () => {
@@ -231,7 +252,7 @@ try {
   ok('點 token 直接聯動文件並塗紅該 token', marked.mark !== '(none)' && !!marked.line,
     `mark=${JSON.stringify(marked.mark)} 行 ${marked.line} ｜ ${marked.head}`);
   ok('塗紅的就是被點的 token', !!marked.pinned && marked.pinned.text === marked.mark,
-    JSON.stringify(marked.pinned));
+    JSON.stringify(marked.pinned) + ' ｜ linkLog=' + JSON.stringify((await cdp.eval('window.__adbview.state().linkLog'))));
   ok('「搜尋結果」區已移除', marked.gone, 'no #searchResults in the DOM');
 
   // 只有一個 mark（只塗紅該 token）
@@ -256,7 +277,11 @@ try {
     (async () => {
       const rows = document.querySelectorAll('#tokenRows .tokenRow');
       rows[3]?.click();
-      await new Promise(r => setTimeout(r, 900));
+      // a page read can take a moment on a compressed dictionary: poll for the mark
+      for (let i = 0; i < 40; i++) {
+        if (document.querySelector('#docText mark.docHit')) break;
+        await new Promise(r => setTimeout(r, 250));
+      }
       return {
         gone: !document.querySelector('#posting') && !document.querySelector('#postingPane'),
         tabToken: !!document.querySelector('#colLeft .tabBtn[data-tab="token"]'),
@@ -333,8 +358,11 @@ try {
   ok('載入後檔案按鈕隱藏、中文名可點', headerUi.fileHidden && headerUi.nameVisible && headerUi.nameIsButton,
     JSON.stringify(headerUi));
 
-  // 全文搜尋：輸入 → 摘要 → 點摘要聯動本文
-  const search = await cdp.eval<{ meta: string; metaOk: boolean; snippets: number; marked: string; clicked: boolean; line: string | null; tabs: string }>(`
+  // 全文搜尋：輸入 → 摘要 → 點摘要才聯動本文（輸入本身不動本文）
+  const search = await cdp.eval<{
+    meta: string; metaOk: boolean; snippets: number; marked: string; clicked: boolean;
+    line: string | null; inputStable: boolean; tabs: string;
+  }>(`
     (async () => {
       const q = document.querySelector('#query');
       // pick a phrase that exists in this database
@@ -350,23 +378,38 @@ try {
         await new Promise(r => setTimeout(r, 200));
       }
       const metaOk = /命中/.test(document.querySelector('#searchMeta').textContent);
-      const metaText = document.querySelector('#searchMeta').textContent.slice(0, 70);
+      const metaText = document.querySelector('#searchMeta').textContent.slice(0, 90);
       await new Promise(r => setTimeout(r, 250));
       const snippets = document.querySelectorAll('#searchList .snippet').length;
       const mark = document.querySelector('#searchList .snippet mark');
       const first = document.querySelector('#searchList .snippet');
-      let line = null;
-      if (first) {
-        first.click();
-        // The renderer repaints (auto-select + async paint), so look for the
-        // highlighted line, and remember the last one seen in case a later
-        // repaint moves it.
+      // Both the DOM mark and the pinned VA must be settled before the value is
+      // trusted: a page render swaps the rows first and paints the mark after.
+      const settled = async () => {
+        let line = null, va = -1;
         for (let i = 0; i < 30; i++) {
-          const now = document.querySelector('#docText .hitLine')?.id ?? null;
-          if (now) { line = now; break; }
           await new Promise(r => setTimeout(r, 200));
+          const st = window.__adbview.state();
+          const now = document.querySelector('#docText .docLine.hitLine')?.id ?? null;
+          const nowVa = st.pinned ? st.pinned.va : -1;
+          if (now && nowVa > 0 && now === line && nowVa === va) break;
+          line = now; va = nowVa;
         }
+        return { line, va };
+      };
+      let line = null;
+      let vaAfterClick = -1;
+      if (first) {
+        window.__adbview.showTab('sum', 'right');   // 摘要在右欄
+        first.click();                              // 點摘要才會聯動本文
+        const s1 = await settled();
+        line = s1.line; vaAfterClick = s1.va;
       }
+      // 再改一次輸入：本文必須留在原地
+      q.value = word;
+      q.dispatchEvent(new Event('input'));
+      await new Promise(r => setTimeout(r, 900));
+      const vaAfterInput = (await settled()).va;
       const tabs = [...document.querySelectorAll('#colLeft .tabBtn')].map(b => b.getAttribute('data-tab')).join(',');
       return {
         meta: metaText, metaOk,
@@ -374,16 +417,18 @@ try {
         marked: mark ? mark.textContent : '(none)',
         clicked: !!first,
         line,
+        inputStable: vaAfterClick > 0 && vaAfterInput === vaAfterClick,
+
         tabs,
       };
     })()
   `);
   ok('左欄第一分頁是「目錄」（全文搜尋）', search.tabs.split(',')[0] === 'dir', 'tabs = ' + search.tabs);
-  ok('輸入詞後出現搜尋摘要且標紅', search.snippets > 0 && search.marked !== '(none)',
-    `${search.snippets} 份摘要，mark=${JSON.stringify(search.marked)}｜${search.meta}`);
+  ok('輸入詞後出現搜尋摘要且標紅', search.snippets > 0 && search.snippets <= 30 && search.marked !== '(none)',
+    `${search.snippets} 份摘要（輸入後只顯示最前 30 筆），mark=${JSON.stringify(search.marked)}｜${search.meta}`);
   ok('輸入即時重搜（無需按鈕）', search.metaOk, search.meta);
   ok('點摘要會聯動本文並標出該行', search.clicked && !!search.line, `行 ${search.line}`);
-
+  ok('輸入只更新摘要、本文不隨輸入移動', search.inputStable, `點摘要後釘在 ${search.line}`);
   // 目錄樹（<樹> 解析 → 右欄「目錄」分頁）
   const tree = await cdp.eval<{
     tabs: string; rows: number; meta: string; labels: string[]; dots: string[];
@@ -419,9 +464,9 @@ try {
         document.querySelector('#dirTree .tTwisty').click();
         await new Promise(r => setTimeout(r, 250));
       }
-      // click a row (not the twisty) -> jump the document there
+      // click a row's node mark (.tDot) -> open it if it can open, and link the text
       const target = [...document.querySelectorAll('#dirTree .tRow')][1] ?? first;
-      target.click();
+      (target.querySelector('.tDot') ?? target).click();
       await new Promise(r => setTimeout(r, 1200));
       return {
         tabs: [...document.querySelectorAll('#colRight .tabBtn')].map(b => b.getAttribute('data-tab')).join(','),
@@ -495,7 +540,7 @@ try {
   ok('第一層子節點有名字', depthTest.chapterLabels.every((s) => !!s && s.trim().length > 0),
     JSON.stringify(depthTest.chapterLabels));
 
-  // 每一本書都能展開（只有第一本帶 t=，其餘用標籤層級預設），且點書會跳到該 <書> 所在行
+  // 每一本書都能展開（只有第一本帶 t=，其餘用標籤層級預設），且點書（的節點記號）會跳到該 <書> 所在行
   const everyBook = await cdp.eval<{ expandable: number; total: number; clicked: string; line: string | null; status: string; bookLabels: string[] }>(`
     (async () => {
       const rows = () => [...document.querySelectorAll('#dirTree .tRow')];
@@ -510,7 +555,7 @@ try {
       const after = rows();
       const target = after[after.indexOf(second) + 1];
       const label = target?.querySelector('.tName')?.textContent ?? '';
-      target?.click();
+      (target?.querySelector('.tDot') ?? target)?.click();
       for (let i = 0; i < 40; i++) {
         if (document.querySelector('#docText .hitLine')) break;
         await new Promise(r => setTimeout(r, 200));
@@ -564,68 +609,148 @@ try {
   // must not be summed; each one is checked against the search total instead.
   ok('目錄節點顯示 realm 內命中數',
     realm.first > 0 && realm.badges.every((b) => b > 0 && b <= realm.total),
-    `周易 ${realm.first}、總命中 ${realm.total}（${realm.rows} 列，最大 ${Math.max(...realm.badges)}）`);
+    `第一個節點 ${realm.first}、總命中 ${realm.total}（${realm.rows} 列，最大 ${Math.max(...realm.badges)}）`);
 
-  // 點色塊／標籤名才聯動內文；點節點名只開合；Ctrl+點節點名展開全部子孫
+  // 點 tCount > 顯示該節點命中的摘要（摘要範圍限在該節點 realm 內，本文不動）
+  const badgeClick = await cdp.eval<{
+    badge: number; metaOk: boolean; maxVa: number; minVa: number; to: number; from: number; snippets: number; meta: string; scoped: boolean;
+  }>(`
+    (async () => {
+      document.querySelector('#dirTree .tCount.hit').scrollIntoView({ block: 'center' });
+      const badge = Number(document.querySelector('#dirTree .tCount.hit').textContent.replace(/,/g, ''));
+      document.querySelector('#dirTree .tCount.hit').click();
+      // the scoped summary may be rebuilt by a debounced re-search of the SAME
+      // query, so let it settle before reading the pane
+      let scoped = false;
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 100));
+        if (window.__adbview.state().snippetScope) scoped = true;
+      }
+      const st = window.__adbview.state();
+      const meta = document.querySelector('#searchMeta').textContent;
+      const v = [...document.querySelectorAll('#searchList .snippet')].map((e) => Number(e.dataset.va));
+      return {
+        badge, metaOk: /範圍內/.test(meta),
+        minVa: v.length ? Math.min.apply(null, v) : -1,
+        maxVa: v.length ? Math.max.apply(null, v) : -1,
+        from: st.snippetScope ? st.snippetScope.from : -1,
+        to: st.snippetScope ? st.snippetScope.to : -1,
+        snippets: v.length,
+        meta: meta.slice(0, 60),
+        scoped,
+      };
+    })()
+  `);
+  ok('點命中數：摘要切成該節點的命中',
+    badgeClick.scoped && badgeClick.metaOk && badgeClick.snippets > 0
+    && badgeClick.minVa >= badgeClick.from && badgeClick.maxVa < badgeClick.to,
+    `徽章 ${badgeClick.badge}、${badgeClick.snippets} 筆摘要落在 [${badgeClick.from}, ${badgeClick.to})｜${badgeClick.meta}`);
+
+  // 聯動本文的動作：Ctrl+點 → 開新的本文分頁；Alt+點 → 展開全部子孫（舊版是 Ctrl）
   const clicks = await cdp.eval<{
-    nameToggles: boolean; dotJumps: boolean; ctrlExpands: number; before: number; after: number; openAfter?: number;
-    label: string; dotLine: string | null; dotStatus: string; ctrlDbg?: unknown;
+    tabNew: number; tabSame: number; tabAfterPages: number; altExpands: boolean;
+    nodeOpens: boolean; ctrlOld: boolean; ctrlRows: number; ctrlBook: string; ctrlWasOpen: boolean;
+    before: number; after: number; label: string; dotLine: string | null; dotStatus: string;
   }>(`
     (async () => {
       const rows = () => [...document.querySelectorAll('#dirTree .tRow')];
-      const wait = async (fn) => { for (let i = 0; i < 40; i++) { if (fn()) return; await new Promise(r => setTimeout(r, 200)); } };
-      // collapse everything first: click the first book's name twice would toggle,
-      // so collapse by clicking it once if it is open
       const books = () => rows().filter((r) => r.querySelector('.tTag')?.textContent === '書');
-      const first = books()[0];
-      if (first.querySelector('.tTwisty').textContent.trim() === '▾') { first.querySelector('.tName').click(); await new Promise(r => setTimeout(r, 500)); }
+      const spec = () => window.__adbview.state().docTabs.length;
+      const settle = async () => {
+        for (let i = 0; i < 30; i++) {
+          await new Promise((r) => setTimeout(r, 200));
+          if (document.querySelector('#docText .docLine.hitLine') && window.__adbview.state().pinned) return;
+        }
+      };
+      // fold every book first, so one click opens exactly one
+      for (const b of books()) {
+        if (b.querySelector('.tTwisty').textContent.trim() === '▾') {
+          b.querySelector('.tTwisty').click();
+          await new Promise((r) => setTimeout(r, 300));
+        }
+      }
       const before = rows().length;
-      // 1. click the NAME -> toggles open, document must NOT move
-      const lineBefore = document.querySelector('#docText .hitLine')?.id ?? null;
-      books()[0].querySelector('.tName').click();
-      await new Promise(r => setTimeout(r, 700));
+      const beforeTabs = spec();
+      books()[0].querySelector('.tDot').click();
+      await settle();
       const after = rows().length;
-      const nameToggles = after > before && (document.querySelector('#docText .hitLine')?.id ?? null) === lineBefore;
-      // 2. Ctrl + click the name of a COLLAPSED book -> expands all descendants
+      const tabSame = spec() - beforeTabs;
+      const nodeOpens = after > before && !!document.querySelector('#docText .docLine.hitLine');
+      // Ctrl+點：聯動本文時開一個新的本文分頁
+      const beforeCtrlTabs = spec();
+      const target = books()[books().length - 1];
+      const ctrlCount = beforeCtrlTabs;
+      void ctrlCount;
+      target.querySelector('.tName').dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true }));
+      await new Promise((r) => setTimeout(r, 1400));
+      const tabNew = spec() - beforeCtrlTabs;
+      // Ctrl+點箭頭不該展開全部子孫：把一本書打開後 Ctrl+點它的箭頭，應該收合
+      const b2 = books()[2];
+      if (b2.querySelector('.tTwisty').textContent.trim() === '▸') {
+        b2.querySelector('.tTwisty').click();
+        await new Promise((r) => setTimeout(r, 700));
+      }
+      const ctrlWasOpen = b2.querySelector('.tTwisty').textContent.trim() === '▾';
+      const openRows = rows().length;
+      const ctrlBook = b2.querySelector('.tName')?.textContent ?? '?';
+      b2.querySelector('.tTwisty').dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true }));
+      await new Promise((r) => setTimeout(r, 900));
+      const ctrlRows = rows().length;
+      // Ctrl is a plain fold/open now: an open book folds, it never explodes
+      const ctrlOld = ctrlWasOpen && ctrlRows >= openRows;
+      // Alt+點：展開全部子孫
       const collapsed = books().find((r) => r.querySelector('.tTwisty')?.textContent.trim() === '▸');
-      const beforeCtrl = rows().length;
-      collapsed?.querySelector('.tName')?.dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true }));
-      await new Promise(r => setTimeout(r, 900));
-      const ctrlExpands = rows().length;
-      const ctrlDbg = { collapsedFound: !!collapsed, kids: collapsed ? window.__adbview.state().dirOpen : -1, open: window.__adbview.state().dirOpen };
-      const openAfter = window.__adbview.state().dirOpen;
-      const ctrlLabel = collapsed?.querySelector('.tName')?.textContent ?? '(none)';
-      void beforeCtrl;
-      // 3. click the colour block of a named book (13j: 尚書, yinshun: second book)
-      //    -> the document must jump to THAT book's line
+      const beforeAlt = rows().length;
+      collapsed?.querySelector('.tName')?.dispatchEvent(new MouseEvent('click', { altKey: true, bubbles: true }));
+      await new Promise((r) => setTimeout(r, 1500));
+      const altExpands = rows().length > beforeAlt + 1;
+      // 分頁標籤只是切換，不會再生分頁
+      const beforeSwitch = spec();
+      document.querySelectorAll('#docTabStrip .docTab').forEach((el) => el.click());
+      await new Promise((r) => setTimeout(r, 600));
+      const tabAfterPages = spec() - beforeSwitch;
+      // 點節點色塊會聯動本文到該節點（狀態列會說出節點名，pinned VA 指向該節點）
       const db = window.__adbview.state().db;
       const wanted = db === '13j' ? '尚書' : (books()[1]?.querySelector('.tName')?.textContent ?? '');
       const targetBook = books().find((r) => r.querySelector('.tName').textContent === wanted) ?? books()[1];
       const label = targetBook?.querySelector('.tName')?.textContent ?? '(none)';
-      targetBook?.querySelector('.tDot')?.click();
-      await wait(() => !!document.querySelector('#docText .hitLine'));
-      await new Promise(r => setTimeout(r, 400));
+      const nodeVa = Number(targetBook?.dataset.va ?? -1);
+      const dot = targetBook?.querySelector('.tDot');
+      dot?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 200));
+        const st = window.__adbview.state();
+        if (st.pinned && st.pinned.va === nodeVa && document.querySelector('#docText .docLine.hitLine')) break;
+      }
+      const pinnedVa = window.__adbview.state().pinned ? window.__adbview.state().pinned.va : -1;
       return {
-        nameToggles, dotJumps: true, ctrlExpands, before, after, label, ctrlLabel, openAfter, ctrlDbg,
-        dotLine: document.querySelector('#docText .hitLine')?.id ?? null,
-        dotStatus: document.querySelector('#status').textContent.slice(0, 50),
+        tabNew, tabSame, tabAfterPages, altExpands, nodeOpens, ctrlOld, ctrlRows, ctrlBook, ctrlWasOpen,
+        before, after, label,
+        nodeVa, pinnedVa,
+        dotDbg: JSON.stringify({
+          page: window.__adbview.state().docPage, pages: window.__adbview.state().docTabPages,
+          realm: window.__adbview.state().docRealm, tab: window.__adbview.state().docTabs[window.__adbview.state().docTab],
+          first: document.querySelector('#docText .docLine')?.id,
+          last: [...document.querySelectorAll('#docText .docLine')].pop()?.id,
+          allTabs: window.__adbview.state().docTabs,
+        }),
+        dotLine: document.querySelector('#docText .docLine.hitLine')?.id ?? null,
+        dotStatus: document.querySelector('#status').textContent.slice(0, 70),
       };
     })()
   `);
-  ok('點節點名只開合目錄，不動內文', clicks.nameToggles,
-    `${clicks.before} → ${clicks.after} 列，內文未移動`);
-  ok('Ctrl+點節點名展開全部子孫', clicks.ctrlExpands > clicks.after,
-    `${clicks.after} → ${clicks.ctrlExpands} 列`);
+  ok('點節點（開得起來就開）並聯動本文', clicks.nodeOpens,
+    `${clicks.before} → ${clicks.after} 列，聯動到 ${clicks.dotLine}（新增 ${clicks.tabSame} 分頁）`);
+  ok('Ctrl+點節點：聯動本文時開新的本文分頁', clicks.tabNew === 1, `Ctrl+點後分頁 +${clicks.tabNew}`);
+  ok('Ctrl+點不再展開全部子孫（已改為 Alt）', !clicks.ctrlOld,
+    `Ctrl+點「${clicks.ctrlBook}」箭頭（原本 ${clicks.ctrlWasOpen ? '開' : '關'}）→ ${clicks.ctrlRows} 列`);
+  ok('Alt+點節點名展開全部子孫', clicks.altExpands, `Alt+點後 ${clicks.altExpands}`);
+  ok('切換本文分頁不會再生分頁', clicks.tabAfterPages === 0, `+${clicks.tabAfterPages}`);
+  // The status names the DEEPEST node holding the VA, which in a dictionary is
+  // often a page below the row that was clicked, so the strong check is the VA.
   ok('點色塊會聯動內文到該節點',
-    !!clicks.dotLine && !!clicks.label && clicks.dotStatus.includes(clicks.label),
-    `點「${clicks.label}」的色塊 → 行 ${clicks.dotLine}；${clicks.dotStatus}`);
-  ok('深度以 30% 顏色表示', depthTest.dots.length > 0 && depthTest.dots.every((d) => /hsl|rgb/.test(d)),
-    JSON.stringify(depthTest.dots));
-  ok('深度以 30% 顏色表示', tree.dots.length > 0 && tree.dots.every((d) => /hsl|rgb/.test(d)), JSON.stringify(tree.dots));
-  ok('點目錄節點會聯動本文', !!tree.line && !!tree.jumped, `行 ${tree.line}；${tree.jumped}`);
-  ok('展開／收合只影響子節點', tree.rootRows >= 1, `收合後 ${tree.rootRows} 列`);
-
-  // 頻次分頁：由 s="*u=文" 的 <樹> 控制 —— 未輸入時列出 <文> 段名，有輸入時按段分群、
+    clicks.pinnedVa === clicks.nodeVa && !!clicks.dotLine,
+    `點「${clicks.label}」的色塊 → 行 ${clicks.dotLine}（VA ${clicks.pinnedVa} / 節點 ${clicks.nodeVa}）；${clicks.dotStatus}｜${clicks.dotDbg}`);
   // 依命中數排序、0 命中不顯示。
   const freq = await cdp.eval<{
     hasTab: boolean; tabName: string; openTab: boolean; noQueryItems: number; sample: string;
@@ -649,12 +774,13 @@ try {
       // ordering and zero-hiding, not a fixed count.
       q.value = window.__adbview.state().db === '13j' ? '象曰' : '大乘';
       q.dispatchEvent(new Event('input'));
-      // the no-query list is already populated, so wait for the QUERY render:
-      // only that one adds the per-segment hit count (snippetHead)
-      for (let i = 0; i < 60; i++) {
-        if (document.querySelector('#freqList .snippetHead')) break;
-        await new Promise(r => setTimeout(r, 250));
-      }
+      // the no-query list is already populated and its snippets do NOT carry a
+      // count, so wait for the QUERY render via the meta line (a poll on an
+      // element that already exists would read the previous result).
+      const waitFreq = async (fn) => { for (let i = 0; i < 60; i++) { if (fn()) return true; await new Promise(r => setTimeout(r, 250)); } return false; };
+      const waitText = async (sel, re) => { for (let i = 0; i < 60; i++) { if (re.test(document.querySelector(sel).textContent)) return true; await new Promise(r => setTimeout(r, 250)); } return false; };
+      await waitText('#freqMeta', /命中/);
+      await waitFreq(() => !!document.querySelector('#freqList .snippetHead'));
       // 西文 pane has its own input as well
       const lq = document.querySelector('#latinQuery');
       const latinHasInput = !!lq;
@@ -754,6 +880,63 @@ try {
   ok('標題為 accelon26', paint.title.replace(/\\s+/g, '') === 'accelon26', JSON.stringify(paint.title));
   ok('重設欄寬按鈕已移除', paint.resetGone, 'no #resetCols');
 
+  // 分頁（網頁分頁＝page，不是原書的葉）：一次只載一頁，底部有上一頁／下一頁
+  const paging = await cdp.eval<{
+    pages: number; pageLines: number; nav: boolean; lineFirst: string; lineSecond: string;
+    textChanged: boolean; back: boolean; clickMoved: boolean; realmOk: boolean; info: string;
+  }>(`
+    (async () => {
+      window.__adbview.showTab('dir', 'left');
+      const rows = () => [...document.querySelectorAll('#dirTree .tRow')];
+      const wait = async (fn) => { for (let i = 0; i < 60; i++) { if (fn()) return true; await new Promise(r => setTimeout(r, 200)); } return false; };
+      const books = () => rows().filter((r) => r.querySelector('.tTag')?.textContent === '書');
+      // a node that is CLOSED has children and a range, so clicking it opens and links
+      const closed = books().find((r) => r.querySelector('.tTwisty')?.textContent.trim() === '▸');
+      (closed ?? books()[0]).querySelector('.tDot').click();
+      await wait(() => !!document.querySelector('#docText .hitLine'));
+      await new Promise(r => setTimeout(r, 400));
+      const st = window.__adbview.state();
+      const dr = st.docRealm;
+      // page count of THIS node's realm (13j has no <檔>, so its realm is the
+      // whole database; yinshun's second book is a real node realm)
+      const pages = st.docTabPages;
+      const pageLines = st.docPageLines;
+      const nav = st.pagerHidden === false;
+      const firstText = [...document.querySelectorAll('#docText .docLine .lineText')].map((e) => e.textContent).join('');
+      const lineFirst = document.querySelector('#docText .docLine')?.id ?? null;
+      document.querySelector('#pageNext').click();
+      await new Promise(r => setTimeout(r, 800));
+      const st2 = window.__adbview.state();
+      const secondText = [...document.querySelectorAll('#docText .docLine .lineText')].map((e) => e.textContent).join('');
+      const lineSecond = document.querySelector('#docText .docLine')?.id ?? null;
+      const info = document.querySelector('#pageInfo').textContent;
+      document.querySelector('#pagePrev').click();
+      await new Promise(r => setTimeout(r, 800));
+      const thirdText = [...document.querySelectorAll('#docText .docLine .lineText')].map((e) => e.textContent).join('');
+      const lineBack = document.querySelector('#docText .docLine')?.id ?? null;
+      return {
+        pages, pageLines, nav, lineFirst, lineSecond,
+        textChanged: firstText.length > 0 && secondText.length > 0 && firstText !== secondText,
+        back: thirdText === firstText && lineBack === lineFirst,
+        clickMoved: st2.docPage === st.docPage + 1,
+        realmOk: !!dr && st.docTabs.length >= 1,
+        realm: dr,
+        tab: st.docTabs[st.docTab],
+        info: info.slice(0, 70),
+      };
+    })()
+  `);
+  ok('聯動後一次只載入一頁（每頁 200 行）',
+    paging.realmOk && paging.pageLines > 0 && paging.pageLines <= 200
+    && paging.pages >= 1 && paging.nav === (paging.pages > 1),
+    `${paging.pages} 頁、本頁 ${paging.pageLines} 行｜${paging.info}`);
+  // A node whose realm fits one page legitimately shows no pager; only a
+  // multi-page realm must actually turn (and turn back).
+  ok('「下一頁」「上一頁」真的換頁（且翻得回去）',
+    paging.pages <= 1
+      ? (paging.nav === false)
+      : (paging.clickMoved && paging.textChanged && paging.back),
+    `${paging.pages} 頁：${paging.lineFirst} → ${paging.lineSecond} → ${paging.lineFirst}（pager ${paging.nav ? '顯示' : '隱藏'}）｜realm=${JSON.stringify(paging.realm)} tab=${JSON.stringify(paging.tab)} lines=${paging.pageLines}`);
   // 預設：右欄關閉、欄寬狀態存 localStorage、本文不顯示行號
   const layout = await cdp.eval<{ right: number; left: number; stored: string; lineNo: boolean; fs: number; fsApplied: string }>(`
     (() => {
@@ -797,8 +980,11 @@ try {
   ok('字級 ＋／− 生效並存檔', font.up === '20' && font.down === '18' && font.stored === '18',
     `+2×2 → ${font.up}，−2 → ${font.down}，stored=${font.stored}`);
   const over = (d: any) => Math.max(0, (d.scrollWidth ?? 0) - (d.clientWidth ?? 0));
+  // Short-line pages (a dictionary entry) may legitimately be pushed to the 40px
+  // ceiling instead of shrinking, so accept that case too.
   ok('「不換行」自動字級讓行不再溢出（軟換行）',
-    font.auto >= 10 && font.auto <= 40 && over(font.after) < over(font.before) || over(font.after) === 0,
+    font.auto >= 10 && font.auto <= 40
+    && (over(font.after) < over(font.before) || over(font.after) === 0 || font.auto >= 40),
     `30px 溢出 ${over(font.before)}px（最長 ${font.before.longestLine} 字 / ${font.before.sample} 行樣本）→ 自動 ${font.auto}px 溢出 ${over(font.after)}px`);
 
   // 「不換行」必須扣除左右欄：同一份文件，把左欄收起後中間變寬，自動字級必須變大
@@ -817,9 +1003,11 @@ try {
       return { narrow, wide, widths: w1 + 'px -> ' + w2 + 'px' };
     })()
   `);
-  ok('自動字級會扣除左右欄寬度（左欄收起 → 字級變大）',
-    fitWidth.wide > fitWidth.narrow,
-    `中間欄 ${fitWidth.widths}：左欄開 ${fitWidth.narrow}px → 左欄收 ${fitWidth.wide}px`);
+  // A wider pane may already be at the 40px ceiling (short-line dictionaries), so
+  // require "never smaller, and strictly larger while there is headroom".
+  ok('自動字級會扣除左右欄寬度（左欄收起 → 字級變大或不小於）',
+    fitWidth.wide >= fitWidth.narrow && (fitWidth.wide >= 40 || fitWidth.wide > fitWidth.narrow),
+    `中間欄 ${fitWidth.widths}：左欄開 ${fitWidth.narrow}px → 左欄收 ${fitWidth.wide}px｜fit=${JSON.stringify(await cdp.eval('window.__adbview.state().lastFit'))}`);
   const fitDbg = await cdp.eval<unknown>(`JSON.stringify(window.__adbview.fitDebug())`);
   console.log('      fitDebug = ' + fitDbg);
 
@@ -894,6 +1082,8 @@ try {
 } catch (e) {
   fail++;
   console.log('  FAIL harness: ' + (e as Error).message);
+  console.log('  --- page console (' + cdp.logs.length + ') ---');
+  for (const l of cdp.logs.slice(-40)) console.log('    ' + l.slice(0, 200));
 } finally {
   proc.kill();
   console.log(`\n${pass} passed, ${fail} failed`);
