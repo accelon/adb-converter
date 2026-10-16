@@ -293,7 +293,7 @@
         <div class="searchBar">
           <input type="search" id="termsQuery" placeholder="輸入詞條（比對 <詞> 包住的字）" autocomplete="off" spellcheck="false">
           <select id="termsMode" class="modeSel" title="比對位置：開頭＝^、結尾＝$、中間＝兩者都不是">
-            <option value="any">全部</option>
+            <option value="any">任意</option>
             <option value="start">開頭</option>
             <option value="mid">中間</option>
             <option value="end">結尾</option>
@@ -323,6 +323,12 @@
       <div class="tabPane" data-tab="latin">
         <div class="searchBar">
           <input type="search" id="latinQuery" placeholder="輸入詞（限西文）" autocomplete="off" spellcheck="false">
+          <select id="latinMode" class="modeSel" title="比對位置：開頭＝^、結尾＝$、中間＝兩者都不是">
+            <option value="any">任意</option>
+            <option value="start">開頭</option>
+            <option value="mid">中間</option>
+            <option value="end">結尾</option>
+          </select>
           <button id="latinClear" title="清除">✕</button>
         </div>
         <div id="latinMeta" class="note"></div>

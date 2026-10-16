@@ -98,7 +98,7 @@
           <span class="chip"><span class="sel">[data-tab=terms]</span> <span class="rid">#termsQuery</span> <span class="rid">#termsMode</span> <span class="rid">#termsClear</span> <span class="rid">#termsMeta</span> <span class="rid">#termsList</span></span>
           <span class="chip"><span class="sel">[data-tab=freq]</span> <span class="rid">#freqQuery</span> <span class="rid">#freqClear</span> <span class="rid">#freqMeta</span> <span class="rid">#freqList</span></span>
           <span class="chip"><span class="sel">[data-tab=folio]</span> <span class="rid">#folioQuery</span> <span class="rid">#folioClear</span> <span class="rid">#folioMeta</span> <span class="rid">#folioList</span></span>
-          <span class="chip"><span class="sel">[data-tab=latin]</span> <span class="rid">#latinQuery</span> <span class="rid">#latinClear</span> <span class="rid">#latinMeta</span> <span class="rid">#latinList</span></span>
+          <span class="chip"><span class="sel">[data-tab=latin]</span> <span class="rid">#latinQuery</span> <span class="rid">#latinMode</span> <span class="rid">#latinClear</span> <span class="rid">#latinMeta</span> <span class="rid">#latinList</span></span>
           <span class="chip"><span class="sel">[data-tab=token]</span> <span class="rid">#tokenSummary</span> <span class="rid">#tokenClasses</span>＜內含 <span class="rid">#toggleAll</span>＞ <span class="rid">#tokenTitle</span> <span class="rid">#tokenMore</span> <span class="rid">#tokenRows</span></span>
         </div>
       </div>
@@ -183,10 +183,10 @@
 <table>
   <tr><th>分頁名（按鈕文字）</th><th>鍵</th><th>來自 <span class="sel">s=</span></th><th>面板內的 id</th><th>行為</th></tr>
   <tr><td>目錄</td><td><code>dir</code></td><td><span class="sel">*</span></td><td><code>#query</code> <code>#queryClear</code> <code>#dirMeta</code> <code>#dirTree</code></td><td>層級樹 ＋ 全文搜尋；每個 <code>&lt;樹 t="…"&gt;</code> 一頁。沒有 <span class="sel">s="*"</span> 的庫（如 fgdict）這一頁會 <span class="cond">hidden</span></td></tr>
-  <tr><td>名詞</td><td><code>terms</code></td><td><span class="sel">$詞</span></td><td><code>#termsQuery</code> <code>#termsMode</code> <code>#termsClear</code> <code>#termsMeta</code> <code>#termsList</code></td><td>詞條清單取自 <code>caches/詞</code>；<code>#termsMode</code> ＝ 全部／開頭／中間／結尾</td></tr>
+  <tr><td>名詞</td><td><code>terms</code></td><td><span class="sel">$詞</span></td><td><code>#termsQuery</code> <code>#termsMode</code> <code>#termsClear</code> <code>#termsMeta</code> <code>#termsList</code></td><td>詞條清單取自 <code>caches/詞</code>；<code>#termsMode</code> ＝ 任意／開頭／中間／結尾</td></tr>
   <tr><td>頻次<br>全文</td><td><code>freq</code></td><td><span class="sel">*u=文</span><br><span class="sel">*詞</span></td><td><code>#freqQuery</code> <code>#freqClear</code> <code>#freqMeta</code> <code>#freqList</code></td><td><span class="sel">*u=</span> 依屬性分段（頻次）、<span class="sel">*tag</span> 依標籤分段（全文），<b>同一頁</b>只換按鈕文字</td></tr>
   <tr><td>原書分頁</td><td><code>folio</code></td><td><span class="sel">頁.n</span></td><td><code>#folioQuery</code> <code>#folioClear</code> <code>#folioMeta</code> <code>#folioList</code></td><td>用 <span class="sel">attributeValues('頁.n')</span> 的 pointers 對到 <code>&lt;頁&gt;</code> 實例；可選可輸入頁碼</td></tr>
-  <tr><td>西文</td><td><code>latin</code></td><td><span class="sel">~X</span></td><td><code>#latinQuery</code> <code>#latinClear</code> <code>#latinMeta</code> <code>#latinList</code></td><td>X 的語意尚待作者確認（目前當碼點範圍）</td></tr>
+  <tr><td>西文</td><td><code>latin</code></td><td><span class="sel">~X</span></td><td><code>#latinQuery</code> <code>#latinMode</code> <code>#latinClear</code> <code>#latinMeta</code> <code>#latinList</code></td><td>X 的語意尚待作者確認（目前當碼點範圍）</td></tr>
   <tr><td>token</td><td><code>token</code></td><td>—</td><td><code>#tokenSummary</code> <code>#tokenClasses</code> <code>#tokenTitle</code> <code>#tokenMore</code> <code>#tokenRows</code></td><td><span class="cond">進階模式</span>才出現（<span class="sel">.advOnly</span>）</td></tr>
 </table>
 

@@ -273,6 +273,8 @@ function boot() {
   wireOwnSearch('#folioQuery', '#folioClear', () => void renderFolio());
   const termsMode = $('#termsMode') as HTMLSelectElement | null;
   if (termsMode) termsMode.onchange = () => void renderTerms();
+  const latinMode = $('#latinMode') as HTMLSelectElement | null;
+  if (latinMode) latinMode.onchange = () => void renderLatin();
 
   // every left pane is built on demand — showTab() dispatches to its renderer
   $('#colLeft').querySelectorAll<HTMLElement>('.tabBtn').forEach((b) => {

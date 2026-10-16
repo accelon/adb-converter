@@ -131,7 +131,7 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   | `*u=文` | 頻次 | 依屬性分段，命中數排序、0 不顯示 |
   | `*詞` | 全文 | 依標籤分段（同一個 pane，只是頁名不同） |
   | `頁.n` | 原書分頁 | `<頁>` 的 `n` 值清單（fgdict 6,959 個），可用選的或**輸入頁碼**跳過去 |
-  | `~…` | 西文 | 碼點範圍 |
+  | `~…` | 西文 | 碼點範圍（作者確認）；有 任意／開頭／中間／結尾 位置篩選 |
 
   fgdict 因此是「名詞／全文／原書分頁」三頁（沒有 `s="*"` 就沒有目錄頁），
   13j 只有目錄，yinshun 是目錄／頻次／西文。每個 pane 都是**按到才建**（`showTab` 分派）。
@@ -218,6 +218,7 @@ viewer.ts 剩 197 行——但啟動後 **`Runtime.evaluate` timeout（頁面卡
 | 右欄分頁列／窗格區 | `#tabsRight`／`#paneRight` | `[data-tab=sum\|meta\|capacity\|docs\|images]` |
 | 目錄樹本體 | `#dirTree` | 面板＝`#paneLeft [data-tab=dir]` |
 | 名詞／頻次／原書分頁／西文清單 | `#termsList`／`#freqList`／`#folioList`／`#latinList` | 各自的 meta＝`#termsMeta` 等 |
+| 位置篩選（名詞／西文共用一套） | `#termsMode`／`#latinMode` | 任意／開頭／中間／結尾；`modeMatch()` 一份實作（`scopes.ts`） |
 | 摘要清單 | `#searchList` | 面板＝`#paneRight [data-tab=sum]` |
 | 文件工具列 | `#docBar` | `#treeReveal`(🌲)・`#docTitle`・字級 `#fsDown`/`#fsValue`/`#fsUp`/`#fsAuto`/`#fsReset` |
 | 本文分頁籤條 | `#docTabStrip`（父層 `#docTabs`，另有 `#docTabAdd`） | 分頁 ≥ 1 才顯示 |

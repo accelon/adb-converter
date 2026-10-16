@@ -510,11 +510,12 @@ async function renderLatin() {
     return cp >= from && cp <= to;
   });
   const q = ($('#latinQuery') as HTMLInputElement).value.trim();
-  const hit = q ? inRange.filter((t) => displayName(t.name).includes(q)) : inRange;
+  const mode = ($('#latinMode') as HTMLSelectElement | null)?.value ?? 'any';
+  const hit = q ? inRange.filter((t) => modeMatch(displayName(t.name), q, mode)) : inRange;
   const shown = hit.slice(0, 600);
   const hex = (n: number) => 'U+' + n.toString(16).toUpperCase().padStart(4, '0');
   meta.textContent = `${hex(from)}–${hex(to)} 範圍內 ${fmtInt(inRange.length)} 個 token`
-    + (q ? `；「${q}」符合 ${fmtInt(hit.length)} 個` : '')
+    + (q ? `；「${q}」${MODE_NAMES[mode] ?? '任意'} 符合 ${fmtInt(hit.length)} 個` : '')
     + (shown.length < hit.length ? `（僅列前 ${shown.length}）` : '');
   list.innerHTML = shown.map((t) => `<div class="snippet" data-i="${t.i}">
       <div><b>${escapeHtml(displayName(t.name))}</b> <span class="dim">${fmtBytes(t.bytes)}</span></div></div>`).join('')
@@ -706,6 +707,23 @@ function treeScope(re: RegExp): string {
  * instance order) — one container parse. Slicing them out of `source` instead costs
  * a bzip2 decode per block touched, and the mapper's VA walk drifts on fgdict.
  */
+/** Option labels for the 開頭／中間／結尾 filter (名詞 and 西文 share it). */
+const MODE_NAMES: Record<string, string> = { any: '任意', start: '開頭', mid: '中間', end: '結尾' };
+
+/**
+ * The 開頭／中間／結尾 position filter: where does `q` sit inside `name`?
+ * `任意` accepts any occurrence.
+ */
+function modeMatch(name: string, q: string, mode: string): boolean {
+  if (!q || !name.includes(q)) return false;
+  const atStart = name.startsWith(q);
+  const atEnd = name.endsWith(q);
+  if (mode === 'start') return atStart;
+  if (mode === 'end') return atEnd;
+  if (mode === 'mid') return !atStart && !atEnd;
+  return true;
+}
+
 async function renderTerms(): Promise<void> {
   const meta = $('#termsMeta');
   const list = $('#termsList');
@@ -722,7 +740,7 @@ async function renderTerms(): Promise<void> {
   const modeEl = $('#termsMode') as HTMLSelectElement | null;
   const mode = modeEl?.value ?? 'any';
   if (modeEl) modeEl.disabled = !usable;
-  const modeName = { any: '全部', start: '開頭', mid: '中間', end: '結尾' }[mode] ?? '全部';
+  const modeName = MODE_NAMES[mode] ?? '任意';
   const q = ($('#termsQuery') as HTMLInputElement).value.trim();
 
   const hits: { from: number; name: string; count: number }[] = [];
@@ -730,12 +748,7 @@ async function renderTerms(): Promise<void> {
     // pure table scan: no source read, no full-text search, no VA walk
     for (let i = 0; i < names.length; i++) {
       const n = names[i];
-      if (!n || !n.includes(q)) continue;
-      const atStart = n.startsWith(q);
-      const atEnd = n.endsWith(q);
-      if (mode === 'start' && !atStart) continue;
-      if (mode === 'end' && !atEnd) continue;
-      if (mode === 'mid' && (atStart || atEnd)) continue;
+      if (!modeMatch(n, q, mode)) continue;
       hits.push({ from: segs[i].from, name: n, count: 0 });
       if (hits.length >= 2000) break;
     }

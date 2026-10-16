@@ -805,6 +805,7 @@ try {
       const lq = document.querySelector('#latinQuery');
       const latinHasInput = !!lq;
       let latinNoQuery = 0, latinFiltered = 0, latinMeta = '';
+      let latinStart = 0, latinEnd = 0, latinMid = 0, latinModeMeta = '';
       if (latinHasTab) {
         lq.value = '';
         lq.dispatchEvent(new Event('input'));
@@ -819,6 +820,21 @@ try {
         await new Promise(r => setTimeout(r, 700));
         latinFiltered = document.querySelectorAll('#latinList .snippet').length;
         latinMeta = document.querySelector('#latinMeta').textContent.slice(0, 70);
+        // 西文 shares the 名詞 position filter (任意／開頭／中間／結尾)
+        const latinModeSel = document.querySelector('#latinMode');
+        const countFor = async (mode) => {
+          latinModeSel.value = mode;
+          latinModeSel.dispatchEvent(new Event('change'));
+          await new Promise((r) => setTimeout(r, 700));
+          return document.querySelectorAll('#latinList .snippet').length;
+        };
+        latinStart = await countFor('start');
+        latinEnd = await countFor('end');
+        latinMid = await countFor('mid');
+        latinModeMeta = document.querySelector('#latinMeta').textContent.slice(0, 60);
+        latinModeSel.value = 'any';
+        latinModeSel.dispatchEvent(new Event('change'));
+        await new Promise((r) => setTimeout(r, 400));
       }
       await new Promise(r => setTimeout(r, 400));
       const rows = [...document.querySelectorAll('#freqList .snippet')];
@@ -837,6 +853,7 @@ try {
         meta: document.querySelector('#freqMeta').textContent.slice(0, 80),
         jumped: window.__adbview.state().lastReveal,
         latinHasInput, latinHasTab, latinNoQuery, latinFiltered, latinMeta,
+        latinStart, latinEnd, latinMid, latinModeMeta,
       };
     })()
   `);
@@ -855,6 +872,11 @@ try {
     if (freq.latinHasTab) {
       ok('西文：有自己的輸入區與內容', freq.latinHasInput && freq.latinNoQuery > 0,
         `未輸入 ${freq.latinNoQuery} 個；輸入『a』後 ${freq.latinFiltered} 個｜${freq.latinMeta}`);
+      ok('西文：開頭／中間／結尾三種位置都可篩選',
+        freq.latinStart > 0 && freq.latinEnd > 0 && freq.latinMid > 0
+        && freq.latinStart <= freq.latinFiltered && freq.latinEnd <= freq.latinFiltered
+        && freq.latinMid <= freq.latinFiltered,
+        `「a」任意 ${freq.latinFiltered}｜開頭 ${freq.latinStart}｜中間 ${freq.latinMid}｜結尾 ${freq.latinEnd}｜${freq.latinModeMeta}`);
     } else {
       ok('此庫沒有 s="~…" 樹，西文分頁隱藏', !freq.latinHasTab, 'hidden=true');
     }
