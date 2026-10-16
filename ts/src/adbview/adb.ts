@@ -45,6 +45,13 @@ export interface ByteSource {
    * viewer falls back to its own bzip2 in that case.
    */
   decompressText?(offset: number, length: number): Promise<string>;
+  /**
+   * Optional: the source can answer index queries itself (the desktop host does — Go
+   * decodes the posting lists, does the phrase AND and the grouping; see
+   * wails/search.go). A browser Blob cannot, so the viewer uses its own implementation.
+   */
+  postings?(token: string): Promise<number[]>;
+  searchTokens?(tokens: string[], groupTag: string, maxHits: number): Promise<unknown>;
 }
 
 /**
@@ -64,6 +71,9 @@ export interface AdbIO {
   read(offset: number, length: number): Promise<Uint8Array>;
   /** native bzip2, when the transport has one (desktop host); absent on file:// */
   decompressText?(offset: number, length: number): Promise<string>;
+  /** index queries answered by the transport (desktop host); absent on file:// */
+  postings?(token: string): Promise<number[]>;
+  searchTokens?(tokens: string[], groupTag: string, maxHits: number): Promise<unknown>;
   close?(): void;
 }
 
@@ -86,10 +96,15 @@ export class BlobIO implements AdbIO {
     this.size = blob.size;
     // the host decompresses in Go when it can; file:// has no such capability
     if (blob.decompressText) this.decompressText = blob.decompressText.bind(blob);
+    if (blob.postings) this.postings = blob.postings.bind(blob);
+    if (blob.searchTokens) this.searchTokens = blob.searchTokens.bind(blob);
   }
 
   /** native bzip2 for one block, when the source offers it (see ByteSource) */
   decompressText?: (offset: number, length: number) => Promise<string>;
+  /** index queries answered by the source (desktop host) */
+  postings?: (token: string) => Promise<number[]>;
+  searchTokens?: (tokens: string[], groupTag: string, maxHits: number) => Promise<unknown>;
 
   /**
    * Metadata (container name tables, attribute tables) is read in thousands of
@@ -314,7 +329,7 @@ export class AdbReader {
   header!: AdbHeader;
   containers = new Map<string, Container>();
   order: string[] = [];
-  private io: AdbIO;
+  readonly io: AdbIO;   // public: SearchSession asks it for host-answered queries
   /** decoded source blocks (bzip2 output, NUL-trimmed) */
   private srcTextCache = new Map<number, string>();
 

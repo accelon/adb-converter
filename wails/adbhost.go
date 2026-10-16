@@ -122,8 +122,9 @@ type AdbInfo struct {
 // AdbHost 是註冊給 Wails 的唯一 service。
 // webview 會從多個 goroutine 呼叫它，所以內部狀態一律用 mu 保護。
 type AdbHost struct {
-	mu    sync.Mutex
-	files map[string]*mapped
+	mu     sync.Mutex
+	files  map[string]*mapped
+	search map[string]*adbSearchFile // 已解析的容器表（search.go），與映射同生共死
 }
 
 // resolve 把前端傳來的 path 規範化，並做嚴格的白名單驗證：
@@ -383,6 +384,7 @@ func (h *AdbHost) Close(path string) error {
 	if m.refs == 0 {
 		h.dropLocked(key, m)
 	}
+	delete(h.search, key) // 查詢用的容器表指向這塊映射，不能再留
 	return nil
 }
 
@@ -394,4 +396,5 @@ func (h *AdbHost) CloseAll() {
 	for key, m := range h.files {
 		h.dropLocked(key, m)
 	}
+	h.search = nil
 }

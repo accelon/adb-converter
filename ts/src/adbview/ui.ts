@@ -12,6 +12,7 @@ import { cursorNode, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, rev
 import { appendTokenRows, renderContainers, renderDocs, renderMeta, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { dirActive, dirError, dirLoading, dirTrees, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, syncTreeTabs, treePhases, growTreeFully } from './scopes';
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
+import { lastHostSearch } from './search';
 
 // -------------------------------------------------------------------- wiring
 /**
@@ -433,6 +434,7 @@ export function installDebugApi(): void {
     text: textState(),
     catalog: catalogState(),
     host: hostState(),
+    hostSearch: lastHostSearch,   // 桌面版：上一次由 Go 回答的查詢耗時
     dbPick: ($('#dbPick') as HTMLSelectElement | null)?.value ?? '',
     logo: logoState(),
     leftTab: $('#colLeft .tabBtn.active')?.getAttribute('data-tab') ?? null,

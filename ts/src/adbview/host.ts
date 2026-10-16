@@ -79,6 +79,28 @@ async function hostDecompressText(path: string, offset: number, length: number):
   return typeof text === 'string' ? text : '';
 }
 
+/**
+ * A token's posting list, decoded in Go straight out of the mapping
+ * (main.AdbHost.Postings — the packed varint list never crosses the boundary).
+ */
+async function hostPostings(path: string, token: string): Promise<number[]> {
+  const c = await hostCall();
+  if (!c) return [];
+  const out = await c.ByName('main.AdbHost.Postings', path, token) as number[] | null;
+  return out ?? [];
+}
+
+/**
+ * The whole index query in ONE call: token lookups (Go decodes their posting lists in
+ * parallel), the phrase AND and the grouping statistics (wails/search.go). Only the
+ * hits and the group counts come back — the posting lists stay in Go.
+ */
+async function hostSearchTokens(path: string, tokens: string[], groupTag: string, maxHits: number): Promise<unknown> {
+  const c = await hostCall();
+  if (!c) return null;
+  return await c.ByName('main.AdbHost.SearchTokens', path, tokens, groupTag, maxHits);
+}
+
 /** one host file, in the shape the rest of the viewer already understands */
 function hostSource(e: HostAdb): AdbSource {
   const name = e.name || e.dbcname || e.dbname || e.path;
@@ -96,6 +118,9 @@ function hostSource(e: HostAdb): AdbSource {
     },
     // native bzip2: the host does both the decompression and the UTF-16 decoding
     decompressText: (offset: number, length: number) => hostDecompressText(e.path, offset, length),
+    // index queries: postings, the phrase AND and the grouping all happen in Go
+    postings: (token: string) => hostPostings(e.path, token),
+    searchTokens: (tokens: string[], groupTag: string, maxHits: number) => hostSearchTokens(e.path, tokens, groupTag, maxHits),
   };
 }
 

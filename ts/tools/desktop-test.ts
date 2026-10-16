@@ -14,6 +14,7 @@
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { AdbReader, SyncIO, blockRange } from '../src/adbview/adb';
+import { SearchSession, queryTokens } from '../src/adbview/search';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
@@ -154,6 +155,62 @@ ok('從下拉選另一個 adb 會載入它（換掉原本的）',
 ok('桌面宿主的開檔成本有被量到（reads/ioMs 都有值）',
   picked.skipped || (picked.open.reads > 0 && picked.open.ioMs > 0 && picked.open.totalMs > 0),
   picked.skipped ? '只有一個資料庫' : `totalMs=${picked.open.totalMs?.toFixed?.(1)} ioMs=${picked.open.ioMs?.toFixed?.(1)}`);
+// ---- Go 的索引查詢（postings + plAnd + 分群）必須與 TypeScript 引擎完全相同 -----
+// 作者：「把 plAnd、posting group 也做 go 版，TypeScript 直接取得詞 posting 和分群統計」。
+const searchCases: { adb: string; q: string }[] = [
+  { adb: resolve(CWD, '13j.adb'), q: '象曰' },
+  { adb: resolve(CWD, '13j.adb'), q: '孟子' },
+  { adb: resolve(CWD, 'yinshun.adb'), q: '大乘' },
+  { adb: resolve(CWD, 'yinshun.adb'), q: '般若波羅蜜' },
+];
+for (const c of searchCases) {
+  if (!existsSync(c.adb)) continue;
+  const reader = await AdbReader.open(new SyncIO(c.adb));
+  const session = new SearchSession(reader);
+  await session.init();
+  const tag = session.grouping.tag;
+  const t0 = performance.now();
+  const ts = await session.search(c.q);
+  const tsMs = performance.now() - t0;
+  const tokens = queryTokens(c.q);
+  const goOut = await evalIn<string>(`(async () => {
+    const m = await new Function('u', 'return import(u)')('/wails/runtime.js');
+    const t0 = performance.now();
+    const out = await m.Call.ByName('main.AdbHost.SearchTokens', ${JSON.stringify(c.adb.replace(/\\/g, '/'))}, ${JSON.stringify(tokens)}, ${JSON.stringify(tag)}, 5000);
+    return JSON.stringify({ ms: Math.round(performance.now() - t0), out });
+})()`);
+  const go = JSON.parse(goOut) as { ms: number; out: any };
+  const goHits = (go.out?.hits ?? []) as { va: number; units: number }[];
+  const tsHits = ts.hits as { va: number; units: number }[];
+  const sameHits = tsHits.length === goHits.length
+    && tsHits.every((h, i) => h.va === goHits[i].va && h.units === goHits[i].units);
+  const tsGroups = ts.groups.map((g) => `${g.name}:${g.from}:${g.to}:${g.count}`).join('|');
+  const goGroups = ((go.out?.groups ?? []) as any[]).map((g) => `${g.name}:${g.from}:${g.to}:${g.count}`).join('|');
+  const sameGroups = tsGroups === goGroups && tsGroups.length > 0;
+  ok(`Go 的索引查詢與 TypeScript 相同（${c.adb.split(/[\\\\/]/).pop()} 「${c.q}」）`,
+    sameHits && sameGroups && tsGroups.split('|').length === ts.groups.length,
+    `hits ${tsHits.length}${sameHits ? '' : '(不同)'}、groups ${ts.groups.length}/${(go.out?.groups ?? []).length}${sameGroups ? '' : '(不同)'}`
+    + `｜TS ${tsMs.toFixed(1)} ms vs Go ${go.ms} ms（Go 內部 lookup ${go.out?.lookupMs?.toFixed?.(1)} / plAnd ${go.out?.andMs?.toFixed?.(1)} / group ${go.out?.groupMs?.toFixed?.(1)} ms，平行=${go.out?.parallel}）`
+    + `，missing ${JSON.stringify(go.out?.missing ?? [])}`);
+}
+
+// ---- 視窗 UI 真的走 Go 的索引路徑（不是只有直接呼叫 binding） -------------------
+const uiSearch = await evalIn<string>(`(async () => {
+  const q = document.getElementById('query');
+  q.value = '大乘';
+  q.dispatchEvent(new Event('input'));
+  for (let i = 0; i < 80; i++) { await new Promise(r => setTimeout(r, 200)); if (window.__adbview.state().hostSearch) break; }
+  for (let i = 0; i < 40; i++) { await new Promise(r => setTimeout(r, 200)); if (document.querySelectorAll('#searchList .snippet').length) break; }
+  const st = window.__adbview.state();
+  return JSON.stringify({ db: st.db, hostSearch: st.hostSearch,
+    snippets: document.querySelectorAll('#searchList .snippet').length,
+    meta: document.getElementById('searchMeta').textContent.slice(0, 50) });
+})()`);
+const ui = JSON.parse(uiSearch) as { db: string; hostSearch: any; snippets: number; meta: string };
+ok('視窗內輸入查詢走 Go 的索引路徑（state().hostSearch 有值、摘要有出來）',
+  !!ui.hostSearch && ui.hostSearch.hits > 0 && ui.snippets > 0,
+  `${ui.db}「大乘」：hits=${ui.hostSearch?.hits}、摘要 ${ui.snippets} 筆、${ui.hostSearch?.ms?.toFixed?.(1)} ms（Go 內部 lookup ${ui.hostSearch?.lookupMs?.toFixed?.(1)} / plAnd ${ui.hostSearch?.andMs?.toFixed?.(1)} / group ${ui.hostSearch?.groupMs?.toFixed?.(1)} ms）｜${ui.meta}`);
+
 // ---- Go bzip2（桌面）與 TypeScript bzip2（file:// 的退路）必須逐字相同 ----------
 // 作者：「bzip2 解壓，有 Go 版就用 Go，沒有才退回 typescript」—— 兩條路要驗到等價。
 const blocksAdb = resolve(CWD, '13j.adb');

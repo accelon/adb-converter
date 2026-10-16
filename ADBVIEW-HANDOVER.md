@@ -601,6 +601,11 @@ UI 怎麼可能不知道 Go 層：`ts/src/adbview/adb.ts` 定義 `ByteSource`／
 * `Open(path)`／`Close(path)`／`CloseAll()`：白名單（必須 `.adb` 且位於**當前工作目錄之內**）、
   映射快取＋引用計數（webview 會從多個 goroutine 呼叫，內部 `sync.Mutex`）。
 * `ReadBase64(path, offset, length)`：**UI 唯一的讀取入口**，回傳映射切片的 base64；越界／負數回 error 不 panic。
+* `Postings(path, token)`：回某個詞的 posting（VA 清單，遞增）—— 「TypeScript 直接取得詞 posting」的入口。
+  packed varint 清單在 Go 解（直接從 mmap 讀），只有結果跨邊界。
+* `SearchTokens(path, tokens, groupTag, maxHits)`：一次做完 查詞 → 解 posting（**多詞平行**）→
+  `phraseMatch`（plAnd）→ `groupHits`（分群統計），回 `{hits, missing, truncated, groups}` 與各階段耗時。
+  切詞仍在 TypeScript（`tokenize.ts` 是語言層），Go 只做索引運算（作者 2026-10 的指示）。
 * `DecompressText(path, offset, length)`：**bzip2 有 Go 版就用 Go**（作者 2026-10）。adb 的 source 每個
   block 都是獨立 bzip2 stream，所以標準庫 `compress/bzip2` 剛好夠用；一次呼叫做完**解壓＋UTF-16LE 解碼
   ＋截到第一個 NUL**，回字串（比回 base64 的展開位元組小）。前端 `sourceText` 有宿主就走這條，
@@ -705,6 +710,44 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
 5. `wails/assets/index.html` 是**建置產物**（來自 `tools/build-desktop.ts`）；`//go:embed all:assets` 需要它存在。
 6. `physicalBytes()`（adb.ts）目前**沒有任何呼叫者**（原本就不存在），所以 Go 端只做 `DecompressText`、
    沒有做回原生位元組的版本 —— 保持 Go 層最薄；哪天真要用再加。
+7. **在持有 mutex 時 panic ＝ 永久卡死**：`searchFile()` 把解析結果寫進一個 nil map（`h.search[key] = f`）
+   → panic；panic 回溯時 deferred `release()` 又想拿同一把鎖 → 整個 goroutine 卡住，前端
+   `Runtime.evaluate` 逾時 60 s。症狀是「頁面看起來沒反應、Go 沒崩」。修法：寫入前先 `make` map；
+   教訓是**鎖的臨界區裡不要有可能 panic 的動作**。
+
+### 10.7 索引查詢（postings／plAnd／分群）搬到 Go
+
+作者 2026-10：「把 plAnd、posting group 也做 go 版，這樣 TypeScript 直接取得詞 posting 和分群統計；
+計算量大的函式，可以做 Go 平行版。」
+
+**為什麼是「整條查詢」而不是單獨搬 plAnd／groupHits**：Go 端在 mmap 上解 posting 幾乎免費
+（實測 yinshun「大乘」：lookup 0.5 ms（平行）／plAnd 0.5 ms／group 0.0 ms），真正花時間的是
+**跨語言運輸**。所以做成一個呼叫（`SearchTokens`）只把命中與分群統計送回 TS；若只搬 plAnd，
+反而得先把整份 posting 清單送過去，一定更慢。
+
+**等價性**（`ts/tools/desktop-test.ts --gui`，同一顆庫、同一個查詢；hits 逐筆、groups 逐欄比對）：
+
+| 案例 | hits | groups | TypeScript 引擎（本地 fs） | Go 一次呼叫（含運輸） |
+|---|---|---|---|---|
+| 13j「象曰」 | 446 | 13/13 | 1.5–1.8 ms | 3 ms |
+| 13j「孟子」 | 316 | 13/13 | 0.4–0.6 ms | 2 ms |
+| yinshun「大乘」 | 5,000 | 44/44 | 3.5–12 ms（JIT／快取暖不暖差很多） | 6–7 ms |
+| yinshun「般若波羅蜜」 | 1,848 | 44/44 | 1.5–4.2 ms | 5 ms |
+
+**讀數（誠實版）**：
+* Go 的解壓是**平行**的（`parallel=true`，yinshun「大乘」內部 lookup 1.1 ms／plAnd 1.1 ms／group 0.0 ms），
+  所以清單大時有優勢；但**每次呼叫固定約 2 ms 的運輸**讓清單小的查詢（13j）反而慢一點。
+* 表上的 TS 數字是**本地 fs**（SyncIO，暖快取）量的，那是 TS 最有利的條件；桌面版若走 TS 路徑，
+  還得用 `ReadBase64` 把每個 packed posting block 搬過橋（「大乘」兩個 block 約 100 KB，約 +4 ms），
+  所以桌面上兩條路大致打平、清單大時 Go 明顯佔優。
+* 真正的結構性好處：**posting 清單不必跨邊界**（只有命中與分群統計過去）、少很多次往返、
+  而且解壓在 Go 的 goroutine 上，不佔 JS 主執行緒。
+
+**在視窗裡實測**（`--gui` 斷言）：輸入「大乘」→ `state().hostSearch` 有值（hits 5,000、8.3 ms，
+Go 內部 lookup 1.1／plAnd 1.1／group 0.0）、摘要 30 筆、「分 28 群（依 書）」——UI 真的走這條路，
+不是只有直接呼叫 binding。
+Go 端的自我檢查（不開 GUI）：`cd wails && go test -count=1 -run TestSearchTokensOnCorpus -v`
+（對 13j 的「象曰」446 筆／13 群、「孟子」316 筆／13 群，並印出 `Postings` 的筆數）。
 
 ### 10.6 檔案
 
@@ -712,6 +755,9 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
 |---|---|
 | `wails/main.go` | Wails 應用（極薄）：內嵌 assets、`-selftest`、註冊 `AdbHost`、`ADBVIEW_DEBUG_PORT` |
 | `wails/adbhost.go` | mmap + `ListAdbs`／`Open`／`ReadBase64`／`Close`／`CloseAll` |
+| `wails/decompress.go` | bzip2（`DecompressText`）：解壓＋UTF-16 解碼一次做完 |
+| `wails/search.go` | 索引查詢：容器表解析、packed posting 解壓、`phraseMatch`（plAnd）、`groupHits`（分群，可平行） |
+| `wails/adbhost_test.go`／`decompress_test.go`／`search_test.go`／`bzip2_bench_test.go` | Go 測試與量測 |
 | `wails/adbhost_test.go` | Go 測試：檔頭解析、與 `os.ReadFile` 逐位元組相同、越界報錯、讀取計時 |
 | `wails/assets/index.html` | 內嵌的 adbview（由 `ts/tools/build-desktop.ts` 產生） |
 | `ts/src/adbview/host.ts` | 唯一知道宿主存在的地方（動態 import runtime → `AdbSource`） |

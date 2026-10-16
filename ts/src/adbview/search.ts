@@ -626,6 +626,11 @@ export interface SearchResult {
  * Incremental search state. A query is extended character by character, so the
  * posting lists already fetched are reused and only a new token costs a read.
  */
+/** diagnostics: what the last host-answered search cost (state().hostSearch) */
+export let lastHostSearch: {
+  tokens: number; hits: number; lookupMs: number; andMs: number; groupMs: number; parallel: boolean; ms: number;
+} | null = null;
+
 export class SearchSession {
   private reader: AdbReader;
   private cache = new Map<string, SearchTokenState>();
@@ -691,9 +696,20 @@ export class SearchSession {
   clear(): void { this.cache.clear(); }
 
   /** Posting list of one token (cached; one block read on a miss). */
+  /**
+   * A token's posting list. On the desktop the HOST answers it (Go decodes the packed
+   * list straight out of the mmap); everywhere else the packed list is decoded here.
+   */
   async lookup(token: string): Promise<SearchTokenState> {
     const hit = this.cache.get(token);
     if (hit) return hit;
+    const hostPostings = this.reader.io.postings;
+    if (hostPostings) {
+      const postings = await hostPostings.call(this.reader.io, token);
+      const state: SearchTokenState = { token, block: -1, postings };
+      this.cache.set(token, state);
+      return state;
+    }
     const c = this.tokensC;
     let state: SearchTokenState = { token, block: -1, postings: [] };
     if (c) {
@@ -708,6 +724,39 @@ export class SearchSession {
   async search(query: string, maxHits = 5000): Promise<SearchResult> {
     const t0 = performance.now();
     const wanted = queryTokens(query);
+    // THE DESKTOP HOST answers the whole index query in one call: it resolves the
+    // tokens, decodes their posting lists (in parallel), does the phrase AND and the
+    // grouping (wails/search.go). Tokenising stays here — that is language, not index.
+    const hostSearch = this.reader.io.searchTokens;
+    if (hostSearch && this.groupTag) {
+      const out = await hostSearch.call(this.reader.io, wanted, this.groupTag, maxHits) as {
+        hits?: { va: number; units: number }[];
+        missing?: string[];
+        truncated?: boolean;
+        groups?: { name: string; from: number; to: number; count: number }[];
+        lookupMs?: number; andMs?: number; groupMs?: number; parallel?: boolean;
+      } | null;
+      const hits = (out?.hits ?? []).map((h) => ({ va: h.va, units: h.units }));
+      lastHostSearch = {
+        tokens: wanted.length,
+        hits: hits.length,
+        lookupMs: out?.lookupMs ?? -1,
+        andMs: out?.andMs ?? -1,
+        groupMs: out?.groupMs ?? -1,
+        parallel: !!out?.parallel,
+        ms: performance.now() - t0,
+      };
+      return {
+        query,
+        tokens: wanted.map((t) => ({ token: t, block: -1, postings: [] })),
+        hits,
+        missing: out?.missing ?? [],
+        truncated: !!out?.truncated,
+        groups: (out?.groups ?? []).map((g) => ({ name: g.name, from: g.from, to: g.to, count: g.count })),
+        groupTag: this.groupTag,
+        ms: performance.now() - t0,
+      };
+    }
     const tokens: SearchTokenState[] = [];
     const missing: string[] = [];
     for (const t of wanted) {

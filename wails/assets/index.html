@@ -1095,8 +1095,14 @@ designed by C.S.Yap`;
       this.size = blob.size;
       if (blob.decompressText)
         this.decompressText = blob.decompressText.bind(blob);
+      if (blob.postings)
+        this.postings = blob.postings.bind(blob);
+      if (blob.searchTokens)
+        this.searchTokens = blob.searchTokens.bind(blob);
     }
     decompressText;
+    postings;
+    searchTokens;
     chunks = new Map;
     static CHUNK = 128 * 1024;
     async read(offset, length) {
@@ -4083,6 +4089,7 @@ designed by C.S.Yap`;
     walk(roots, -1, []);
     return out;
   }
+  var lastHostSearch = null;
 
   class SearchSession {
     reader;
@@ -4132,6 +4139,13 @@ designed by C.S.Yap`;
       const hit = this.cache.get(token);
       if (hit)
         return hit;
+      const hostPostings = this.reader.io.postings;
+      if (hostPostings) {
+        const postings = await hostPostings.call(this.reader.io, token);
+        const state2 = { token, block: -1, postings };
+        this.cache.set(token, state2);
+        return state2;
+      }
       const c = this.tokensC;
       let state = { token, block: -1, postings: [] };
       if (c) {
@@ -4145,6 +4159,30 @@ designed by C.S.Yap`;
     async search(query, maxHits = 5000) {
       const t0 = performance.now();
       const wanted = queryTokens(query);
+      const hostSearch = this.reader.io.searchTokens;
+      if (hostSearch && this.groupTag) {
+        const out = await hostSearch.call(this.reader.io, wanted, this.groupTag, maxHits);
+        const hits2 = (out?.hits ?? []).map((h) => ({ va: h.va, units: h.units }));
+        lastHostSearch = {
+          tokens: wanted.length,
+          hits: hits2.length,
+          lookupMs: out?.lookupMs ?? -1,
+          andMs: out?.andMs ?? -1,
+          groupMs: out?.groupMs ?? -1,
+          parallel: !!out?.parallel,
+          ms: performance.now() - t0
+        };
+        return {
+          query,
+          tokens: wanted.map((t) => ({ token: t, block: -1, postings: [] })),
+          hits: hits2,
+          missing: out?.missing ?? [],
+          truncated: !!out?.truncated,
+          groups: (out?.groups ?? []).map((g) => ({ name: g.name, from: g.from, to: g.to, count: g.count })),
+          groupTag: this.groupTag,
+          ms: performance.now() - t0
+        };
+      }
       const tokens = [];
       const missing = [];
       for (const t of wanted) {
@@ -4882,6 +4920,19 @@ designed by C.S.Yap`;
     const text = await c.ByName("main.AdbHost.DecompressText", path, offset, length);
     return typeof text === "string" ? text : "";
   }
+  async function hostPostings(path, token) {
+    const c = await hostCall();
+    if (!c)
+      return [];
+    const out = await c.ByName("main.AdbHost.Postings", path, token);
+    return out ?? [];
+  }
+  async function hostSearchTokens(path, tokens2, groupTag, maxHits) {
+    const c = await hostCall();
+    if (!c)
+      return null;
+    return await c.ByName("main.AdbHost.SearchTokens", path, tokens2, groupTag, maxHits);
+  }
   function hostSource(e) {
     const name = e.name || e.dbcname || e.dbname || e.path;
     return {
@@ -4896,7 +4947,9 @@ designed by C.S.Yap`;
           }
         };
       },
-      decompressText: (offset, length) => hostDecompressText(e.path, offset, length)
+      decompressText: (offset, length) => hostDecompressText(e.path, offset, length),
+      postings: (token) => hostPostings(e.path, token),
+      searchTokens: (tokens2, groupTag, maxHits) => hostSearchTokens(e.path, tokens2, groupTag, maxHits)
     };
   }
   async function desktopSources() {
@@ -5295,6 +5348,7 @@ designed by C.S.Yap`;
         text: textState(),
         catalog: catalogState(),
         host: hostState(),
+        hostSearch: lastHostSearch,
         dbPick: $("#dbPick")?.value ?? "",
         logo: logoState(),
         leftTab: $("#colLeft .tabBtn.active")?.getAttribute("data-tab") ?? null,
