@@ -98,7 +98,7 @@
           <span class="chip"><span class="sel">[data-tab=freq]</span> <span class="rid">#freqQuery</span> <span class="rid">#freqClear</span> <span class="rid">#freqMeta</span> <span class="rid">#freqList</span></span>
           <span class="chip"><span class="sel">[data-tab=folio]</span> <span class="rid">#folioQuery</span> <span class="rid">#folioClear</span> <span class="rid">#folioMeta</span> <span class="rid">#folioList</span></span>
           <span class="chip"><span class="sel">[data-tab=latin]</span> <span class="rid">#latinQuery</span> <span class="rid">#latinClear</span> <span class="rid">#latinMeta</span> <span class="rid">#latinList</span></span>
-          <span class="chip"><span class="sel">[data-tab=token]</span> <span class="rid">#tokenSummary</span> <span class="rid">#tokenClasses</span> <span class="rid">#tokenTitle</span> <span class="rid">#tokenMore</span> <span class="rid">#tokenRows</span></span>
+          <span class="chip"><span class="sel">[data-tab=token]</span> <span class="rid">#tokenSummary</span> <span class="rid">#tokenClasses</span>＜內含 <span class="rid">#toggleAll</span>＞ <span class="rid">#tokenTitle</span> <span class="rid">#tokenMore</span> <span class="rid">#tokenRows</span></span>
         </div>
       </div>
     </div>
@@ -163,7 +163,7 @@
           <span class="chip"><span class="sel">[data-tab=meta]</span> <span class="rid">#meta</span> <span class="rid">#containers</span></span>
           <span class="chip"><span class="sel">[data-tab=capacity]</span> <span class="rid">#capacity</span></span>
           <span class="chip"><span class="sel">[data-tab=docs]</span> <span class="rid">#docs</span></span>
-          <span class="chip"><span class="sel">[data-tab=images]</span> <span class="rid">#resources</span></span>
+          <span class="chip"><span class="sel">[data-tab=images]</span> <span class="rid">#resources</span>＜內含 <span class="rid">#thumbNote</span>＞</span>
         </div>
       </div>
     </div>
@@ -172,6 +172,8 @@
 
 <div class="note">
   <b>讀圖規則</b>　紅字＝DOM id；灰框＝一個區塊或面板；<span class="cond">青色</span>＝條件出現。
+  有兩個 id 是<b>渲染時才產生</b>的：<span class="sel">#tokenClasses</span> 內的 <span class="rid">#toggleAll</span>（全部載入／只顯示漢字）與
+  <span class="sel">#resources</span> 內的 <span class="rid">#thumbNote</span>（縮圖進度）。<br>
   面板一律用 <span class="sel">#paneLeft [data-tab=…]</span> / <span class="sel">#paneRight [data-tab=…]</span> 指稱，
   因為 <span class="sel">.tabPane</span> 本身沒有 id，靠 <span class="sel">data-tab</span> 當鍵（<span class="sel">showTab(name, 'left' | 'right')</span> 用的就是它）。
 </div>
