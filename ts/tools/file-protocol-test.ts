@@ -527,6 +527,54 @@ try {
     !!escKeep.q.before && escKeep.q.after === escKeep.q.before && escKeep.q.snippets > 0,
     `#query「${escKeep.q.before}」→「${escKeep.q.after}」、摘要 ${escKeep.q.snippets} 筆`
     + (escKeep.own === null ? '｜（此庫沒有其他可見的輸入框）' : `；pane 輸入框 Escape 後＝「${escKeep.own}」`));
+
+  // 真正的瀏覽器行為：<input type="search"> 內建「Escape 清空」→ 一定要 preventDefault 才擋得住。
+  // 合成事件不會觸發預設動作，所以這裡用 CDP 送真正的按鍵（trusted）；作者回報的正是
+  // 「fgdict 全文檢索輸入區按 Escape 還是會刪除輸入文字」。
+  const pressEscape = async (sel: string): Promise<string | null> => {
+    const focused = await cdp.eval<boolean>("(() => { const el = document.querySelector('" + sel + "'); if (!el || !el.offsetParent) return false; el.focus(); return document.activeElement === el; })()");
+    if (!focused) return null;
+    for (const type of ['keyDown', 'keyUp']) {
+      await cdp.send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+    }
+    await Bun.sleep(300);
+    return cdp.eval<string>("document.querySelector('" + sel + "').value");
+  };
+  // #query 住在「目錄」分頁裡（沒有 s="*" 的庫沒有這個分頁 → 略過）
+  const dirShown = await cdp.eval<boolean>(`(() => {
+    const btn = document.querySelector('#colLeft .tabBtn[data-tab="dir"]');
+    if (!btn || btn.hidden || getComputedStyle(btn).display === 'none') return false;
+    btn.click();
+    return true;
+  })()`);
+  if (dirShown) {
+    await Bun.sleep(500);
+    const qBefore = await cdp.eval<string>("document.querySelector('#query').value");
+    const qAfter = await pressEscape('#query');
+    ok('真按 Escape（trusted）也清不掉全文搜尋的輸入', !!qBefore && qAfter === qBefore,
+      `#query「${qBefore}」→「${qAfter}」`);
+  } else {
+    console.log('      （此庫沒有「目錄」分頁，#query 不可見，略過）');
+  }
+  // 左欄「全文／頻次」分頁的輸入框（fgdict 的全文檢索就是這一個）
+  const freqShown = await cdp.eval<boolean>(`(() => {
+    const btn = document.querySelector('#colLeft .tabBtn[data-tab="freq"]');
+    if (!btn || btn.hidden || getComputedStyle(btn).display === 'none') return false;
+    btn.click();
+    return true;
+  })()`);
+  if (freqShown) {
+    await Bun.sleep(800);
+    const typed = await cdp.eval<string>("(() => { const el = document.querySelector('#freqQuery'); el.value = '佛'; el.dispatchEvent(new Event('input')); return el.value; })()");
+    await Bun.sleep(600);
+    const after = await pressEscape('#freqQuery');
+    ok('真按 Escape（trusted）也清不掉「全文／頻次」的輸入框', after === typed,
+      `#freqQuery「${typed}」→「${after}」`);
+    await cdp.eval("(() => { const el = document.querySelector('#freqQuery'); el.value = ''; el.dispatchEvent(new Event('input')); })()");
+    await Bun.sleep(600);
+  } else {
+    console.log('      （此庫沒有「全文／頻次」分頁，略過該輸入框的 trusted Escape 檢查）');
+  }
   // 目錄樹（<樹> 解析 → 右欄「目錄」分頁）
   const tree = await cdp.eval<{
     tabs: string; rows: number; meta: string; labels: string[]; dots: string[];

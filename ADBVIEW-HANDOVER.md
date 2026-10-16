@@ -129,6 +129,10 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   **輸入區按 Escape 不清空**（作者 2026-10）：文字與結果都留著，只是離開欄位；
   要清空用輸入框的 ✕（`#queryClear`／`#termsClear`／`#freqClear`／`#latinClear`／`#folioClear`），Enter 則立即重搜。
   `#query` 與四個 pane 的輸入框（`wireOwnSearch`）共用這個規則。
+  ⚠️ **五個輸入框都是 `<input type="search">`，Chromium 內建「Escape 清空」** —— keydown 一定要
+  `ev.preventDefault()`；只是把自己寫的清空程式碼刪掉，欄位還是會被瀏覽器清掉（作者 2026-10 回報
+  「fgdict 全文檢索輸入區按 Escape 還是會刪除輸入文字」就是這個）。合成事件的測試**不會**觸發這個
+  預設動作，所以回歸測試用 CDP `Input.dispatchKeyEvent` 送真正的（trusted）按鍵來驗。
 
   **狀態列只顯示錯誤與「讀取中」**（作者 2026-10「取消 span.status（用戶不需要此信息）」）：
   `setStatus(msg, 'info')` 不再寫進 DOM（`#status` 設 `hidden`），但訊息仍記在 `lastStatus`，

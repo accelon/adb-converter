@@ -292,8 +292,10 @@ function boot() {
   };
   query.onkeydown = (ev) => {
     if (ev.key === 'Enter') { window.clearTimeout(timer); void runSearch(query.value); }
-    // Escape deliberately does NOT clear the box (author, 2026-10): the ✕ button is
-    // the way to clear, and Escape is how you leave the field without losing the query.
+    // Escape must NOT clear the box (author, 2026-10): the ✕ is the way to clear, and
+    // Escape is how you leave the field without losing the query. `<input type="search">`
+    // clears ITSELF on Escape (Chromium default action), so the event has to be stopped.
+    if (ev.key === 'Escape') ev.preventDefault();
   };
   $('#queryClear').onclick = () => { query.value = ''; void runSearch(''); query.focus(); };
   $('#searchList').addEventListener('scroll', (ev) => {
@@ -317,7 +319,9 @@ function boot() {
     };
     input.onkeydown = (ev) => {
       if (ev.key === 'Enter') { window.clearTimeout(t); run(); }
-      // Escape does NOT clear the box (author, 2026-10) — use the ✕ to clear
+      // Escape must NOT clear the box (author, 2026-10) — use the ✕. Without
+      // preventDefault the `type="search"` field clears itself (Chromium default).
+      if (ev.key === 'Escape') ev.preventDefault();
     };
     const clear = $(clearSel) as HTMLButtonElement | null;
     if (clear) clear.onclick = () => { input.value = ''; run(); input.focus(); };
