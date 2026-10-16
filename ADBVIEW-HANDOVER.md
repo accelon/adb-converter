@@ -562,3 +562,117 @@ DOM 列數也固定。
 | `D:\2026\adb-converter\13j.adb` | 2.25 MB | 十三經。單檔、13 書、四層（書→章→節→項 2,020 節點） |
 | `D:\accelon3\yinshun\yinshun.adb` | 24.9 MB | 印順法師全集。45 文件、456 資源、三棵 `<樹>`（`*`／`*u=文`／`~00602000`） |
 | `D:\accelon3\fgdict.adb` | 18.2 MB | 佛光大辭典。三棵 `<樹>`（`$詞`／`*詞`／`頁.n`）、`<詞>` 22,648 個 |
+
+## 10. 桌面版（Wails3 宿主，2026-10）
+
+**目的**：exe 啟動時就自動列出**工作目錄裡所有 `.adb`**（只讀每個檔的 256 位元組檔頭），
+讀內文用 **mmap**。使用者從右上 `#dbPick` 下拉選一個就加入 `dbTabs`，其餘行為與網頁版完全一樣。
+
+**作者指示**：除非明確說要造 exe 或「準備發佈」，否則**只產生 HTML 版**；大部分程式碼留在 TypeScript，
+Go 層越薄越好，UI 最好不要知道 Go 層存在；Wails 不必走 socket／event 回呼。
+
+### 10.1 一份 UI、兩種宿主
+
+| 宿主 | 檔案從哪來 | 讀取方式 |
+|---|---|---|
+| 純網頁 `file://` | `#file` 檔案選擇器／拖曳（`File`） | `Blob.slice().arrayBuffer()`（`BlobIO`，128 KiB 分塊快取） |
+| 桌面 `adbview.exe` | 工作目錄的 `*.adb`（宿主回報，只讀檔頭） | Go mmap → base64 → `Uint8Array` |
+
+UI 怎麼可能不知道 Go 層：`ts/src/adbview/adb.ts` 定義 `ByteSource`／`AdbSource`（只要 `name`／`size`／
+`lastModified` 與 `slice(start,end).arrayBuffer()`），挑檔案的 `File` 與宿主檔案都符合。
+**只有 `ts/src/adbview/host.ts` 知道宿主存在**：它用 `new Function('u','return import(u)')` 動態載入
+`/wails/runtime.js`（`file://` 下必然失敗 → 沒有宿主），把 `Call.ByName('main.AdbHost.ListAdbs')` 與
+`('main.AdbHost.ReadBase64', path, offset, length)` 包成普通的 `AdbSource`。`ui.ts` 只多一行
+`void bootDesktop()`（有宿主才把工作目錄的 adb 加進 catalog，並開第一個）。
+診斷：`state().host = { available, listed, error }`（**不要讓它靜默退化** —— 這一輪就是靠它抓到 bug）。
+
+### 10.2 Go 層（`wails/`，獨立模組 `github.com/accelon/adb-converter/wails`）
+
+只註冊一個 service `AdbHost`：
+
+* `ListAdbs()`：`os.ReadDir(".")` 找 `*.adb`（大小寫不敏感）→ mmap → 只解析檔頭的 `dbname`（0..32 ASCII）
+  與 `dbcname`（128..192 UTF-16LE）→ 回 `path/name/dbname/dbcname/size/modified`。
+  `Name` 優先序＝`dbcname` → `dbname` → 檔名。讀不了就跳過，不讓整個清單失敗。
+* `Open(path)`／`Close(path)`／`CloseAll()`：白名單（必須 `.adb` 且位於**當前工作目錄之內**）、
+  映射快取＋引用計數（webview 會從多個 goroutine 呼叫，內部 `sync.Mutex`）。
+* `ReadBase64(path, offset, length)`：**UI 唯一的讀取入口**，回傳映射切片的 base64；越界／負數回 error 不 panic。
+* mmap 直呼 `kernel32.dll`（`CreateFileMappingW`／`MapViewOfFile`／`UnmapViewOfFile`），不引入 `golang.org/x/sys`。
+* **不做任何 adb 解析**（除了 256 位元組檔頭）：沒有事件、沒有 socket、沒有自訂協議。
+
+**為什麼傳 base64 而不是 `[]byte`**：Wails 會把 `[]byte` 序列化成 JSON 數字陣列（約 6 倍大）；base64 只膨脹
+1.33 倍，前端用 `Uint8Array.fromBase64`（沒有就 `atob`）解回 bytes。
+
+### 10.3 建置與驗證
+
+```powershell
+cd ts; bun run tools/build-viewer.ts                  # 預設產物：../build/adbview.html（單檔，file:// 可開）
+cd ts; bun run tools/build-desktop.ts                 # 只在要桌面版時：同一份 HTML → ../wails/assets/index.html
+cd wails; go test ./...                               # Go 單元測試（不需要 GUI）
+cd wails; go build -o ../build/desktop/adbview.exe .  # 打包 exe（HTML 內嵌）
+cd ..;   .\build\desktop\adbview.exe -selftest         # 不開 GUI：列工作目錄的 adb + mmap 讀取計時
+cd ts; bun run tools/desktop-test.ts [--gui]          # 桌面版回歸：headless 5 項；--gui 再加視窗版 6 項
+```
+
+**實測（2026-10，exe 在倉庫根目錄執行，那裡有 13j.adb／fgdict.adb／yinshun.adb）**：
+
+```
+`-selftest`（節錄）：
+  found 3 .adb file(s):
+    佛光大辭典        size=19121862  dbname="fgdict"  dbcname="佛光大辭典"
+    十三經            size=2252537   dbname="13j"     dbcname="十三經"
+    印順法師佛學著作集  size=24910598  dbname="yinshun" dbcname="印順法師佛學著作集"
+  mmap+base64 read: 200 x 131072 bytes = 25.0 MiB input, total 17.7 ms
+    88540 ns/op, 1412 MiB/s input, 1882 MiB/s base64 out
+
+tools/desktop-test.ts --gui（11/11 passed，節錄）：
+  ok  視窗頁面啟動（desktop host 有回應）  ["佛光大辭典","印順法師佛學著作集（未載入）","十三經（未載入）"]
+  ok  下拉已含工作目錄的兩個 adb          ["佛光大辭典","十三經","印順法師佛學著作集"]
+  ok  啟動時沒有把每個 adb 都載入（只讀檔頭）1 個已載入
+  ok  開第一個 adb 是用 mmap 讀的        reads=17 ioMs=75.8 parseMs=52.3 totalMs=109.8
+  ok  從下拉選另一個 adb 會載入它        fgdict → yinshun：wall 219 ms、開檔 95 ms（19 次讀取，io 73.9 ms）
+```
+
+### 10.4 效能：mmap 很快，**跨語言邊界才是瓶頸**（實測，別被直覺騙了）
+
+Go 端 mmap+base64：**~1.4 GiB/s**（25 MiB 讀 200 次共 17.7 ms）。但 webview 呼叫一次要過 Wails 的
+runtime（JSON + base64 + 訊息傳遞），在執行中的 exe 裡用 `build/probe-bridge.ts` 量到：
+
+| 一次要的位元組 | 每次呼叫耗時 | 有效頻寬 |
+|---|---|---|
+| 4 KiB | 0.99 ms | 4 MB/s |
+| 16 KiB | 1.18 ms | 13 MB/s |
+| 128 KiB | 3.16 ms | 40 MB/s |
+| 512 KiB | 8.51 ms | 59 MB/s |
+| 1 MiB | 16.9 ms | 59 MB/s |
+| 4 MiB | 63.4 ms | 63 MB/s |
+
+也就是：**每次呼叫固定成本 ~0.9 ms，之後約 60 MB/s**（base64 字串的搬運與解碼）。開 fgdict 要讀
+~2.4 MB 的表 → 桌面 **109.8 ms**（17 次讀取、io 75.8 ms），同一顆庫在瀏覽器走 `Blob.slice` 是 **~49 ms**
+（`ioMs` 只有 15 ms，因為 `Blob.slice` 每次呼叫幾乎不用錢）。**桌面版的價值是「啟動就列出工作目錄的庫」
+與不用挑檔，不是原始讀取速度**。（要再快就得動這個邊界：加大分塊是「開檔變快、翻頁變慢」的取捨；
+`BlobIO.CHUNK` 目前 128 KiB 是兩者的折衷。）
+
+### 10.5 踩到的坑（下一輪別再踩）
+
+1. **`application.BundledAssetFileServer` 不是 `AssetFileServerFS`**：只有前者會在 `/wails/runtime.js`
+   提供內建 runtime（後者只服務 assets）。用錯的話頁面照樣跑，但 `host.ts` 的 import 失敗 → 下拉永遠空的。
+2. **Wails 會覆寫 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`**（`preventEnvAndRegistryOverrides` 會 `os.Setenv`），
+   所以自動化測試要開 devtools 只能從 `application.WindowsOptions.AdditionalBrowserArgs` 傳；
+   本專案用環境變數 `ADBVIEW_DEBUG_PORT` 開啟，**預設不開任何除錯埠**。
+3. **Bun 不會對「未 import 的識別字」報錯**（會當成全域）→ `bootDesktop()` 裡的 `catalogAdd` 忘了 import，
+   建置成功、執行時 `ReferenceError`，而且是在 async 裡 → 安靜地什麼都沒發生（下拉空的）。
+   修法：補 import ＋ `state().host.error` 讓它能被看見。
+4. 更新 HTML 後**必須重跑 `tools/build-desktop.ts` 再 `go build`**：HTML 是內嵌的，只 rebuild 其中一邊不會生效。
+5. `wails/assets/index.html` 是**建置產物**（來自 `tools/build-desktop.ts`）；`//go:embed all:assets` 需要它存在。
+
+### 10.6 檔案
+
+| 檔案 | 角色 |
+|---|---|
+| `wails/main.go` | Wails 應用（極薄）：內嵌 assets、`-selftest`、註冊 `AdbHost`、`ADBVIEW_DEBUG_PORT` |
+| `wails/adbhost.go` | mmap + `ListAdbs`／`Open`／`ReadBase64`／`Close`／`CloseAll` |
+| `wails/adbhost_test.go` | Go 測試：檔頭解析、與 `os.ReadFile` 逐位元組相同、越界報錯、讀取計時 |
+| `wails/assets/index.html` | 內嵌的 adbview（由 `ts/tools/build-desktop.ts` 產生） |
+| `ts/src/adbview/host.ts` | 唯一知道宿主存在的地方（動態 import runtime → `AdbSource`） |
+| `ts/tools/build-desktop.ts` | 把同一份單檔 HTML 寫進 `wails/assets/` |
+| `ts/tools/desktop-test.ts` | 桌面版回歸（headless `-selftest` ＋ `--gui` 的 WebView2/CDP 檢查） |

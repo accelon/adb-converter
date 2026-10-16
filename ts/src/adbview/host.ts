@@ -22,6 +22,9 @@ interface HostCall { ByName(name: string, ...args: unknown[]): Promise<unknown>;
 
 let call: HostCall | null = null;
 let probed = false;
+/** why the host is absent (diagnostics: state().host) — a silently empty dropdown is a bug */
+let lastError = '';
+let lastCount = 0;
 
 /**
  * Load the Wails runtime lazily — from `file://` there simply is none. The import is
@@ -36,8 +39,10 @@ async function hostCall(): Promise<HostCall | null> {
     const mod = await dynamicImport('/wails/runtime.js');
     const c = mod?.Call as HostCall | undefined;
     if (c && typeof c.ByName === 'function') call = c;
-  } catch {
-    call = null;          // ordinary browser build (or an older host): stay file-based
+  } catch (e) {
+    // ordinary browser build (or an older host): stay file-based
+    call = null;
+    lastError = String((e as Error)?.message ?? e);
   }
   return call;
 }
@@ -91,8 +96,15 @@ export async function desktopSources(): Promise<AdbSource[]> {
   if (!c) return [];
   try {
     const list = await c.ByName('main.AdbHost.ListAdbs') as HostAdb[] | null;
-    return (list ?? []).filter((e) => e && e.path).map(hostSource);
-  } catch {
+    const out = (list ?? []).filter((e) => e && e.path).map(hostSource);
+    lastCount = out.length;
+    lastError = '';
+    return out;
+  } catch (e) {
+    lastError = String((e as Error)?.message ?? e);
     return [];
   }
 }
+
+/** diagnostics for state(): is a host answering, how many databases, and why not */
+export const hostState = () => ({ available: !!call, listed: lastCount, error: lastError });

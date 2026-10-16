@@ -432,6 +432,7 @@ export function installDebugApi(): void {
     rightTab: $('#colRight .tabBtn.active')?.getAttribute('data-tab') ?? null,
     text: textState(),
     catalog: catalogState(),
+    host: hostState(),
     dbPick: ($('#dbPick') as HTMLSelectElement | null)?.value ?? '',
     logo: logoState(),
     leftTab: $('#colLeft .tabBtn.active')?.getAttribute('data-tab') ?? null,
@@ -489,10 +490,10 @@ export function installDebugApi(): void {
 
 import { loadTree } from './search';
 
-import { MAX_DBS, catalogAddFile, catalogState, dbLog, openDbs, renderDbPick, setDbHooks } from './dbs';
+import { MAX_DBS, catalogAdd, catalogAddFile, catalogState, dbLog, openDbs, renderDbPick, setDbHooks } from './dbs';
 import { initTextPane, renderTextPane, textState } from './text-pane';
 import { logoState, updateDocLogo } from './logo';
-import { desktopSources } from './host';
+import { desktopSources, hostState } from './host';
 
 export { ADV_KEY, COLS_KEY, DEFAULT_COLS, MAX_SIDE, MIN_SIDE, advanced, applyCols, attachSplitter, boot, defaultLeftTab, readAdvanced, readCols, saveCols, setAdvanced, setSide, showTab, toggleSide };
 
