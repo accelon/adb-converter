@@ -19,3 +19,8 @@ sourcecode/
 *-small.adb
 *-small-report.json
 report-fgdict.md
+
+# 建置產物：Windows 資源物件（由 ts/tools/release.ts 從 logo128.png 產生）
+wails/*.syso
+build/windows/
+build/darwin/

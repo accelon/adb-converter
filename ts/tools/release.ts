@@ -16,7 +16,7 @@
  * 建置時間一定要用 -ldflags 注入：沒注入的 exe 只能退回「檔案修改時間」，
  * 而檔案時間會被複製／解壓改變，發佈版就無法判斷新舊了。
  */
-import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const args = process.argv.slice(2);
@@ -68,9 +68,36 @@ const run = (cmd: string[], cwd: string, label: string) => {
 };
 console.log('\n[1/3] 建置單檔 HTML → wails/assets/index.html');
 run(['bun', 'run', 'tools/build-desktop.ts'], resolve(ROOT, 'ts'), 'HTML 建置');
+// 圖示（作者放在倉庫根目錄的 logo128.png）→ .ico → wails/accelon26.syso（go build 會自動連結）。
+// 注意：wails3 generate syso **一定要給 -arch**，否則會產生 0 位元組的檔案，連結時會失敗。
+// .syso 是建置產物（gitignore）；沒有 wails3 就跳過（只是沒有圖示，仍然可建置）。
+function prepareIcon(): void {
+  const png = resolve(ROOT, 'ts/src/adbview/appicon.png');
+  if (!existsSync(png)) { console.log('（沒有 logo128.png，略過圖示）'); return; }
+  const ico = resolve(ROOT, 'build/windows/icon.ico');
+  const syso = resolve(WAILS, 'accelon26.syso');
+  mkdirSync(resolve(ROOT, 'build/windows'), { recursive: true });
+  mkdirSync(resolve(ROOT, 'build/darwin'), { recursive: true });
+  const best = (cmd: string[], label: string) => {
+    const r = Bun.spawnSync({ cmd, cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
+    if (r.exitCode !== 0) console.log('（' + label + ' 失敗，略過圖示：' + new TextDecoder().decode(r.stderr).trim().split('\n').slice(-1)[0] + '）');
+    return r.exitCode === 0;
+  };
+  if (!best(['wails3', 'generate', 'icons', '-input', png, '-windowsfilename', ico, '-macfilename', resolve(ROOT, 'build/darwin/icon.icns')], 'icons')) return;
+  if (!best(['wails3', 'generate', 'syso', '-arch', 'amd64', '-icon', ico, '-manifest', resolve(WAILS, 'windows.manifest'), '-out', syso], 'syso')) return;
+  const size = existsSync(syso) ? statSync(syso).size : 0;
+  if (size < 1024) {   // 0 位元組的 .syso 會讓 go build 失敗，一定要清掉
+    console.log('（.syso 只有 ' + size + ' 位元組，不合法 → 刪掉）');
+    rmSync(syso, { force: true });
+    return;
+  }
+  console.log('（圖示已嵌入：' + ico.replace(ROOT + '\\', '') + ' → ' + syso.replace(ROOT + '\\', '') + '，' + (size / 1024).toFixed(0) + ' KiB）');
+}
+
 console.log('[2/3] 建置 exe（內嵌 HTML ＋ 注入建置時間' + (args.includes('--console') ? '，console 版' : '，GUI 版／雙擊不跳命令列') + '）');
 // -H windowsgui：GUI 子系統，雙擊才不會跳出命令列視窗（要 console 版就加 --console）。
 const ldflags = '-X main.buildTime=' + buildTime + (args.includes('--console') ? '' : ' -H windowsgui');
+prepareIcon();
 run(['go', 'build', '-ldflags', ldflags, '-o', EXE, '.'], WAILS, 'go build');
 
 // 3) 驗證 exe 裡的建置時間

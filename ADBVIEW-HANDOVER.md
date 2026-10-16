@@ -723,7 +723,11 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
 10. **Windows 命令列的中文會變亂碼**：`bun run tools/release.ts --items "改名為…"` 經 PowerShell 傳進去
     後，release_notes.json 變成亂碼（而且已經 commit）。**中文一律用 `--items-file notes.txt`**（UTF-8），
     release.ts 也會對亂碼字元發警告並中止。凡是「把中文當參數傳給子行程」都要小心。
-11. **共用 promise 的探測**：`hostCall()` 原本用 `probed` 旗標，兩個呼叫同時進來時，第二個會在探測
+11. **`wails3 generate syso` 一定要給 `-arch`**：不給的話它會產生**0 位元組**的 .syso（而且 exit code 0），
+    `go build` 連結時看到壞掉的物件就改走 external linker → `loadinternal: cannot find runtime/cgo` ＋
+    `gcc not found`（本機沒有 gcc）→ 建置失敗。給了 `-arch amd64` 就正常（67 KiB），`CGO_ENABLED=0` 也能連結。
+    release.ts 會檢查檔案大小，太小的直接刪掉（免得下一次建置踩到）。
+12. **共用 promise 的探測**：`hostCall()` 原本用 `probed` 旗標，兩個呼叫同時進來時，第二個會在探測
     還沒完成前看到 `probed=true / call=null` → 誤判「沒有宿主」（下拉整個空的）。修法：把探測做成
     一個共用的 promise，所有人 await 同一個。
 
@@ -877,6 +881,18 @@ cd ts; bun run tools/release.ts --items-file notes.txt        # 一行一項（U
 # 然後把 build/desktop/accelon26.exe 上傳到 https://shutonggui.cn/accelon26/accelon26.exe
 ```
 
+**圖示**（作者 2026-10：「用 logo128.png 做成 exe 和網頁版的 icon」）：
+
+* **來源只有一份**：`ts/src/adbview/appicon.png`（原本是倉庫根目錄的 logo128.png，已搬進 viewer 模組）。
+* **exe 圖示**：`release.ts` 用 `wails3 generate icons` 產生 `build/windows/icon.ico`，再用
+  `wails3 generate syso -arch amd64 -icon … -manifest wails/windows.manifest` 產生
+  `wails/accelon26.syso`（go build 會自動連結這個資源物件）。`.syso` 是建置產物（gitignore）。
+  manifest 宣告 per-monitor v2 DPI 感知、longPathAware、Common-Controls、Win10/11 支援。
+* **網頁版圖示**：`page-build.ts` 把同一張 PNG 以 **data URI** 內嵌成 `<link rel="icon">`
+  —— 單檔 HTML 不能依賴旁邊的檔案，data URI 才真的「一個檔案帶著走」（+19 KiB）。
+* 驗證：`ExtractAssociatedIcon` 從 exe 取出 32×32 圖示（與來源相同）；網頁版在瀏覽器測試裡斷言
+  `link[rel=icon]` 是 PNG data URI 且頁面標題是 accelon26。
+
 **診斷**（`D:\accelon26\accelon26.exe -version`）（建置時間／說明筆數／更新網址）、`main.AdbHost.AppInfo()`、
 `CheckUpdate()`（立刻檢查一次）、`InstallUpdate()`、`ReleaseNotes(since)`。
 
@@ -911,6 +927,10 @@ Go 單元測試（`wails/update_test.go`）：目錄可寫／不可寫、遠端�
 | `wails/update.go` | 建置時間、目錄可寫偵測、線上檢查（Last-Modified）、自我更新、改版說明 |
 | `wails/release_notes.json` | 各版改版說明（發佈時用 `tools/release.ts` 追加） |
 | `ts/src/adbview/update-ui.ts` | 左上角提示／閃動／確認／改版說明（UI 端唯一碰更新的一支） |
+| `ts/src/adbview/appicon.png` | 應用圖示（唯一來源）：exe 圖示與網頁 favicon 都用它 |
+| `ts/src/adbview/window-keys.ts` | F11／Esc 全螢幕切換與全螢幕提示 |
+| `ts/tools/page-build.ts` | 單檔 HTML 的組裝（bundle ＋ favicon data URI），兩個建置腳本共用 |
+| `wails/windows.manifest` | Windows manifest（DPI／longPath／Common-Controls），給 generate syso 用 |
 | `ts/tools/release.ts` | 發佈：追加說明 → 先 HTML 再 exe（注入建置時間）→ 驗證 → 上傳指示 |
 | `wails/adbhost_test.go`／`decompress_test.go`／`search_test.go`／`window_test.go`／`bzip2_bench_test.go` | Go 測試與量測 |
 | `wails/adbhost_test.go` | Go 測試：檔頭解析、與 `os.ReadFile` 逐位元組相同、越界報錯、讀取計時 |

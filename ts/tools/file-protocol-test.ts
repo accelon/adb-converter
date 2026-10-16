@@ -113,6 +113,15 @@ try {
   const origin = await cdp.eval<string>('location.protocol + "//" + (location.host || "(none)")');
   ok('page really runs on file://', origin.startsWith('file://'), origin);
   ok('viewer bundle loaded on file://', await cdp.eval<boolean>('!!window.__adbview'));
+  // 網頁版的圖示：appicon.png 以 data URI 內嵌（單檔 HTML 不能依賴旁邊的檔案）
+  const icon = await cdp.eval<string>(`(() => {
+    const link = document.querySelector('link[rel="icon"]');
+    return JSON.stringify({ href: (link?.getAttribute('href') ?? '').slice(0, 30), len: link?.getAttribute('href')?.length ?? 0, title: document.title });
+  })()`);
+  const iconInfo = JSON.parse(icon) as { href: string; len: number; title: string };
+  ok('網頁版有內嵌的 PNG 圖示（favicon data URI）',
+    iconInfo.href.startsWith('data:image/png;base64,') && iconInfo.len > 1000, `${iconInfo.href}… ${iconInfo.len} 字元`);
+  ok('頁面標題是 accelon26', iconInfo.title === 'accelon26', iconInfo.title);
   // the point of the exercise: fetch must NOT be needed
   const fetchWorks = await cdp.eval<string>(`fetch('x').then(() => 'ok').catch(e => 'blocked: ' + e.message)`);
   ok('fetch is unavailable on file:// (as expected, so the File API is the only path)',
