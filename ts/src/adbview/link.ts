@@ -7,7 +7,7 @@
  */
 import { $, displayName, docs, fmtInt, mapper, reader, setStatus } from './viewer';
 import { dirActive, dirTrees, renderDirTree } from './scopes';
-import { DOCFS_KEY, autoFitFont, boundsOfRealm, docActive, docFontSized, docOfVa, docSession, docTabs, ensurePage, lastLink, pageBounds, renderDocTabs, sessionFor, setDocActive, setDocFontSized, setLastLink, wholeRealm } from './doc-pane';
+import { DOCFS_KEY, autoFitFont, boundsOfRealm, docActive, docFontSized, docOfVa, docSession, docTabs, ensurePage, lastLink, pageBounds, renderDocTabs, sessionFor, sessionForRealm, setDocActive, setDocFontSized, setLastLink, wholeRealm } from './doc-pane';
 
 /** the hit the middle pane is currently showing (VA + its element text) */
 let pinnedHit: { va: number; text: string; token: string; units: number; line: number; exact?: boolean; phrase?: string; noMark?: boolean } | null = null;
@@ -71,7 +71,6 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   const u = Math.max(1, units ?? el?.element.vaUnits ?? 1);
 
   const doc = docOfVa(va);
-  const firstLink = docTabs.length === 0;
   const useNode = !!node && (opts.mode === 'node' || !docTabs.length);
   // Without a node the realm is the owning `<檔>` — NOT the whole VA space: in a
   // multi-document database the page range must be expressed in that document's
@@ -91,15 +90,26 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   // detail, so it is only the last resort.
   // The clicked label wins: it is what the reader pointed at, and on a drifting
   // database the node's own label can be a neighbouring entry's text.
-  const name = opts.name || token || (useNode ? node!.name : (el.element.text || doc.name || reader?.header.dbname || ''));
+  const name = opts.name || token || (useNode ? node!.name : (el?.element.text || doc.name || reader?.header.dbname || ''));
   const cur = docSession();
-  const covers = !!cur && realm.to > realm.from && realm.from >= cur.realm.from && realm.to <= cur.realm.to;
-  // Ctrl/Cmd means "open a NEW document tab" (requirement 三): it must open one even
-  // when the current tab already covers the realm, otherwise the key silently does
-  // nothing on a node inside the tab being read.
-  const s = opts.newTab
-    ? sessionFor(realm, name, true)
-    : (firstLink || !covers ? sessionFor(realm, name, false) : cur!);
+  const existing = sessionForRealm(realm);
+  // Requirement 三: Ctrl/Cmd opens a NEW document tab, a PLAIN click UPDATES the tab
+  // in view. The old rule opened a tab whenever the current one did not already cover
+  // the realm, so walking the 目錄 (or the 全文 list) without Ctrl piled up one tab per
+  // node that was visited.
+  let s: DocSession;
+  if (opts.newTab) {
+    s = sessionFor(realm, name, true);
+  } else if (existing) {
+    s = existing;                 // this realm already has a tab: focus that one
+  } else if (cur) {
+    s = cur;                      // adopt the new realm in the tab being read
+    s.realm = realm;
+    s.page = 0;
+    s.cache = null;               // the cached page belongs to the old realm
+  } else {
+    s = sessionFor(realm, name, false);
+  }
 
   s.doc = doc;
   // A reused tab is renamed to what was just clicked: the pane now shows THAT node/

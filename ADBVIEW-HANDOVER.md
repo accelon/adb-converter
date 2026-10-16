@@ -201,6 +201,11 @@ viewer.ts 剩 197 行——但啟動後 **`Runtime.evaluate` timeout（頁面卡
 4. **測試用的 `window.__adbview` 必須延後建立**（包成 `installDebugApi()`，在 `boot()` 最後呼叫）：它是 top-level 讀取所有模組的 binding，循環 import 下會踩 TDZ（症狀：`ReferenceError`、`__adbview` undefined）。
 5. **`document.addEventListener('DOMContentLoaded', boot)` 只能留一處**（留在入口模組或 ui），且 `boot` 只能在所有模組初始化後跑。
 6. 每拆一塊就跑 13j（67）確認；全拆完再跑 yinshun／fgdict。卡住時先用 `build/probe.ts` 抓 `Runtime.exceptionThrown`。
+7. **子模組要繼承 viewer 的套件 import**（`CLASS_LABELS`／`VaPaMapper`／`loadTree`…），否則 `ReferenceError` 會被 `openFile` 的 try/catch 吞掉，症狀是「頁面卡住」。
+8. **手改子模組而用到新符號時，記得自己補 import**：Bun 對「未 import 的識別字」不會報錯，會當成全域變數 → 執行時才 `ReferenceError`（例：`sessionForRealm`）。
+
+**分頁行為（需求三，2026-10 作者回報後修正）**：不按 Ctrl 的聯動**更新當前分頁**（不是每個節點開一個）；
+只有 Ctrl/Cmd 開新分頁；若目標 realm 已經有分頁，則聚焦那一個。回歸測試：`不按 Ctrl 走訪目錄只更新當前分頁（不會多開）`。
 
 ### 3.1 分區名稱與 id（溝通時直接用；示意圖 [adbview-map.html](adbview-map.html)）
 
@@ -241,7 +246,7 @@ viewer.ts 剩 197 行——但啟動後 **`Runtime.evaluate` timeout（頁面卡
   | `*` | 全文 | ✅ 分頁「目錄」（搜尋摘要移到右欄「摘要」） |
   | `*u=文` | **屬性過濾**（attr `u`, value `文`） | ✅ 分頁「頻次」（yinshun 6,978 段／40 個標籤） |
   | `*文` | **標籤名** → `<文>` 的實例 | ✅ 分頁「全文」（fgdict `*詞`：5,000 筆命中分布於 1,356／22,648 段） |
-  | `~X` | **token 清單**：`settoken(adb, X)` | ⚠️ 分頁「西文」**已接線並有內容**（原本 `renderLatin()` 根本沒被呼叫）；但 X 的語意仍是碼點範圍的猜測，**需要作者確認** |
+  | `~X` | **token 清單**：`settoken(adb, X)` | ⚠️ 分頁「西文」**已接線並有內容**（原本 `renderLatin()` 根本沒被呼叫）；**作者確認 X 就是碼位範圍**（2026-10） |
   | `$詞` | 標籤包裹（`parsetav` → tag `詞`） | ✅ 分頁「名詞」（fgdict：一個 `<詞>` 一個詞條，輸入時先列詞條名符合者） |
   | `@X` / `^X` / `%` | 字表／主題表／反向連結 | 未接 |
   | `頁.n` | `tag.attr`：樹從 `<頁>` 起，名字取 `n` 屬性 | ✅ 分頁「原書分頁」（fgdict 6,959 個頁碼，可選可輸入；用 `attributeValues('頁.n')` 的 pointers 對到 `<頁>` 實例 VA） |
@@ -331,7 +336,7 @@ DOM 列數也固定。
 3. **`頁.n`（tag.attr）scope** 與 `@`／`^`／`%` 三種。
 4. **讀 `<樹>` 元素內容當分頁名**，並讀 `t`/`p`/`o` 屬性（`o` 是 columns）。
 5. **`~X`（西文）語意**：現在 **已接線、有內容**（`renderLatin()` 原本沒被呼叫是 bug），
-   但把 X 當碼點範圍只是猜測；Pascal 的 `~X` 是 `settoken`（字面 token 名）。需作者確認。
+   X 就是**碼位範圍**（2026-10 作者確認），不需再猜。
 6. **目錄樹與頻次改為純屬性查表**：目前節點名稱仍會走內文（fgdict 6,978 段的取名已限制在顯示的前 200 列）。
 
 ### P2 — 測試覆蓋缺口

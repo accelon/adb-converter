@@ -1267,6 +1267,27 @@ try {
   ok('resources pane reports state on file://', res.length > 0, res);
 
   const errors = cdp.logs.filter((l) => l.startsWith('exception'));
+  // 走訪目錄不按 Ctrl 不該多開分頁（需求三）。放在最後：它會改變本文狀態，而前面的
+  // 斷言都是針對特定頁／字級，插在中間會把它們全部打亂。
+  const walk = await cdp.eval<{ added: number; tabs: number }>(`
+    (async () => {
+      const spec = () => window.__adbview.state().docTabs.length;
+      const books = () => [...document.querySelectorAll('#dirTree .tRow')]
+        .filter((r) => r.querySelector('.tTag')?.textContent === '書');
+      const dirTab = document.querySelector('#colLeft .tabBtn[data-tab="dir"]');
+      if (!dirTab || getComputedStyle(dirTab).display === 'none' || books().length < 4) return { added: 0, tabs: spec(), skipped: true };
+      dirTab.click();
+      await new Promise((r) => setTimeout(r, 500));
+      const before = spec();
+      for (const i of [1, 2, 3]) {
+        const rows = books();
+        rows[i % rows.length].querySelector('.tDot').click();
+        await new Promise((r) => setTimeout(r, 700));
+      }
+      return { added: spec() - before, tabs: spec(), skipped: false };
+    })()
+  `);
+  ok('不按 Ctrl 走訪目錄只更新當前分頁（不會多開）', walk.added === 0, `走過 3 個節點，分頁 +${walk.added}（共 ${walk.tabs}）`);
   ok('no page exceptions', errors.length === 0, errors.slice(0, 2).join(' | ') || 'clean');
 } catch (e) {
   fail++;
