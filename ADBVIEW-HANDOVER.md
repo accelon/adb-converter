@@ -143,6 +143,24 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
 | `ts/tools/shot.ts` | 開啟頁面、餵檔、驅動本文分頁，存一張 PNG 供目視檢查 |
 | `ts/src/tokenize.ts`、`ts/src/unicode.ts` | 分詞器與 Unicode 判定（照 Delphi 移植） |
 
+### 3.1 分區名稱與 id（溝通時直接用；示意圖 [adbview-map.html](adbview-map.html)）
+
+| 統一稱呼 | 選擇器 | 備註 |
+|---|---|---|
+| 頂欄 | `#header` | `#toggleLeft`／`#toggleRight`／`#advToggle`／`#file`／`#dbname`／`#status` |
+| 三欄容器 | `#main` | `--left` 25fr・`--center` 50fr・`--right` 25fr，6px 分隔線 |
+| 左欄／中欄／右欄 | `#colLeft`／`#colMid`／`#colRight` | `#splitLeft`／`#splitRight` 拖到 15% 以下即收合 |
+| 左欄分頁列／窗格區 | `#tabsLeft`／`#paneLeft` | 分頁鍵＝`[data-tab=dir\|terms\|freq\|folio\|latin\|token]` |
+| 右欄分頁列／窗格區 | `#tabsRight`／`#paneRight` | `[data-tab=sum\|meta\|capacity\|docs\|images]` |
+| 目錄樹本體 | `#dirTree` | 面板＝`#paneLeft [data-tab=dir]` |
+| 名詞／頻次／原書分頁／西文清單 | `#termsList`／`#freqList`／`#folioList`／`#latinList` | 各自的 meta＝`#termsMeta` 等 |
+| 摘要清單 | `#searchList` | 面板＝`#paneRight [data-tab=sum]` |
+| 文件工具列 | `#docBar` | `#treeReveal`(🌲)・`#docTitle`・字級 `#fsDown`/`#fsValue`/`#fsUp`/`#fsAuto`/`#fsReset` |
+| 本文分頁籤條 | `#docTabStrip`（父層 `#docTabs`，另有 `#docTabAdd`） | 分頁 ≥ 1 才顯示 |
+| 本文 | `#docText` | 行元素 `L<行號>`、命中行 `.hitLine` |
+| 分頁列 | `#docPager` | `#pagePrev`／`#pageInfo`／`#pageNext`；分頁 ≥ 2 才顯示 |
+
+沒有 id 的 `[data-tab]` 面板，一律用 `#paneLeft`／`#paneRight` 當前綴指稱（`showTab(name, 'left' | 'right')` 用的鍵就是它）。
 ## 4. 已驗證的格式知識（可直接信任）
 
 * **VA（虛擬位址）= token 序號**：token +1、連續空白 +1、標籤開／閉**各 +4**、skip 標籤 +0。

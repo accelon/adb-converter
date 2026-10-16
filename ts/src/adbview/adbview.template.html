@@ -268,10 +268,10 @@
   <span class="status" id="status"></span>
 </header>
 
-<main>
+<main id="main">
   <!-- 左：每個 <樹 s="…"> 一頁（目錄／名詞／全文．頻次／原書分頁／西文） -->
   <section class="col" id="colLeft">
-    <div class="tabs">
+    <div class="tabs" id="tabsLeft">
       <button class="tabBtn active" data-tab="dir">目錄</button>
       <button class="tabBtn" data-tab="terms" hidden>名詞</button>
       <button class="tabBtn" data-tab="freq" hidden>頻次</button>
@@ -279,7 +279,7 @@
       <button class="tabBtn" data-tab="latin" hidden>西文</button>
       <button class="tabBtn advOnly" data-tab="token">token</button>
     </div>
-    <div class="pane grow tabs-host">
+    <div class="pane grow tabs-host" id="paneLeft">
       <div class="tabPane active" data-tab="dir">
         <div class="searchBar">
           <input type="search" id="query" placeholder="輸入詞（例：象曰、Buddha）" autocomplete="off" spellcheck="false">
@@ -340,11 +340,11 @@
   <div class="splitter" id="splitLeft" title="拖曳調整左欄寬度（拖到 15% 以下即隱藏）"></div>
 
   <!-- 中：文件文字（硬分行；命中直接塗紅） ------------------------------------>
-  <section class="col">
+  <section class="col" id="colMid">
     <div class="pane grow">
-      <div class="docBar">
+      <div class="docBar" id="docBar">
         <button class="mini" id="treeReveal" title="展開樹：展開目錄樹並捲到目前捲動位置對應的節點">🌲</button>
-        <h2 style="margin:0">文件內容（硬分行；未渲染 XML）</h2>
+        <h2 id="docTitle" style="margin:0">文件內容（硬分行；未渲染 XML）</h2>
         <span class="docTools">
           字級
           <button class="mini" id="fsDown" title="縮小">−</button>
@@ -370,14 +370,14 @@
 
   <!-- 右：摘要 ＋ META / 容量 / 文件 / 圖片（後四者在進階模式才顯示） ------------>
   <section class="col" id="colRight">
-    <div class="tabs">
+    <div class="tabs" id="tabsRight">
       <button class="tabBtn active" data-tab="sum">摘要</button>
       <button class="tabBtn advOnly" data-tab="meta">META</button>
       <button class="tabBtn advOnly" data-tab="capacity">容量</button>
       <button class="tabBtn advOnly" data-tab="docs">文件</button>
       <button class="tabBtn advOnly" data-tab="images">圖片</button>
     </div>
-    <div class="pane grow tabs-host">
+    <div class="pane grow tabs-host" id="paneRight">
       <div class="tabPane active" data-tab="sum">
         <div id="searchMeta" class="note"></div>
         <div id="searchList" class="scrollArea"></div>

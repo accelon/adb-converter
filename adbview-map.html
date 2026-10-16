@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>adbview.html 分區示意圖（統一命名與 id）</title>
+<style>
+  :root { --line:#d7dae0; --bg:#fff; --panel:#f7f8fa; --ink:#1f2430; --dim:#6b7280;
+          --id:#b00020; --accent:#e11d48; --cond:#0e7490; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:28px 20px 60px; background:#eef0f4; color:var(--ink);
+         font:14px/1.7 "Segoe UI","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif; }
+  .sheet { max-width:1120px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 6px; }
+  h2 { font-size:16px; margin:34px 0 10px; padding-bottom:6px; border-bottom:2px solid var(--line); }
+  p.lead { color:var(--dim); margin:0 0 4px; }
+  code, .rid { font-family:ui-monospace,Consolas,"Cascadia Mono",monospace; }
+  .rid { font-size:12px; color:var(--id); background:#fff; border:1px solid #f2c9d0;
+         border-radius:4px; padding:0 5px; white-space:nowrap; }
+  .sel { font-family:ui-monospace,Consolas,monospace; font-size:12.5px; color:#334155;
+         background:#eef2f7; border-radius:4px; padding:0 4px; white-space:nowrap; }
+  .rname { font-weight:600; }
+  .frame { background:var(--bg); border:1px solid var(--line); border-radius:10px;
+           box-shadow:0 1px 3px rgba(20,25,40,.08); overflow:hidden; }
+  .bar { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px;
+         padding:8px 12px; background:#fbfbfd; border-bottom:1px solid var(--line); }
+  .bar .h1mini { font-weight:700; letter-spacing:.5px; }
+  .body { display:grid; grid-template-columns:24% 10px 1fr 10px 26%; min-height:420px; }
+  .region { margin:10px; padding:8px 9px; border:1px solid var(--line); border-radius:7px;
+            background:var(--panel); display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .split { margin:0; border-radius:0; background:repeating-linear-gradient(45deg,#dfe3ea 0 4px,#eef0f4 4px 8px);
+           border:0; display:flex; align-items:center; justify-content:center; }
+  .split .rid { writing-mode:vertical-rl; border:0; background:transparent; }
+  .box { border:1px dashed var(--line); border-radius:6px; padding:6px 8px; background:#fff; }
+  .box.solid { border-style:solid; }
+  .head { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; margin-bottom:2px; }
+  .parts { display:flex; flex-wrap:wrap; gap:4px; }
+  .chip { font-size:12px; border:1px solid var(--line); border-radius:999px; padding:1px 8px;
+          background:#fff; color:#374151; }
+  .chip .rid { border:0; background:transparent; padding:0; }
+  .cond { color:var(--cond); }
+  table { border-collapse:collapse; width:100%; background:#fff; font-size:13px; }
+  th, td { border:1px solid var(--line); padding:6px 9px; text-align:left; vertical-align:top; }
+  th { background:#f3f5f9; font-weight:600; }
+  td code { color:var(--id); }
+  ul.tight { margin:6px 0 0 18px; padding:0; }
+  ul.tight li { margin:2px 0; }
+  .note { background:#fff; border:1px solid var(--line); border-left:4px solid var(--cond);
+          border-radius:6px; padding:10px 12px; margin-top:10px; }
+  .kv { display:grid; grid-template-columns:max-content 1fr; gap:4px 12px; }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<h1>adbview.html 分區示意圖</h1>
+<p class="lead">所有分區的名稱一律以 <b>DOM id</b> 為準（紅字）。沒有 id 的分頁面板用 <span class="sel">[data-tab=…]</span> 當鍵。</p>
+<p class="lead">對應產物：<span class="sel">build/adbview.html</span>（由 <span class="sel">ts/src/adbview/adbview.template.html</span> 內嵌 bundle 產生）。</p>
+
+<h2>1. 整體骨架</h2>
+
+<div class="frame">
+  <div class="bar">
+    <span class="h1mini">accelon<span style="color:var(--accent)">26</span></span>
+    <span class="rname">頂欄</span>
+    <span class="rid">#header</span>
+    <span class="parts">
+      <span class="chip"><span class="rid">#toggleLeft</span> ◧ 左欄開關</span>
+      <span class="chip"><span class="rid">#toggleRight</span> ◨ 右欄開關</span>
+      <span class="chip"><span class="rid">#advToggle</span> 🧑‍💻 進階模式</span>
+      <span class="chip"><span class="rid">#file</span> 選檔</span>
+      <span class="chip"><span class="rid">#dbname</span> 庫名</span>
+      <span class="chip"><span class="rid">#status</span> 狀態訊息</span>
+    </span>
+  </div>
+
+  <div class="body">
+    <div class="region">
+      <div class="head"><span class="rname">左欄</span><span class="rid">#colLeft</span><span class="dim">預設 25fr</span></div>
+
+      <div class="box solid">
+        <div class="head"><span class="rname">左欄分頁列</span><span class="rid">#tabsLeft</span></div>
+        <div class="parts">
+          <span class="chip"><span class="sel">[data-tab=dir]</span> 目錄</span>
+          <span class="chip"><span class="sel">[data-tab=terms]</span> 名詞</span>
+          <span class="chip"><span class="sel">[data-tab=freq]</span> 頻次／全文</span>
+          <span class="chip"><span class="sel">[data-tab=folio]</span> 原書分頁</span>
+          <span class="chip"><span class="sel">[data-tab=latin]</span> 西文</span>
+          <span class="chip"><span class="sel">[data-tab=token]</span> token <span class="cond">進階</span></span>
+        </div>
+      </div>
+
+      <div class="box solid" style="flex:1">
+        <div class="head"><span class="rname">左欄窗格區</span><span class="rid">#paneLeft</span></div>
+        <div class="parts">
+          <span class="chip"><span class="sel">[data-tab=dir]</span> <span class="rid">#query</span> <span class="rid">#queryClear</span> <span class="rid">#dirMeta</span> <span class="rid">#dirTree</span></span>
+          <span class="chip"><span class="sel">[data-tab=terms]</span> <span class="rid">#termsQuery</span> <span class="rid">#termsMode</span> <span class="rid">#termsClear</span> <span class="rid">#termsMeta</span> <span class="rid">#termsList</span></span>
+          <span class="chip"><span class="sel">[data-tab=freq]</span> <span class="rid">#freqQuery</span> <span class="rid">#freqClear</span> <span class="rid">#freqMeta</span> <span class="rid">#freqList</span></span>
+          <span class="chip"><span class="sel">[data-tab=folio]</span> <span class="rid">#folioQuery</span> <span class="rid">#folioClear</span> <span class="rid">#folioMeta</span> <span class="rid">#folioList</span></span>
+          <span class="chip"><span class="sel">[data-tab=latin]</span> <span class="rid">#latinQuery</span> <span class="rid">#latinClear</span> <span class="rid">#latinMeta</span> <span class="rid">#latinList</span></span>
+          <span class="chip"><span class="sel">[data-tab=token]</span> <span class="rid">#tokenSummary</span> <span class="rid">#tokenClasses</span> <span class="rid">#tokenTitle</span> <span class="rid">#tokenMore</span> <span class="rid">#tokenRows</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="split"><span class="rid">#splitLeft</span></div>
+
+    <div class="region">
+      <div class="head"><span class="rname">中欄（文件內容）</span><span class="rid">#colMid</span><span class="dim">預設 50fr</span></div>
+
+      <div class="box solid">
+        <div class="head"><span class="rname">文件工具列</span><span class="rid">#docBar</span></div>
+        <div class="parts">
+          <span class="chip"><span class="rid">#treeReveal</span> 🌲 展開樹</span>
+          <span class="chip"><span class="rid">#docTitle</span> 標題（文件內容）</span>
+          <span class="chip">字級 <span class="rid">#fsDown</span> <span class="rid">#fsValue</span> <span class="rid">#fsUp</span> <span class="rid">#fsAuto</span> <span class="rid">#fsReset</span></span>
+        </div>
+      </div>
+
+      <div class="box solid">
+        <div class="head"><span class="rname">本文分頁列</span><span class="rid">#docTabs</span><span class="cond">分頁 ≥ 1 時顯示</span></div>
+        <div class="parts">
+          <span class="chip"><span class="rid">#docTabStrip</span> 分頁籤（label＝詞名／節點名）</span>
+          <span class="chip"><span class="rid">#docTabAdd</span> ＋新分頁</span>
+        </div>
+      </div>
+
+      <div class="box solid" style="flex:1">
+        <div class="head"><span class="rname">本文</span><span class="rid">#docText</span></div>
+        <div class="dim">每次聯動只載一頁（<span class="sel">PAGE_LINES = 200</span> 行）；命中用 <span class="sel">mark.hitLine</span> 塗紅。</div>
+      </div>
+
+      <div class="box solid">
+        <div class="head"><span class="rname">分頁列</span><span class="rid">#docPager</span><span class="cond">分頁 ≥ 2 時顯示</span></div>
+        <div class="parts">
+          <span class="chip"><span class="rid">#pagePrev</span> ◀ 上一頁</span>
+          <span class="chip"><span class="rid">#pageInfo</span> 第 n / m 頁　行 a–b</span>
+          <span class="chip"><span class="rid">#pageNext</span> 下一頁 ▶</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="split"><span class="rid">#splitRight</span></div>
+
+    <div class="region">
+      <div class="head"><span class="rname">右欄</span><span class="rid">#colRight</span><span class="dim">預設 25fr</span></div>
+
+      <div class="box solid">
+        <div class="head"><span class="rname">右欄分頁列</span><span class="rid">#tabsRight</span></div>
+        <div class="parts">
+          <span class="chip"><span class="sel">[data-tab=sum]</span> 摘要</span>
+          <span class="chip"><span class="sel">[data-tab=meta]</span> META <span class="cond">進階</span></span>
+          <span class="chip"><span class="sel">[data-tab=capacity]</span> 容量 <span class="cond">進階</span></span>
+          <span class="chip"><span class="sel">[data-tab=docs]</span> 文件 <span class="cond">進階</span></span>
+          <span class="chip"><span class="sel">[data-tab=images]</span> 圖片 <span class="cond">進階</span></span>
+        </div>
+      </div>
+
+      <div class="box solid" style="flex:1">
+        <div class="head"><span class="rname">右欄窗格區</span><span class="rid">#paneRight</span></div>
+        <div class="parts">
+          <span class="chip"><span class="sel">[data-tab=sum]</span> <span class="rid">#searchMeta</span> <span class="rid">#searchList</span> <span class="rid">#searchMore</span></span>
+          <span class="chip"><span class="sel">[data-tab=meta]</span> <span class="rid">#meta</span> <span class="rid">#containers</span></span>
+          <span class="chip"><span class="sel">[data-tab=capacity]</span> <span class="rid">#capacity</span></span>
+          <span class="chip"><span class="sel">[data-tab=docs]</span> <span class="rid">#docs</span></span>
+          <span class="chip"><span class="sel">[data-tab=images]</span> <span class="rid">#resources</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>讀圖規則</b>　紅字＝DOM id；灰框＝一個區塊或面板；<span class="cond">青色</span>＝條件出現。
+  面板一律用 <span class="sel">#paneLeft [data-tab=…]</span> / <span class="sel">#paneRight [data-tab=…]</span> 指稱，
+  因為 <span class="sel">.tabPane</span> 本身沒有 id，靠 <span class="sel">data-tab</span> 當鍵（<span class="sel">showTab(name, 'left' | 'right')</span> 用的就是它）。
+</div>
+
+<h2>2. 左欄：每個 &lt;樹 s="…"&gt; 一頁</h2>
+<table>
+  <tr><th>分頁名（按鈕文字）</th><th>鍵</th><th>來自 <span class="sel">s=</span></th><th>面板內的 id</th><th>行為</th></tr>
+  <tr><td>目錄</td><td><code>dir</code></td><td><span class="sel">*</span></td><td><code>#query</code> <code>#queryClear</code> <code>#dirMeta</code> <code>#dirTree</code></td><td>層級樹 ＋ 全文搜尋；每個 <code>&lt;樹 t="…"&gt;</code> 一頁。沒有 <span class="sel">s="*"</span> 的庫（如 fgdict）這一頁會 <span class="cond">hidden</span></td></tr>
+  <tr><td>名詞</td><td><code>terms</code></td><td><span class="sel">$詞</span></td><td><code>#termsQuery</code> <code>#termsMode</code> <code>#termsClear</code> <code>#termsMeta</code> <code>#termsList</code></td><td>詞條清單取自 <code>caches/詞</code>；<code>#termsMode</code> ＝ 全部／開頭／中間／結尾</td></tr>
+  <tr><td>頻次<br>全文</td><td><code>freq</code></td><td><span class="sel">*u=文</span><br><span class="sel">*詞</span></td><td><code>#freqQuery</code> <code>#freqClear</code> <code>#freqMeta</code> <code>#freqList</code></td><td><span class="sel">*u=</span> 依屬性分段（頻次）、<span class="sel">*tag</span> 依標籤分段（全文），<b>同一頁</b>只換按鈕文字</td></tr>
+  <tr><td>原書分頁</td><td><code>folio</code></td><td><span class="sel">頁.n</span></td><td><code>#folioQuery</code> <code>#folioClear</code> <code>#folioMeta</code> <code>#folioList</code></td><td>用 <span class="sel">attributeValues('頁.n')</span> 的 pointers 對到 <code>&lt;頁&gt;</code> 實例；可選可輸入頁碼</td></tr>
+  <tr><td>西文</td><td><code>latin</code></td><td><span class="sel">~X</span></td><td><code>#latinQuery</code> <code>#latinClear</code> <code>#latinMeta</code> <code>#latinList</code></td><td>X 的語意尚待作者確認（目前當碼點範圍）</td></tr>
+  <tr><td>token</td><td><code>token</code></td><td>—</td><td><code>#tokenSummary</code> <code>#tokenClasses</code> <code>#tokenTitle</code> <code>#tokenMore</code> <code>#tokenRows</code></td><td><span class="cond">進階模式</span>才出現（<span class="sel">.advOnly</span>）</td></tr>
+</table>
+
+<h2>3. 中欄：本文</h2>
+<table>
+  <tr><th>零件</th><th>id</th><th>說明</th></tr>
+  <tr><td>文件工具列</td><td><code>#docBar</code></td><td>整條</td></tr>
+  <tr><td>展開樹鈕</td><td><code>#treeReveal</code></td><td>🌲 展開目錄樹並捲到目前捲動位置對應的節點（平常捲動只亮起、不展開）</td></tr>
+  <tr><td>標題</td><td><code>#docTitle</code></td><td>「文件內容（硬分行；未渲染 XML）」</td></tr>
+  <tr><td>字級</td><td><code>#fsDown</code> <code>#fsValue</code> <code>#fsUp</code> <code>#fsAuto</code> <code>#fsReset</code></td><td>自動＝「不換行」</td></tr>
+  <tr><td>本文分頁列</td><td><code>#docTabs</code> → <code>#docTabStrip</code> <code>#docTabAdd</code></td><td>Ctrl＋任何聯動＝另開分頁；label 優先顯示詞名／節點名</td></tr>
+  <tr><td>本文</td><td><code>#docText</code></td><td>只放當前頁的 200 行；行元素 id 為 <span class="sel">L&lt;行號&gt;</span></td></tr>
+  <tr><td>分頁列</td><td><code>#docPager</code> → <code>#pagePrev</code> <code>#pageInfo</code> <code>#pageNext</code></td><td>頁＝網頁分頁（200 行），不是原書的葉</td></tr>
+</table>
+
+<h2>4. 右欄</h2>
+<table>
+  <tr><th>分頁名</th><th>鍵</th><th>面板內的 id</th><th>行為</th></tr>
+  <tr><td>摘要</td><td><code>sum</code></td><td><code>#searchMeta</code> <code>#searchList</code> <code>#searchMore</code></td><td>搜尋／點 <code>tCount</code> 的命中清單；聯動時強制打開右欄</td></tr>
+  <tr><td>META</td><td><code>meta</code></td><td><code>#meta</code> <code>#containers</code></td><td rowspan="4"><span class="cond">進階模式</span>才出現</td></tr>
+  <tr><td>容量</td><td><code>capacity</code></td><td><code>#capacity</code></td></tr>
+  <tr><td>文件</td><td><code>docs</code></td><td><code>#docs</code></td></tr>
+  <tr><td>圖片</td><td><code>images</code></td><td><code>#resources</code></td></tr>
+</table>
+
+<h2>5. 統一稱呼（溝通時直接用）</h2>
+<table>
+  <tr><th>統一稱呼</th><th>選擇器</th><th>備註</th></tr>
+  <tr><td>頂欄</td><td><code>#header</code></td><td>開關、選檔、庫名、狀態</td></tr>
+  <tr><td>三欄容器</td><td><code>#main</code></td><td><span class="sel">grid-template-columns: var(--left) 6px var(--center) 6px var(--right)</span></td></tr>
+  <tr><td>左欄／中欄／右欄</td><td><code>#colLeft</code> <code>#colMid</code> <code>#colRight</code></td><td>預設 25fr / 50fr / 25fr</td></tr>
+  <tr><td>左分隔線／右分隔線</td><td><code>#splitLeft</code> <code>#splitRight</code></td><td>拖到 15% 以下即收合；雙擊還原</td></tr>
+  <tr><td>左欄分頁列／左欄窗格區</td><td><code>#tabsLeft</code> <code>#paneLeft</code></td><td>分頁＝<span class="sel">[data-tab=…]</span></td></tr>
+  <tr><td>右欄分頁列／右欄窗格區</td><td><code>#tabsRight</code> <code>#paneRight</code></td><td>同上</td></tr>
+  <tr><td>目錄面板</td><td><code>#paneLeft [data-tab=dir]</code></td><td>內含 <code>#dirTree</code>（樹本體）</td></tr>
+  <tr><td>名詞面板</td><td><code>#paneLeft [data-tab=terms]</code></td><td>內含 <code>#termsList</code></td></tr>
+  <tr><td>頻次／全文面板</td><td><code>#paneLeft [data-tab=freq]</code></td><td>內含 <code>#freqList</code></td></tr>
+  <tr><td>原書分頁面板</td><td><code>#paneLeft [data-tab=folio]</code></td><td>內含 <code>#folioList</code></td></tr>
+  <tr><td>西文面板</td><td><code>#paneLeft [data-tab=latin]</code></td><td>內含 <code>#latinList</code></td></tr>
+  <tr><td>摘要面板</td><td><code>#paneRight [data-tab=sum]</code></td><td>內含 <code>#searchList</code></td></tr>
+  <tr><td>文件工具列</td><td><code>#docBar</code></td><td>🌲 <code>#treeReveal</code> ＋ <code>#docTitle</code> ＋ 字級</td></tr>
+  <tr><td>本文分頁籤條</td><td><code>#docTabStrip</code></td><td>父層 <code>#docTabs</code></td></tr>
+  <tr><td>本文</td><td><code>#docText</code></td><td>單行 id＝<span class="sel">L&lt;行號&gt;</span>、命中行 <span class="sel">.hitLine</span></td></tr>
+  <tr><td>分頁列</td><td><code>#docPager</code></td><td><code>#pageInfo</code> 顯示「第 n / m 頁　行 a–b」</td></tr>
+</table>
+
+<h2>6. 顯示／隱藏與尺寸規則</h2>
+<ul class="tight">
+  <li><b>左右欄開關</b>：<code>#toggleLeft</code>／<code>#toggleRight</code>（◧／◨）；<code>#splitLeft</code>／<code>#splitRight</code> 拖到 <span class="sel">MIN_SIDE = 15%</span> 以下即收合為 0，雙擊還原、<code>setSide()</code> 切換。</li>
+  <li><b>進階模式</b>：<code>#advToggle</code> 為 <span class="sel">body</span> 加上 <span class="sel">.advanced</span>；所有 <span class="sel">.advOnly</span>（token／META／容量／文件／圖片）才出現。</li>
+  <li><b>左欄分頁的存在性</b>：由 <code>syncTreeTabs()</code> 依 <span class="sel">s=</span> 種類決定（沒有對應的 <span class="sel">s=</span> 就 <span class="cond">hidden</span>）；目前頁若被隱藏會自動落到第一個存在的頁。</li>
+  <li><b>窄畫面</b>：<span class="sel">@media (max-width: 900px)</span> 時三欄變單欄，只剩 <code>#colMid</code>。</li>
+  <li><b>條件元素</b>：<code>#docTabs</code> 在分頁 ≥ 1 時顯示、<code>#docPager</code> 在分頁 ≥ 2 時顯示。</li>
+  <li><b>面板標題</b>：分頁名目前由 <span class="sel">s=</span> 推導（<span class="sel">syncTreeTabs</span>）；規格上應取 <code>&lt;樹&gt;…&lt;/樹&gt;</code> 的元素內容，尚未實作（HANDOVER §7 P1 第 4 項）。</li>
+</ul>
+
+</div>
+</body>
+</html>
