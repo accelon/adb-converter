@@ -12,7 +12,7 @@ import {
 } from './adb';
 import { VaPaMapper, parseAttrs } from './vapa';
 import {
-  SearchSession, searchSummary, loadTrees, loadTree, buildTree, flattenTree, parseScope,
+  SearchSession, searchSummary, loadTrees, loadTree, buildTree, flattenTree, parseScope, loadInstanceAttrs,
   type SearchResult, type TreeNode, type SearchTree,
 } from './search';
 
@@ -30,11 +30,17 @@ let showAllClasses = false;
 let opening = false;
 
 /** the hit the middle pane is currently showing (VA + its element text) */
-let pinnedHit: { va: number; text: string; token: string; units: number; line: number; exact?: boolean } | null = null;
+let pinnedHit: { va: number; text: string; token: string; units: number; line: number; exact?: boolean; phrase?: string; noMark?: boolean } | null = null;
 let lastReveal = '';
 
 /** search state */
 let lastResult: SearchResult | null = null;
+/**
+ * The result the 摘要 pane currently shows. Normally the same as `lastResult`, but
+ * the 頻次／全文 pane runs its OWN search (its own input), so a click there scopes
+ * the summary to that result instead of the 目錄 query.
+ */
+let summaryResult: SearchResult | null = null;
 let searchSeq = 0;
 /** index into result.groups, -1 = all groups */
 let activeGroup = -1;
@@ -62,6 +68,8 @@ interface DirTree {
   loaded: boolean;
 }
 let dirTrees: DirTree[] = [];
+/** where the background directory-tree build spends its time (diagnostics) */
+let treePhases: Record<string, number> = {};
 let dirActive = 0;
 let dirError = '';
 let dirLoading = false;
@@ -112,6 +120,12 @@ let lastOpen: {
   parseMs: number; tokenMs: number; layoutMs: number; anchorMs: number;
   docsMs: number; treeMs: number; totalMs: number;
 } | null = null;
+/**
+ * Background directory-tree time. Kept outside `lastOpen` because the tree now
+ * finishes BEFORE the object is built (it used to take ~1 s and always landed
+ * after), which would leave `treeMs` reading a misleading 0.
+ */
+let lastTreeMs = 0;
 
 async function openFile(file: File) {
   // A load may be triggered twice by the picker (the browser fires `change`, and
@@ -126,6 +140,7 @@ async function openFile(file: File) {
   boundsCache.clear();
   paintAsked.clear();
   folioCache = null;
+  labelTables.clear();
   cursorNode = null;
   docTabs = [];
   docActive = 0;
@@ -170,6 +185,9 @@ async function openFile(file: File) {
     docs = await reader.documents();
     const docsMs = performance.now() - t3;
     await session.init();
+    // The reader's pane is chosen from the `<樹>` declarations right away; the
+    // instances behind it are built in the background.
+    syncTreeTabs();
 
     renderMeta(reader, openMs, tokenMs, layoutMs, docsMs);
     renderTokens(stats, tokenMs);
@@ -178,6 +196,7 @@ async function openFile(file: File) {
     // text per node, and on yinshun (3 trees, 132 nodes) that must not delay the
     // document pane. The 目錄 tab shows a notice until they are ready.
     dirLoading = true;
+    lastTreeMs = 0;
     const tTree = performance.now();
     void loadDirectoryTrees().catch((e) => {
       dirError = String((e as Error)?.stack ?? e);
@@ -185,9 +204,14 @@ async function openFile(file: File) {
       void renderDirTree();
     }).finally(() => {
       dirLoading = false;
-      if (lastOpen) lastOpen.treeMs = performance.now() - tTree;
+      lastTreeMs = performance.now() - tTree;
+      if (lastOpen) lastOpen.treeMs = lastTreeMs;
       void renderDirTree();
     });
+    lastResult = null;
+    summaryResult = null;
+    snippetScope = null;
+    snippetScopeQuery = '';
     ($('#query') as HTMLInputElement).value = '';
     $('#searchList').innerHTML = '';
     $('#searchMeta').textContent = '';
@@ -207,7 +231,7 @@ async function openFile(file: File) {
       layoutMs,
       anchorMs,
       docsMs,
-      treeMs: 0,
+      treeMs: lastTreeMs,
       totalMs,
     };
     // Keep the status line clean for readers: the technical breakdown lives in
@@ -243,6 +267,7 @@ async function runSearch(query: string) {
   const q = query.trim();
   if (!q) {
     lastResult = null;
+    summaryResult = null;
     snippetScope = null;
     snippetShown = SNIPPET_LIMIT;
     $('#searchList').innerHTML = '';
@@ -260,6 +285,7 @@ async function runSearch(query: string) {
     snippetScopeQuery = '';
   }
   lastResult = res;
+  summaryResult = res;
   snippetShown = SNIPPET_LIMIT;
   await renderSearchResult(res, seq);
 }
@@ -299,7 +325,7 @@ async function renderSearchResult(res: SearchResult, seq: number) {
  * text. Only a click on a summary card (or the 命中數 badge) does.
  */
 async function renderSnippets(seq: number) {
-  const res = lastResult;
+  const res = summaryResult ?? lastResult;
   if (!res || !mapper) return;
   const list = $('#searchList');
   const realm = snippetScope?.realm;
@@ -328,7 +354,7 @@ async function renderSnippets(seq: number) {
       // Ctrl (Cmd) + click opens the hit in a NEW document tab
       void revealHit(
         Number(el.dataset.va),
-        lastResult?.tokens.map((t) => t.token).join('') ?? '',
+        (summaryResult ?? lastResult)?.tokens.map((t) => t.token).join('') ?? '',
         Number(el.dataset.units),
         mods(ev),
       );
@@ -348,21 +374,30 @@ async function renderSnippets(seq: number) {
  * The node's VA range is the filter, and the label travels with the scope so the
  * header can say which node is being shown.
  */
-async function showNodeHits(realm: { from: number; to: number }, label: string, count: number): Promise<void> {
+async function showNodeHits(
+  realm: { from: number; to: number },
+  label: string,
+  count: number,
+  res: SearchResult | null = lastResult,
+  query?: string,
+): Promise<void> {
   setSide('right', true);       // the summary must be visible to be useful
   showTab('sum', 'right');
   const meta = $('#searchMeta');
-  if (!lastResult) {
+  if (!res) {
     meta.textContent = `「${displayName(label)}」：尚未輸入搜尋詞`;
     return;
   }
+  // The pane shows THIS result: 頻次／全文 searches on its own input, so its rows
+  // must not be filtered against a 目錄 query that may be a different word.
+  summaryResult = res;
   snippetScope = { realm, label };
   // the query the user is searching for RIGHT NOW: a debounced search of the same
   // text may still be in flight, and it must keep this scope rather than replace
   // the pane with the unscoped result
-  snippetScopeQuery = (($('#query') as HTMLInputElement | null)?.value ?? lastResult.query).trim();
+  snippetScopeQuery = (query ?? ($('#query') as HTMLInputElement | null)?.value ?? res.query).trim();
   snippetShown = SNIPPET_LIMIT;
-  meta.innerHTML = `「${escapeHtml(displayName(label))}」範圍內 <b>${fmtInt(count)}</b> 筆命中（共 ${fmtInt(lastResult.hits.length)} 筆；點摘要才會聯動本文）`;
+  meta.innerHTML = `「${escapeHtml(displayName(label))}」範圍內 <b>${fmtInt(count)}</b> 筆命中（共 ${fmtInt(res.hits.length)} 筆；點摘要才會聯動本文）`;
   // pass a LIVE sequence number: a re-search may be in flight, and renderSnippets
   // drops its work when the sequence has moved on
   await renderSnippets(searchSeq);
@@ -489,7 +524,14 @@ interface DocSession {
   page: number;
   /** the `<檔>` the realm lives in */
   doc: DocRow;
-  pinned: { va: number; text: string; token: string; units: number; line: number; exact?: boolean } | null;
+  pinned: {
+    va: number; text: string; token: string; units: number; line: number;
+    exact?: boolean;
+    /** what `exact` should paint, when it differs from the tab label (全文 pane) */
+    phrase?: string;
+    /** link without painting anything (原書分頁) */
+    noMark?: boolean;
+  } | null;
   /** last rendered page (per session, so switching tabs does not re-read) */
   cache: { page: number; dt: Awaited<ReturnType<VaPaMapper['docText']>>; key: string } | null;
 }
@@ -721,7 +763,7 @@ function showsLine(s: DocSession | null, line: number): boolean {
  * the tab's realm). Otherwise the current tab is kept when it already contains
  * the hit, which is what keeps clicks inside one chapter in one tab.
  */
-async function linkTo(va: number, token: string, units: number | undefined, opts: { newTab?: boolean; exact?: boolean; mode?: 'reuse' | 'node' | 'hit' } = {}): Promise<void> {
+async function linkTo(va: number, token: string, units: number | undefined, opts: { newTab?: boolean; exact?: boolean; phrase?: string; noMark?: boolean; name?: string; mode?: 'reuse' | 'node' | 'hit' } = {}): Promise<void> {
   if (!mapper) return;
   const el = await mapper.elementAt(va);
   if (!el) { setStatus('VA ' + fmtInt(va) + '：找不到對應位置', 'err'); return; }
@@ -747,7 +789,9 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   // The tab label must mean something to a reader: the node that was linked, or the
   // TERM/token that was clicked. The XML file name (Fgdict1.xml) is an implementation
   // detail, so it is only the last resort.
-  const name = useNode ? node!.name : (token || el.element.text || doc.name || reader?.header.dbname || '');
+  // The clicked label wins: it is what the reader pointed at, and on a drifting
+  // database the node's own label can be a neighbouring entry's text.
+  const name = opts.name || token || (useNode ? node!.name : (el.element.text || doc.name || reader?.header.dbname || ''));
   const cur = docSession();
   const covers = !!cur && realm.to > realm.from && realm.from >= cur.realm.from && realm.to <= cur.realm.to;
   const s = opts.newTab
@@ -755,6 +799,12 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
     : (firstLink || !covers ? sessionFor(realm, name, false) : cur!);
 
   s.doc = doc;
+  // A reused tab is renamed to what was just clicked: the pane now shows THAT node/
+  // segment/page, and the label must say so (it used to keep the first link's name).
+  if (s.name !== name) {
+    s.name = name;
+    renderDocTabs(s);
+  }
   // The mapper's walk can drift a few VAs from the stored VA table (fgdict and
   // yinshun both do), so an element's line may fall outside the realm's line
   // range. Snap it back inside, or the page would not contain the pinned line.
@@ -763,13 +813,22 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   // on fgdict and a tag click would land one line high (or on another entry)
   let line = mapper.lineOfVa(va);
   if (line < rb.first || line > rb.last) line = rb.first;
-  s.pinned = { va, text: el.element.text, token, units: u, line, exact: !!opts.exact };
+  // `exact` paints a phrase by TEXT inside the line (the only walk-independent way
+  // on fgdict); `phrase` paints something other than the label (全文 pane: label
+  // 法王家, hit 法王); `noMark` links to a spot without painting (原書分頁).
+  s.pinned = {
+    va, text: el.element.text, token, units: u, line,
+    exact: !!opts.exact || !!opts.phrase, phrase: opts.phrase, noMark: !!opts.noMark,
+  };
   pinnedHit = s.pinned;
   lastReveal = `va=${va} units=${u} element=${el.element.va}/${el.element.vaUnits}`;
   docActive = docTabs.indexOf(s);
 
   const tLink = performance.now();
   const auto = (await ensurePage(s, line)).auto;
+  // Bring the linked line into the viewport: a page holds up to 200 lines and the
+  // target can sit below the fold (the 原書分頁 marker is the common case).
+  document.getElementById('L' + s.pinned.line)?.scrollIntoView({ block: 'center' });
   const ensureMs = performance.now() - tLink;
   paintTreeActive();
   lastLink = { va, ensureMs: Math.round(ensureMs), totalMs: Math.round(performance.now() - tLink), rows: s.cache?.dt?.lines.length ?? 0 };
@@ -789,7 +848,7 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
 }
 
 /** a search/summary link: the same action, plus the "snippet" token name */
-async function revealHit(va: number, token: string, units?: number, opts: { newTab?: boolean; exact?: boolean; mode?: 'reuse' | 'node' | 'hit' } = {}): Promise<void> {
+async function revealHit(va: number, token: string, units?: number, opts: { newTab?: boolean; exact?: boolean; phrase?: string; noMark?: boolean; name?: string; mode?: 'reuse' | 'node' | 'hit' } = {}): Promise<void> {
   return linkTo(va, token, units, opts);
 }
 
@@ -1063,6 +1122,25 @@ function markPhraseInLine(line: number | undefined, phrase: string | undefined, 
   return true;
 }
 
+/**
+ * Paint `phrase` in the rendered page, starting at `fromLine` and wrapping once.
+ *
+ * `markPhraseInLine` only looks at the one line the link computed, and on a database
+ * whose VA walk drifts (fgdict) that line can be the segment's heading rather than
+ * the hit's own line — the query would then silently stay unpainted. The page is
+ * always the page that holds the hit, so searching it finds the phrase.
+ */
+function markPhraseOnPage(phrase: string | undefined, va: number, fromLine: number): boolean {
+  if (!phrase) return false;
+  const rows = [...document.querySelectorAll<HTMLElement>('#docText .docLine')];
+  if (!rows.length) return false;
+  const lineOf = (el: HTMLElement) => Number((el.id || '').replace(/^L/, ''));
+  const start = Math.max(0, rows.findIndex((r) => lineOf(r) === fromLine));
+  for (let i = start; i < rows.length; i++) if (markPhraseInLine(lineOf(rows[i]), phrase, va)) return true;
+  for (let i = 0; i < start; i++) if (markPhraseInLine(lineOf(rows[i]), phrase, va)) return true;
+  return false;
+}
+
 async function paintHit(va: number, units?: number): Promise<void> {
   const s = docSession();
   if (!mapper || !s) return;
@@ -1072,7 +1150,16 @@ async function paintHit(va: number, units?: number): Promise<void> {
   // character on the right line. Search hits and token clicks keep the span path,
   // where the token name can differ from the source text (yinshun normalizes) and
   // the same phrase may occur several times in one line.
-  if (s.pinned?.exact && markPhraseInLine(s.pinned.line, s.pinned.token, va)) return;
+  // 原書分頁 only jumps: the `<頁>` marker is a milestone, not a hit, so nothing is
+  // painted (linkTo has already scrolled its line into view).
+  if (s.pinned?.noMark) return;
+  if (s.pinned?.exact) {
+    const phrase = s.pinned.phrase ?? s.pinned.token;
+    if (markPhraseInLine(s.pinned.line, phrase, va)) return;
+    // the linked line can be the segment's heading (fgdict drift): the page holds the
+    // hit, so look for the phrase on the page before giving up on marking it
+    if (markPhraseOnPage(phrase, va, s.pinned.line)) return;
+  }
   let spans = units && units > 1 ? await mapper.phraseSpans(va, units) : await mapper.lineSpans(va);
   if (!spans.length) {
     // A heading TAG carries no inline text span (lineSpans skips tags), so a
@@ -1088,7 +1175,7 @@ async function paintHit(va: number, units?: number): Promise<void> {
     // The walk's spans can disagree with the line table (fgdict drifts by >1000 VA,
     // so its element lookup returns the wrong text). The reader was sent to the
     // table line, so mark the searched phrase inside THAT line instead.
-    markPhraseInLine(s.pinned?.line, s.pinned?.token, va);
+    markPhraseInLine(s.pinned?.line, s.pinned?.phrase ?? s.pinned?.token, va);
     return;
   }
   let firstMark: HTMLElement | null = null;
@@ -1305,11 +1392,44 @@ function docTextWidth(): number {
  * once per tree (a label means walking source text for an `n=` child tag, since
  * yinshun has no `書.n` attribute). One `<樹>` declaration becomes one tab.
  */
+/**
+ * Per-tag label table, taken from the CONTAINERS instead of the source.
+ *
+ * A label used to cost a VA→PA walk per node (`mapper.nodeLabel`), and fgdict's
+ * folio tree has 6,966 instances — that walk was the ~1 s delay before the 名詞
+ * pane could appear. The values are already stored: `caches/<tag>` in instance
+ * order (fgdict's 書 = 7 book titles), else the `<tag>.n` / `<tag>.id` attribute
+ * table (fgdict's 頁.n = the 6,959 page labels). Both cost ONE container read, so
+ * the source walk is kept only as the last resort (yinshun stores neither).
+ */
+const labelTables = new Map<string, { vas: number[]; names: string[] } | null>();
+
+async function labelTableFor(tag: string): Promise<{ vas: number[]; names: string[] } | null> {
+  const known = labelTables.get(tag);
+  if (known !== undefined) return known;
+  const vas = await tagVas(tag);
+  let names = vas.length ? await reader!.cachedStrings(tag) : [];
+  if (names.length !== vas.length) {
+    for (const attr of ['n', 'id']) {
+      const m = await loadInstanceAttrs(reader!, tag, attr);
+      if (!m.size) continue;
+      names = vas.map((_, i) => m.get(i) ?? '');
+      if (names.some(Boolean)) break;
+    }
+  }
+  const table = names.length === vas.length && names.some(Boolean) ? { vas, names } : null;
+  labelTables.set(tag, table);
+  return table;
+}
+
 async function loadDirectoryTrees() {
   // Guard against a second call: openFile can be re-entered (e.g. a drop while a
   // load is still running) and re-running would discard the trees already built.
   if (dirTrees.length) return;
   if (!reader) return;
+  const tTree0 = performance.now();
+  const phase: Record<string, number> = { trees: 0, load: 0, build: 0, instances: 0 };
+  treePhases = phase;
   const declared = session?.trees?.length ? session.trees : await loadTrees(reader);
   for (const t of declared) {
     if (!t.tiers.length) continue;
@@ -1321,12 +1441,16 @@ async function loadDirectoryTrees() {
     const firstVas = firstTag ? await tagVas(firstTag) : [];
     const firstNames = firstTag ? await reader.cachedStrings(firstTag) : [];
     const namesOk = firstNames.length > 0 && firstNames.length === firstVas.length;
+    const tLoad = performance.now();
     const instances = await loadTree(reader, t, {
-      attrsAt: async (va) => {
-        const el = await mapper!.elementAt(va);
-        return el ? parseAttrs(el.element.text) : {};
-      },
-      label: (va, vaEnd) => {
+      // no per-instance source read at all: the instance's own `t=` is read from the
+      // attributes container by loadTree, and the LABEL comes from a table
+      label: async (va, vaEnd, _attrs, tag) => {
+        const table = await labelTableFor(tag);
+        if (table) {
+          const i = lowerBound(table.vas, va);
+          if (table.vas[i] === va && table.names[i]) return table.names[i];
+        }
         if (namesOk) {
           const i = lowerBound(firstVas, va);
           if (firstVas[i] === va && firstNames[i]) return firstNames[i];
@@ -1334,7 +1458,10 @@ async function loadDirectoryTrees() {
         return mapper!.nodeLabel(va, vaEnd);
       },
     });
+    phase.load += performance.now() - tLoad;
+    phase.instances += instances.length;
     if (!instances.length) continue;
+    const tBuild = performance.now();
     const roots = buildTree(instances);
     // loadTree stops labelling after MAX_LABEL_NODES (fgdict has 29,614 instances,
     // so its last two books lost their names). The cached string table is free, so
@@ -1356,6 +1483,7 @@ async function loadDirectoryTrees() {
     for (const [tag, labels] of byTag) mapper.treeLabels.set(tag, labels);
     const parentOf = new Map<number, number>();
     for (const n of iterNodes(roots)) for (const c of n.children) parentOf.set(c.va, n.va);
+    phase.build += performance.now() - tBuild;
     dirTrees.push({
       tree: t, roots, nodes: countNodes(roots),
       labels: new Map<number, string>(), open: new Set<number>(), loaded: false,
@@ -1368,7 +1496,17 @@ async function loadDirectoryTrees() {
   if (dirActive < 0) dirActive = dirTrees.findIndex((d) => d.tree.tiers.length > 0);
   if (dirActive < 0) dirActive = 0;
   syncTreeTabs();
-  await renderDirTree();
+  // Render only when the 目錄 pane exists AND is on screen. fgdict declares no
+  // `s="*"` (so the tab is hidden) and its folio tree holds 88k instances: building
+  // those rows into a hidden pane cost ~6 s of the main thread. The pane renders
+  // lazily, when the reader switches to it.
+  const dirBtn = $('#colLeft .tabBtn[data-tab="dir"]') as HTMLElement | null;
+  const tRender = performance.now();
+  phase.rendered = dirBtn && !dirBtn.hidden ? 1 : 0;
+  if (phase.rendered) await renderDirTree();
+  phase.render = performance.now() - tRender;
+  phase.trees = performance.now() - tTree0;
+  treePhases = phase;
 }
 
 function countNodes(ns: TreeNode[]): number {
@@ -1400,10 +1538,16 @@ function syncTreeTabs() {
     if (/^[^*/~$]+\.[^.]+$/.test(scope)) return 'folio';
     return '';
   };
+  // The tab set comes from the `<樹>` DECLARATIONS, which are known immediately —
+  // the instances behind them (and their labels) are built in the background. So the
+  // reader's pane can appear at once instead of waiting for the tree to finish.
+  const scopes = dirTrees.length
+    ? dirTrees.map((d) => d.tree.scope)
+    : (session?.trees ?? []).map((t) => t.scope);
   const present = new Map<string, string>();          // kind -> scope
-  for (const d of dirTrees) {
-    const k = kindOf(d.tree.scope);
-    if (k && !present.has(k)) present.set(k, d.tree.scope);
+  for (const scope of scopes) {
+    const k = kindOf(scope);
+    if (k && !present.has(k)) present.set(k, scope);
   }
   for (const kind of ['dir', 'terms', 'freq', 'folio', 'latin']) {
     const scope = present.get(kind);
@@ -1447,6 +1591,22 @@ function realmHits(from: number, to: number): number {
 }
 
 /** Compact directory tree: 30% colours per depth, no growing whitespace. */
+/**
+ * The graded hit badge, shared by the tree (<`tCount`>) and the 頻次／全文 list.
+ *
+ * Graded by BOTH the share of the whole result and the absolute count, so the
+ * heaviest nodes shout and a big number never looks small.
+ */
+function hitBadge(count: number, total: number, where = '', hint = ''): string {
+  const share = total ? count / total : 0;
+  const shareTier = share >= 0.3 ? 4 : share >= 0.1 ? 3 : share >= 0.03 ? 2 : 1;
+  const absTier = count >= 1000 ? 4 : count >= 300 ? 3 : count >= 50 ? 2 : 1;
+  const tier = Math.max(shareTier, absTier);
+  const big = count >= 1000 ? ' big' : '';
+  const title = `${where}${fmtInt(count)} 筆命中（占全體 ${(share * 100).toFixed(1)}%${hint}）`;
+  return `<span class="tCount hit t${tier}${big}" title="${title}">${fmtInt(count)}</span>`;
+}
+
 async function renderDirTree() {
   const box = $('#dirTree');
   const d = dirTrees[dirActive];
@@ -1476,16 +1636,7 @@ async function renderDirTree() {
     const hits = searching ? realmHits(n.va, n.vaEnd) : 0;
     let badge = '';
     if (searching) {
-      if (hits > 0) {
-        // graded by BOTH the share of the whole result and the absolute count, so
-        // the heaviest nodes shout and a big number never looks small
-        const share = totalHits ? hits / totalHits : 0;
-        const shareTier = share >= 0.3 ? 4 : share >= 0.1 ? 3 : share >= 0.03 ? 2 : 1;
-        const absTier = hits >= 1000 ? 4 : hits >= 300 ? 3 : hits >= 50 ? 2 : 1;
-        const tier = Math.max(shareTier, absTier);
-        const big = hits >= 1000 ? ' big' : '';
-        badge = `<span class="tCount hit t${tier}${big}" title="此節點範圍內 ${fmtInt(hits)} 筆命中（占全體 ${(share * 100).toFixed(1)}%；點一下顯示這些命中）">${fmtInt(hits)}</span>`;
-      }
+      if (hits > 0) badge = hitBadge(hits, totalHits, '此節點範圍內 ', '；點一下顯示這些命中');
     } else if (r.hasChildren && !open) {
       badge = `<span class="tCount">${fmtInt(n.children.length)}</span>`;
     }
@@ -1649,36 +1800,60 @@ async function renderFreq() {
   const segTag = spec && spec.indexOf('=') < 0 ? spec : undefined;
   // 頻次 has its OWN input: the two panes are independent searches.
   const q = ($('#freqQuery') as HTMLInputElement).value.trim();
+  /** the rows on screen — a click needs their VA range for the 摘要 scope */
+  let rows: { from: number; to: number; name: string; count: number; firstHit?: number }[] = [];
+  let res: SearchResult | null = null;
   if (!q) {
     // names are a source walk each, so only the shown slice is resolved
     const slice = segs.slice(0, 200);
     await nameSegs(slice, segTag);
+    rows = slice.map((s) => ({ ...s, count: 0 }));
     meta.textContent = `${fmtInt(segs.length)} 段：未輸入條件，列出段名`
       + (segs.length > slice.length ? `（僅列前 ${slice.length}）` : '');
-    list.innerHTML = slice.map((s) => `<div class="snippet" data-va="${s.from}"><div><b>${
+    list.innerHTML = rows.map((s) => `<div class="snippet" data-va="${s.from}"><div><b>${
       escapeHtml(displayName(s.name))}</b></div></div>`).join('');
   } else {
-    const res = await session.search(q);
-    const counts = segs.map((s) => ({ ...s, count: 0 }));
+    res = await session.search(q);
+    const counts = segs.map((s) => ({ ...s, count: 0, firstHit: -1 }));
     for (const h of res.hits) {
       let lo = 0, hi = counts.length - 1, at = -1;
       while (lo <= hi) {
         const mid = (lo + hi) >> 1;
         if (counts[mid].from <= h.va) { at = mid; lo = mid + 1; } else hi = mid - 1;
       }
-      if (at >= 0 && h.va < counts[at].to) counts[at].count++;
+      if (at >= 0 && h.va < counts[at].to) {
+        counts[at].count++;
+        // remember WHERE the word is: the segment start is its heading, and marking
+        // the query there would find nothing (the hit lives further inside)
+        if (counts[at].firstHit < 0) counts[at].firstHit = h.va;
+      }
     }
-    const shown = counts.filter((c) => c.count > 0).sort((a, b) => b.count - a.count).slice(0, 200);
+    const withHits = counts.filter((c) => c.count > 0);
+    const shown = withHits.sort((a, b) => b.count - a.count).slice(0, 200);
     await nameSegs(shown, segTag);
-    meta.textContent = `「${q}」${fmtInt(res.hits.length)} 筆命中，分布於 ${fmtInt(counts.filter((c) => c.count > 0).length)} / ${fmtInt(segs.length)} 段`
-      + `（依命中數排序，0 不顯示${shown.length < counts.filter((c) => c.count > 0).length ? `，僅列前 ${shown.length}` : ''}）`;
+    rows = shown;
+    const total = res.hits.length;
+    meta.textContent = `「${q}」${fmtInt(total)} 筆命中，分布於 ${fmtInt(withHits.length)} / ${fmtInt(segs.length)} 段`
+      + `（依命中數排序，0 不顯示${shown.length < withHits.length ? `，僅列前 ${shown.length}` : ''}）`;
+    // The count rides on the SAME line as the name: as its own line it pushed the
+    // name down and hid the ranking (the badge is the tree's graded one).
     list.innerHTML = shown.map((s) => `<div class="snippet" data-va="${s.from}">
-        <div class="snippetHead">${fmtInt(s.count)} 筆</div>
-        <div><b>${escapeHtml(displayName(s.name))}</b></div></div>`).join('')
+        <div><b>${escapeHtml(displayName(s.name))}</b> ${hitBadge(s.count, total)}</div></div>`).join('')
       || '<p class="dim">沒有命中。</p>';
   }
   list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
-    el.onclick = () => void revealHit(Number(el.dataset.va), $('#freqQuery') ? '頻次' : '', 1);
+    el.onclick = (ev) => {
+      const va = Number(el.dataset.va);
+      const row = rows.find((h) => h.from === va);
+      const name = (el.querySelector('b')?.textContent ?? '').trim();
+      // The tab is named after the SEGMENT (法王家) but the jump goes to the first
+      // HIT inside it, where the QUERY (法王) is what gets painted.
+      const at = row && row.firstHit !== undefined && row.firstHit >= 0 ? row.firstHit : va;
+      // token = what gets painted (the query), name = the tab label (the segment)
+      void revealHit(at, q || name, 1, { ...(mods(ev) ?? {}), exact: true, phrase: q || undefined, name });
+      // the 摘要 pane follows the row that was clicked, scoped to that segment
+      if (row) void showNodeHits({ from: row.from, to: row.to }, name, row.count, res, q || undefined);
+    };
   });
 }
 
@@ -1691,8 +1866,8 @@ async function renderLatin() {
   const meta = $('#latinMeta');
   const list = $('#latinList');
   if (!reader) { list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>'; return; }
-  const tree = dirTrees.find((d) => /^~/.test(d.tree.scope))?.tree;
-  const range = tree ? parseScope(tree.scope).codepoints : undefined;
+  const scope = treeScope(/^~/);
+  const range = scope ? parseScope(scope).codepoints : undefined;
   if (!range) {
     meta.textContent = '';
     list.innerHTML = '<p class="dim">此庫沒有 <code>&lt;樹 s="~…"&gt;</code> 宣告。</p>';
@@ -1736,8 +1911,7 @@ async function renderLatin() {
  */
 async function freqSegments(): Promise<{ from: number; to: number; name: string }[]> {
   if (!reader || !mapper) return [];
-  const tree = dirTrees.find((d) => /^\*./.test(d.tree.scope))?.tree;
-  const spec = (tree?.scope ?? '').replace(/^\*/, '').trim();
+  const spec = treeScope(/^\*./).replace(/^\*/, '').trim();
   if (!spec) return [];
   const eq = spec.indexOf('=');
   const attrName = eq > 0 ? spec.slice(0, eq).split('.').pop()!.trim() : '';
@@ -1882,7 +2056,10 @@ function countHitsPerSegment(segs: { from: number; to: number }[], hits: readonl
 
 /** the raw `s=` of the first declared tree whose scope matches */
 function treeScope(re: RegExp): string {
-  return dirTrees.find((d) => re.test(d.tree.scope))?.tree.scope ?? '';
+  const built = dirTrees.find((d) => re.test(d.tree.scope))?.tree.scope;
+  if (built) return built;
+  // the panes render before the trees are built, so fall back to the declarations
+  return (session?.trees ?? []).find((t) => re.test(t.scope))?.scope ?? '';
 }
 
 /**
@@ -2034,7 +2211,10 @@ async function renderFolio(): Promise<void> {
     || '<p class="dim">沒有符合的頁碼。</p>';
   list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
     const label = (el.textContent ?? '').trim();
-    el.onclick = (ev) => void revealHit(Number(el.dataset.va), label, 1, mods(ev));
+    // 原書分頁 is a milestone, not a hit: jump to the <`頁`> node itself
+    // (mode:'node' gives the page its own realm, so the tab is named 1/2/… and a
+    // repeat click reuses it instead of opening a second tab) and paint nothing.
+    el.onclick = (ev) => void revealHit(Number(el.dataset.va), label, 1, { ...(mods(ev) ?? {}), mode: 'node', noMark: true });
   });
 }
 
@@ -2248,6 +2428,13 @@ function readAdvanced(): boolean {
   return localStorage.getItem(ADV_KEY) === '1';
 }
 
+/** The left tab a reader lands on: the first shown tab that is not 進階-only. */
+function defaultLeftTab(): string {
+  const btns = [...document.querySelectorAll<HTMLElement>('#colLeft .tabBtn')];
+  const first = btns.find((b) => getComputedStyle(b).display !== 'none' && !b.classList.contains('advOnly'));
+  return first?.dataset.tab ?? 'dir';
+}
+
 function setAdvanced(on: boolean) {
   advanced = on;
   localStorage.setItem(ADV_KEY, on ? '1' : '0');
@@ -2260,9 +2447,13 @@ function setAdvanced(on: boolean) {
       ? '進階模式（開）：token 瀏覽與檔案資訊分頁已顯示'
       : '進階模式（關）：只顯示搜尋摘要與目錄';
   }
-  // leave a tab that is no longer available
+  // leave a tab that is no longer available. The advanced-only tabs (token, META,
+  // 容量, 文件, 圖片) disappear with the mode, and a database without `s="*"` has no
+  // 目錄 at all (fgdict lands on 名詞) — so the fallback is the database's own first
+  // reader-facing tab, not a hard-coded 'dir'.
   if (!on) {
-    if (!$('#colLeft .tabBtn.active')?.getAttribute('data-tab')?.includes('search')) showTab('dir', 'left');
+    const activeLeft = $('#colLeft .tabBtn.active') as HTMLElement | null;
+    if (!activeLeft || getComputedStyle(activeLeft).display === 'none') showTab(defaultLeftTab(), 'left');
     if (!$('#colRight .tabPane.active')?.getAttribute('data-tab')?.includes('sum')) showTab('sum', 'right');
   }
 }
@@ -2421,6 +2612,7 @@ document.addEventListener('DOMContentLoaded', boot);
     advanced,
     rightTab: $('#colRight .tabBtn.active')?.getAttribute('data-tab') ?? null,
     leftTab: $('#colLeft .tabBtn.active')?.getAttribute('data-tab') ?? null,
+    treePhases,
     dirActive,
     dirRows: document.querySelectorAll('#dirTree .tRow').length,
     // the middle pane: one entry per linked node (Ctrl+click opens another)

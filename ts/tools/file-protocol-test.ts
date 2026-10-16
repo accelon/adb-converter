@@ -193,12 +193,16 @@ try {
         leftTab: st.leftTab,
         rightTab: st.rightTab,
         tokenHidden: !tokenBtn || getComputedStyle(tokenBtn).display === 'none',
+        // the reader's default tab is whatever this database declares, not 'dir':
+        // a dictionary has no s="*" (fgdict opens on 名詞)
+        firstTab: [...document.querySelectorAll('#colLeft .tabBtn')]
+          .find((b) => getComputedStyle(b).display !== 'none' && !b.classList.contains('advOnly'))?.dataset.tab ?? '',
       };
     })()
   `);
   ok('預設模式沒有 posting list 面板', initial.postingGone, 'no #postingPane / #posting');
   ok('預設模式：左欄只有搜尋、右欄第一分頁是目錄',
-    initial.adv === false && initial.leftTab === 'dir' && initial.tokenHidden,
+    initial.adv === false && !!initial.firstTab && initial.leftTab === initial.firstTab && initial.tokenHidden,
     JSON.stringify(initial));
 
   // isolate: bisect where the token-click path hangs (printed, not asserted)
@@ -307,11 +311,10 @@ try {
     JSON.stringify(swapped));
 
   // 進階模式：關閉後收起進階分頁並回到預設分頁
-  const advMode = await cdp.eval<{ offTab: string; offRight: string; offHidden: boolean; onHidden: boolean }>(`
+  const advMode = await cdp.eval<{ offTab: string; offRight: string; offHidden: boolean; onHidden: boolean; firstTab: string }>(`
     (async () => {
       window.__adbview.setAdvanced(false);
       await new Promise(r => setTimeout(r, 300));
-      const st = window.__adbview.state();
       const tokenBtn = document.querySelector('#colLeft .tabBtn[data-tab="token"]');
       const metaBtn = document.querySelector('#colRight .tabBtn[data-tab="meta"]');
       const offHidden = getComputedStyle(tokenBtn).display === 'none' && getComputedStyle(metaBtn).display === 'none';
@@ -320,11 +323,15 @@ try {
       const onHidden = getComputedStyle(tokenBtn).display !== 'none' && getComputedStyle(metaBtn).display !== 'none';
       window.__adbview.setAdvanced(false);
       await new Promise(r => setTimeout(r, 200));
-      return { offTab: st.leftTab, offRight: st.rightTab, offHidden, onHidden };
+      // the state AFTER the mode change, and the tab this database actually offers
+      const st = window.__adbview.state();
+      const firstTab = [...document.querySelectorAll('#colLeft .tabBtn')]
+        .find((b) => getComputedStyle(b).display !== 'none' && !b.classList.contains('advOnly'))?.dataset.tab ?? '';
+      return { offTab: st.leftTab, offRight: st.rightTab, offHidden, onHidden, firstTab };
     })()
   `);
   ok('進階模式可切換，關閉時收起進階分頁並回到預設分頁',
-    advMode.offHidden && advMode.onHidden && advMode.offTab === 'dir',
+    advMode.offHidden && advMode.onHidden && !!advMode.firstTab && advMode.offTab === advMode.firstTab,
     JSON.stringify(advMode));
 
   // header 三顆開關都是圖示，沒有中文 label（中文只放在 tooltip）
@@ -532,8 +539,11 @@ try {
       return { bookRows, afterBook, chapterLabels, afterChapter, dots, levels, deeper };
     })()
   `);
+  // a database without s="*" has no 目錄 pane at all (fgdict): its tree is a
+  // page-folio index, so the chapter-expansion check does not apply
+  const dirTabShown = await cdp.eval<boolean>("getComputedStyle(document.querySelector('#colLeft .tabBtn[data-tab=\"dir\"]')).display !== 'none'");
   ok('目錄樹可逐層展開（書 → 章→ 節）',
-    depthTest.afterBook > depthTest.bookRows && (!depthTest.deeper || depthTest.afterChapter > depthTest.afterBook),
+    !dirTabShown || (depthTest.afterBook > depthTest.bookRows && (!depthTest.deeper || depthTest.afterChapter > depthTest.afterBook)),
     `收合 ${depthTest.bookRows} 列 → 展開書 ${depthTest.afterBook} 列`
     + `${depthTest.deeper ? ` → 展開章 ${depthTest.afterChapter} 列` : '（此庫此書的章為末層）'}`
     + `；章標籤 ${JSON.stringify(depthTest.chapterLabels)}；層級 ${depthTest.levels}`);
@@ -783,7 +793,7 @@ try {
       const waitFreq = async (fn) => { for (let i = 0; i < 60; i++) { if (fn()) return true; await new Promise(r => setTimeout(r, 250)); } return false; };
       const waitText = async (sel, re) => { for (let i = 0; i < 60; i++) { if (re.test(document.querySelector(sel).textContent)) return true; await new Promise(r => setTimeout(r, 250)); } return false; };
       await waitText('#freqMeta', /命中/);
-      await waitFreq(() => !!document.querySelector('#freqList .snippetHead'));
+      await waitFreq(() => !!document.querySelector('#freqList .tCount.hit'));
       // 西文 pane has its own input as well — but only databases that declare a
       // s="~…" tree have that tab at all (fgdict does not)
       const latinTab = document.querySelector('#colLeft .tabBtn[data-tab="latin"]');
@@ -808,7 +818,7 @@ try {
       }
       await new Promise(r => setTimeout(r, 400));
       const rows = [...document.querySelectorAll('#freqList .snippet')];
-      const nums = rows.map(r => Number((r.querySelector('.snippetHead')?.textContent ?? '0').replace(/[^0-9]/g, '')));
+      const nums = rows.map(r => Number((r.querySelector('.tCount.hit')?.textContent ?? '0').replace(/[^0-9]/g, '')));
       const countsSorted = nums.every((n, i) => i === 0 || nums[i - 1] >= n);
       const zerosHidden = nums.every(n => n > 0);
       const first = rows[0];
@@ -850,6 +860,107 @@ try {
     ok('此庫沒有 s="*u=…" 樹，頻次分頁隱藏', !freq.hasTab && !freq.openTab,
       `hidden=${!freq.hasTab}, active=${freq.openTab}`);
   }
+  // ---- 使用者測試報告（fgdict）的回歸 --------------------------------------
+  // 全文／頻次面板：筆數與段名同一行、頁籤名＝段名、把查詢詞塗紅、摘要聯動該段
+  // 原書分頁：頁籤名＝頁碼、不塗紅、把 <_頁> 捲進畫面、連點不重複開分頁
+  const report = await cdp.eval<any>(`
+    (async () => {
+      const wait = async (fn, n = 60) => { for (let i = 0; i < n; i++) { if (fn()) return true; await new Promise(r => setTimeout(r, 200)); } return false; };
+      const st = () => window.__adbview.state();
+      const out = { db: st().db, treeMs: window.__adbview.openBreakdown()?.treeMs ?? -1, phases: st().treePhases, earlyTab: st().leftTab };
+      // 名詞 pane render time (the caches/<tag> string table path)
+      const termsTab = document.querySelector('#colLeft .tabBtn[data-tab="terms"]');
+      if (termsTab && !termsTab.hidden) {
+        termsTab.click();
+        const t0 = performance.now();
+        await wait(() => document.querySelector('#termsList .snippet'), 60);
+        out.termsMs = Math.round(performance.now() - t0);
+        out.termsRows = document.querySelectorAll('#termsList .snippet').length;
+      }
+      const freqTab = document.querySelector('#colLeft .tabBtn[data-tab="freq"]');
+      if (freqTab && !freqTab.hidden) {
+        freqTab.click();
+        const fq = document.querySelector('#freqQuery');
+        const word = out.db === 'fgdict' ? '法王' : '大乘';
+        fq.value = word;
+        fq.dispatchEvent(new Event('input'));
+        await wait(() => document.querySelector('#freqList .tCount.hit'), 80);
+        const r0 = document.querySelector('#freqList .snippet');
+        const b0 = r0?.querySelector('b');
+        const c0 = r0?.querySelector('.tCount.hit');
+        const sameLine = !!b0 && !!c0 && b0.parentElement === c0.parentElement;
+        // prefer the 法王家 row when the database is the dictionary under test
+        const rows = [...document.querySelectorAll('#freqList .snippet')];
+        const row = (out.db === 'fgdict' && rows.find(r => r.querySelector('b')?.textContent === '法王家')) || r0;
+        const rowName = row?.querySelector('b')?.textContent ?? '';
+        const rowCount = Number((row?.querySelector('.tCount.hit')?.textContent ?? '0').replace(/[^0-9]/g, ''));
+        const before = st().docTabs.length;
+        row?.click();
+        await wait(() => document.querySelector('#docText mark.docHit'), 40);
+        await new Promise(r => setTimeout(r, 600));
+        out.freq = {
+          word, rowName, rowCount, sameLine, found: !!row,
+          tabName: st().docTabs[st().docTab]?.name ?? '',
+          marks: document.querySelectorAll('#docText mark.docHit').length,
+          markText: document.querySelector('#docText mark.docHit')?.textContent ?? '',
+          pin: JSON.stringify(st().pinned),
+          lineText: (document.getElementById('L' + (st().pinned?.line ?? -1))?.textContent ?? '').slice(0, 60),
+          sumItems: document.querySelectorAll('#searchList .snippet').length,
+          sumMeta: document.querySelector('#searchMeta').textContent.slice(0, 50),
+          newTabs: st().docTabs.length - before,
+        };
+      }
+      const folioTab = document.querySelector('#colLeft .tabBtn[data-tab="folio"]');
+      if (folioTab && !folioTab.hidden) {
+        folioTab.click();
+        await wait(() => document.querySelectorAll('#folioList .snippet').length > 0, 40);
+        const first = document.querySelector('#folioList .snippet');
+        const label = first?.textContent.trim() ?? '';
+        const before = st().docTabs.length;
+        first?.click();
+        await wait(() => st().pinned && document.getElementById('L' + st().pinned.line), 40);
+        await new Promise(r => setTimeout(r, 700));
+        const line = st().pinned?.line ?? -1;
+        const rowEl = document.getElementById('L' + line);
+        const box = document.querySelector('#docText');
+        const rb = rowEl?.getBoundingClientRect();
+        const bb = box?.getBoundingClientRect();
+        const inView = !!rb && !!bb && rb.top >= bb.top - 2 && rb.bottom <= bb.bottom + 2;
+        const afterFirst = st().docTabs.length;
+        first?.click();
+        await new Promise(r => setTimeout(r, 700));
+        out.folio = {
+          label, line, inView,
+          marks: document.querySelectorAll('#docText mark.docHit').length,
+          tabName: st().docTabs[st().docTab]?.name ?? '',
+          tabsFirst: afterFirst - before,
+          tabsSecond: st().docTabs.length - afterFirst,
+        };
+      }
+      return out;
+    })()
+  `);
+  ok('目錄樹在背景建好（不阻塞名詞分頁）', (report.phases?.trees ?? 1e9) < 800,
+    `背景目錄樹 ${(report.phases?.trees ?? -1).toFixed(0)} ms（實例 ${report.phases?.instances ?? '?'}、load ${(report.phases?.load ?? -1).toFixed(0)}、build ${(report.phases?.build ?? -1).toFixed(0)}、render ${(report.phases?.render ?? -1).toFixed(0)}，rendered=${report.phases?.rendered ?? '?'}）`);
+  if (report.termsMs !== undefined) {
+    ok('名詞分頁：字串表路徑渲染很快（caches/<tag> 一次讀取）', report.termsMs < 400,
+      `${report.termsRows} 列 / ${report.termsMs} ms；背景目錄樹 ${report.treeMs.toFixed(1)} ms ${JSON.stringify(report.phases)} 左欄=${report.earlyTab}`);
+  }
+  if (report.freq) {
+    const f = report.freq;
+    ok('全文：命中數與段名同一行（不再分行）', f.sameLine, `row=${JSON.stringify(f.rowName)} count=${f.rowCount}`);
+    ok('全文：點段名→本文頁籤名為段名', f.found && f.tabName === f.rowName, `tab=${JSON.stringify(f.tabName)} row=${JSON.stringify(f.rowName)}`);
+    ok('全文：內文把查詢詞塗紅', f.marks > 0 && f.markText.includes(f.word), `「${f.word}」→ ${f.marks} 個 mark ${JSON.stringify(f.markText)}`);
+    ok('全文：摘要聯動該段的命中', f.sumItems > 0 && /範圍內/.test(f.sumMeta), `${f.sumItems} 筆｜${f.sumMeta}`);
+  }
+  if (report.folio) {
+    const p = report.folio;
+    ok('原書分頁：不塗紅', p.marks === 0, `${p.marks} 個 mark`);
+    ok('原書分頁：把 <_頁> 捲進畫面', p.inView, `行 ${p.line}｜${p.inView}`);
+    ok('原書分頁：本文頁籤名為頁碼', p.tabName === p.label, `tab=${JSON.stringify(p.tabName)} label=${JSON.stringify(p.label)}`);
+    ok('原書分頁：連點同一頁不重複開分頁', p.tabsSecond === 0, `第一次 +${p.tabsFirst}、第二次 +${p.tabsSecond}`);
+  }
+
   // 本文塗紅必須和摘要一致（舊版只塗到一個字）
   const paint = await cdp.eval<{ snippet: string; doc: string; marks: number; title: string; resetGone: boolean; noHead: boolean }>(`
     (async () => {

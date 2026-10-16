@@ -352,7 +352,7 @@ export async function loadTree(
   reader: AdbReader,
   tree: SearchTree,
   opts: {
-    label?: (va: number, vaEnd: number, attrs: Record<string, string>) => Promise<string>;
+    label?: (va: number, vaEnd: number, attrs: Record<string, string>, tag: string) => Promise<string>;
     attrsAt?: (va: number) => Promise<Record<string, string>>;
   } = {},
 ): Promise<TreeInstance[]> {
@@ -449,7 +449,7 @@ export async function loadTree(
     const inst = out[i];
     if (opts.label && i < MAX_LABEL_NODES) {
       const attrs = await readAttrs(inst.va);
-      inst.label = await opts.label(inst.va, inst.vaEnd, attrs);
+      inst.label = await opts.label(inst.va, inst.vaEnd, attrs, inst.tag);
     }
   }
   return out;

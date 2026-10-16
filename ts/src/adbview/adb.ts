@@ -610,9 +610,7 @@ export class AdbReader {
     const ci = caches?.names.indexOf(key) ?? -1;
     if (!caches || ci < 0) return [];
     const inner = await this.innerContainer('caches', ci);
-    const out: string[] = [];
-    for (let i = 0; i < inner.count; i++) out.push(await this.innerString(inner, i));
-    return out;
+    return this.innerStrings(inner);
   }
 
   /** A block that is itself a container (attributes/*, caches/*). */
@@ -626,6 +624,28 @@ export class AdbReader {
     const r = blockRange(inner, i);
     if (r.end - r.start < 2) return '';
     return decodeUtf16(await this.io.read(r.start, r.end - r.start - 2));
+  }
+
+  /**
+   * Every block of an inner container in ONE read.
+   *
+   * A container's data region is contiguous, but the per-block accessor issues one
+   * `io.read` per block — and `caches/詞` holds 22,648 blocks (fgdict's headwords),
+   * `attributes/頁.n` 6,959. That is one await per entry (~1 s on fgdict) to move
+   * ~300 KiB. Read the region once and cut the blocks out of the buffer instead:
+   * the same bytes over one round trip.
+   */
+  private async innerStrings(inner: Container): Promise<string[]> {
+    const out: string[] = [];
+    if (inner.count <= 0) return out;
+    const buf = await this.io.read(inner.dataStart, inner.totalBlockSize);
+    for (let i = 0; i < inner.count; i++) {
+      const r = blockRange(inner, i);
+      const a = r.start - inner.dataStart;
+      const b = r.end - inner.dataStart;
+      out.push(b - a < 2 ? '' : decodeUtf16(buf.subarray(a, b - 2)));
+    }
+    return out;
   }
 
   /**
@@ -644,8 +664,7 @@ export class AdbReader {
     const at = c.names.indexOf(key);
     if (at < 0) return null;
     const inner = await this.innerContainer('attributes', at);
-    const values: string[] = [];
-    for (let i = 0; i < inner.count; i++) values.push(await this.innerString(inner, i));
+    const values = await this.innerStrings(inner);
     // high byte -> tag name (for singletons where the tag string is empty)
     const tags = inner.names.map((n) => n || '<unknown>');
     if (inner.pointers) {
