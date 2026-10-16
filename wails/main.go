@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // assets 裡就是建置好的單檔 adbview；webview 開啟 "/" 時由它提供 index.html。
@@ -24,10 +25,13 @@ var assets embed.FS
 func main() {
 	// -selftest：完全不開 GUI，跑一遍自檢後結束，用來在命令列驗證 exe。
 	selftest := flag.Bool("selftest", false, "run the headless self test and exit")
+	screens := flag.Bool("screens", false, "print the enumerated screens, the cursor and the launch screen, then exit")
 	flag.Parse()
 	if *selftest {
 		os.Exit(runSelfTest())
 	}
+
+	host := &AdbHost{}
 
 	// 只註冊一個 service。前端用 /wails/runtime.js 的 Call.ByName 直接呼叫：
 	//   Call.ByName("main.AdbHost.ListAdbs")
@@ -48,7 +52,7 @@ func main() {
 		Description: "accelon .adb viewer (desktop host)",
 		Windows:     windows,
 		Services: []application.Service{
-			application.NewService(&AdbHost{}),
+			application.NewService(host),
 		},
 		Assets: application.AssetOptions{
 			// 必須用 BundledAssetFileServer：它除了提供 assets 之外，還會在
@@ -61,13 +65,90 @@ func main() {
 		},
 	})
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	// -screens：列舉螢幕、游標、會選哪一張、上次的設定，然後結束（多螢幕排錯用）。
+	if *screens {
+		fmt.Print(screensInfo(app))
+		return
+	}
+
+	// 視窗先建好但**隱藏**，等 ApplicationStarted（訊息迴圈已就緒、Win32 螢幕清單也拿得到）
+	// 才定位、套用上次的狀態、顯示 —— 這樣不會先出現在錯的螢幕再跳過去。
+	//
+	// 定位規則（作者 2026-10）：永遠放在「使用者執行 exe 的那張螢幕」（啟動瞬間游標所在，
+	// 偵測不到就主螢幕）；第一次啟動全螢幕；之後恢復上次記下的位置、大小與狀態，
+	// 但一定夾進那張螢幕的工作區（上次那張外接螢幕這回可能已經不在了）。
+	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "adbview",
-		Width:  1400,
-		Height: 900,
 		URL:    "/",
+		Width:  defaultWindowW,
+		Height: defaultWindowH,
+		Hidden: true,
 	})
 
+	// 離開時記下設定：關閉事件先寫一次（那一刻視窗還在），OnShutdown 當保險；
+	// windowTracker 只會真的寫一次。
+	tracker := newWindowTracker(app, win)
+	for _, ev := range windowEvents() {
+		win.OnWindowEvent(ev, func(*application.WindowEvent) { tracker.snapshot() })
+	}
+	win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) { tracker.save() })
+	app.OnShutdown(tracker.save)
+	host.SetWindowInfo(tracker.info) // 測試／排錯用（UI 不需要知道）
+
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		wa, screenName, ok := launchWorkArea(app)
+		st, hasSaved := loadWindowState()
+		if !ok { // 一張螢幕都列舉不到：交給作業系統，只把記下的大小套上去
+			if hasSaved {
+				win.SetSize(st.W, st.H)
+			}
+			tracker.snapshot()
+			win.Show()
+			return
+		}
+		var x, y, w, h int
+		state := stateFullscreen // 第一次啟動：全螢幕
+		if hasSaved {
+			st = clampWindowState(st, wa)
+			w, h = st.W, st.H
+			x, y = wa.X+st.RelX, wa.Y+st.RelY
+			state = st.State
+		} else {
+			// 第一次啟動：全螢幕（這裡的框只當「還原時」用，所以先夾進工作區再置中，
+			// 免得預設尺寸比螢幕大、置中算出負座標讓全螢幕跑到別張螢幕上）
+			w, h = clampWindowState(windowState{W: defaultWindowW, H: defaultWindowH}, wa).W, clampWindowState(windowState{W: defaultWindowW, H: defaultWindowH}, wa).H
+			x, y = wa.X+(wa.Width-w)/2, wa.Y+(wa.Height-h)/2
+		}
+		win.SetSize(w, h)
+		win.SetPosition(x, y)
+		// 有些平台／DPI 設定會在我們設完之後再把視窗挪一點（窗框、換算誤差）：等它穩定、
+		// 讀回來補一次，免得每次啟動都往同一個方向漂移。這時視窗還隱藏著，看不出跳動。
+		time.Sleep(60 * time.Millisecond)
+		if gx, gy := win.Position(); gx != x || gy != y {
+			log.Printf("window: 平台把位置調成 (%d,%d)，要求 (%d,%d)，補正", gx, gy, x, y)
+			x, y = x-(gx-x), y-(gy-y)
+			win.SetPosition(x, y)
+			time.Sleep(60 * time.Millisecond)
+		}
+		if gx, gy := win.Position(); gx != x || gy != y {
+			log.Printf("window: 位置仍對不上：實際 (%d,%d)、要求 (%d,%d)", gx, gy, x, y)
+		}
+		tracker.snapshot() // 先記下 normal 的框（還原用），再進全螢幕／最大化
+		switch state {
+		case stateFullscreen:
+			win.Fullscreen()
+		case stateMaximised:
+			win.Maximise()
+		}
+		tracker.snapshot()
+		win.Show()
+		why := "第一次啟動：全螢幕"
+		if hasSaved {
+			why = "恢復上次設定"
+		}
+		log.Printf("window: 螢幕 %s 工作區 (%d,%d %dx%d) → %dx%d@%d,%d state=%s（%s）",
+			screenName, wa.X, wa.Y, wa.Width, wa.Height, w, h, x, y, state, why)
+	})
 	log.Fatal(app.Run())
 }
 

@@ -12,7 +12,7 @@
  * with the TypeScript vendor bzip2 on real source blocks.
  */
 import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { AdbReader, SyncIO, blockRange } from '../src/adbview/adb';
 import { SearchSession, queryTokens } from '../src/adbview/search';
 
@@ -54,57 +54,97 @@ if (!GUI) {
   process.exit(fail ? 1 : 0);
 }
 
-// ---------------------------------------------------------------- windowed sanity
-const proc = Bun.spawn([EXE], {
-  cwd: CWD,
-  // the host reads this itself (Wails overwrites WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS)
-  env: { ...process.env, ADBVIEW_DEBUG_PORT: String(PORT) },
-  stdout: 'pipe', stderr: 'pipe',
-});
-let ws = '';
-const deadline = Date.now() + 30000;
-while (Date.now() < deadline && !ws) {
-  try {
-    const r = await fetch(`http://127.0.0.1:${PORT}/json/version`);
-    const j = await r.json() as { webSocketDebuggerUrl?: string };
-    ws = j.webSocketDebuggerUrl ?? '';
-  } catch { /* not up yet */ }
-  if (!ws) await Bun.sleep(300);
-}
-if (!ws) { console.log('  FAIL no WebView2 devtools endpoint'); proc.kill(); process.exit(1); }
 
-let sock: WebSocket;
-await new Promise<void>((res, rej) => { sock = new WebSocket(ws); sock.onopen = () => res(); sock.onerror = () => rej(new Error('ws')); });
-const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
-let id = 0, session = '';
-const send = (method: string, params: any = {}, withSession = true): Promise<any> => new Promise((res, rej) => {
-  const myId = ++id;
-  const payload: any = { id: myId, method, params };
-  if (withSession && session) payload.sessionId = session;
-  pending.set(myId, { resolve: res, reject: rej });
-  sock.send(JSON.stringify(payload));
-  setTimeout(() => { if (pending.delete(myId)) rej(new Error('timeout ' + method)); }, 60000);
-});
-sock.onmessage = (ev) => {
-  const m = JSON.parse(String(ev.data));
-  if (m.id && pending.has(m.id)) { const p = pending.get(m.id)!; pending.delete(m.id); m.error ? p.reject(new Error(m.error.message)) : p.resolve(m.result); }
-};
-const targets = await send('Target.getTargets', {}, false);
-const page = (targets.targetInfos as any[]).find((t) => t.type === 'page');
-const attached = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true }, false);
-session = attached.sessionId;
-await send('Runtime.enable');
-const evalIn = async <T>(expr: string): Promise<T> => {
-  const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
-  if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? 'eval failed');
-  return r.result.value as T;
-};
-for (let i = 0; i < 100; i++) {
-  const ready = await evalIn<boolean>('!!(window.__adbview && window.__adbview.state)').catch(() => false);
-  if (ready) break;
-  await Bun.sleep(300);
+// ---------------------------------------------------------------- 啟動視窗的共用工具
+// 測試一律把狀態檔放到 build/tmp-state-test（ADBVIEW_STATE_DIR），不碰使用者真正的 %AppData%。
+const STATE_DIR = resolve(ROOT, 'build/tmp-state-test');
+const STATE_FILE = resolve(STATE_DIR, 'window.json');
+const norm = (p: string) => p.toLowerCase().replaceAll(String.fromCharCode(92), '/');
+
+interface Gui {
+  proc: ReturnType<typeof Bun.spawn>;
+  evalIn: <T>(expr: string) => Promise<T>;
+  windowInfo: () => Promise<any>;
+  close: () => Promise<void>;
 }
-await Bun.sleep(2000);
+
+async function startGui(stateDir: string): Promise<Gui> {
+  const proc = Bun.spawn([EXE], {
+    cwd: CWD,
+    // ADBVIEW_DEBUG_PORT: the host reads this itself (Wails overwrites WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS)
+    // ADBVIEW_STATE_DIR: where it remembers the window geometry
+    env: { ...process.env, ADBVIEW_DEBUG_PORT: String(PORT), ADBVIEW_STATE_DIR: stateDir },
+    stdout: 'pipe', stderr: 'pipe',
+  });
+  let wsurl = '';
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline && !wsurl) {
+    try {
+      const r = await fetch(`http://127.0.0.1:${PORT}/json/version`);
+      const j = await r.json() as { webSocketDebuggerUrl?: string };
+      wsurl = j.webSocketDebuggerUrl ?? '';
+    } catch { /* not up yet */ }
+    if (!wsurl) await Bun.sleep(300);
+  }
+  if (!wsurl) { console.log('  FAIL no WebView2 devtools endpoint'); proc.kill(); process.exit(1); }
+  let sock: WebSocket;
+  await new Promise<void>((res, rej) => { sock = new WebSocket(wsurl); sock.onopen = () => res(); sock.onerror = () => rej(new Error('ws')); });
+  const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+  let id = 0, session = '';
+  const send = (method: string, params: any = {}, withSession = true): Promise<any> => new Promise((res, rej) => {
+    const myId = ++id;
+    const payload: any = { id: myId, method, params };
+    if (withSession && session) payload.sessionId = session;
+    pending.set(myId, { resolve: res, reject: rej });
+    sock.send(JSON.stringify(payload));
+    setTimeout(() => { if (pending.delete(myId)) rej(new Error('timeout ' + method)); }, 60000);
+  });
+  sock.onmessage = (ev) => {
+    const m = JSON.parse(String(ev.data));
+    if (m.id && pending.has(m.id)) { const p = pending.get(m.id)!; pending.delete(m.id); m.error ? p.reject(new Error(m.error.message)) : p.resolve(m.result); }
+    else if (m.method === 'Target.attachedToTarget') session = m.params.sessionId;
+  };
+  const targets = await send('Target.getTargets', {}, false);
+  const page = (targets.targetInfos as any[]).find((t) => t.type === 'page');
+  const attached = await send('Target.attachToTarget', { targetId: page.targetId, flatten: true }, false);
+  session = attached.sessionId;
+  await send('Runtime.enable');
+  const evalIn = async <T>(expr: string): Promise<T> => {
+    const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
+    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? 'eval failed');
+    return r.result.value as T;
+  };
+  for (let i = 0; i < 100; i++) {
+    const ready = await evalIn<boolean>('!!(window.__adbview && window.__adbview.state)').catch(() => false);
+    if (ready) break;
+    await Bun.sleep(300);
+  }
+  await Bun.sleep(2000);
+  const windowInfo = async (): Promise<any> => {
+    const raw = await evalIn<string>(`(async () => {
+      const m = await new Function('u', 'return import(u)')('/wails/runtime.js');
+      return JSON.stringify(await m.Call.ByName('main.AdbHost.WindowInfo') ?? {});
+    })()`);
+    return JSON.parse(raw);
+  };
+  // 關視窗（不是硬殺）：Go 端的 WindowClosing / OnShutdown 才會把設定寫下來
+  const close = async (): Promise<void> => {
+    await evalIn(`(async () => {
+      const m = await new Function('u', 'return import(u)')('/wails/runtime.js');
+      try { await m.Window.Close(); } catch (e) { /* 已經關了 */ }
+      return 1;
+    })()`).catch(() => undefined);
+    for (let i = 0; i < 40 && proc.exitCode === null; i++) await Bun.sleep(250);
+    try { proc.kill(); } catch { /* already gone */ }
+  };
+  return { proc, evalIn, windowInfo, close };
+}
+
+// ---------------------------------------------------------------- 視窗啟動與基本斷言
+// 先清掉狀態檔：這樣這一次啟動一定是「第一次啟動」＝全螢幕（也正是要驗的行為）。
+rmSync(STATE_DIR, { recursive: true, force: true });
+const gui = await startGui(STATE_DIR);
+const evalIn = gui.evalIn;
 const st = await evalIn<string>(`JSON.stringify({
   href: location.href.slice(0, 30),
   catalog: window.__adbview.state().catalog,
@@ -155,6 +195,7 @@ ok('從下拉選另一個 adb 會載入它（換掉原本的）',
 ok('桌面宿主的開檔成本有被量到（reads/ioMs 都有值）',
   picked.skipped || (picked.open.reads > 0 && picked.open.ioMs > 0 && picked.open.totalMs > 0),
   picked.skipped ? '只有一個資料庫' : `totalMs=${picked.open.totalMs?.toFixed?.(1)} ioMs=${picked.open.ioMs?.toFixed?.(1)}`);
+
 // ---- Go 的索引查詢（postings + plAnd + 分群）必須與 TypeScript 引擎完全相同 -----
 // 作者：「把 plAnd、posting group 也做 go 版，TypeScript 直接取得詞 posting 和分群統計」。
 const searchCases: { adb: string; q: string }[] = [
@@ -252,6 +293,68 @@ if (existsSync(blocksAdb)) {
   console.log('      （' + blocksAdb + ' 不存在，略過 Go bzip2 對照）');
 }
 
-proc.kill();
+
+// ---- 視窗與螢幕：第一次全螢幕、離開記下設定、下次恢復、一律投在啟動螢幕上 -------------
+// 作者：「第一次進入 exe 先進入全屏，離開時記下視窗設定，下次恢復；永遠將 exe 投在用戶執行
+// exe 的那個屏，偵測不到就在主屏開啟（經常有軟件開已不存在的外接屏）。」
+const info1 = await gui.windowInfo();
+ok('第一次啟動是全螢幕', info1.fullscreen === true && info1.state === 'fullscreen',
+  `state=${info1.state} ${info1.w}x${info1.h}@${info1.x},${info1.y}`);
+ok('知道自己落在哪張螢幕（含工作區）', !!info1.screen && !!info1.workArea,
+  `screen=${info1.screen} primary=${info1.screenPrimary} work=${info1.workArea?.Width}x${info1.workArea?.Height}@${info1.workArea?.X},${info1.workArea?.Y}`);
+ok('狀態檔寫在 ADBVIEW_STATE_DIR（不碰使用者的 %AppData%）',
+  norm(String(info1.statePath ?? '')) === norm(STATE_FILE), `${info1.statePath} vs ${STATE_FILE}`);
+
+// 關掉視窗（優雅關閉）→ Go 應該把設定寫進狀態檔
+await gui.close();
+const savedRaw = existsSync(STATE_FILE) ? readFileSync(STATE_FILE, 'utf8') : '';
+let saved: any = null;
+try { saved = JSON.parse(savedRaw); } catch { /* keep null */ }
+ok('離開時記下視窗設定', !!saved && saved.w > 0 && saved.h > 0, savedRaw.replace(/\s+/g, ' ').slice(0, 120));
+ok('記下來的狀態是 fullscreen', saved?.state === 'fullscreen', String(saved?.state));
+
+// 同一個狀態檔再啟動一次 → 恢復上次的狀態
+const gui2 = await startGui(STATE_DIR);
+const info2 = await gui2.windowInfo();
+ok('第二次啟動恢復上次的狀態（fullscreen）', info2.fullscreen === true && info2.state === 'fullscreen',
+  `state=${info2.state} ${info2.w}x${info2.h}@${info2.x},${info2.y}`);
+await gui2.close();
+
+// 手寫一個「上次是普通視窗、位置相對那張螢幕的工作區」的設定 → 應該恢復同樣大小，
+// 而且位置是相對『這次啟動的螢幕』的工作區（上次那張外接螢幕不在了也不會跑到畫面外）
+mkdirSync(STATE_DIR, { recursive: true });
+writeFileSync(STATE_FILE, JSON.stringify({ relX: 40, relY: 30, w: 900, h: 700, state: 'normal' }));
+const gui3 = await startGui(STATE_DIR);
+const info3 = await gui3.windowInfo();
+const wa = info3.workArea ?? { X: 0, Y: 0, Width: 0, Height: 0 };
+const wantW = Math.min(900, wa.Width || 900);
+const wantH = Math.min(700, wa.Height || 700);
+const wantX = wa.X + Math.min(40, Math.max(0, (wa.Width || wantW) - wantW));
+const wantY = wa.Y + Math.min(30, Math.max(0, (wa.Height || wantH) - wantH));
+ok('恢復記下的大小（夾進啟動螢幕的工作區）', info3.state === 'normal' && Math.abs(info3.w - wantW) <= 2 && Math.abs(info3.h - wantH) <= 2,
+  `state=${info3.state} got ${info3.w}x${info3.h} want ${wantW}x${wantH}`);
+// 位置：要求的是「啟動螢幕工作區原點 + (relX,relY)」，而且**一定要在工作區裡面**
+// （上次那張外接螢幕不在了也不能跑到畫面外）。平台/DPI 可能讓實際位置與要求差幾十像素
+// （見交接文件 §10.8），所以這裡驗「在工作區內」＋「接近要求」，另外用下面的穩定性測試
+// 確認「連續兩次啟動的設定不會漂移」。
+const inWorkArea = info3.x >= wa.X - 2 && info3.y >= wa.Y - 2
+  && info3.x + info3.w <= wa.X + wa.Width + 2 && info3.y + info3.h <= wa.Y + wa.Height + 2;
+ok('恢復的位置在啟動螢幕的工作區內（不會跑到畫面外）', inWorkArea,
+  `got (${info3.x},${info3.y}) ${info3.w}x${info3.h}｜工作區 ${wa.X},${wa.Y} ${wa.Width}x${wa.Height}`);
+ok('恢復的位置接近要求（平台可能差幾十像素）', Math.abs(info3.x - wantX) <= 60 && Math.abs(info3.y - wantY) <= 60,
+  `got (${info3.x},${info3.y}) want (${wantX},${wantY})`);
+await gui3.close();
+
+// 穩定性：上面那次關掉時記下的設定，再啟動一次、再關掉，兩次的設定要一樣（不會每次漂移）
+const savedA = existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, 'utf8')) : null;
+const gui4 = await startGui(STATE_DIR);
+const info4 = await gui4.windowInfo();
+await gui4.close();
+const savedB = existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, 'utf8')) : null;
+ok('連續兩次啟動的視窗設定不會漂移', !!savedA && !!savedB
+  && Math.abs(savedA.relX - savedB.relX) <= 2 && Math.abs(savedA.relY - savedB.relY) <= 2
+  && savedA.w === savedB.w && savedA.h === savedB.h && savedA.state === savedB.state,
+  `第一次 ${JSON.stringify(savedA)}｜第二次 ${JSON.stringify(savedB)}｜這次啟動 ${info4.w}x${info4.h}@${info4.x},${info4.y} state=${info4.state}`);
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

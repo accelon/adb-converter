@@ -125,6 +125,21 @@ type AdbHost struct {
 	mu     sync.Mutex
 	files  map[string]*mapped
 	search map[string]*adbSearchFile // 已解析的容器表（search.go），與映射同生共死
+
+	// winInfo 由 main 在建立視窗後注入（window.go）。UI 不需要它，測試與多螢幕排錯用。
+	winInfo func() map[string]any
+}
+
+// SetWindowInfo 注入視窗診斷（main 在建立視窗前後設定）。
+func (h *AdbHost) SetWindowInfo(f func() map[string]any) { h.winInfo = f }
+
+// WindowInfo 回傳視窗現況：位置、大小、狀態（normal/maximised/fullscreen）、所在螢幕、
+// 工作區、上次的 normal 幾何，以及狀態檔路徑。沒有視窗（例如 -selftest）時回空 map。
+func (h *AdbHost) WindowInfo() map[string]any {
+	if h.winInfo == nil {
+		return map[string]any{}
+	}
+	return h.winInfo()
 }
 
 // resolve 把前端傳來的 path 規範化，並做嚴格的白名單驗證：

@@ -710,10 +710,69 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
 5. `wails/assets/index.html` 是**建置產物**（來自 `tools/build-desktop.ts`）；`//go:embed all:assets` 需要它存在。
 6. `physicalBytes()`（adb.ts）目前**沒有任何呼叫者**（原本就不存在），所以 Go 端只做 `DecompressText`、
    沒有做回原生位元組的版本 —— 保持 Go 層最薄；哪天真要用再加。
-7. **在持有 mutex 時 panic ＝ 永久卡死**：`searchFile()` 把解析結果寫進一個 nil map（`h.search[key] = f`）
+7. **Wails 的 DPI/座標系前後不一**：見 §10.8 的「踩到的坑」——螢幕與游標座標在
+   `application.New()` 前後會是不同空間，定位一定要用 Wails 自己的 `application.Screen`。
+8. **在持有 mutex 時 panic ＝ 永久卡死**：`searchFile()` 把解析結果寫進一個 nil map（`h.search[key] = f`）
    → panic；panic 回溯時 deferred `release()` 又想拿同一把鎖 → 整個 goroutine 卡住，前端
    `Runtime.evaluate` 逾時 60 s。症狀是「頁面看起來沒反應、Go 沒崩」。修法：寫入前先 `make` map；
    教訓是**鎖的臨界區裡不要有可能 panic 的動作**。
+
+### 10.8 視窗與螢幕（作者 2026-10）
+
+規則（原文）：「第一次進入 exe 先進入全屏，離開時記下視窗設定，下次恢復；永遠將 exe 投在用戶
+執行 exe 的那個屏，如果偵測不到，就在主屏開啟（經常有軟件開已不存在的外接屏）。」
+
+實作（`wails/window.go` ＋ `main.go`）：
+
+* **狀態檔**：`%AppData%\adbview\window.json`（`RelX/RelY` 相對所在螢幕**工作區原點**、`W/H`、
+  `State`＝normal／maximised／fullscreen、`Screen` 上次那張螢幕的名字）；可用環境變數
+  `ADBVIEW_STATE_DIR` 改寫（自動化測試與可攜版用）。原子寫入（.tmp ＋ rename），壞掉的檔視同第一次。
+* **啟動流程**：視窗先建立但 `Hidden: true` → 等 `events.Common.ApplicationStarted`（訊息迴圈與
+  螢幕資訊都就緒）→ 選螢幕 → 夾進工作區 → `SetSize`／`SetPosition` → 套用狀態（全螢幕／最大化）
+  → `Show()`。所以不會「先出現在錯的螢幕再跳過去」。
+* **選螢幕**：啟動瞬間的**滑鼠游標**所在螢幕（雙擊／點執行就是在那一張）→
+  `application.ScreenNearestPhysicalRect` 找出對應的 Wails 螢幕 → 拿它的 `WorkArea`；
+  游標問不到（外接螢幕被拔掉的座標、拿不到游標）→ 主螢幕 → 第一張。
+* **第一次啟動**：全螢幕（`win.Fullscreen()`）；記下的「還原框」是夾進工作區後置中的預設大小。
+* **之後啟動**：恢復上次的狀態與框，位置＝工作區原點 ＋ 相對位置，**並夾進工作區**
+  （大小不超過工作區、位置不越界）—— 這是「上次在外接螢幕、這回那張不在了」的解藥
+  （`clampWindowState`，有單元測試）。
+* **離開**：`WindowClosing` 先寫一次（那一刻視窗還在），`OnShutdown` 當保險，`windowTracker`
+  只寫一次。追蹤器是**事件驅動**的（移動／縮放／最大化／全螢幕都會更新「最後一次 normal 的框」），
+  所以就算 save 時視窗已經銷毀也寫得出來。
+
+**排錯工具**（多螢幕問題先看這兩個）：
+
+* `adbview.exe -screens`：Win32 列出來的每張螢幕（monitor／work／primary／current／scale）、游標位置、
+  Wails 選的啟動螢幕、上次的設定、狀態檔路徑。
+* 服務方法 `main.AdbHost.WindowInfo()`（頁面可直接呼叫，**UI 完全不需要知道**）：位置、大小、狀態、
+  所在螢幕與工作區、最後一次 normal 的框、狀態檔路徑。
+
+**踩到的坑（座標系，§10.5 第 8 條）**：`w32.GetAllScreens()` 在 `application.New()` **之前與之後**
+會回不同的數字（DPI 虛擬化：本機測試環境前後是 1040x693 三張 vs 3120x2080 一張，游標座標也跟著變），
+而 Wails 的視窗座標系是後者那一套。所以**定位一律走 Wails 自己的 `application.Screen`**
+（`ScreenNearestPhysicalRect` 負責 physical↔DIP 換算），`w32` 只用來列舉與拿游標原始座標（-screens）。
+
+**驗證**（`tools/desktop-test.ts --gui`，共 28 項全過）：
+
+```
+ok 第一次啟動是全螢幕                    state=fullscreen 1040x694@0,0
+ok 知道自己落在哪張螢幕（含工作區）        screen=\.\DISPLAY1 primary=true work=1040x694@0,0
+ok 狀態檔寫在 ADBVIEW_STATE_DIR
+ok 離開時記下視窗設定                    { "relX":0, "relY":0, "w":1040, "h":694, "state":"fullscreen", "screen":"\\.\DISPLAY1" }
+ok 第二次啟動恢復上次的狀態（fullscreen）
+ok 恢復記下的大小（夾進啟動螢幕的工作區）  state=normal got 900x694 want 900x694（要求 900x700 → 夾到 694）
+ok 恢復的位置在啟動螢幕的工作區內
+ok 恢復的位置接近要求                    got (70,0) want (40,0)（平台差 30 px，見下）
+ok 連續兩次啟動的視窗設定不會漂移         兩次都是 {relX:70, relY:0, w:900, h:694, state:normal}
+```
+
+測試環境的顯示器幾何很怪（三張虛擬螢幕、scale 3.0），平台回報的位置與要求差 ~30 px；**但同一份
+設定連續兩次啟動完全相同**（不漂移），所以程式不補正這個常數差，只在啟動時等 60 ms 穩定後讀回來
+補一次（不一致才補）。測試因此驗「在工作區內 + 接近要求 + 兩次不漂移」，而不是要求逐像素相同。
+
+關視窗要用真的關閉（頁面呼叫 `Window.Close()`）：硬殺行程不會觸發 `WindowClosing`／`OnShutdown`，
+設定就不會被寫下來（測試就是這樣抓到的）。
 
 ### 10.7 索引查詢（postings／plAnd／分群）搬到 Go
 
@@ -757,7 +816,8 @@ Go 端的自我檢查（不開 GUI）：`cd wails && go test -count=1 -run TestS
 | `wails/adbhost.go` | mmap + `ListAdbs`／`Open`／`ReadBase64`／`Close`／`CloseAll` |
 | `wails/decompress.go` | bzip2（`DecompressText`）：解壓＋UTF-16 解碼一次做完 |
 | `wails/search.go` | 索引查詢：容器表解析、packed posting 解壓、`phraseMatch`（plAnd）、`groupHits`（分群，可平行） |
-| `wails/adbhost_test.go`／`decompress_test.go`／`search_test.go`／`bzip2_bench_test.go` | Go 測試與量測 |
+| `wails/window.go` | 視窗與螢幕：狀態檔、啟動螢幕選擇、夾進工作區、事件驅動的追蹤器、`-screens` 診斷 |
+| `wails/adbhost_test.go`／`decompress_test.go`／`search_test.go`／`window_test.go`／`bzip2_bench_test.go` | Go 測試與量測 |
 | `wails/adbhost_test.go` | Go 測試：檔頭解析、與 `os.ReadFile` 逐位元組相同、越界報錯、讀取計時 |
 | `wails/assets/index.html` | 內嵌的 adbview（由 `ts/tools/build-desktop.ts` 產生） |
 | `ts/src/adbview/host.ts` | 唯一知道宿主存在的地方（動態 import runtime → `AdbSource`） |
