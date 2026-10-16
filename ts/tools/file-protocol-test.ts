@@ -680,10 +680,13 @@ try {
   const realm = await cdp.eval<{ total: number; badges: number[]; first: number; rows: number }>(`
     (async () => {
       const q = document.querySelector('#query');
-      q.value = window.__adbview.state().db === '13j' ? '象曰' : '大乘';
+      const word = window.__adbview.state().db === '13j' ? '象曰' : '大乘';
+      q.value = word;
       q.dispatchEvent(new Event('input'));
+      // 上一次查詢的徽章還在畫面上：要等「這一次」的搜尋真的落地再點，
+      // 否則那個點擊屬於舊結果，新結果一到約束就被取消（＝新的規則）。
       for (let i = 0; i < 60; i++) {
-        if (document.querySelector('#dirTree .tCount.hit')) break;
+        if (window.__adbview.state().searchQuery === word && document.querySelector('#dirTree .tCount.hit')) break;
         await new Promise(r => setTimeout(r, 250));
       }
       const badges = [...document.querySelectorAll('#dirTree .tCount.hit')]
@@ -738,7 +741,59 @@ try {
   ok('點命中數：摘要切成該節點的命中',
     !dirTabShown || (badgeClick.scoped && badgeClick.metaOk && badgeClick.snippets > 0
     && badgeClick.minVa >= badgeClick.from && badgeClick.maxVa < badgeClick.to),
-    `徽章 ${badgeClick.badge}、${badgeClick.snippets} 筆摘要落在 [${badgeClick.from}, ${badgeClick.to})｜${badgeClick.meta}`);
+    dirTabShown
+      ? `徽章 ${badgeClick.badge}、${badgeClick.snippets} 筆摘要落在 [${badgeClick.from}, ${badgeClick.to})｜${badgeClick.meta}`
+      : '此庫沒有目錄樹（沒有 s="*"）→ 不適用');
+
+  // 點命中數＝摘要只看該節點 realm；**重新輸入不同的詞 → 這個約束取消**（作者 2026-10）。
+  // 這裡同時是「scope 屬於產生結果的那個查詢」的回歸：若用輸入框當下的文字當 scope 的
+  // 查詢，一個在新查詢還在飛時按下的命中數會把新文字認成同一個查詢，約束就黏住了。
+  const rescope = await cdp.eval<{
+    skipped: boolean; scoped: boolean; from: number; to: number; scopeAfter: boolean;
+    shown: number; word: string; meta: string; head: string;
+  }>(`
+    (async () => {
+      const dirTab = document.querySelector('#colLeft .tabBtn[data-tab="dir"]');
+      if (!dirTab || getComputedStyle(dirTab).display === 'none') {
+        return { skipped: true, scoped: false, from: -1, to: -1, scopeAfter: false, shown: 0, word: '', meta: '', head: '' };
+      }
+      const q = document.querySelector('#query');
+      const db = window.__adbview.state().db;
+      const restore = q.value;          // 這一組會換詞，離開前要放回去
+      const first = db === '13j' ? '象曰' : '大乘';
+      const second = db === '13j' ? '孟子' : '涅槃';
+      // 1) 先讓摘要縮到某一棵樹節點的 realm
+      q.value = first;
+      q.dispatchEvent(new Event('input'));
+      for (let i = 0; i < 40; i++) { if (document.querySelector('#dirTree .tCount.hit')) break; await new Promise(r => setTimeout(r, 250)); }
+      document.querySelector('#dirTree .tCount.hit')?.click();
+      let from = -1, to = -1;
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 200));
+        const sc = window.__adbview.state().snippetScope;
+        if (sc) { from = sc.from; to = sc.to; break; }
+      }
+      const head = document.querySelector('#searchMeta').textContent.slice(0, 40);
+      // 2) 換一個詞 → 約束必須消失，摘要回到整個結果
+      q.value = second;
+      q.dispatchEvent(new Event('input'));
+      for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 250)); if (!window.__adbview.state().snippetScope) break; }
+      await new Promise(r => setTimeout(r, 500));
+      const st = window.__adbview.state();
+      const out = { skipped: false, scoped: from >= 0 && to > from, from, to,
+        scopeAfter: !!st.snippetScope, shown: document.querySelectorAll('#searchList .snippet').length,
+        word: second, meta: document.querySelector('#searchMeta').textContent.slice(0, 60), head };
+      // put the box back: the next block compares badges between two words
+      q.value = restore;
+      q.dispatchEvent(new Event('input'));
+      await new Promise(r => setTimeout(r, 800));
+      return out;
+    })()
+  `);
+  ok('重新輸入不同的詞 → 「只看該節點」的摘要約束取消',
+    rescope.skipped || (rescope.scoped && !rescope.scopeAfter && rescope.shown > 0 && !/範圍內/.test(rescope.meta)),
+    rescope.skipped ? '此庫沒有目錄樹（沒有 s="*"）→ 不適用'
+      : `先縮到 [${rescope.from}, ${rescope.to})（${rescope.head}），輸入「${rescope.word}」後 scope=${rescope.scopeAfter}、摘要 ${rescope.shown} 筆｜${rescope.meta}`);
 
   // 聯動本文的動作：Ctrl+點樹節點 → 送到右欄「文字內容」（中間本文不動，2026-10 作者指定）；
   // Alt+點 → 展開全部子孫（舊版是 Ctrl）

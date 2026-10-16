@@ -130,6 +130,13 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   要清空用輸入框的 ✕（`#queryClear`／`#termsClear`／`#freqClear`／`#latinClear`／`#folioClear`），Enter 則立即重搜。
   `#query` 與四個 pane 的輸入框（`wireOwnSearch`）共用這個規則。
 
+  點某節點的**命中數**（tCount）→ 右欄摘要切成**該節點 realm 內**的命中（標題會說「…範圍內 N 筆」）；
+  **重新輸入一個不同的詞 → 這個約束就取消**，摘要回到整個結果（作者 2026-10）。
+  實作要點：scope 記的是「產生這份結果的那個查詢」（`lastQuery`），**不是輸入框當下的文字** ——
+  用當下文字的話，一個在新查詢還在飛時按下的命中數會把新文字當成「同一個查詢」，約束就黏住了。
+  `state().searchQuery` 就是那個查詢，測試用它等搜尋真的落地再點徽章（`file-protocol-test.ts` 的
+  「重新輸入不同的詞 → 「只看該節點」的摘要約束取消」）。
+
 二）**本文分頁**：每次聯動只載入當前節點（realm）的**一頁**，底部有「上一頁」「下一頁」。
   頁＝網頁分頁 page（每頁 `PAGE_LINES = 200` 行），**不是**原書的葉／folio。
   只有一頁的節點不顯示分頁列。

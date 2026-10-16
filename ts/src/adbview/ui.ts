@@ -10,7 +10,7 @@ import { DOCFS_DEFAULT, autoFitFont, boundsOfRealm, docActive, docSession, docTa
 import { cursorNode, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
 import { appendTokenRows, renderContainers, renderDocs, renderMeta, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { dirActive, dirError, dirLoading, dirTrees, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, syncTreeTabs, treePhases, growTreeFully } from './scopes';
-import { SNIPPET_LIMIT, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
+import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 
 // -------------------------------------------------------------------- wiring
 /**
@@ -430,6 +430,7 @@ export function installDebugApi(): void {
     pagerHidden: ($('#docPager') as HTMLElement | null)?.hidden ?? null,
     docStrip: document.querySelectorAll('#docTabStrip .docTab').length,
     snippetScope: snippetScope ? { from: snippetScope.realm.from, to: snippetScope.realm.to, label: snippetScope.label } : null,
+    searchQuery: lastQuery,   // the query that produced lastResult (tests wait on it)
     lastLink,
     pagerLog: pagerLog.slice(-4),
     cursorNode: cursorNode ? { va: cursorNode.va, tag: cursorNode.tag, name: nodeLabelOf(cursorNode) } : null,

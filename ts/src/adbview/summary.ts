@@ -40,6 +40,16 @@ let snippetScope: { realm: { from: number; to: number }; label: string } | null 
 /** the query that scope belongs to: re-running the SAME query keeps it */
 let snippetScopeQuery = '';
 
+/**
+ * The text of the search that produced `lastResult` ('' when there is none).
+ *
+ * This is what a 命中數 click scopes to — NOT the live content of the input box: a
+ * click that lands while a NEW query is still in flight belongs to the result on
+ * screen, and when the new result arrives the constraint is dropped (author's rule:
+ * 重新輸入之後，這個約束取消).
+ */
+let lastQuery = '';
+
 // -------------------------------------------------------------- full text search
 /**
  * Live search. Each keystroke re-runs the query; the posting list of every token
@@ -54,6 +64,7 @@ async function runSearch(query: string) {
   if (!q) {
     lastResult = null;
     summaryResult = null;
+    lastQuery = '';
     snippetScope = null;
     snippetShown = SNIPPET_LIMIT;
     refreshTreeHits();   // no search: the badges go back to the child counts
@@ -64,6 +75,7 @@ async function runSearch(query: string) {
   }
   const res = await session.search(q);
   if (seq !== searchSeq) return;          // a newer keystroke won
+  lastQuery = q;
   // A keystroke may land while a node-scoped summary is on screen (the debounce
   // can outlive a click). The same query keeps the scope — that re-search was
   // already in flight when 命中數 was clicked — only a DIFFERENT query drops it.
@@ -195,10 +207,14 @@ async function showNodeHits(
   // must not be filtered against a 目錄 query that may be a different word.
   summaryResult = res;
   snippetScope = { realm, label };
-  // the query the user is searching for RIGHT NOW: a debounced search of the same
-  // text may still be in flight, and it must keep this scope rather than replace
-  // the pane with the unscoped result
-  snippetScopeQuery = (query ?? ($('#query') as HTMLInputElement | null)?.value ?? res.query).trim();
+  // The scope belongs to the query that produced THIS result — NOT to whatever text
+  // happens to sit in the box right now. Reading the live text made the constraint
+  // stick after a re-typed query: a 命中數 clicked while the new query was still in
+  // flight adopted the new text, and the debounced search then counted as "the same
+  // query" and kept the node's realm on screen. Author's rule (2026-10): 重新輸入
+  // 之後，這個「只看這個節點」的約束就取消。A debounced re-search of the SAME text
+  // still matches and keeps the scope, which is what the debounce needs.
+  snippetScopeQuery = (query ?? lastQuery).trim();
   snippetShown = SNIPPET_LIMIT;
   meta.innerHTML = `「${escapeHtml(displayName(label))}」範圍內 <b>${fmtInt(count)}</b> 筆命中（共 ${fmtInt(res.hits.length)} 筆；點摘要才會聯動本文）`;
   // pass a LIVE sequence number: a re-search may be in flight, and renderSnippets
@@ -230,14 +246,15 @@ export function showMoreSnippets(): void {
 import { SearchResult, SearchSession, searchSummary } from './search';
 
 function snapshotSummary() {
-  return { lastResult, summaryResult, snippetScope, snippetScopeQuery, snippetShown, activeGroup };
+  return { lastResult, summaryResult, lastQuery, snippetScope, snippetScopeQuery, snippetShown, activeGroup };
 }
 function restoreSummary(s: any): void {
   lastResult = s.lastResult ?? null;
   summaryResult = s.summaryResult ?? null;
+  lastQuery = s.lastQuery ?? lastResult?.query ?? '';
   snippetScope = s.snippetScope ?? null;
   snippetScopeQuery = s.snippetScopeQuery ?? '';
   snippetShown = s.snippetShown ?? SNIPPET_LIMIT;
   activeGroup = s.activeGroup ?? -1;
 }
-export { SNIPPET_LIMIT, activeGroup, inGroup, lastResult, refreshTreeHits, renderSearchResult, renderSnippets, restoreSummary, runSearch, searchSeq, showNodeHits, snapshotSummary, snippetScope, snippetScopeQuery, snippetShown, summaryResult };
+export { SNIPPET_LIMIT, activeGroup, inGroup, lastQuery, lastResult, refreshTreeHits, renderSearchResult, renderSnippets, restoreSummary, runSearch, searchSeq, showNodeHits, snapshotSummary, snippetScope, snippetScopeQuery, snippetShown, summaryResult };
