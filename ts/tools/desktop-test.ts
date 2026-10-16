@@ -3,6 +3,7 @@
  * and read them through the host's mmap (no Blob.slice, no socket, no events).
  *
  *   bun run tools/desktop-test.ts [--exe D:\accelon26\accelon26.exe] [--gui] [--cwd ..]
+ *   bun run tools/desktop-test.ts --gui --quick      # 只看視窗（跳過更新／改版說明，快很多）
  *
  * Default (headless): run the exe with `-selftest` in `--cwd` (the repository root, where
  * 13j.adb and fgdict.adb live) and check the listing + the read timing it prints.
@@ -23,6 +24,10 @@ const ROOT = resolve(import.meta.dir, '../..');
 const EXE = resolve(opt('exe', 'D:\\accelon26\\accelon26.exe'));
 const CWD = resolve(opt('cwd', ROOT));
 const GUI = args.includes('--gui');
+// --quick：跳過線上更新／改版說明那幾段（要開視窗、下載 16 MB、跑好幾次）——
+// 作者 2026-10：「desktop test 太久了，以後沒必要不要跑；主要先在 html 測好，
+// 除非我說發布再試 desktop 版。」所以 --gui 平常不必跑，真的要看視窗時加 --quick。
+const QUICK = args.includes('--quick');
 const PORT = Number(opt('port', '9222'));
 
 let pass = 0, fail = 0;
@@ -436,6 +441,11 @@ ok('連續啟動會收斂到同一組視窗設定（不會一直漂移）', conv
   seen.join(' → ') + (lastInfo ? `｜最後一次啟動 ${lastInfo.w}x${lastInfo.h}@${lastInfo.x},${lastInfo.y}` : ''));
 
 // ---- 線上更新：本地 HTTP 伺服器當作「已發佈的新版」 --------------------------------
+// （--quick 時整段跳過：這幾段最花時間，發布前再跑就好）
+if (QUICK) {
+  console.log('      （--quick：略過線上更新／改版說明的驗證）');
+} else {
+
 // 作者：「如果線上 built time 比用戶運行中的新，左上角閃動…用戶點下時，問是否確定更新…
 // 更新後，顯示改版新增或改進的功能。」測試用 ACCELON26_UPDATE_URL 指向本地伺服器，
 // 餵一份「比現在新」的 exe（自己的一份拷貝），不連外網、也不碰正式站。
@@ -538,5 +548,6 @@ try { proc9.kill(); } catch { /* already gone */ }
 await gui8.close();
 try { proc7.kill(); } catch { /* already gone */ }
 server.stop(true);
+}
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

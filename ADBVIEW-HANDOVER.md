@@ -46,6 +46,11 @@
 >
 > **測試**：13j **83/83**、yinshun **83/83**、fgdict **95/95**；`check-map-ids.ts` **80/80**。
 >
+> **測試策略（作者 2026-10）**：**主要先在 HTML 測好**（`tools/file-protocol-test.ts`
+> ＋ `check-map-ids.ts`，快）；**桌面版（Wails3）只在「發布」時才跑**完整
+> `tools/desktop-test.ts --gui`（慢：開視窗、下載 16 MB、跑好幾次）。平常真的要看視窗，
+> 用 `--gui --quick`（跳過更新／改版說明那幾段）。改完程式碼**不要**習慣性跑 desktop test。
+>
 > **同月再加一輪：桌面版（Wails3）**，見 §10。`wails/` 是獨立的 Go 模組（極薄：只有 mmap 讀取與
 > 列工作目錄的 `*.adb`），UI 仍是同一份 TypeScript 單檔 HTML，**只有 `host.ts` 知道宿主存在**。
 > 實測：exe 在倉庫根目錄啟動 → 自動列出 13j／fgdict／yinshun（只讀檔頭），下拉可切換、mmap 讀內文；
@@ -874,6 +879,7 @@ console 版（看得到 log，開發用）加 `--console`。
 **發佈（作者說「發布」時）**：
 
 ```powershell
+cd ts; bun run tools/desktop-test.ts --gui                    # 發布前跑一次桌面回歸（慢，平常不跑）
 cd ts; bun run tools/release.ts --items-file notes.txt        # 一行一項（UTF-8，中文請用這個）
 # 或 bun run tools/release.ts --items "ascii-only;…" [--title "…"]
 #  1) append 到 wails/release_notes.json  2) 先建 HTML 再 go build（-ldflags 注入建置時間）
@@ -896,7 +902,7 @@ cd ts; bun run tools/release.ts --items-file notes.txt        # 一行一項（U
 **診斷**（`D:\accelon26\accelon26.exe -version`）（建置時間／說明筆數／更新網址）、`main.AdbHost.AppInfo()`、
 `CheckUpdate()`（立刻檢查一次）、`InstallUpdate()`、`ReleaseNotes(since)`。
 
-**驗證**：`tools/desktop-test.ts --gui` 37 項全過，其中更新相關：
+**驗證**（發布時才跑）：`tools/desktop-test.ts --gui` 42 項全過，其中更新相關：
 
 ```
 ok 檢查到線上版本比較新（Last-Modified）      本地 2026-10-16 22:00 vs 線上 2026-10-17T14:00
