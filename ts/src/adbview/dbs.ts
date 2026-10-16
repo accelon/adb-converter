@@ -197,7 +197,7 @@ export async function openCatalogEntry(e: CatalogEntry): Promise<void> {
   const slot = slotOf(e);
   if (slot) {
     slot.usedAt = ++useSeq;
-    switchTo(slot.id);
+    switchTo(slot.id, true);    // 從下拉選的：跳到 dbTabs 最左
     return;
   }
   while (openDbs.length >= MAX_DBS) {
@@ -266,11 +266,20 @@ export function renderDbTabs(): void {
     };
   });
 }
-export function switchTo(id: number): void {
+/**
+ * Switch to a slot. `front` moves it to the LEFT of dbTabs — the dropdown uses that
+ * ("一使用就跳到最左" means: choosing from the adb dropdown). Clicking a CHIP must never
+ * reorder anything ("切換 active 時不要亂跳"), it only restyles.
+ */
+export function switchTo(id: number, front = false): void {
   const target = openDbs.find((d) => d.id === id);
   const cur = activeSlot();
   if (!target) return;
   target.usedAt = ++useSeq;        // 「保留最後使用的 5 個」
+  if (front) {
+    const at = openDbs.indexOf(target);
+    if (at > 0) { openDbs.splice(at, 1); openDbs.unshift(target); }
+  }
   if (target === cur) { renderDbTabs(); renderDbPick(); return; }
   if (cur) saveInto(cur);
   loadFrom(target);

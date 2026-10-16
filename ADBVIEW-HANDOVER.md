@@ -44,7 +44,20 @@
 > Ctrl+點本文分頁＝複製到右欄、Shift+點＝搬到右欄；**右欄純參考，不連動左樹**。
 > 五）文字內容頁刻意獨立成模組 —— 下一步要改的是「把行內 XML 標籤變成 HTML」，只會動 `renderTextPane()`。
 >
-> **測試**：13j **73/73**、yinshun **82/82**、fgdict **85/85**；`check-map-ids.ts` 79/79。
+> **測試**：13j **83/83**、yinshun **83/83**、fgdict **95/95**；`check-map-ids.ts` **80/80**。
+>
+> **再後一輪（同月，作者四點＋兩個 bug 回報）**：
+> 一）**純文字檔統一 LF**（`.gitattributes`：`* text=auto eol=lf`；當時只有 4 個檔還帶 CRLF）。
+> 二）**沒有 `s="*"` 就完全不建目錄樹**：`loadDirectoryTrees()` 只建正好 `s="*"` 的那棵（fgdict 0 實例／0 ms，
+> yinshun 只建 `*` 那棵＝8,513 實例）；`groupNames()` 改讀 adb 自己的 `caches/<標籤>`（三庫都對得上），
+> 搜尋分組不再依賴 `treeLabels`。
+> 三）**狀態列只顯示錯誤與「讀取中」**：`setStatus(info)` 不寫 DOM（訊息仍留在 `__adbview.status()`）。
+> 四）**右上 `#dbPick` 下拉**：列出這次工作階段選過／拖過的每個 adb（只讀 header，未載入的也在），
+> 選一個就加入 `dbTabs` 並跳到最左；`dbTabs` 只保留最後使用的 5 個（滿了踢最久沒用的）；**點 chip 切換永不重排**。
+> 五）**Escape 不再清輸入**：五個輸入框都是 `<input type="search">`，Chromium 內建 Escape 清空 ——
+> keydown 必須 `preventDefault()`；測試改用 CDP `Input.dispatchKeyEvent` 送真按鍵（合成事件測不到預設動作）。
+> 六）**摘要的「只看該節點」約束屬於產生結果的那個查詢**（`lastQuery`）——重打一個詞就取消，
+> 不會因為新查詢還在飛時按了命中數而黏住。
 
 ---
 
@@ -451,9 +464,9 @@ DOM 列數也固定。
 
 | 測試 | 結果 |
 |---|---|
-| `file-protocol-test.ts`（13j） | **78/78** |
-| `file-protocol-test.ts`（yinshun） | **78/78** |
-| `file-protocol-test.ts`（fgdict） | **90/90** |
+| `file-protocol-test.ts`（13j） | **83/83** |
+| `file-protocol-test.ts`（yinshun） | **83/83** |
+| `file-protocol-test.ts`（fgdict） | **95/95** |
 | `test/tree.test.ts` | 40/40 |
 | `test/search.test.ts`（13j） | 19/19 |
 | `test/adbview.test.ts` / `test/vapa.test.ts` | 22/22、13/13 |
@@ -475,6 +488,9 @@ DOM 列數也固定。
 * **本輪新增**：狀態列只顯示錯誤／忙碌（載入後 `#status` 是空的，`__adbview.status()` 仍記得最後訊息）
 * **本輪新增**：餵非 .adb → 狀態列顯示「開啟失敗」，原本的庫不受影響，而且不丟例外
 * **本輪新增**：沒有 `s="*"` 的庫完全不建樹（`treePhases.instances = 0`）
+* **本輪新增**（多庫：測試自己造一個「庫名不同」的複本 adb —— 只改 header 的 dbname／dbcname）：
+  餵兩個檔＝兩個 chip 且最後開啟的在最左、**點 chip 切換順序完全不動**、
+  **從下拉選的那一個跳到最左**、關掉它之後仍留在下拉標「（未載入）」
 
 ## 7. 待辦事項
 

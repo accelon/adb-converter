@@ -9,7 +9,7 @@
  * way in is the File API (Blob.slice) — which is what gets exercised here.
  */
 import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const args = process.argv.slice(2);
@@ -1601,6 +1601,77 @@ try {
 
   const res = await cdp.eval<string>(`document.querySelector('#resources').textContent.replace(/\\s+/g,' ').trim().slice(0, 70)`);
   ok('resources pane reports state on file://', res.length > 0, res);
+
+  // ---- 多庫：從 adb 下拉選一個 → 它跳到 dbTabs 最左；點 chip 切換則完全不動 -------
+  // 造一個「庫名不同」的複本當第二個庫（只改 header 的 dbname／dbcname；viewer 不看 crc32）
+  const COPY = resolve(import.meta.dir, '../../build/tmp-copy.adb');
+  {
+    const copy = Buffer.from(readFileSync(ADB));
+    copy.fill(0, 0, 32);
+    copy.write('copy_test', 0, 'ascii');
+    copy.fill(0, 128, 192);
+    Buffer.from('複本測試\0', 'utf16le').copy(copy, 128);
+    writeFileSync(COPY, copy);
+  }
+  await cdp.send('DOM.setFileInputFiles', { files: [ADB, COPY], nodeId: await (async () => {
+    const doc = await cdp.send('DOM.getDocument');
+    const q = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#file' });
+    return q.nodeId;
+  })() });
+  await cdp.eval('document.querySelector("#file").dispatchEvent(new Event("change"))');
+  for (let i = 0; i < 80; i++) {
+    const n = await cdp.eval<number>('document.querySelectorAll("#dbTabs .dbChip").length');
+    if (n === 2) break;
+    await Bun.sleep(300);
+  }
+  const multi = await cdp.eval<{ names: string[]; active: string; chips: number }>(`
+    (() => {
+      const chips = [...document.querySelectorAll('#dbTabs .dbChip')];
+      return {
+        chips: chips.length,
+        names: chips.map((c) => c.textContent.replace('✕', '') + (c.classList.contains('active') ? '*' : '')),
+        active: chips.find((c) => c.classList.contains('active'))?.textContent.replace('✕', '') ?? '',
+      };
+    })()
+  `);
+  ok('一次餵兩個 adb：兩個 chip，最後開啟的（複本）在最左',
+    multi.chips === 2 && multi.names[0].startsWith('複本測試') && multi.active.startsWith('複本測試'),
+    JSON.stringify(multi));
+  // 點另一個 chip 切換：順序必須完全不動（作者：切換 active 時不要亂跳）
+  const afterChip = await cdp.eval<string>(`(() => {
+    const chips = [...document.querySelectorAll('#dbTabs .dbChip')];
+    chips.find((c) => !c.classList.contains('active')).click();
+    return [...document.querySelectorAll('#dbTabs .dbChip')].map((c) => c.textContent.replace('✕', '')).join(' | ');
+  })()`);
+  ok('點 chip 切換 active：順序完全不動',
+    afterChip === multi.names.map((n) => n.replace('*', '')).join(' | '), afterChip);
+  // 從下拉選「原本的庫」——它現在在最右，選了就必須跳到最左（一使用就跳到最左）
+  const otherName = await cdp.eval<string>(`(() => {
+    const sel = document.getElementById('dbPick');
+    const opt = [...sel.options].find((o) => !o.textContent.includes('複本測試'));
+    sel.value = opt.value;
+    sel.dispatchEvent(new Event('change'));
+    return opt.textContent.replace('（未載入）', '');
+  })()`);
+  await Bun.sleep(1500);
+  const promoted = await cdp.eval<string>(`[...document.querySelectorAll('#dbTabs .dbChip')].map((c) => c.textContent.replace('✕', '') + (c.classList.contains('active') ? '*' : '')).join(' | ')`);
+  ok('從 adb 下拉選一個庫：它跳到 dbTabs 最左',
+    promoted.startsWith(otherName + '*') && promoted.includes('複本測試'),
+    `選「${otherName}」→ ${promoted}`);
+  // 收起複本（它的分頁一起走），回到原本的庫；複本仍留在下拉裡
+  await cdp.eval(`(() => {
+    const chip = [...document.querySelectorAll('#dbTabs .dbChip')].find((c) => c.textContent.includes('複本測試'));
+    chip.querySelector('.dbChipClose').click();
+  })()`);
+  await Bun.sleep(1500);
+  const afterClose = await cdp.eval<{ chips: number; db: string; catalog: string[] }>(`
+    ({ chips: document.querySelectorAll('#dbTabs .dbChip').length,
+       db: window.__adbview.state().db,
+       catalog: window.__adbview.state().catalog.map((e) => e.name + (e.open ? '' : '(未載入)')) })
+  `);
+  ok('關掉複本：只剩原本的庫，複本仍留在下拉（未載入）',
+    afterClose.chips === 1 && afterClose.db !== 'copy_test' && afterClose.catalog.some((n) => n.includes('複本測試(未載入)')),
+    JSON.stringify(afterClose));
 
   // 餵一個不是 .adb 的檔：錯誤是狀態列唯一還顯示的東西，而且不能把例外丟出來
   await cdp.send('DOM.setFileInputFiles', { files: [HTML], nodeId: await (async () => {
