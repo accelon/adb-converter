@@ -207,7 +207,7 @@ viewer.ts 剩 197 行——但啟動後 **`Runtime.evaluate` timeout（頁面卡
 **分頁行為（需求三，2026-10 作者回報後修正）**：不按 Ctrl 的聯動**更新當前分頁**（不是每個節點開一個）；
 只有 Ctrl/Cmd 開新分頁；若目標 realm 已經有分頁，則聚焦那一個。回歸測試：`不按 Ctrl 走訪目錄只更新當前分頁（不會多開）`。
 
-### 3.3 同時開啟多個 adb（2026-10，進行中）
+### 3.3 同時開啟多個 adb（2026-10，完成；剩 §待辦 的測試回歸）
 
 最多 `MAX_DBS = 5` 個。每個資料庫是一個 **slot**（`dbs.ts`），內含各模組的 snapshot：
 `snapshotCore/restoreCore`（reader/mapper/session/tokens/docs/blocksVirtual/currentDoc）、
