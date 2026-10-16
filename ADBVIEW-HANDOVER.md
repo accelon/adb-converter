@@ -46,6 +46,11 @@
 >
 > **測試**：13j **83/83**、yinshun **83/83**、fgdict **95/95**；`check-map-ids.ts` **80/80**。
 >
+> **同月再加一輪：桌面版（Wails3）**，見 §10。`wails/` 是獨立的 Go 模組（極薄：只有 mmap 讀取與
+> 列工作目錄的 `*.adb`），UI 仍是同一份 TypeScript 單檔 HTML，**只有 `host.ts` 知道宿主存在**。
+> 實測：exe 在倉庫根目錄啟動 → 自動列出 13j／fgdict／yinshun（只讀檔頭），下拉可切換、mmap 讀內文；
+> `tools/desktop-test.ts --gui` 11/11。**除非作者說要造 exe 或「準備發佈」，預設只產生 HTML。**
+>
 > **再後一輪（同月，作者四點＋兩個 bug 回報）**：
 > 一）**純文字檔統一 LF**（`.gitattributes`：`* text=auto eol=lf`；當時只有 4 個檔還帶 CRLF）。
 > 二）**沒有 `s="*"` 就完全不建目錄樹**：`loadDirectoryTrees()` 只建正好 `s="*"` 的那棵（fgdict 0 實例／0 ms，
