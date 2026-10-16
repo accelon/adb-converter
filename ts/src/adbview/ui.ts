@@ -424,14 +424,15 @@ function refreshAll(): void {
   renderDocs();
   renderTokens(reader.classStats(), 0);
   syncTreeTabs();
-  void renderDirTree();
   const cur = docSession();
   renderDocTabs(cur);
   if (cur) void ensurePage(cur);
-  if (lastResult) void renderSnippets(searchSeq);
-  else { $('#searchList').innerHTML = ''; $('#searchMeta').textContent = ''; $('#searchMore').textContent = ''; }
+  // The panes redraw THEMSELVES through showTab(), which is also what rebuilds the
+  // summary and the tree: rendering them here as well did every expensive thing twice
+  // (a full search for 頻次, 22k cached strings for 名詞, the tree rows) on each switch.
   const lt = $('#colLeft .tabBtn.active')?.getAttribute('data-tab');
   if (lt) showTab(lt, 'left');
+  else { $('#dirTree').innerHTML = '<p class="dim">此庫沒有左欄分頁。</p>'; }
   const rt = $('#colRight .tabBtn.active')?.getAttribute('data-tab');
   if (rt) showTab(rt, 'right');
   setStatus(`${reader.header.dbcname || reader.header.dbname}：${fmtInt(tokens.length)} 詞、${fmtInt(docs.length)} 文件`, 'info');
