@@ -229,4 +229,15 @@ export function showMoreSnippets(): void {
 
 import { SearchResult, SearchSession, searchSummary } from './search';
 
-export { SNIPPET_LIMIT, activeGroup, inGroup, lastResult, refreshTreeHits, renderSearchResult, renderSnippets, runSearch, searchSeq, showNodeHits, snippetScope, snippetScopeQuery, snippetShown, summaryResult };
+function snapshotSummary() {
+  return { lastResult, summaryResult, snippetScope, snippetScopeQuery, snippetShown, activeGroup };
+}
+function restoreSummary(s: any): void {
+  lastResult = s.lastResult ?? null;
+  summaryResult = s.summaryResult ?? null;
+  snippetScope = s.snippetScope ?? null;
+  snippetScopeQuery = s.snippetScopeQuery ?? '';
+  snippetShown = s.snippetShown ?? SNIPPET_LIMIT;
+  activeGroup = s.activeGroup ?? -1;
+}
+export { SNIPPET_LIMIT, activeGroup, inGroup, lastResult, refreshTreeHits, renderSearchResult, renderSnippets, restoreSummary, runSearch, searchSeq, showNodeHits, snapshotSummary, snippetScope, snippetScopeQuery, snippetShown, summaryResult };

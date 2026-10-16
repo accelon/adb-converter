@@ -254,4 +254,13 @@ export function resetLink(): void {
 
 import { TreeNode } from './search';
 
-export { cursorNode, cursorPending, deepestNode, lastReveal, linkTo, nodeContaining, nodeLabelOf, paintTreeActive, pinnedHit, revealCursorInTree, revealHit, showLine, syncCursorFromScroll };
+function snapshotLink() {
+  return { pinnedHit, lastReveal, cursorNode };
+}
+function restoreLink(s: any): void {
+  pinnedHit = s.pinnedHit ?? null;
+  lastReveal = s.lastReveal ?? '';
+  cursorNode = s.cursorNode ?? null;
+  cursorPending = false;
+}
+export { cursorNode, cursorPending, deepestNode, lastReveal, linkTo, nodeContaining, nodeLabelOf, paintTreeActive, pinnedHit, restoreLink, revealCursorInTree, revealHit, showLine, snapshotLink, syncCursorFromScroll };

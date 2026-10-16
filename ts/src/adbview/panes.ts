@@ -204,4 +204,12 @@ async function vapaProbe(va: number): Promise<unknown> {
 
 import { AdbHeader, AdbReader, CLASS_LABELS, Container, TokenRow } from './adb';
 
-export { PAGE, THUMB_LIMIT, appendTokenRows, binarySearch, containerSummary, hideAllExcept, renderContainers, renderDocs, renderMeta, renderResources, renderTokenList, renderTokens, showAllClasses, showToken, tokenList, tokenOffset, vapaProbe };
+function snapshotPanes() {
+  return { tokenList, tokenOffset, showAllClasses };
+}
+function restorePanes(s: any): void {
+  tokenList = s.tokenList ?? [];
+  tokenOffset = s.tokenOffset ?? 0;
+  showAllClasses = s.showAllClasses ?? false;
+}
+export { PAGE, THUMB_LIMIT, appendTokenRows, binarySearch, containerSummary, hideAllExcept, renderContainers, renderDocs, renderMeta, renderResources, renderTokenList, renderTokens, restorePanes, showAllClasses, showToken, snapshotPanes, tokenList, tokenOffset, vapaProbe };

@@ -15,6 +15,7 @@ import {
   SearchSession, searchSummary, loadTrees, loadTree, buildTree, flattenTree, parseScope, loadInstanceAttrs,
   type SearchResult, type TreeNode, type SearchTree,
 } from './search';
+import { registerOpenDb } from './dbs';
 import { showTab } from './ui';
 import { appendTokenRows, renderContainers, renderDocs, renderMeta, renderResources, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { dirActive, dirError, dirLoading, dirTrees, folioCache, labelTables, loadDirectoryTrees, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, resetScopes, setDirError, setDirLoading, syncTreeTabs, treePhases } from './scopes';
@@ -191,6 +192,7 @@ export async function openFile(file: File) {
     console.log('[open]', lastOpen);
     renderMeta(reader, openMs, tokenMs, layoutMs, docsMs);
     void renderResources();
+    registerOpenDb(file, h.dbcname || h.dbname);
   } catch (e) {
     setStatus('開啟失敗：' + (e as Error).message, 'err');
     console.error(e);
@@ -230,92 +232,18 @@ export const altKey = (ev?: { altKey?: boolean }): boolean => !!ev && !!ev.altKe
 export const mods = (ev?: { ctrlKey?: boolean; metaKey?: boolean }): { newTab?: boolean } | undefined =>
   newTabKey(ev) ? { newTab: true } : undefined;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/** the viewer's own per-database state (each module snapshots its own) */
+export function snapshotCore() {
+  return { reader, mapper, session, tokens, docs, blocksVirtual, currentDoc, lastOpen, lastTreeMs };
+}
+export function restoreCore(s: any): void {
+  reader = s.reader ?? null;
+  mapper = s.mapper ?? null;
+  session = s.session ?? null;
+  tokens = s.tokens ?? [];
+  docs = s.docs ?? [];
+  blocksVirtual = s.blocksVirtual ?? [];
+  currentDoc = s.currentDoc ?? null;
+  lastOpen = s.lastOpen ?? null;
+  lastTreeMs = s.lastTreeMs ?? 0;
+}

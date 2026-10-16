@@ -5,11 +5,11 @@
  * ./viewer and the other split modules as ESM live bindings; a module OWNS the
  * state it declares, and other modules get/set it through that module's exports.
  */
-import { $, docs, lastOpen, mapper, openFile, opening, reader, setStatus, tokens } from './viewer';
-import { DOCFS_DEFAULT, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, fitDebugInfo, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, setDocFont } from './doc-pane';
+import { $, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, setStatus, tokens } from './viewer';
+import { DOCFS_DEFAULT, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, fitDebugInfo, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, renderDocTabs, setDocFont } from './doc-pane';
 import { cursorNode, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
-import { appendTokenRows, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
-import { dirActive, dirError, dirLoading, dirTrees, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, treePhases } from './scopes';
+import { appendTokenRows, renderContainers, renderDocs, renderMeta, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
+import { dirActive, dirError, dirLoading, dirTrees, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, syncTreeTabs, treePhases } from './scopes';
 import { SNIPPET_LIMIT, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 
 // -------------------------------------------------------------------- wiring
@@ -224,6 +224,8 @@ function boot() {
   // name button afterwards
   const fileInput = $('#file') as HTMLInputElement;
   fileInput.onchange = () => { const f = fileInput.files?.[0]; if (f) void openFile(f); };
+  ($('#dbClose') as HTMLButtonElement | null) && (($('#dbClose') as HTMLButtonElement).onclick = () => closeActiveDb());
+  setDbHooks({ refresh: refreshAll, clear: clearDbUi });
   ($('#dbname') as HTMLButtonElement).onclick = () => {
     fileInput.value = '';
     fileInput.click();
@@ -404,4 +406,46 @@ export function installDebugApi(): void {
 
 import { loadTree } from './search';
 
+import { closeActiveDb, setDbHooks } from './dbs';
+
 export { ADV_KEY, COLS_KEY, DEFAULT_COLS, MAX_SIDE, MIN_SIDE, advanced, applyCols, attachSplitter, boot, defaultLeftTab, readAdvanced, readCols, saveCols, setAdvanced, setSide, showTab, toggleSide };
+
+/**
+ * Redraw everything from the (restored) globals — used after switching database.
+ * Every pane is re-rendered by its own showTab(), so no state is guessed here.
+ */
+function refreshAll(): void {
+  if (!reader) { clearDbUi(); return; }
+  renderMeta(reader, lastOpen?.parseMs ?? 0, 0, 0, 0);
+  renderContainers(reader);
+  renderDocs();
+  renderTokens(reader.classStats(), 0);
+  syncTreeTabs();
+  void renderDirTree();
+  const cur = docSession();
+  renderDocTabs(cur);
+  if (cur) void ensurePage(cur);
+  if (lastResult) void renderSnippets(searchSeq);
+  else { $('#searchList').innerHTML = ''; $('#searchMeta').textContent = ''; $('#searchMore').textContent = ''; }
+  const lt = $('#colLeft .tabBtn.active')?.getAttribute('data-tab');
+  if (lt) showTab(lt, 'left');
+  const rt = $('#colRight .tabBtn.active')?.getAttribute('data-tab');
+  if (rt) showTab(rt, 'right');
+  setStatus(`${reader.header.dbcname || reader.header.dbname}：${fmtInt(tokens.length)} 詞、${fmtInt(docs.length)} 文件`, 'info');
+}
+
+/** no database left: empty every pane so nothing of the closed file is shown */
+function clearDbUi(): void {
+  document.body.classList.remove('loaded');
+  ($('#dbname') as HTMLButtonElement | null)!.hidden = true;
+  renderDocs();
+  for (const sel of ['#meta', '#containers', '#capacity', '#docs', '#resources', '#dirTree', '#termsList',
+    '#freqList', '#folioList', '#latinList', '#searchList', '#tokenRows']) {
+    const el = $(sel);
+    if (el) el.innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
+  }
+  $('#docText').innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
+  renderDocTabs(null);
+  ($('#docTabs') as HTMLElement | null)!.hidden = true;
+  setStatus('已關閉資料庫', 'info');
+}

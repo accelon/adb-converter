@@ -609,4 +609,19 @@ import { DocRow } from './adb';
 
 import { VaPaMapper } from './vapa';
 
-export { DOCFS_DEFAULT, DOCFS_KEY, DOCFS_MAX, DOCFS_MIN, DOCFS_READABLE_MIN, DOC_TEXT_FAMILY, DocSession, PAGE_LINES, PROBE_FS, autoFitFont, boundsCache, boundsOfRealm, closeDocTab, docActive, docFontSized, docOfVa, docScrollWired, docSeq, docSession, docTabs, docTextWidth, edgeLine, ensurePage, fetchPage, fitDebugInfo, goPage, lastDocLines, lastFit, lastLink, longestOf, makeTextMeasurer, pageBounds, pageOfLine, pagerLog, paintAsked, pendingProbeCleanup, pickProbeLine, readDocFont, realmFirstLine, realmKey, realmLastLine, renderDoc, renderDocTabs, renderPager, scheduleCursorSync, scrollToVa, sessionFor, sessionForRealm, setDocFont, shortLabel, showsLine, switchDocTab, wholeRealm };
+/** everything the document pane keeps for ONE database */
+function snapshotDocPane() {
+  return { docTabs, docActive, docSeq, lastDocLines, lastLink, lastFit };
+}
+function restoreDocPane(s: any): void {
+  docTabs = s.docTabs ?? [];
+  docActive = s.docActive ?? 0;
+  docSeq = s.docSeq ?? 0;
+  lastDocLines = s.lastDocLines ?? [];
+  lastLink = s.lastLink ?? null;
+  lastFit = s.lastFit ?? null;
+  boundsCache.clear();
+  paintAsked.clear();
+  docFontSized = true;          // the size is a reader preference, not per database
+}
+export { DOCFS_DEFAULT, DOCFS_KEY, DOCFS_MAX, DOCFS_MIN, DOCFS_READABLE_MIN, DOC_TEXT_FAMILY, DocSession, PAGE_LINES, PROBE_FS, autoFitFont, boundsCache, boundsOfRealm, closeDocTab, docActive, docFontSized, docOfVa, docScrollWired, docSeq, docSession, docTabs, docTextWidth, edgeLine, ensurePage, fetchPage, fitDebugInfo, goPage, lastDocLines, lastFit, lastLink, longestOf, makeTextMeasurer, pageBounds, pageOfLine, pagerLog, paintAsked, pendingProbeCleanup, pickProbeLine, readDocFont, realmFirstLine, realmKey, realmLastLine, renderDoc, renderDocTabs, renderPager, restoreDocPane, scheduleCursorSync, scrollToVa, sessionFor, sessionForRealm, setDocFont, shortLabel, showsLine, snapshotDocPane, switchDocTab, wholeRealm };

@@ -207,6 +207,20 @@ viewer.ts 剩 197 行——但啟動後 **`Runtime.evaluate` timeout（頁面卡
 **分頁行為（需求三，2026-10 作者回報後修正）**：不按 Ctrl 的聯動**更新當前分頁**（不是每個節點開一個）；
 只有 Ctrl/Cmd 開新分頁；若目標 realm 已經有分頁，則聚焦那一個。回歸測試：`不按 Ctrl 走訪目錄只更新當前分頁（不會多開）`。
 
+### 3.3 同時開啟多個 adb（2026-10，進行中）
+
+最多 `MAX_DBS = 5` 個。每個資料庫是一個 **slot**（`dbs.ts`），內含各模組的 snapshot：
+`snapshotCore/restoreCore`（reader/mapper/session/tokens/docs/blocksVirtual/currentDoc）、
+`snapshotDocPane/restoreDocPane`（**本文分頁在 slot 裡** → 關掉資料庫就等於關掉它所有分頁）、
+`snapshotScopes/restoreScopes`（樹、folio）、`snapshotSummary/restoreSummary`、`snapshotLink/restoreLink`、`snapshotPanes/restorePanes`。
+
+UI：`#dbname`＝目前庫（點＝開啟其他 .adb）、`#dbClose`＝✕ 關閉目前庫、`#dbTabs`＝其他已開庫的 chip（點＝切換、chip 上的 ✕＝關閉）。
+切換／關閉後由 `ui.ts` 的 `refreshAll()` 重畫（每個 pane 交給自己的 `showTab()` 重跑）；全部關完呼叫 `clearDbUi()`。
+
+**已用 probe 驗證**（`build/probe-multi.ts`）：開 yinshun → 開 fgdict（chip 出現、`#dbname` 變佛光大辭典）→ 在 fgdict 開一個本文分頁 → 點 chip 切回 yinshun（名稱／docs／左欄分頁都跟著換）→ 按 ✕ 關掉 fgdict（chip 0、`docTabs` 0＝它的分頁一併關掉、狀態列回到 yinshun）。
+
+**待辦**：超過 5 個的拒絕訊息（`registerOpenDb` 已回 `reason`，尚未顯示）、`file-protocol-test.ts` 的多庫回歸、重複開啟同一庫的行為、關閉 active 時挑選下一個的策略（目前取陣列最後一個）。
+
 ### 3.1 分區名稱與 id（溝通時直接用；示意圖 [adbview-map.html](adbview-map.html)）
 
 | 統一稱呼 | 選擇器 | 備註 |

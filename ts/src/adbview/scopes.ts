@@ -877,4 +877,17 @@ export function resetScopes(): void {
 
 import { SearchResult, SearchTree, TreeNode, buildTree, flattenTree, loadInstanceAttrs, loadTree, loadTrees, parseScope } from './search';
 
-export { DirTree, countHitsPerSegment, countNodes, depthColor, dirActive, dirError, dirLoading, dirTrees, findNode, folioCache, folioEntries, freqSegments, hitBadge, labelFor, labelTableFor, labelTables, loadDirectoryTrees, lowerBound, nameSegs, realmHits, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, syncTreeTabs, tagSegments, tagVas, treePhases, treeScope, wrappedText };
+/** the trees of ONE database (labelTables is a pure cache: dropped on switch) */
+function snapshotScopes() {
+  return { dirTrees, dirActive, dirError, treePhases, folioCache };
+}
+function restoreScopes(s: any): void {
+  dirTrees = s.dirTrees ?? [];
+  dirActive = s.dirActive ?? 0;
+  dirError = s.dirError ?? '';
+  treePhases = s.treePhases ?? {};
+  folioCache = s.folioCache ?? null;
+  labelTables.clear();
+  dirLoading = false;
+}
+export { DirTree, countHitsPerSegment, countNodes, depthColor, dirActive, dirError, dirLoading, dirTrees, findNode, folioCache, folioEntries, freqSegments, hitBadge, labelFor, labelTableFor, labelTables, loadDirectoryTrees, lowerBound, nameSegs, realmHits, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, restoreScopes, snapshotScopes, syncTreeTabs, tagSegments, tagVas, treePhases, treeScope, wrappedText };

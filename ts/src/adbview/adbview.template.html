@@ -255,6 +255,15 @@
   .tRow.ancestor { background: rgba(90,169,255,.10); }
   .tRow.current { background: #2b3b4d; outline: 1px solid var(--accent); border-radius: 3px; }
   #dirTree { padding: 0; }
+.dbTabs { display: inline-flex; gap: 4px; align-items: center; }
+.dbTabs .dbChip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line);
+  border-radius: 6px; padding: 1px 6px; font-size: 12px; cursor: pointer; color: var(--ink); }
+.dbTabs .dbChip:hover { border-color: var(--accent); background: rgba(90,169,255,.08); }
+.dbTabs .dbChipClose { opacity: .55; }
+.dbTabs .dbChipClose:hover { opacity: 1; color: #ff6b6b; }
+.dbClose { border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--dim);
+  cursor: pointer; font-size: 12px; padding: 1px 6px; }
+.dbClose:hover { border-color: #ff6b6b; color: #ff6b6b; }
 </style>
 </head>
 <body>
@@ -264,7 +273,9 @@
   <button class="sideToggle" id="toggleRight" title="顯示／隱藏右欄">◨</button>
   <button class="sideToggle" id="advToggle" title="進階模式：顯示 token 瀏覽與檔案資訊分頁">🧑‍💻</button>
   <input type="file" id="file" accept=".adb">
+  <span class="dbTabs" id="dbTabs"></span>
   <button class="dbname" id="dbname" title="開啟其他資料庫" hidden>（未開啟）</button>
+  <button class="dbClose" id="dbClose" title="關閉這個資料庫（一併關閉它的所有本文分頁）" hidden>✕</button>
   <span class="status" id="status"></span>
 </header>
 
