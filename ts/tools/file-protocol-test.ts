@@ -552,7 +552,7 @@ try {
     })()
   `);
   ok('目錄樹分批掛上 DOM（捲到底才載入更多）',
-    lazyTree.first <= 200 && (lazyTree.more ? lazyTree.all > lazyTree.first : lazyTree.all === lazyTree.first),
+    !dirTabShown || (lazyTree.first <= 200 && (lazyTree.more ? lazyTree.all > lazyTree.first : lazyTree.all === lazyTree.first)),
     `首批 ${lazyTree.first} 列／全部 ${lazyTree.all} 列${lazyTree.more ? '（' + lazyTree.more + '）' : '（一屏裝得下）'}`);
 
   // 逐層展開：書 → 章（13j 的 `t="章,節,項."` 尾點讓章成為末層，所以只有兩層；
@@ -666,7 +666,7 @@ try {
   // Rows are NOT disjoint (a book's realm contains its chapters'), so the badges
   // must not be summed; each one is checked against the search total instead.
   ok('目錄節點顯示 realm 內命中數',
-    realm.first > 0 && realm.badges.every((b) => b > 0 && b <= realm.total),
+    !dirTabShown || (realm.first > 0 && realm.badges.every((b) => b > 0 && b <= realm.total)),
     `第一個節點 ${realm.first}、總命中 ${realm.total}（${realm.rows} 列，最大 ${Math.max(...realm.badges)}）`);
 
   // 點 tCount > 顯示該節點命中的摘要（摘要範圍限在該節點 realm 內，本文不動）
@@ -674,8 +674,11 @@ try {
     badge: number; metaOk: boolean; maxVa: number; minVa: number; to: number; from: number; snippets: number; meta: string; scoped: boolean;
   }>(`
     (async () => {
-      document.querySelector('#dirTree .tCount.hit').scrollIntoView({ block: 'center' });
-      const badge = Number(document.querySelector('#dirTree .tCount.hit').textContent.replace(/,/g, ''));
+      const hitBadgeEl = document.querySelector('#dirTree .tCount.hit');
+      // 沒有 s="*" 的庫沒有目錄樹（作者 2026-10）→ 沒有徽章可點
+      if (!hitBadgeEl) return { skipped: true, badge: 0, metaOk: true, minVa: 0, maxVa: 0, to: 0, from: 0, snippets: 1, meta: '', scoped: true };
+      hitBadgeEl.scrollIntoView({ block: 'center' });
+      const badge = Number(hitBadgeEl.textContent.replace(/,/g, ''));
       document.querySelector('#dirTree .tCount.hit').click();
       // the scoped summary may be rebuilt by a debounced re-search of the SAME
       // query, so let it settle before reading the pane
@@ -700,8 +703,8 @@ try {
     })()
   `);
   ok('點命中數：摘要切成該節點的命中',
-    badgeClick.scoped && badgeClick.metaOk && badgeClick.snippets > 0
-    && badgeClick.minVa >= badgeClick.from && badgeClick.maxVa < badgeClick.to,
+    !dirTabShown || (badgeClick.scoped && badgeClick.metaOk && badgeClick.snippets > 0
+    && badgeClick.minVa >= badgeClick.from && badgeClick.maxVa < badgeClick.to),
     `徽章 ${badgeClick.badge}、${badgeClick.snippets} 筆摘要落在 [${badgeClick.from}, ${badgeClick.to})｜${badgeClick.meta}`);
 
   // 聯動本文的動作：Ctrl+點樹節點 → 送到右欄「文字內容」（中間本文不動，2026-10 作者指定）；
@@ -716,6 +719,12 @@ try {
       await window.__adbview.growTree();     // 列是 lazy 掛上的：這一組要看整棵樹
       const rows = () => [...document.querySelectorAll('#dirTree .tRow')];
       const books = () => rows().filter((r) => r.querySelector('.tTag')?.textContent === '書');
+      // 沒有 s="*" 的庫沒有目錄樹 → 這一組（點節點／Ctrl／Alt）整組跳過
+      if (!books().length) {
+        return { skipped: true, tabNew: 0, tabSame: 0, tabAfterPages: 0, altExpands: true, nodeOpens: true,
+          ctrlKept: true, ctrlToText: true, ctrlRows: 0, ctrlBook: '', ctrlWasOpen: false,
+          textNew: 0, textLines: 0, textTab: null, before: 0, after: 0, label: '', dotLine: null, dotStatus: '' };
+      }
       const spec = () => window.__adbview.state().docTabs.length;
       const settle = async () => {
         for (let i = 0; i < 30; i++) {
@@ -829,7 +838,7 @@ try {
   // The status names the DEEPEST node holding the VA, which in a dictionary is
   // often a page below the row that was clicked, so the strong check is the VA.
   ok('點色塊會聯動內文到該節點',
-    clicks.pinnedVa === clicks.nodeVa && !!clicks.dotLine,
+    !dirTabShown || (clicks.pinnedVa === clicks.nodeVa && !!clicks.dotLine),
     `點「${clicks.label}」的色塊 → 行 ${clicks.dotLine}（VA ${clicks.pinnedVa} / 節點 ${clicks.nodeVa}）；${clicks.dotStatus}｜${clicks.dotDbg}`);
 
   // 右欄「文字內容」分頁：Ctrl+點本文分頁＝複製、Shift+點＝搬移；右欄純參考，不連動左樹
@@ -1231,8 +1240,15 @@ try {
       const books = () => rows().filter((r) => r.querySelector('.tTag')?.textContent === '書');
       // a node that is CLOSED has children and a range, so clicking it opens and links
       const closed = books().find((r) => r.querySelector('.tTwisty')?.textContent.trim() === '▸');
-      (closed ?? books()[0]).querySelector('.tDot').click();
-      await wait(() => !!document.querySelector('#docText .hitLine'));
+      const start = closed ?? books()[0];
+      if (start) {
+        start.querySelector('.tDot').click();
+        await wait(() => !!document.querySelector('#docText .hitLine'));
+      } else {
+        // 沒有目錄樹的庫（沒有 s="*"）改用摘要的第一筆聯動
+        document.querySelector('#searchList .snippet')?.click();
+        await wait(() => !!document.querySelector('#docText .docLine'));
+      }
       await new Promise(r => setTimeout(r, 400));
       const st = window.__adbview.state();
       const dr = st.docRealm;

@@ -277,6 +277,15 @@ UI：`#dbAdd`＝固定在 chip 列左邊的「＋」（`#file` 選完就隱藏�
 診斷：`state().dirRows`（現在掛了幾列）＋ `#dirTree .moreRows` 的提示；測試端有
 `window.__adbview.growTree()` 先把整棵樹掛完再斷言（見 `file-protocol-test.ts` 的「目錄樹分批掛上 DOM」）。
 
+**沒有 `s="*"` 就沒有目錄樹**（作者 2026-10）：「不指定 s="*" 就不必顯示目錄樹」。
+唯一的判斷是 `dirPaneShown()`（`#colLeft .tabBtn[data-tab=dir]` 可不可見）：`renderDirTree()`
+開頭就檢查，不顯示時直接清空 `#dirTree` 與 `#dirMeta`（免得換庫後留著上一個庫的列），
+`loadDirectoryTrees()` 的背景渲染也用同一個判斷。fgdict（`$詞`／`*詞`／`頁.n`，沒有 `s="*"`）
+因此 **0 列**在 DOM，左欄也真的沒有「目錄」這個分頁。
+**但樹的資料仍然建**（`dirTrees`）：`mapper.treeLabels` 由這裡填，而 `search.ts` 的分組標籤
+（`groupNames()`）會用它；不建的話 fgdict 這類庫只能退回屬性表（`<tag>.n`／`<tag>.id`）。
+要省下那 ~160 ms 的背景建樹，得先讓 `groupNames()` 有別的來源。
+
 **代價與界線**：`#dirTree` 的列不再保證全部都在 DOM。要數整棵樹的斷言要先 `growTree()`；
 `paintTreeActive()` 只會亮**已掛上**的列。fgdict 沒有 `s="*"`，它的目錄樹面板是隱藏的，
 所以「樹的形狀」斷言（幾本書／逐層展開）在 fgdict 用 `dirTabShown` 跳過（13j／yinshun 完整覆蓋）。

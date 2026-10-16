@@ -164,9 +164,8 @@ async function loadDirectoryTrees() {
   // `s="*"` (so the tab is hidden) and its folio tree holds 88k instances: building
   // those rows into a hidden pane cost ~6 s of the main thread. The pane renders
   // lazily, when the reader switches to it.
-  const dirBtn = $('#colLeft .tabBtn[data-tab="dir"]') as HTMLElement | null;
   const tRender = performance.now();
-  phase.rendered = dirBtn && !dirBtn.hidden ? 1 : 0;
+  phase.rendered = dirPaneShown() ? 1 : 0;
   if (phase.rendered) await renderDirTree();
   phase.render = performance.now() - tRender;
   phase.trees = performance.now() - tTree0;
@@ -272,8 +271,26 @@ function hitBadge(count: number, total: number, where = '', hint = ''): string {
   return `<span class="tCount hit t${tier}${big}" title="${title}">${fmtInt(count)}</span>`;
 }
 
+/**
+ * The 目錄 pane exists only for a database that declares s="*" (fgdict declares none and
+ * lands on 名詞 instead). Without it there is no 目錄樹 to show — and per the author
+ * (2026-10) none should be built into the DOM at all.
+ */
+export function dirPaneShown(): boolean {
+  const btn = $('#colLeft .tabBtn[data-tab="dir"]') as HTMLElement | null;
+  return !!btn && !btn.hidden && getComputedStyle(btn).display !== 'none';
+}
+
 async function renderDirTree(): Promise<void> {
   const box = $('#dirTree');
+  // 沒有 s="*" 就沒有目錄樹：面板本來就藏著，連列都不必掛進 DOM。
+  // 清空是為了不讓上一個資料庫的列留在裡面（萬一之後有誰把它揭露出來）。
+  if (!dirPaneShown()) {
+    box.innerHTML = '';
+    const head0 = $('#dirMeta');
+    if (head0) head0.textContent = '';
+    return;
+  }
   const d = dirTrees[dirActive];
   if (!d || !mapper) {
     box.innerHTML = dirLoading

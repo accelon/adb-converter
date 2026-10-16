@@ -483,10 +483,11 @@ function refreshAll(): void {
   renderTokens(reader.classStats(), 0);
   syncTreeTabs();
   void updateDocLogo();          // 本文區還空著就顯示這個庫自己的 logo
-  // The tree belongs to the database's state, so it is re-shown after a switch. It is
+  // The tree belongs to the database's state, so it is re-shown after a switch — but only
+  // for a database that declares s="*" (renderDirTree clears the box otherwise). Rows are
   // mounted a CHUNK at a time (lazy-list): fgdict's 6,966 rows used to be built
   // synchronously in the switch (measured 390 ms), now only a screenful is.
-  if (dirTrees.length) void renderDirTree();
+  void renderDirTree();
   const cur = docSession();
   renderDocTabs(cur);
   if (cur) void ensurePage(cur);
