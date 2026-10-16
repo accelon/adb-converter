@@ -9,7 +9,8 @@
  *   markPhraseOnPage  the same, scanning the whole page (fgdict's drift)
  *   paintHit          the entry point: decide what to paint for the pinned hit
  */
-import { docSession, mapper, scheduleCursorSync, scrollToVa } from './viewer';
+import { mapper } from './viewer';
+import { docSession, scheduleCursorSync, scrollToVa } from './doc-pane';
 
 function markPhraseInLine(line: number | undefined, phrase: string | undefined, va: number): boolean {
   if (line === undefined || !phrase) return false;

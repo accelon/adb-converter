@@ -173,6 +173,17 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
 
 **工具**：`ts/tools/split-viewer.ts <doc-pane|link|summary|scopes|panes|ui>`（依名字自動算 span、import、export；每個模組跑一次，可重複）。
 
+**結果（2026-10）**：已全拆完成，行為不變 —— 13j 67/67、yinshun 74/75、fgdict 76/78（後兩者只差
+本來就未修的兩個 bug）。`viewer.ts` 2,701 → 197 行；模組大小：scopes 815／doc-pane 545／ui 376／link 221／
+summary 211／panes 185／paint 117。bundle 198.7 KiB。
+
+**第 7 個坑（這次卡住的真兇）**：payload 用到 viewer.ts 從**其他套件** import 的符號（`CLASS_LABELS`／
+`VaPaMapper`／`loadTree`／`TreeNode`…）時，工具只掃「宣告」不會帶過去 → `ReferenceError: CLASS_LABELS is not defined`
+（在 `openFile` 裡被 try/catch 吞掉，症狀是測試 `Runtime.evaluate` timeout）。修法：把 viewer.ts 的
+`./adb`／`./vapa`／`./search` import 中、payload 有用到的名字一併加進子模組的 import。
+
+**下一輪若還要拆**（例如再從 scopes.ts 分出 `dir-tree.ts`），照 §3.2 的工具與清單做；先前的實驗紀錄如下。
+
 **一輪全拆的實驗結果（2026-10，已回退）**：機械上成功——15 個模組、bundle 189 KiB、`bun build` 無錯、
 viewer.ts 剩 197 行——但啟動後 **`Runtime.evaluate` timeout（頁面卡住）**，來不及在該輪定位，故整批回退，
 只留已驗證的 `paint.ts`（13j 67/67）。下一輪照下列順序做，這些坑都已踩過：
