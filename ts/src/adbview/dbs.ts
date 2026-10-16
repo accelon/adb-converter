@@ -6,8 +6,9 @@
  * target; closing a slot drops it — its document tabs live inside the slot, so
  * "close the database" also closes every 本文分頁 that used it.
  *
- * The header shows the active database's name (#dbname) plus one chip per other open
- * database (#dbTabs): click a chip to switch, ✕ on a chip (or #dbClose) to close.
+ * The header shows one chip per open database (#dbTabs, always in insertion order) and a
+ * fixed ＋ button (#dbAdd) to its left that opens another file. Click a chip to switch to
+ * it; the ACTIVE chip carries the ✕ that closes it (and every tab that used it).
  */
 import { $, escapeHtml, restoreCore, snapshotCore } from './viewer';
 import { restoreDocPane, snapshotDocPane } from './doc-pane';
@@ -26,8 +27,12 @@ export interface DbSlot {
 }
 
 export const openDbs: DbSlot[] = [];
+/** diagnostics: what each save/restore saw (state().dbLog) */
+export const dbLog: string[] = [];
 let activeId = 0;
 let seq = 0;
+/** which slot's state is currently in the globals (0 = none) */
+let loadedId = 0;
 
 type Hooks = { refresh: () => void; clear: () => void };
 let hooks: Hooks = { refresh: () => {}, clear: () => {} };
@@ -35,9 +40,38 @@ let hooks: Hooks = { refresh: () => {}, clear: () => {} };
 export function setDbHooks(h: Hooks): void { hooks = h; }
 
 export const activeSlot = (): DbSlot | null => openDbs.find((d) => d.id === activeId) ?? null;
+export const loadedSlot = (): DbSlot | null => openDbs.find((d) => d.id === loadedId) ?? null;
+
+/**
+ * Snapshot the database the globals currently belong to, if any.
+ *
+ * The picker fires `change` twice for one file, so openFile can run again after the
+ * first run already reset the globals: saving then would overwrite a GOOD snapshot
+ * (a database with a document tab open) with the empty state of the next load.
+ * `loadedId` tells us whether the globals still are that database's.
+ */
+/**
+ * After saveLoaded() the globals are no longer any slot's: between the save and the
+ * new slot's registration they are being reset, and a second (duplicate) open must
+ * not snapshot that half-cleared state over a good one.
+ */
+export function detachLoaded(): void { loadedId = 0; }
+
+export function saveLoaded(): void {
+  const cur = loadedSlot();
+  if (cur) saveInto(cur);
+}
+
+/** the same file, already open (name + size + mtime): switch to it instead of reloading */
+export function alreadyOpen(file: File, name: string): DbSlot | null {
+  return openDbs.find((d) => d.name === name && d.file.name === file.name
+    && d.file.size === file.size && d.file.lastModified === file.lastModified) ?? null;
+}
 
 /** copy every module's current state into the slot */
 export function saveInto(slot: DbSlot): void {
+  dbLog.push('save ' + slot.name + ' tabs=' + ((snapshotDocPane() as any).docTabs?.length ?? -1));
+  if (dbLog.length > 40) dbLog.shift();
   slot.core = snapshotCore();
   slot.docPane = snapshotDocPane();
   slot.scopes = snapshotScopes();
@@ -46,6 +80,8 @@ export function saveInto(slot: DbSlot): void {
   slot.panes = snapshotPanes();
 }
 function loadFrom(slot: DbSlot): void {
+  dbLog.push('load ' + slot.name + ' tabs=' + ((slot.docPane as any)?.docTabs?.length ?? -1));
+  if (dbLog.length > 40) dbLog.shift();
   restoreCore(slot.core);
   restoreDocPane(slot.docPane);
   restoreScopes(slot.scopes);
@@ -53,6 +89,7 @@ function loadFrom(slot: DbSlot): void {
   restoreLink(slot.link);
   restorePanes(slot.panes);
   activeId = slot.id;
+  loadedId = slot.id;
 }
 
 /** called by openFile once the new database is loaded and rendered */
@@ -66,35 +103,37 @@ export function registerOpenDb(file: File, name: string): { ok: boolean; reason?
   if (same >= 0) openDbs[same] = slot;
   else openDbs.push(slot);
   activeId = slot.id;
+  loadedId = slot.id;
   renderDbTabs();
   return { ok: true };
 }
 
+/**
+ * One chip per open database, ALWAYS in insertion order: making another one active
+ * only restyles them (the buttons must not jump around). The ✕ sits on the active
+ * chip so closing is always in the same place relative to the name that is in use.
+ */
 export function renderDbTabs(): void {
   const box = $('#dbTabs');
-  const nameBtn = $('#dbname') as HTMLButtonElement | null;
-  const closeBtn = $('#dbClose') as HTMLButtonElement | null;
-  const active = activeSlot();
-  if (nameBtn) {
-    nameBtn.hidden = !active;
-    if (active) { nameBtn.textContent = active.name; nameBtn.title = active.name + '（目前；點此開啟其他 .adb）'; }
-  }
-  if (closeBtn) closeBtn.hidden = !active;
   if (!box) return;
-  box.innerHTML = openDbs.filter((d) => d !== active)
-    .map((d) => '<span class="dbChip" data-id="' + d.id + '" title="切換到 ' + escapeHtml(d.name) + '">'
+  const active = activeSlot();
+  box.innerHTML = openDbs.map((d) => {
+    const on = d === active;
+    return '<span class="dbChip' + (on ? ' active' : '') + '" data-id="' + d.id + '" title="' + escapeHtml(d.name) + '">'
       + escapeHtml(d.name)
-      + '<span class="dbChipClose" data-close="' + d.id + '" title="關閉（含它的所有本文分頁）">✕</span></span>')
-    .join('');
+      + '<span class="dbChipClose" data-close="' + d.id + '" title="關閉（含它的所有本文分頁）">✕</span>'
+      + '</span>';
+  }).join('');
   box.querySelectorAll<HTMLElement>('.dbChip').forEach((el) => {
     el.onclick = (ev) => {
       const closeId = Number((ev.target as HTMLElement)?.closest('.dbChipClose')?.getAttribute('data-close') ?? 0);
       if (closeId) { void closeDb(closeId); return; }
-      void switchTo(Number(el.dataset.id));
+      const id = Number(el.dataset.id);
+      const cur = activeSlot();
+      if (!cur || cur.id !== id) switchTo(id);     // clicking the active one does nothing
     };
   });
 }
-
 export function switchTo(id: number): void {
   const target = openDbs.find((d) => d.id === id);
   const cur = activeSlot();

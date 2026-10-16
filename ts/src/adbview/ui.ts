@@ -224,12 +224,13 @@ function boot() {
   // name button afterwards
   const fileInput = $('#file') as HTMLInputElement;
   fileInput.onchange = () => { const f = fileInput.files?.[0]; if (f) void openFile(f); };
-  ($('#dbClose') as HTMLButtonElement | null) && (($('#dbClose') as HTMLButtonElement).onclick = () => closeActiveDb());
-  setDbHooks({ refresh: refreshAll, clear: clearDbUi });
-  ($('#dbname') as HTMLButtonElement).onclick = () => {
+  // ＋ is the only way in, and it never moves: the chips grow to its right
+  const addBtn = $('#dbAdd') as HTMLButtonElement | null;
+  if (addBtn) addBtn.onclick = () => {
     fileInput.value = '';
     fileInput.click();
   };
+  setDbHooks({ refresh: refreshAll, clear: clearDbUi });
 
   // live search: re-run on every keystroke (posting lists are cached per token)
   const query = $('#query') as HTMLInputElement;
@@ -344,6 +345,8 @@ export function installDebugApi(): void {
   },
   state: () => ({
     db: reader?.header.dbname ?? null,
+    dbLog,
+    dbs: openDbs.map((d: any) => ({ name: d.name, tabs: d.docPane?.docTabs?.length ?? -1, docs: d.core?.docs?.length ?? -1 })),
     tokens: tokens.length,
     docs: docs.length,
     listed: tokenList.length,
@@ -406,7 +409,7 @@ export function installDebugApi(): void {
 
 import { loadTree } from './search';
 
-import { closeActiveDb, setDbHooks } from './dbs';
+import { dbLog, openDbs, setDbHooks } from './dbs';
 
 export { ADV_KEY, COLS_KEY, DEFAULT_COLS, MAX_SIDE, MIN_SIDE, advanced, applyCols, attachSplitter, boot, defaultLeftTab, readAdvanced, readCols, saveCols, setAdvanced, setSide, showTab, toggleSide };
 
@@ -437,7 +440,6 @@ function refreshAll(): void {
 /** no database left: empty every pane so nothing of the closed file is shown */
 function clearDbUi(): void {
   document.body.classList.remove('loaded');
-  ($('#dbname') as HTMLButtonElement | null)!.hidden = true;
   renderDocs();
   for (const sel of ['#meta', '#containers', '#capacity', '#docs', '#resources', '#dirTree', '#termsList',
     '#freqList', '#folioList', '#latinList', '#searchList', '#tokenRows']) {

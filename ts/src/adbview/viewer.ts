@@ -15,7 +15,7 @@ import {
   SearchSession, searchSummary, loadTrees, loadTree, buildTree, flattenTree, parseScope, loadInstanceAttrs,
   type SearchResult, type TreeNode, type SearchTree,
 } from './search';
-import { registerOpenDb } from './dbs';
+import { MAX_DBS, alreadyOpen, detachLoaded, openDbs, registerOpenDb, saveLoaded, switchTo } from './dbs';
 import { showTab } from './ui';
 import { appendTokenRows, renderContainers, renderDocs, renderMeta, renderResources, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { dirActive, dirError, dirLoading, dirTrees, folioCache, labelTables, loadDirectoryTrees, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, resetScopes, setDirError, setDirLoading, syncTreeTabs, treePhases } from './scopes';
@@ -94,7 +94,32 @@ export async function openFile(file: File) {
   // callers often dispatch one as well). Without this guard the second run would
   // rebuild and discard the directory trees the first one produced.
   if (opening) return;
+  // Peek at the header FIRST: a database beyond MAX_DBS must be refused before any
+  // state is touched (the database being read has to stay exactly as it is). Only the
+  // container headers are read here; the heavy loading happens below.
+  {
+    const probe = await AdbReader.open(new BlobIO(file));
+    const wantName = probe.header.dbcname || probe.header.dbname;
+    if (!openDbs.some((d) => d.name === wantName) && openDbs.length >= MAX_DBS) {
+      setStatus('最多同時開啟 ' + MAX_DBS + ' 個資料庫（先關掉一個）', 'err');
+      return;
+    }
+    // The picker fires `change` twice for one pick, and the second run would load the
+    // file again — discarding the snapshot of the database being left (its tabs were
+    // lost that way). If this exact file is already open, just switch to it.
+    const known = alreadyOpen(file, wantName);
+    if (known) {
+      switchTo(known.id);
+      setStatus(wantName + '：已經開啟，切換過去', 'info');
+      return;
+    }
+  }
   opening = true;
+  // Opening a database REPLACES the active one: snapshot it first, or the tabs and
+  // searches the reader made in it would be lost (the slot would still hold the
+  // state from its own load).
+  saveLoaded();
+  detachLoaded();          // the globals are nobody's until the new slot registers
   // a new database invalidates every derived cache, tree, tab and cursor. Each
   // module owns its state, so it owns its reset too (imported bindings are live
   // and read-only from here).
@@ -113,9 +138,7 @@ export async function openFile(file: File) {
     // the file picker is only needed before a database is open; afterwards the
     // Chinese name in the header is the way to open another one
     document.body.classList.add('loaded');
-    const nameBtn = $('#dbname') as HTMLButtonElement;
-    nameBtn.hidden = false;
-    nameBtn.textContent = h.dbcname || h.dbname;
+    // the database's name lives in its chip (#dbTabs), rendered by registerOpenDb below
     renderMeta(reader, openMs, 0, 0, 0);
     renderContainers(reader);
 

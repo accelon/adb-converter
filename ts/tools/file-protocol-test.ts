@@ -349,20 +349,28 @@ try {
   ok('欄位／進階開關只用圖示（無中文 label）',
     icons.labels.every((t) => t.length > 0 && !/[\u4e00-\u9fff]/.test(t)) && icons.tips.every((t) => /[\u4e00-\u9fff]/.test(t)),
     `圖示 ${JSON.stringify(icons.labels)}；tooltip ${JSON.stringify(icons.tips.map((t) => t.slice(0, 12)))}`);
-  // 載入後：檔案按鈕隱藏，改點中文名開別的庫
-  const headerUi = await cdp.eval<{ fileHidden: boolean; nameVisible: boolean; name: string; nameIsButton: boolean }>(`
+  // 載入後：檔案輸入隱藏，改由「＋」開別的庫；已開的庫各一個 chip，只有 active 帶 ✕
+  const headerUi = await cdp.eval<{ fileHidden: boolean; addVisible: boolean; addIsButton: boolean; chips: number; activeChips: number; names: string[]; activeName: string; closes: number }>(`
     (() => {
       const f = document.querySelector('#file');
-      const n = document.querySelector('#dbname');
+      const add = document.querySelector('#dbAdd');
+      const chips = [...document.querySelectorAll('#dbTabs .dbChip')];
+      const active = chips.filter((c) => c.classList.contains('active'));
       return {
         fileHidden: getComputedStyle(f).display === 'none',
-        nameVisible: !n.hidden && getComputedStyle(n).display !== 'none',
-        name: n.textContent.trim(),
-        nameIsButton: n.tagName === 'BUTTON',
+        addVisible: !!add && getComputedStyle(add).display !== 'none',
+        addIsButton: add?.tagName === 'BUTTON',
+        chips: chips.length,
+        activeChips: active.length,
+        names: chips.map((c) => c.textContent.replace('✕', '').trim()),
+        activeName: active[0]?.textContent.replace('✕', '').trim() ?? '',
+        closes: document.querySelectorAll('#dbTabs .dbChipClose').length,
       };
     })()
   `);
-  ok('載入後檔案按鈕隱藏、中文名可點', headerUi.fileHidden && headerUi.nameVisible && headerUi.nameIsButton,
+  ok('載入後檔案輸入隱藏、＋可開檔、庫名在 chip 上（active 才有 ✕）',
+    headerUi.fileHidden && headerUi.addVisible && headerUi.addIsButton
+    && headerUi.chips === 1 && headerUi.activeChips === 1 && headerUi.closes === 1 && !!headerUi.activeName,
     JSON.stringify(headerUi));
 
   // 全文搜尋：輸入 → 摘要 → 點摘要才聯動本文（輸入本身不動本文）
