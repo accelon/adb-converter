@@ -214,18 +214,30 @@ viewer.ts 剩 197 行——但啟動後 **`Runtime.evaluate` timeout（頁面卡
 `snapshotDocPane/restoreDocPane`（**本文分頁在 slot 裡** → 關掉資料庫就等於關掉它所有分頁）、
 `snapshotScopes/restoreScopes`（樹、folio）、`snapshotSummary/restoreSummary`、`snapshotLink/restoreLink`、`snapshotPanes/restorePanes`。
 
-UI：`#dbname`＝目前庫（點＝開啟其他 .adb）、`#dbClose`＝✕ 關閉目前庫、`#dbTabs`＝其他已開庫的 chip（點＝切換、chip 上的 ✕＝關閉）。
+UI：`#dbAdd`＝固定在 chip 列左邊的「＋」（`#file` 選完就隱藏，`display:none`；按鈕位置不隨開啟數變動）、
+`#dbTabs`＝每個已開庫一個 chip，**順序永遠是開啟順序**（切換只改顏色，按鈕不跳位），
+**只有 active 的 chip 顯示 ✕**（關閉該庫＝連同它所有本文分頁）。chip 字級 13px 固定，不隨 active 變。
 切換／關閉後由 `ui.ts` 的 `refreshAll()` 重畫（每個 pane 交給自己的 `showTab()` 重跑）；全部關完呼叫 `clearDbUi()`。
 
-**已用 probe 驗證**（`build/probe-multi.ts`）：開 yinshun → 開 fgdict（chip 出現、`#dbname` 變佛光大辭典）→ 在 fgdict 開一個本文分頁 → 點 chip 切回 yinshun（名稱／docs／左欄分頁都跟著換）→ 按 ✕ 關掉 fgdict（chip 0、`docTabs` 0＝它的分頁一併關掉、狀態列回到 yinshun）。
+**一次選多個**：`#file` 有 `multiple`，`openPicked()` 逐檔 `await openFile()`（它回傳 `opened／existing／refused／busy`，就是拿來數「略過幾個」的），
+超過上限的那幾個回 `refused`，狀態列說「一次選了 6 個（最多 5 個庫），略過 2 個」。
+**同一次挑選的 change 會來兩次**（瀏覽器行為，測試又常自己 dispatch 一次）→ `picking`＋檔名／大小／mtime 簽章把重複的那一次丟掉，
+否則第二輪每個檔案都拿到 `busy`，略過數會少算。
 
-**待辦**：超過 5 個的拒絕訊息（`registerOpenDb` 已回 `reason`，尚未顯示）、`file-protocol-test.ts` 的多庫回歸、重複開啟同一庫的行為、關閉 active 時挑選下一個的策略（目前取陣列最後一個）。
+**庫名相同時**：`alreadyOpen()` 比對「檔名＋大小＋mtime」→ 同一個檔案只是**切換**過去；
+**不同檔案但庫名相同則取代那個 chip**（`registerOpenDb` 回 `replaced`），狀態列明說「十三經：13j.adb 取代了同名的庫（它的舊分頁已關閉）」。
+
+**已用 probe 驗證**（`build/probe-multi.ts`、`build/probe-pick.ts`）：開 yinshun → 開 fgdict（chip 出現、active 變佛光大辭典）→ 在 fgdict 開一個本文分頁 →
+點 chip 切回 yinshun（名稱／docs／左欄分頁都跟著換）→ 按 ✕ 關掉 fgdict（chip 0、`docTabs` 0＝它的分頁一併關掉、狀態列回到 yinshun）；
+一次挑 6 個檔（已開 2 個）→ chips 5 個、順序不變、`略過 2 個`（其中 1839.adb 與 13j.adb 同名 → 取代，所以只新增 3 個 chip）。
+
+**待辦**：`file-protocol-test.ts` 的多庫回歸、關閉 active 時挑選下一個的策略（目前取陣列最後一個）。
 
 ### 3.1 分區名稱與 id（溝通時直接用；示意圖 [adbview-map.html](adbview-map.html)）
 
 | 統一稱呼 | 選擇器 | 備註 |
 |---|---|---|
-| 頂欄 | `#header` | `#toggleLeft`／`#toggleRight`／`#advToggle`／`#file`／`#dbname`／`#status` |
+| 頂欄 | `#header` | `#toggleLeft`／`#toggleRight`／`#advToggle`／`#file`（隱藏）／`#dbAdd`（＋）／`#dbTabs`（庫名 chips）／`#status` |
 | 三欄容器 | `#main` | `--left` 25fr・`--center` 50fr・`--right` 25fr，6px 分隔線 |
 | 左欄／中欄／右欄 | `#colLeft`／`#colMid`／`#colRight` | `#splitLeft`／`#splitRight` 拖到 15% 以下即收合 |
 | 左欄分頁列／窗格區 | `#tabsLeft`／`#paneLeft` | 分頁鍵＝`[data-tab=dir\|terms\|freq\|folio\|latin\|token]` |

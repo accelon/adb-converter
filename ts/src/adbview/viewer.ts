@@ -89,11 +89,11 @@ export let lastOpen: {
  */
 let lastTreeMs = 0;
 
-export async function openFile(file: File) {
+export async function openFile(file: File): Promise<'opened' | 'existing' | 'refused' | 'busy'> {
   // A load may be triggered twice by the picker (the browser fires `change`, and
   // callers often dispatch one as well). Without this guard the second run would
   // rebuild and discard the directory trees the first one produced.
-  if (opening) return;
+  if (opening) return 'busy';
   // Peek at the header FIRST: a database beyond MAX_DBS must be refused before any
   // state is touched (the database being read has to stay exactly as it is). Only the
   // container headers are read here; the heavy loading happens below.
@@ -102,7 +102,7 @@ export async function openFile(file: File) {
     const wantName = probe.header.dbcname || probe.header.dbname;
     if (!openDbs.some((d) => d.name === wantName) && openDbs.length >= MAX_DBS) {
       setStatus('最多同時開啟 ' + MAX_DBS + ' 個資料庫（先關掉一個）', 'err');
-      return;
+      return 'refused';
     }
     // The picker fires `change` twice for one pick, and the second run would load the
     // file again — discarding the snapshot of the database being left (its tabs were
@@ -111,7 +111,7 @@ export async function openFile(file: File) {
     if (known) {
       switchTo(known.id);
       setStatus(wantName + '：已經開啟，切換過去', 'info');
-      return;
+      return 'existing';
     }
   }
   opening = true;
@@ -215,10 +215,15 @@ export async function openFile(file: File) {
     console.log('[open]', lastOpen);
     renderMeta(reader, openMs, tokenMs, layoutMs, docsMs);
     void renderResources();
-    registerOpenDb(file, h.dbcname || h.dbname);
+    const dbName = h.dbcname || h.dbname;
+    if (registerOpenDb(file, dbName).replaced) {
+      setStatus(`${dbName}：${file.name} 取代了同名的庫（它的舊分頁已關閉）`, 'info');
+    }
+    return 'opened';
   } catch (e) {
     setStatus('開啟失敗：' + (e as Error).message, 'err');
     console.error(e);
+    return 'refused';
   } finally {
     opening = false;
     const tabs = $('#docTabs') as HTMLElement | null;

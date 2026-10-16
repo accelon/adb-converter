@@ -196,6 +196,50 @@ function setAdvanced(on: boolean) {
   }
 }
 
+/** identity of a pick, used to recognise the SAME pick fired twice */
+const pickSig = (fs: File[]) => fs.map((f) => f.name + ':' + f.size + ':' + f.lastModified).join('|');
+let picking: File[] | null = null;     // the pick currently loading, if any
+let queuedPick: File[] | null = null;  // a genuinely new pick that arrived meanwhile
+
+/**
+ * Open every picked file in turn, honouring the MAX_DBS limit.
+ *
+ * The file input fires `change` twice for one pick (and the browser tests dispatch
+ * one more). Running the list twice would race itself: the second run sees
+ * `openFile() === 'busy'` for everything and its skip count comes out short. So a
+ * pick that is still on the way in is remembered, and the same pick is ignored.
+ */
+async function openPicked(files: File[]): Promise<void> {
+  if (picking) {
+    if (files.length === picking.length && pickSig(files) === pickSig(picking)) return;
+    queuedPick = files;      // a real second pick: run it once this one settles
+    return;
+  }
+  picking = files;
+  let refused = 0, opened = 0;
+  try {
+    for (const f of files) {
+      const r = await openFile(f);
+      dbLog.push('pick ' + f.name + ' -> ' + r);
+      if (dbLog.length > 40) dbLog.shift();
+      if (r === 'refused') refused++;
+      else if (r === 'opened') opened++;
+    }
+  } finally {
+    picking = null;
+  }
+  // When nothing at all got in, `openFile` has already said why ("最多同時開啟 5 個…"):
+  // repeating it as "略過 N 個" would only bury the useful sentence.
+  if (refused > 0 && files.length > 1 && opened > 0) {
+    // "只開前 N 個" would be a lie when a file replaced a same-named database: the
+    // honest statement is how many were picked and how many could not be taken.
+    setStatus(`一次選了 ${fmtInt(files.length)} 個（最多 ${fmtInt(MAX_DBS)} 個庫），略過 ${fmtInt(refused)} 個`, 'err');
+  }
+  const next = queuedPick;
+  queuedPick = null;
+  if (next) await openPicked(next);
+}
+
 function boot() {
   applyCols();
   attachSplitter($('#splitLeft'), 'left');
@@ -223,7 +267,13 @@ function boot() {
   // opening another database: the file picker before the first one, the Chinese
   // name button afterwards
   const fileInput = $('#file') as HTMLInputElement;
-  fileInput.onchange = () => { const f = fileInput.files?.[0]; if (f) void openFile(f); };
+  // The picker accepts several files at once. They are opened one after another (each
+  // openFile is async and rewrites the globals), and only the first MAX_DBS that fit are
+  // kept — the rest are reported, not silently dropped.
+  fileInput.onchange = () => {
+    const picked = [...(fileInput.files ?? [])];
+    if (picked.length) void openPicked(picked);
+  };
   // ＋ is the only way in, and it never moves: the chips grow to its right
   const addBtn = $('#dbAdd') as HTMLButtonElement | null;
   if (addBtn) addBtn.onclick = () => {
@@ -409,7 +459,7 @@ export function installDebugApi(): void {
 
 import { loadTree } from './search';
 
-import { dbLog, openDbs, setDbHooks } from './dbs';
+import { MAX_DBS, dbLog, openDbs, setDbHooks } from './dbs';
 
 export { ADV_KEY, COLS_KEY, DEFAULT_COLS, MAX_SIDE, MIN_SIDE, advanced, applyCols, attachSplitter, boot, defaultLeftTab, readAdvanced, readCols, saveCols, setAdvanced, setSide, showTab, toggleSide };
 

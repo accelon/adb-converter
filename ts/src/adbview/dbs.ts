@@ -93,7 +93,7 @@ function loadFrom(slot: DbSlot): void {
 }
 
 /** called by openFile once the new database is loaded and rendered */
-export function registerOpenDb(file: File, name: string): { ok: boolean; reason?: string } {
+export function registerOpenDb(file: File, name: string): { ok: boolean; reason?: string; replaced?: boolean } {
   const same = openDbs.findIndex((d) => d.name === name);
   if (same < 0 && openDbs.length >= MAX_DBS) {
     return { ok: false, reason: '最多同時開啟 ' + MAX_DBS + ' 個資料庫（先關掉一個）' };
@@ -105,7 +105,10 @@ export function registerOpenDb(file: File, name: string): { ok: boolean; reason?
   activeId = slot.id;
   loadedId = slot.id;
   renderDbTabs();
-  return { ok: true };
+  // A DIFFERENT file carrying the same database name REPLACES that chip (two chips
+  // with one name could not be told apart). The caller tells the reader so the
+  // vanished tabs of the old file are not a mystery.
+  return { ok: true, replaced: same >= 0 };
 }
 
 /**

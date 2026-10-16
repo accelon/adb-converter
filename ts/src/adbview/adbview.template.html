@@ -37,11 +37,7 @@
     color: #7cc0ff; text-shadow: 0 0 14px rgba(90,169,255,.35);
   }
   header h1 .accent { color: #ffd479; text-shadow: 0 0 14px rgba(255,212,121,.35); }
-  .dbname {
-    color: var(--accent); font-weight: 600; font-size: 16px; background: none;
-    border: 1px dashed transparent; border-radius: 4px; padding: 1px 6px; cursor: pointer; font-family: inherit;
-  }
-  .dbname:hover { border-color: var(--accent); background: rgba(90,169,255,.08); }
+  /* the database name lives on the chip (#dbTabs); this rule went with #dbname */
   #file { display: none; }   /* the picker is driven by #dbAdd */
 .dbAdd { border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink);
   cursor: pointer; font-size: 13px; padding: 1px 7px; line-height: 1.5; }
@@ -276,7 +272,7 @@
   <button class="sideToggle" id="toggleLeft" title="顯示／隱藏左欄">◧</button>
   <button class="sideToggle" id="toggleRight" title="顯示／隱藏右欄">◨</button>
   <button class="sideToggle" id="advToggle" title="進階模式：顯示 token 瀏覽與檔案資訊分頁">🧑‍💻</button>
-  <input type="file" id="file" accept=".adb">
+  <input type="file" id="file" accept=".adb" multiple>
   <button class="dbAdd" id="dbAdd" title="開啟 .adb（最多同時 5 個）">＋</button>
   <span class="dbTabs" id="dbTabs"></span>
   <span class="status" id="status"></span>
