@@ -466,6 +466,39 @@ try {
   ok('輸入即時重搜（無需按鈕）', search.metaOk, search.meta);
   ok('點摘要會聯動本文並標出該行', search.clicked && !!search.line, `行 ${search.line}`);
   ok('輸入只更新摘要、本文不隨輸入移動', search.inputStable, `點摘要後釘在 ${search.line}`);
+
+  // 輸入區按 Escape 不再清掉輸入（作者 2026-10）：文字留著、結果也留著，清空要用 ✕。
+  // 這一組同時覆蓋兩個 handler：全文搜尋的 #query，以及四個 pane 共用的 wireOwnSearch。
+  const escKeep = await cdp.eval<{ q: { before: string; after: string; snippets: number }; own: string | null }>(`
+    (async () => {
+      const q = document.querySelector('#query');
+      const before = q.value;
+      q.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await new Promise((r) => setTimeout(r, 500));
+      const qOut = { before, after: q.value, snippets: document.querySelectorAll('#searchList .snippet').length };
+      // 任何一個 pane 的輸入框（頻次／名詞／西文／原書分頁）都用同一個 handler
+      let own = null;
+      const paneInput = ['#freqQuery', '#termsQuery', '#latinQuery', '#folioQuery']
+        .map((sel) => document.querySelector(sel))
+        .find((el) => el && !el.closest('.tabPane')?.hidden);
+      if (paneInput) {
+        paneInput.value = '\u4f5b';
+        paneInput.dispatchEvent(new Event('input'));
+        await new Promise((r) => setTimeout(r, 400));
+        paneInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await new Promise((r) => setTimeout(r, 300));
+        own = paneInput.value;
+        paneInput.value = '';
+        paneInput.dispatchEvent(new Event('input'));
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      return { q: qOut, own };
+    })()
+  `);
+  ok('輸入區按 Escape 不會清掉輸入的文字（也不再清掉結果）',
+    !!escKeep.q.before && escKeep.q.after === escKeep.q.before && escKeep.q.snippets > 0,
+    `#query「${escKeep.q.before}」→「${escKeep.q.after}」、摘要 ${escKeep.q.snippets} 筆`
+    + (escKeep.own === null ? '｜（此庫沒有其他可見的輸入框）' : `；pane 輸入框 Escape 後＝「${escKeep.own}」`));
   // 目錄樹（<樹> 解析 → 右欄「目錄」分頁）
   const tree = await cdp.eval<{
     tabs: string; rows: number; meta: string; labels: string[]; dots: string[];

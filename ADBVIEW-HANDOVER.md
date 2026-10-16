@@ -126,6 +126,9 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   葉節點直接聯動。點 `tCount`（命中數）→ 右欄「摘要」切成**該節點範圍內的命中**，
   本文只移動到該節點開頭（不改變摘要以外的狀態）。
   **輸入區更新時不聯動本文**，只更新摘要（一次顯示最前 30 筆）；要看命中就點節點的 tCount。
+  **輸入區按 Escape 不清空**（作者 2026-10）：文字與結果都留著，只是離開欄位；
+  要清空用輸入框的 ✕（`#queryClear`／`#termsClear`／`#freqClear`／`#latinClear`／`#folioClear`），Enter 則立即重搜。
+  `#query` 與四個 pane 的輸入框（`wireOwnSearch`）共用這個規則。
 
 二）**本文分頁**：每次聯動只載入當前節點（realm）的**一頁**，底部有「上一頁」「下一頁」。
   頁＝網頁分頁 page（每頁 `PAGE_LINES = 200` 行），**不是**原書的葉／folio。

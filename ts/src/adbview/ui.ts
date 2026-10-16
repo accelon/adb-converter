@@ -292,7 +292,8 @@ function boot() {
   };
   query.onkeydown = (ev) => {
     if (ev.key === 'Enter') { window.clearTimeout(timer); void runSearch(query.value); }
-    if (ev.key === 'Escape') { query.value = ''; void runSearch(''); }
+    // Escape deliberately does NOT clear the box (author, 2026-10): the ✕ button is
+    // the way to clear, and Escape is how you leave the field without losing the query.
   };
   $('#queryClear').onclick = () => { query.value = ''; void runSearch(''); query.focus(); };
   $('#searchList').addEventListener('scroll', (ev) => {
@@ -316,7 +317,7 @@ function boot() {
     };
     input.onkeydown = (ev) => {
       if (ev.key === 'Enter') { window.clearTimeout(t); run(); }
-      if (ev.key === 'Escape') { input.value = ''; run(); }
+      // Escape does NOT clear the box (author, 2026-10) — use the ✕ to clear
     };
     const clear = $(clearSel) as HTMLButtonElement | null;
     if (clear) clear.onclick = () => { input.value = ''; run(); input.focus(); };
