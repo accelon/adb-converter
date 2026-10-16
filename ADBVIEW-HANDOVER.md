@@ -161,6 +161,10 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
 | 分頁列 | `#docPager` | `#pagePrev`／`#pageInfo`／`#pageNext`；分頁 ≥ 2 才顯示 |
 
 沒有 id 的 `[data-tab]` 面板，一律用 `#paneLeft`／`#paneRight` 當前綴指稱（`showTab(name, 'left' | 'right')` 用的鍵就是它）。
+
+**維護規則**：改版面（新增／刪除／改名任何 id）時，同一輪必須更新 `adbview-map.html`，並跑
+`bun run tools/check-map-ids.ts`（雙向比對示意圖與 `build/adbview.html` 的 id 集合，不一致就 exit 1）。
+示意圖是與作者溝通分區的**共同詞彙**，不能讓它腐化。
 ## 4. 已驗證的格式知識（可直接信任）
 
 * **VA（虛擬位址）= token 序號**：token +1、連續空白 +1、標籤開／閉**各 +4**、skip 標籤 +0。
