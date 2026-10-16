@@ -46,6 +46,27 @@ offset 272     …             頂層資料區：source / tokens / tags / tables
 
 ---
 
+### 2.1 設計脈絡：光盤時代的成本模型
+
+這個格式在 **CD-ROM 時代**成形（`header.version = 0`、簽名 `Accelon Search Engine`）：
+當時 **random seek 極貴**（一次尋道數十至數百毫秒且無法遮蔽），**順序讀便宜**，容量也有限。
+整個佈局都在服務「**seek 越少越好：一次 seek 拿到要的東西，之後盡量順序讀**」：
+
+| 佈局決定 | 省掉什麼 |
+|---|---|
+| 全部容器在**同一個檔**（header → 容器頭 → 資料區 → 長度表） | 開檔只要一次 seek，不必找多個檔案 |
+| 每個 source 塊是**獨立 bzip2 流、連續存放** | 取一塊＝讀一段連續位元組；取全文＝一次順序讀（整個資料區本身是合法的 multi-stream bzip2，見 [FORMAT.md](FORMAT.md) §4） |
+| `tables/lines.*` 是**累積**表 | 行 i 的位址二搜尋就有，不必掃描內文 |
+| `tokens`／`tags` 是**每鍵一區塊的命中表** | 搜尋只碰索引；命中後才算位址 |
+| `attributes` 以 `<標籤>.<屬性>` 為鍵、值與擁有者同塊（`boWithPointer`） | 取屬性不必進內文 |
+| `caches` 存放**已算好的節點值字串** | 取名字不必回讀內文（`adb.pas: getnNodeValue` 的註解原文：`retrieve from source, Slow!`） |
+| 標籤 `skip`／`_` 前綴不佔 VA | 索引更小（空間也貴） |
+
+**實務結論**：寫工具或檢視器時，先問「adb 內是否已經有這份資料」——節點值在 `caches`、
+實例屬性在 `attributes`、命中在 `tokens`／`tags`、行界在 `tables`；回讀 `source` 解壓是最後手段。
+（fgdict 的 22,648 個詞條名就是 `caches/詞` 的字串表，不需要從內文算。）
+
+---
 ## 3. 檔案頭（256 位元組）
 
 `basetype.pas: TDbHeader`（記錄本身 255 B，檔案中補 1 B 對齊）：

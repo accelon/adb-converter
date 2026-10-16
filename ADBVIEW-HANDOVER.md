@@ -14,6 +14,44 @@
 
 ---
 
+## 0. 設計原則：先查 adb 內已有的資料，不要硬幹（遇到新需求先讀這節）
+
+`.adb` 是**光盤（CD-ROM）時代**的格式：那時 random seek 很貴（一次尋道數十至數百毫秒、且無法遮蔽），
+順序讀便宜。所以格式的每一個決定都在服務同一件事——**seek 越少越好：一次 seek 就拿到要的東西，之後盡量順序讀**。
+這解釋了為什麼：
+
+* 整個資料庫是**一個檔**（header → 容器頭 → 資料區 → 長度表），開檔只要一次 seek；
+* `source` 的每一塊是**獨立 bzip2 流且連續存放**：要一塊只讀一段連續位元組；要全文就是一次順序讀
+  （整個 source 資料區本身就是合法的 multi-stream bzip2，[FORMAT.md](FORMAT.md) §4 已驗證）；
+* 行表 `tables/lines.physical`／`lines.virtual` 是**累積**表：行 i 的位址二搜尋就有，不必掃描；
+* **索引與文字分開存**，而且索引把答案**先算好**（見下）。
+
+**所以：作者要新功能時，先問「adb 內是不是已經有這份資料」，不要用內文硬算。**
+回讀內文解壓是最後手段——Pascal 原始碼自己就把它註解成 `retrieve from source, Slow!`（`adb.pas: getnNodeValue`）。
+
+### 0.1 先查清單
+
+| 需求 | 先查這個 | 不要這樣做 |
+|---|---|---|
+| 節點／條目名稱 | `caches/<標籤>`（`AdbReader.cachedStrings`）：字串表，順序＝實例序 | 逐塊 bunzip 切 innerText（慢且容易取錯） |
+| 實例屬性（`n` `l` `t` `s` `id`…） | `attributes/<標籤>.<屬性>` 的 values ＋ pointers（低位 24 bits ＝ 1-based 實例序） | 掃內文找屬性字串 |
+| 某標籤有哪些實例、各在第幾 | `tags` 容器的命中表 | 掃內文比對標籤文字 |
+| 命中數／命中範圍 | `tokens`／`tags` 命中表 ＋ 二分搜尋 | 逐行掃描內文 |
+| 行號／頁碼 | `tables/lines.virtual`、`lines.physical`、`blocks.virtual`、`doclengths` | 解壓全文再數行 |
+| 某一行／某頁的文字 | 只解該行跨越的 source 塊（`Blob.slice()` ＋ 128 KiB 快取） | 解壓整個 `source` |
+| 文件清單／檔名 | `caches/檔`（`documents()`）或 `檔.n` | 走內文找 `<檔>` |
+| 全庫有哪些標籤 | `tags` 容器的名稱表（＝建庫時宣告集） | — |
+
+### 0.2 案例（都是「硬幹」被糾正後才對的）
+
+* **fgdict 名詞清單**：第一版對每個碰到的區塊 bunzip 算 `<詞>` innerText → 慢、又容易取錯。
+  作者指出 adb 內就有存 `<詞>` innerText 的 string array，改用 `caches/詞`
+  （一次容器解析、22,648 筆、與 `tags` 實例同序）才對。
+* **fgdict 書名（P0）**：`檔.n` 屬性值是空字串，`loadTree` 的 20,000 標籤預算又切掉後兩本；
+  正解是 `caches/書`（7 個書名）補第一層，不是想辦法從內文撈。
+* **節點名稱**：能用屬性／快取就別走內文；目前還有兩處會走內文（見 §7 P1 第 6 項）。
+
+---
 ## 1. 建置與測試指令
 
 ```powershell

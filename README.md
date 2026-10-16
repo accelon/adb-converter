@@ -58,4 +58,7 @@ bun run test/index-match.ts # 反向索引認證
 
 ## 注意
 
+`.adb` 是**光盤時代**的格式，seek 很貴：**新功能先查 adb 內已有的資料**（`caches` 字串表、`attributes` 實例屬性、
+`tags`／`tokens` 命中表、`tables` 行表），不要回讀內文硬算。詳見 [HANDOVER.md](HANDOVER.md) §0 與 [SPEC.md](SPEC.md) §2.1。
+
 `*.adb`、`*.xml`、`build/`、`sourcecode/`、`accelon3/` **不進版控**（見 `.gitignore`）——資料檔與中間產物只留在本機。
