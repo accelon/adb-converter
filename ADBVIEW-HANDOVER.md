@@ -271,6 +271,11 @@ UI：`#dbAdd`＝固定在 chip 列左邊的「＋」（`#file` 選完就隱藏�
 未載入的當場載入。**沒有「拒絕」了**：`MAX_DBS = 5` 滿了就讓**最久沒用**的那個 slot 讓位（它的本文分頁跟著消失，跟按 ✕ 同義）。
 瀏覽器版不能列資料夾，所以來源只有使用者自己選的檔；未來的 wails3 版會自動列出與執行檔同資料夾的 adb（同一份清單模型即可）。
 
+**純網頁版的下拉清單唯一來源就是 file input dialog**（作者 2026-10 確認）：`catalog` 只是模組裡的陣列，
+**不寫 localStorage**，重新整理頁面就重來。localStorage 只放閱讀偏好（`adbview.cols.v2` 欄寬、
+`adbview.docfs` 字級、`adbview.advanced` 進階模式）。probe 實測（`build/probe-reload.ts`）：開兩個庫後
+`Page.reload` → 下拉回到「（用 ＋ 開啟 .adb）」、chips 0、catalog 0，而 localStorage 的三個 key 一字不變。
+
 **一次選多個**：`#file` 有 `multiple`。`openPicked()` 先把每一檔加進 catalog（只讀 header），再把**還有空位**的載入；
 選**單一個**檔时一律載入（就算已經 5 個，最久沒用的讓位）——「選了就是要看它」。其餘留在下拉裡等讀者挑。
 **同一次挑選的 change 會來兩次**（瀏覽器行為，測試又常自己 dispatch 一次）→ `picking`＋檔名／大小／mtime 簽章把重複的那一次丟掉。
