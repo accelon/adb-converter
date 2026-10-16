@@ -149,12 +149,27 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
 | `ts/src/adbview/adb.ts` | 格式核心。`AdbIO.read(offset,length)` 是唯一原語；`BlobIO`（瀏覽器，含 **128 KiB 區塊快取**）／`SyncIO`（Bun）。容器／長度表／名稱表解析、`tokens()`、`documents()`、`attributeValues()`、`decodeUtf16()` |
 | `ts/src/adbview/vapa.ts` | **VA↔PA 映射器**。`init()`、`elementAt`、`lineSpans`、`phraseSpans`、`textOfVaSpan`、`nodeLabel`、`lineLengthPercentile`、**`lineLengthMaxUnder`**、**`edgeLine`**、`loadAnchors`、`validate` |
 | `ts/src/adbview/search.ts` | 搜尋：`loadTrees`（`<樹>`）、`parseScope`／`parseTiers`、`loadInstanceAttrs`、`loadTree`、`buildTree`／`flattenTree`、`phraseMatch`、`searchSummary`、`SearchSession` |
-| `ts/src/adbview/viewer.ts` | UI（原生 DOM）：左欄目錄樹／頻次／西文／token，**中間本文分頁＋分頁（page）**，右欄摘要。本文區核心是 `DocSession`／`linkTo`／`ensurePage`／`renderDoc`／`paintHit` |
+| `ts/src/adbview/viewer.ts` | UI（原生 DOM）：左欄目錄樹／頻次／西文／token，**中間本文分頁＋分頁（page）**，右欄摘要。本文區核心是 `DocSession`／`linkTo`／`ensurePage`／`renderDoc`。**已 2701 行，正在拆**（見下） |
+| `ts/src/adbview/paint.ts` | **塗紅**：`markPhraseInLine`／`markPhraseOnPage`／`paintHit`（自 viewer.ts 拆出，依賴 `docSession`／`mapper`／`scrollToVa`／`scheduleCursorSync`） |
 | `ts/src/adbview/adbview.template.html` | 版面與 CSS（由 build 內嵌）。`#docTabs`／`#docPager` 是本文分頁與上下頁 |
 | `ts/tools/build-viewer.ts` | 把 UI 打包成**傳統 script 並 inline** 進單一 HTML |
 | `ts/tools/file-protocol-test.ts` | file:// 端對端測試（驅動真實 UI） |
 | `ts/tools/shot.ts` | 開啟頁面、餵檔、驅動本文分頁，存一張 PNG 供目視檢查 |
 | `ts/src/tokenize.ts`、`ts/src/unicode.ts` | 分詞器與 Unicode 判定（照 Delphi 移植） |
+
+### 3.2 viewer.ts 拆檔計畫（依主題，模組間用 live binding 共用狀態）
+
+| 模組 | 內容 | 狀態 |
+|---|---|---|
+| `paint.ts` | 塗紅：`markPhraseInLine`／`markPhraseOnPage`／`paintHit` | ✅ 已拆（13j 67/67） |
+| `doc-pane.ts` | 本文分頁捲動：`DocSession`／`ensurePage`／`renderDoc`／`renderPager`／`goPage`／`renderDocTabs`／`boundsOfRealm`／字級 | ⏳ |
+| `summary.ts` | 摘要：`runSearch`／`renderSnippets`／`showNodeHits`＋snippet 狀態 | ⏳（狀態要改 setter，ESM 不能寫入 imported binding） |
+| `link.ts` | 聯動：`linkTo`／`revealHit`／`showLine`／`nodeContaining`／游標高亮 | ⏳ |
+| `scopes.ts` | 搜尋 scheme／左欄分頁：目錄樹、`renderTerms`／`renderFreq`／`renderFolio`／`renderLatin`、`labelTableFor`／`wrappedText` | ⏳ |
+| `panes.ts` | 右欄與進階面板：`renderMeta`／`renderContainers`／`renderResources`／`renderDocs`／token 瀏覽 | ⏳ |
+| `viewer.ts` | 狀態宣告、`openFile`、wiring／boot、`window.__adbview` | ✅ 入口 |
+
+拆法：子模組 `import { … } from './viewer'`，viewer 端把用到的狀態／函式 `export`；**不要**在子模組寫入 imported binding。
 
 ### 3.1 分區名稱與 id（溝通時直接用；示意圖 [adbview-map.html](adbview-map.html)）
 
