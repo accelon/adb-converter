@@ -1,4 +1,4 @@
-// Command adbview 是 adbview 單檔 HTML 應用的 Wails3 桌面宿主。
+// Command accelon26 是 adbview 單檔 HTML 應用的 Wails3 桌面宿主（作者 2026-10 改名）。
 // Go 層極薄：只註冊一個 AdbHost service（列 *.adb + mmap 讀位元組區間），
 // UI 全在 assets/index.html 裡（由倉庫根目錄的 TypeScript 建置腳本產生）。
 package main
@@ -26,12 +26,21 @@ func main() {
 	// -selftest：完全不開 GUI，跑一遍自檢後結束，用來在命令列驗證 exe。
 	selftest := flag.Bool("selftest", false, "run the headless self test and exit")
 	screens := flag.Bool("screens", false, "print the enumerated screens, the cursor and the launch screen, then exit")
+	updatedFrom := flag.String("updated-from", "", "internal: build time of the exe this one replaced (shows the release notes)")
+	debugPortFlag := flag.String("debug-port", "", "internal: WebView2 remote debugging port (overrides ACCELON26_DEBUG_PORT)")
+	showVersion := flag.Bool("version", false, "print the build time, the release notes count and the update URL, then exit")
 	flag.Parse()
 	if *selftest {
 		os.Exit(runSelfTest())
 	}
+	if *showVersion {
+		fmt.Printf("accelon26\nbuild time: %s (from %s)\nrelease notes: %d entries\nupdate URL: %s\nexe: %s\n",
+			shortTime(exeBuildTime()), buildSource, len(allReleaseNotes()), updateURL(), exePath())
+		return
+	}
 
 	host := &AdbHost{}
+	host.SetUpdatedFrom(*updatedFrom)
 
 	// 只註冊一個 service。前端用 /wails/runtime.js 的 Call.ByName 直接呼叫：
 	//   Call.ByName("main.AdbHost.ListAdbs")
@@ -40,7 +49,11 @@ func main() {
 	// Wails 會用自己的值覆寫 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS，所以只能從
 	// WindowsOptions 傳進去；預設不開任何除錯埠，只有環境變數要求時才開。
 	var windows application.WindowsOptions
-	if port := os.Getenv("ADBVIEW_DEBUG_PORT"); port != "" {
+	debugPort := os.Getenv("ACCELON26_DEBUG_PORT")
+	if *debugPortFlag != "" {
+		debugPort = *debugPortFlag // 更新時由舊行程指定，避免兩個行程搶同一個埠
+	}
+	if port := debugPort; port != "" {
 		windows.AdditionalBrowserArgs = []string{
 			"--remote-debugging-port=" + port,
 			"--remote-allow-origins=*",
@@ -48,8 +61,8 @@ func main() {
 	}
 
 	app := application.New(application.Options{
-		Name:        "adbview",
-		Description: "accelon .adb viewer (desktop host)",
+		Name:        "accelon26",
+		Description: "accelon26 — accelon .adb viewer (desktop host)",
 		Windows:     windows,
 		Services: []application.Service{
 			application.NewService(host),
@@ -78,7 +91,7 @@ func main() {
 	// 偵測不到就主螢幕）；第一次啟動全螢幕；之後恢復上次記下的位置、大小與狀態，
 	// 但一定夾進那張螢幕的工作區（上次那張外接螢幕這回可能已經不在了）。
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:  "adbview",
+		Title:  "accelon26",
 		URL:    "/",
 		Width:  defaultWindowW,
 		Height: defaultWindowH,
@@ -94,10 +107,13 @@ func main() {
 	win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) { tracker.save() })
 	app.OnShutdown(tracker.save)
 	host.SetWindowInfo(tracker.info) // 測試／排錯用（UI 不需要知道）
+	host.SetQuit(func() { app.Quit() })
+	host.StartUpdateChecker() // 背景檢查線上更新（含清掉上次留下的 .old）
 
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		wa, screenName, ok := launchWorkArea(app)
 		st, hasSaved := loadWindowState()
+		tracker.setLaunch(screenName, wa)
 		if !ok { // 一張螢幕都列舉不到：交給作業系統，只把記下的大小套上去
 			if hasSaved {
 				win.SetSize(st.W, st.H)
@@ -155,9 +171,9 @@ func main() {
 // runSelfTest 是不開 GUI 的自檢：列出當前工作目錄裡的 *.adb（只讀 256 位元組檔頭），
 // 印出 mmap+base64 的讀取耗時，並驗證越界讀取會回報錯誤。回傳行程結束碼。
 //
-//	go build -o ..\build\desktop\adbview.exe .
+//	go build -o ..\build\desktop\accelon26.exe .
 //	cd ..
-//	..\build\desktop\adbview.exe -selftest
+//	..\build\desktop\accelon26.exe -selftest
 func runSelfTest() int {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -167,7 +183,7 @@ func runSelfTest() int {
 	host := &AdbHost{}
 	defer host.CloseAll()
 
-	fmt.Println("adbview -selftest")
+	fmt.Println("accelon26 -selftest")
 	fmt.Printf("cwd: %s\n", cwd)
 
 	list, err := host.ListAdbs()

@@ -37,6 +37,28 @@
     color: #7cc0ff; text-shadow: 0 0 14px rgba(90,169,255,.35);
   }
   header h1 .accent { color: #ffd479; text-shadow: 0 0 14px rgba(255,212,121,.35); }
+  /* 左上角有新版可更新時：閃動 ＋ 可點擊（桌面版才會出現；網頁版沒有宿主，永遠不會） */
+  #brand.update { cursor: pointer; animation: brandFlash 1.1s ease-in-out infinite; }
+  #brand.update:hover { filter: brightness(1.35); }
+  @keyframes brandFlash {
+    0%, 100% { color: #7cc0ff; text-shadow: 0 0 14px rgba(90,169,255,.35); }
+    50% { color: #ffd479; text-shadow: 0 0 22px rgba(255,212,121,.85); }
+  }
+  /* 改版說明（更新後顯示一次） */
+  #notesBox {
+    position: fixed; z-index: 60; left: 50%; top: 12%; transform: translateX(-50%);
+    max-width: min(720px, 88vw); max-height: 70vh; overflow: auto; padding: 18px 22px;
+    background: var(--panel); color: var(--fg); border: 1px solid var(--accent);
+    border-radius: 10px; box-shadow: 0 12px 48px rgba(0,0,0,.6);
+  }
+  #notesBox h2 { margin: 0 0 6px; font-size: 17px; color: #7cc0ff; }
+  #notesBox .ver { font-size: 13px; color: var(--dim); margin-bottom: 10px; }
+  #notesBox ul { margin: 0 0 12px; padding-left: 20px; }
+  #notesBox li { margin: 4px 0; }
+  #notesBox button {
+    background: var(--accent); color: #08243f; border: 0; border-radius: 6px;
+    font: inherit; padding: 6px 18px; cursor: pointer;
+  }
   /* the database name lives on the chip (#dbTabs); this rule went with #dbname */
   #file { display: none; }   /* the picker is driven by #dbAdd */
 .dbAdd { border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink);
@@ -280,7 +302,8 @@
 </head>
 <body>
 <header id="header">
-  <h1>accelon<span class="accent">26</span></h1>
+  <!-- 左上角：桌面版會在這裡顯示建置時間（hover hint），有新版本時閃動並可點擊更新 -->
+  <h1 id="brand" title="accelon26">accelon<span class="accent">26</span></h1>
   <button class="sideToggle" id="toggleLeft" title="顯示／隱藏左欄">◧</button>
   <button class="sideToggle" id="toggleRight" title="顯示／隱藏右欄">◨</button>
   <button class="sideToggle" id="advToggle" title="進階模式：顯示 token 瀏覽與檔案資訊分頁">🧑‍💻</button>

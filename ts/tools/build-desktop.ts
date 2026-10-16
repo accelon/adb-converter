@@ -35,4 +35,4 @@ const html = template.replace('/*__VIEWER_BUNDLE__*/', () => js);
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, html, 'utf8');
 console.log(`wrote ${out}  (${(html.length / 1024).toFixed(1)} KiB, script ${(js.length / 1024).toFixed(1)} KiB)`);
-console.log('now build the host:  cd wails && go build -o ../build/desktop/adbview.exe .');
+console.log('now build the host:  cd wails && go build -o ../build/desktop/accelon26.exe .');

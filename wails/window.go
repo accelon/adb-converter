@@ -24,7 +24,7 @@ import (
 //   4. 記憶的位置是**相對該螢幕工作區原點**（Wails 的 WindowXY ＋ Screen 就是這個語意），
 //      所以換螢幕／換解析度都不會把視窗丟到畫面外；大小再夾進工作區
 //
-// 狀態檔：%AppData%\adbview\window.json（可用 ADBVIEW_STATE_DIR 覆寫，測試與可攜版用）
+// 狀態檔：%AppData%\adbview\window.json（可用 ACCELON26_STATE_DIR 覆寫，測試與可攜版用）
 
 const (
 	stateNormal     = "normal"
@@ -46,16 +46,16 @@ type windowState struct {
 	Screen string `json:"screen,omitempty"` // 上次那張螢幕的名字（僅供診斷）
 }
 
-// stateDir 回傳狀態檔目錄；ADBVIEW_STATE_DIR 優先（測試、可攜版）。
+// stateDir 回傳狀態檔目錄；ACCELON26_STATE_DIR 優先（測試、可攜版）。
 func stateDir() string {
-	if d := os.Getenv("ADBVIEW_STATE_DIR"); d != "" {
+	if d := os.Getenv("ACCELON26_STATE_DIR"); d != "" {
 		return d
 	}
 	base, err := os.UserConfigDir()
 	if err != nil || base == "" {
 		return ""
 	}
-	return filepath.Join(base, "adbview")
+	return filepath.Join(base, "accelon26")
 }
 
 func statePath() string {
@@ -284,6 +284,9 @@ type windowTracker struct {
 	lastNormal *geometry // 最後一次 normal 狀態的框（還原用）
 	curState   string
 	saved      bool
+	// 啟動時選了哪張螢幕（排錯用：多螢幕問題要看的就是這個）
+	launchScreen string
+	launchWork   application.Rect
 }
 
 func newWindowTracker(app *application.App, win *application.WebviewWindow) *windowTracker {
@@ -315,6 +318,13 @@ func (t *windowTracker) snapshot() {
 			t.lastNormal = t.cur
 		}
 	}
+}
+
+// setLaunch 記下啟動時選的螢幕與工作區（WindowInfo 會回報，測試與排錯用）。
+func (t *windowTracker) setLaunch(screen string, work application.Rect) {
+	t.mu.Lock()
+	t.launchScreen, t.launchWork = screen, work
+	t.mu.Unlock()
 }
 
 func (t *windowTracker) state() string {
@@ -397,6 +407,10 @@ func (t *windowTracker) info() map[string]any {
 		out["lastAny"] = *t.cur
 	}
 	out["trackerState"] = t.stateLocked()
+	if t.launchScreen != "" {
+		out["launchScreen"] = t.launchScreen
+		out["launchWorkArea"] = t.launchWork
+	}
 	t.mu.Unlock()
 	return out
 }

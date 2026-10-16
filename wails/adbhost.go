@@ -128,6 +128,11 @@ type AdbHost struct {
 
 	// winInfo 由 main 在建立視窗後注入（window.go）。UI 不需要它，測試與多螢幕排錯用。
 	winInfo func() map[string]any
+
+	// 更新（update.go）：背景檢查的快取結果、-updated-from 的值、結束應用程式的回呼。
+	updateSt    UpdateStatus
+	updatedFrom string
+	quit        func()
 }
 
 // SetWindowInfo 注入視窗診斷（main 在建立視窗前後設定）。

@@ -12,9 +12,9 @@ tasks:
       - echo "assets/index.html 由倉庫根目錄的 TypeScript 建置腳本產生；本任務不呼叫 node/npm。"
 
   build:
-    summary: 建置桌面宿主到 ../build/desktop/adbview.exe
+    summary: 建置桌面宿主到 ../build/desktop/accelon26.exe
     cmds:
-      - go build -o ../build/desktop/adbview.exe .
+      - go build -o ../build/desktop/accelon26.exe .
 
   test:
     summary: 執行 Go 單元測試
@@ -25,12 +25,12 @@ tasks:
     summary: 建置後在倉庫根目錄做無 GUI 自檢
     cmds:
       - task: build
-      - cmd: ../build/desktop/adbview.exe -selftest
+      - cmd: ../build/desktop/accelon26.exe -selftest
         dir: ..
 
   run:
     summary: 建置後從倉庫根目錄啟動 GUI
     cmds:
       - task: build
-      - cmd: ../build/desktop/adbview.exe
+      - cmd: ../build/desktop/accelon26.exe
         dir: ..

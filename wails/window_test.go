@@ -13,7 +13,7 @@ func rect(x, y, w, h int) application.Rect { return application.Rect{X: x, Y: y,
 // TestWindowStateRoundTrip：狀態檔寫了要讀得回來（在暫存目錄，不碰使用者真正的設定）。
 func TestWindowStateRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("ADBVIEW_STATE_DIR", dir)
+	t.Setenv("ACCELON26_STATE_DIR", dir)
 	if _, ok := loadWindowState(); ok {
 		t.Fatal("空的目錄不該讀得到設定")
 	}

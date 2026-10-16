@@ -249,6 +249,9 @@ async function openPicked(files: AdbSource[]): Promise<void> {
  * one page serves both builds.
  */
 async function bootDesktop(): Promise<void> {
+  // 左上角：桌面版顯示建置時間（hover hint），有新版本時閃動、點擊更新，更新後顯示改版說明。
+  // 網頁版沒有宿主，initDesktopBrand 直接返回（左上角就只是一行標題）。
+  void initDesktopBrand((msg, kind) => setStatus(msg, kind ?? 'info'));
   const srcs = await desktopSources();
   if (!srcs.length) return;
   for (const s of srcs) catalogAdd(s, s.name);
@@ -496,6 +499,7 @@ import { MAX_DBS, catalogAdd, catalogAddFile, catalogState, dbLog, openDbs, rend
 import { initTextPane, renderTextPane, textState } from './text-pane';
 import { logoState, updateDocLogo } from './logo';
 import { desktopSources, hostState } from './host';
+import { initDesktopBrand } from './update-ui';
 
 export { ADV_KEY, COLS_KEY, DEFAULT_COLS, MAX_SIDE, MIN_SIDE, advanced, applyCols, attachSplitter, boot, defaultLeftTab, readAdvanced, readCols, saveCols, setAdvanced, setSide, showTab, toggleSide };
 

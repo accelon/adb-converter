@@ -581,7 +581,7 @@ Go 層越薄越好，UI 最好不要知道 Go 層存在；Wails 不必走 socket
 | 宿主 | 檔案從哪來 | 讀取方式 |
 |---|---|---|
 | 純網頁 `file://` | `#file` 檔案選擇器／拖曳（`File`） | `Blob.slice().arrayBuffer()`（`BlobIO`，128 KiB 分塊快取） |
-| 桌面 `adbview.exe` | 工作目錄的 `*.adb`（宿主回報，只讀檔頭） | Go mmap → base64 → `Uint8Array` |
+| 桌面 `accelon26.exe` | 工作目錄的 `*.adb`（宿主回報，只讀檔頭） | Go mmap → base64 → `Uint8Array` |
 
 UI 怎麼可能不知道 Go 層：`ts/src/adbview/adb.ts` 定義 `ByteSource`／`AdbSource`（只要 `name`／`size`／
 `lastModified` 與 `slice(start,end).arrayBuffer()`），挑檔案的 `File` 與宿主檔案都符合。
@@ -622,8 +622,8 @@ UI 怎麼可能不知道 Go 層：`ts/src/adbview/adb.ts` 定義 `ByteSource`／
 cd ts; bun run tools/build-viewer.ts                  # 預設產物：../build/adbview.html（單檔，file:// 可開）
 cd ts; bun run tools/build-desktop.ts                 # 只在要桌面版時：同一份 HTML → ../wails/assets/index.html
 cd wails; go test ./...                               # Go 單元測試（不需要 GUI）
-cd wails; go build -o ../build/desktop/adbview.exe .  # 打包 exe（HTML 內嵌）
-cd ..;   .\build\desktop\adbview.exe -selftest         # 不開 GUI：列工作目錄的 adb + mmap 讀取計時
+cd wails; go build -o ../build/desktop/accelon26.exe .  # 打包 exe（HTML 內嵌）
+cd ..;   .\build\desktop\accelon26.exe -selftest         # 不開 GUI：列工作目錄的 adb + mmap 讀取計時
 cd ts; bun run tools/desktop-test.ts [--gui]          # 桌面版回歸：headless 5 項；--gui 再加視窗版 6 項
 ```
 
@@ -702,7 +702,7 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
    提供內建 runtime（後者只服務 assets）。用錯的話頁面照樣跑，但 `host.ts` 的 import 失敗 → 下拉永遠空的。
 2. **Wails 會覆寫 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`**（`preventEnvAndRegistryOverrides` 會 `os.Setenv`），
    所以自動化測試要開 devtools 只能從 `application.WindowsOptions.AdditionalBrowserArgs` 傳；
-   本專案用環境變數 `ADBVIEW_DEBUG_PORT` 開啟，**預設不開任何除錯埠**。
+   本專案用環境變數 `ACCELON26_DEBUG_PORT` 開啟，**預設不開任何除錯埠**。
 3. **Bun 不會對「未 import 的識別字」報錯**（會當成全域）→ `bootDesktop()` 裡的 `catalogAdd` 忘了 import，
    建置成功、執行時 `ReferenceError`，而且是在 async 裡 → 安靜地什麼都沒發生（下拉空的）。
    修法：補 import ＋ `state().host.error` 讓它能被看見。
@@ -710,12 +710,18 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
 5. `wails/assets/index.html` 是**建置產物**（來自 `tools/build-desktop.ts`）；`//go:embed all:assets` 需要它存在。
 6. `physicalBytes()`（adb.ts）目前**沒有任何呼叫者**（原本就不存在），所以 Go 端只做 `DecompressText`、
    沒有做回原生位元組的版本 —— 保持 Go 層最薄；哪天真要用再加。
-7. **Wails 的 DPI/座標系前後不一**：見 §10.8 的「踩到的坑」——螢幕與游標座標在
+7. **建置順序：先 HTML、再 exe**。exe 內嵌 `wails/assets/index.html`，先 `go build` 才
+   `tools/build-desktop.ts` 就會把**舊的 UI**包進去（我踩過：改了左上角提示，exe 裡還是舊版）。
+   `tools/release.ts` 已把順序固定住。
+8. **Wails 的 DPI/座標系前後不一**：見 §10.8 的「踩到的坑」——螢幕與游標座標在
    `application.New()` 前後會是不同空間，定位一定要用 Wails 自己的 `application.Screen`。
-8. **在持有 mutex 時 panic ＝ 永久卡死**：`searchFile()` 把解析結果寫進一個 nil map（`h.search[key] = f`）
+9. **在持有 mutex 時 panic ＝ 永久卡死**：`searchFile()` 把解析結果寫進一個 nil map（`h.search[key] = f`）
    → panic；panic 回溯時 deferred `release()` 又想拿同一把鎖 → 整個 goroutine 卡住，前端
    `Runtime.evaluate` 逾時 60 s。症狀是「頁面看起來沒反應、Go 沒崩」。修法：寫入前先 `make` map；
    教訓是**鎖的臨界區裡不要有可能 panic 的動作**。
+10. **共用 promise 的探測**：`hostCall()` 原本用 `probed` 旗標，兩個呼叫同時進來時，第二個會在探測
+    還沒完成前看到 `probed=true / call=null` → 誤判「沒有宿主」（下拉整個空的）。修法：把探測做成
+    一個共用的 promise，所有人 await 同一個。
 
 ### 10.8 視窗與螢幕（作者 2026-10）
 
@@ -726,7 +732,7 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
 
 * **狀態檔**：`%AppData%\adbview\window.json`（`RelX/RelY` 相對所在螢幕**工作區原點**、`W/H`、
   `State`＝normal／maximised／fullscreen、`Screen` 上次那張螢幕的名字）；可用環境變數
-  `ADBVIEW_STATE_DIR` 改寫（自動化測試與可攜版用）。原子寫入（.tmp ＋ rename），壞掉的檔視同第一次。
+  `ACCELON26_STATE_DIR` 改寫（自動化測試與可攜版用）。原子寫入（.tmp ＋ rename），壞掉的檔視同第一次。
 * **啟動流程**：視窗先建立但 `Hidden: true` → 等 `events.Common.ApplicationStarted`（訊息迴圈與
   螢幕資訊都就緒）→ 選螢幕 → 夾進工作區 → `SetSize`／`SetPosition` → 套用狀態（全螢幕／最大化）
   → `Show()`。所以不會「先出現在錯的螢幕再跳過去」。
@@ -743,7 +749,7 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
 
 **排錯工具**（多螢幕問題先看這兩個）：
 
-* `adbview.exe -screens`：Win32 列出來的每張螢幕（monitor／work／primary／current／scale）、游標位置、
+* `accelon26.exe -screens`：Win32 列出來的每張螢幕（monitor／work／primary／current／scale）、游標位置、
   Wails 選的啟動螢幕、上次的設定、狀態檔路徑。
 * 服務方法 `main.AdbHost.WindowInfo()`（頁面可直接呼叫，**UI 完全不需要知道**）：位置、大小、狀態、
   所在螢幕與工作區、最後一次 normal 的框、狀態檔路徑。
@@ -758,7 +764,7 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
 ```
 ok 第一次啟動是全螢幕                    state=fullscreen 1040x694@0,0
 ok 知道自己落在哪張螢幕（含工作區）        screen=\.\DISPLAY1 primary=true work=1040x694@0,0
-ok 狀態檔寫在 ADBVIEW_STATE_DIR
+ok 狀態檔寫在 ACCELON26_STATE_DIR
 ok 離開時記下視窗設定                    { "relX":0, "relY":0, "w":1040, "h":694, "state":"fullscreen", "screen":"\\.\DISPLAY1" }
 ok 第二次啟動恢復上次的狀態（fullscreen）
 ok 恢復記下的大小（夾進啟動螢幕的工作區）  state=normal got 900x694 want 900x694（要求 900x700 → 夾到 694）
@@ -808,15 +814,85 @@ Go 內部 lookup 1.1／plAnd 1.1／group 0.0）、摘要 30 筆、「分 28 群�
 Go 端的自我檢查（不開 GUI）：`cd wails && go test -count=1 -run TestSearchTokensOnCorpus -v`
 （對 13j 的「象曰」446 筆／13 群、「孟子」316 筆／13 群，並印出 `Postings` 的筆數）。
 
+### 10.9 左上角建置時間與線上更新（作者 2026-10）
+
+作者原文：「accelon26.exe 改名…左上角 hover hint 顯示 built time。如果
+https://shutonggui.cn/accelon26/accelon26.exe 的 built time 比用戶運行中的更新，左上角閃動
+表示有更新版提醒用戶更新，用戶點下時，問是否確定更新（先檢查 exe 所在目錄是否可寫，不可寫就
+永遠不檢查是否有更新；如果目前運行的 exe built time 和電腦時鐘差別不到 2 小時，表示是開發者
+本地 exe，就不必檢查更新了），更新後，顯示改版新增或改進的功能。」
+
+**改名**：exe 與應用識別都改成 `accelon26`（`build/desktop/accelon26.exe`、視窗標題、
+`%AppData%\accelon26\window.json`）；環境變數改成 `ACCELON26_*`。**viewer 模組本身仍叫 adbview**
+（`ts/src/adbview/`、HTML 產物 `build/adbview.html`）—— 那是同一份 UI，兩個宿主共用。
+
+**建置時間**（`wails/update.go`）：發佈時用 `-ldflags "-X main.buildTime=<RFC3339>"` 注入；
+沒注入就退回執行檔的修改時間（`buildSource=file`，hover hint 會註明「檔案時間，非發佈建置」）。
+遠端的建置時間用 **HTTP `Last-Modified`**（靜態主機上傳時就有）；沒有這個標頭就不猜、不提示。
+遠端要比本地新至少 1 分鐘才算「有新版本」（容忍時鐘誤差）。
+
+**不檢查更新的兩種情況**（都不打擾使用者）：
+1. **exe 所在目錄不可寫**（真的寫一個暫存檔測試）→ 永遠不檢查；
+2. **本地建置時間與現在差不到 2 小時** → 開發者自己的 exe（自動化測試用
+   `ACCELON26_UPDATE_URL` 覆寫網址時會強制檢查，否則測不到）。
+
+**UI**（`ts/src/adbview/update-ui.ts`，透過 `host.ts` 對話；UI 完全不知道 Go 層）：
+* 左上角 `#brand`（accelon26）的 hover hint ＝`accelon26 · built 2026-10-16 22:10 · …`
+  （有新版時再加上「有新版本：線上 … — 點這裡更新」）；
+* 有新版 → `#brand.update` **閃動**（CSS `brandFlash`）＋ 可點擊 → `window.confirm` 問一次；
+* 更新後第一次啟動（帶 `-updated-from`）→ 顯示**改版說明**（`#notesBox`），內容來自
+  `wails/release_notes.json`，只顯示比舊版新的那幾筆。
+
+**更新流程**（`InstallUpdate`）：下載到 `<dir>/accelon26.exe.new`（先 `.part` 再改名）→ 檢查檔頭
+是 `MZ` 且 > 1 MiB（避免把錯誤頁當成 exe）→ 把**執行中的** exe 改名成 `.old`（Windows 允許改
+執行中映像的名字，但不能覆蓋）→ `.new` 改名成正式名字 → 啟動新 exe（帶 `-updated-from` 與
+**＋1 的除錯埠** `-debug-port`，避免兩個行程搶同一個埠）→ 0.7 秒後自己結束。`.old` 在新版
+啟動時自動清掉。
+
+**發佈（作者說「發布」時）**：
+
+```powershell
+cd ts; bun run tools/release.ts --items "改進A;修正B" [--title "…"]
+#  1) append 到 wails/release_notes.json  2) 先建 HTML 再 go build（-ldflags 注入建置時間）
+#  3) 用 -version 驗 exe 裡真的是 ldflags 的時間  4) 印上傳指示並 HEAD 一次線上的 Last-Modified
+# 然後把 build/desktop/accelon26.exe 上傳到 https://shutonggui.cn/accelon26/accelon26.exe
+```
+
+**診斷**：`accelon26.exe -version`（建置時間／說明筆數／更新網址）、`main.AdbHost.AppInfo()`、
+`CheckUpdate()`（立刻檢查一次）、`InstallUpdate()`、`ReleaseNotes(since)`。
+
+**驗證**：`tools/desktop-test.ts --gui` 37 項全過，其中更新相關：
+
+```
+ok 檢查到線上版本比較新（Last-Modified）      本地 2026-10-16 22:00 vs 線上 2026-10-17T14:00
+ok 目錄可寫 → 允許更新；線上網址就是設定的那個   dirWritable=true canUpdate=true
+ok 左上角 hover hint 顯示建置時間             accelon26 · built 2026-10-16 22:00 · …
+ok 左上角閃動並提示有新版本                    update｜… 有新版本：線上 2026-10-17 14:00 — 點這裡更新
+ok 更新後舊行程結束（交給新版）                exit 1（2 s）
+ok 執行檔已被新版取代（mtime 變新）
+ok 留下 .old（下次啟動自動清掉）＋ 新版啟動時把它清掉
+ok 更新後顯示改版說明（notesBox）
+```
+
+Go 單元測試（`wails/update_test.go`）：目錄可寫／不可寫、遠端較新／較舊／沒有 Last-Modified／
+連不上、開發者本地 exe 跳過檢查、下載＋PE 檔頭檢查、改版說明過濾與 fallback。
+測試用**本地 HTTP 伺服器**當「已發佈的新版」（`ACCELON26_UPDATE_URL`），被更新的 exe 是
+`build/tmp-upd` 的副本，所以不連外網、也不會動到正式的 exe。
+
 ### 10.6 檔案
+
 
 | 檔案 | 角色 |
 |---|---|
-| `wails/main.go` | Wails 應用（極薄）：內嵌 assets、`-selftest`、註冊 `AdbHost`、`ADBVIEW_DEBUG_PORT` |
+| `wails/main.go` | Wails 應用（極薄）：內嵌 assets、`-selftest`、註冊 `AdbHost`、`ACCELON26_DEBUG_PORT` |
 | `wails/adbhost.go` | mmap + `ListAdbs`／`Open`／`ReadBase64`／`Close`／`CloseAll` |
 | `wails/decompress.go` | bzip2（`DecompressText`）：解壓＋UTF-16 解碼一次做完 |
 | `wails/search.go` | 索引查詢：容器表解析、packed posting 解壓、`phraseMatch`（plAnd）、`groupHits`（分群，可平行） |
 | `wails/window.go` | 視窗與螢幕：狀態檔、啟動螢幕選擇、夾進工作區、事件驅動的追蹤器、`-screens` 診斷 |
+| `wails/update.go` | 建置時間、目錄可寫偵測、線上檢查（Last-Modified）、自我更新、改版說明 |
+| `wails/release_notes.json` | 各版改版說明（發佈時用 `tools/release.ts` 追加） |
+| `ts/src/adbview/update-ui.ts` | 左上角提示／閃動／確認／改版說明（UI 端唯一碰更新的一支） |
+| `ts/tools/release.ts` | 發佈：追加說明 → 先 HTML 再 exe（注入建置時間）→ 驗證 → 上傳指示 |
 | `wails/adbhost_test.go`／`decompress_test.go`／`search_test.go`／`window_test.go`／`bzip2_bench_test.go` | Go 測試與量測 |
 | `wails/adbhost_test.go` | Go 測試：檔頭解析、與 `os.ReadFile` 逐位元組相同、越界報錯、讀取計時 |
 | `wails/assets/index.html` | 內嵌的 adbview（由 `ts/tools/build-desktop.ts` 產生） |

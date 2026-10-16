@@ -2,7 +2,7 @@
  * Desktop (Wails3) smoke test — the exe must list every `.adb` in its WORKING DIRECTORY
  * and read them through the host's mmap (no Blob.slice, no socket, no events).
  *
- *   bun run tools/desktop-test.ts [--exe ../build/desktop/adbview.exe] [--gui] [--cwd ..]
+ *   bun run tools/desktop-test.ts [--exe ../build/desktop/accelon26.exe] [--gui] [--cwd ..]
  *
  * Default (headless): run the exe with `-selftest` in `--cwd` (the repository root, where
  * 13j.adb and fgdict.adb live) and check the listing + the read timing it prints.
@@ -12,14 +12,14 @@
  * with the TypeScript vendor bzip2 on real source blocks.
  */
 import { resolve } from 'node:path';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { AdbReader, SyncIO, blockRange } from '../src/adbview/adb';
 import { SearchSession, queryTokens } from '../src/adbview/search';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
 const ROOT = resolve(import.meta.dir, '../..');
-const EXE = resolve(opt('exe', resolve(ROOT, 'build/desktop/adbview.exe')));
+const EXE = resolve(opt('exe', resolve(ROOT, 'build/desktop/accelon26.exe')));
 const CWD = resolve(opt('cwd', ROOT));
 const GUI = args.includes('--gui');
 const PORT = Number(opt('port', '9222'));
@@ -30,7 +30,7 @@ const ok = (name: string, cond: boolean, detail = '') => {
   else { fail++; console.log('  FAIL ' + name + (detail ? '  ' + detail : '')); }
 };
 if (!existsSync(EXE)) {
-  console.error('missing ' + EXE + ' — build it first:  cd wails; go build -o ../build/desktop/adbview.exe .');
+  console.error('missing ' + EXE + ' — build it first:  cd wails; go build -o ../build/desktop/accelon26.exe .');
   process.exit(2);
 }
 
@@ -56,37 +56,59 @@ if (!GUI) {
 
 
 // ---------------------------------------------------------------- 啟動視窗的共用工具
-// 測試一律把狀態檔放到 build/tmp-state-test（ADBVIEW_STATE_DIR），不碰使用者真正的 %AppData%。
+// 測試一律把狀態檔放到 build/tmp-state-test（ACCELON26_STATE_DIR），不碰使用者真正的 %AppData%。
 const STATE_DIR = resolve(ROOT, 'build/tmp-state-test');
 const STATE_FILE = resolve(STATE_DIR, 'window.json');
 const norm = (p: string) => p.toLowerCase().replaceAll(String.fromCharCode(92), '/');
 
+/** 等某個 DevTools 埠沒人回應（前一個行程的 WebView2 有時還留著）。 */
+async function waitPortFree(port: number, timeoutMs = 20000): Promise<void> {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      await fetch(`http://127.0.0.1:${port}/json/version`);
+    } catch {
+      return; // 沒人回應 → 可以用了
+    }
+    if (Date.now() > until) return;
+    await Bun.sleep(300);
+  }
+}
+
 interface Gui {
   proc: ReturnType<typeof Bun.spawn>;
   evalIn: <T>(expr: string) => Promise<T>;
+  call: <T = any>(method: string, ...args: unknown[]) => Promise<T>;
   windowInfo: () => Promise<any>;
   close: () => Promise<void>;
 }
 
-async function startGui(stateDir: string): Promise<Gui> {
-  const proc = Bun.spawn([EXE], {
+async function startGui(stateDir: string, opts: { spawn?: boolean; env?: Record<string, string>; port?: number; exe?: string } = {}): Promise<Gui> {
+  const spawn = opts.spawn !== false;
+  const port = opts.port ?? PORT;
+  const exe = opts.exe ?? EXE;
+  if (spawn) await waitPortFree(port);
+  const proc = spawn ? Bun.spawn([exe], {
     cwd: CWD,
-    // ADBVIEW_DEBUG_PORT: the host reads this itself (Wails overwrites WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS)
-    // ADBVIEW_STATE_DIR: where it remembers the window geometry
-    env: { ...process.env, ADBVIEW_DEBUG_PORT: String(PORT), ADBVIEW_STATE_DIR: stateDir },
+    // ACCELON26_DEBUG_PORT: the host reads this itself (Wails overwrites WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS)
+    // ACCELON26_STATE_DIR: where it remembers the window geometry
+    env: { ...process.env, ACCELON26_DEBUG_PORT: String(port), ACCELON26_STATE_DIR: stateDir, ...(opts.env ?? {}) },
     stdout: 'pipe', stderr: 'pipe',
-  });
+  }) : ({ exitCode: null, kill: () => undefined } as any); // spawn:false → 接上「更新程式啟動的那個行程」
   let wsurl = '';
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline && !wsurl) {
     try {
-      const r = await fetch(`http://127.0.0.1:${PORT}/json/version`);
+      const r = await fetch(`http://127.0.0.1:${port}/json/version`);
       const j = await r.json() as { webSocketDebuggerUrl?: string };
       wsurl = j.webSocketDebuggerUrl ?? '';
     } catch { /* not up yet */ }
     if (!wsurl) await Bun.sleep(300);
   }
-  if (!wsurl) { console.log('  FAIL no WebView2 devtools endpoint'); proc.kill(); process.exit(1); }
+  if (!wsurl) {
+    if (spawn) proc.kill();
+    throw new Error('no WebView2 devtools endpoint on port ' + port);
+  }
   let sock: WebSocket;
   await new Promise<void>((res, rej) => { sock = new WebSocket(wsurl); sock.onopen = () => res(); sock.onerror = () => rej(new Error('ws')); });
   const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
@@ -120,6 +142,14 @@ async function startGui(stateDir: string): Promise<Gui> {
     await Bun.sleep(300);
   }
   await Bun.sleep(2000);
+  /** 直接呼叫服務方法（例如 main.AdbHost.AppInfo）。 */
+  const call = async <T = any>(method: string, ...args: unknown[]): Promise<T> => {
+    const raw = await evalIn<string>(`(async () => {
+      const m = await new Function('u', 'return import(u)')('/wails/runtime.js');
+      return JSON.stringify(await m.Call.ByName(${JSON.stringify(method)}, ...${JSON.stringify(args)}) ?? null);
+    })()`);
+    return JSON.parse(raw) as T;
+  };
   const windowInfo = async (): Promise<any> => {
     const raw = await evalIn<string>(`(async () => {
       const m = await new Function('u', 'return import(u)')('/wails/runtime.js');
@@ -137,7 +167,7 @@ async function startGui(stateDir: string): Promise<Gui> {
     for (let i = 0; i < 40 && proc.exitCode === null; i++) await Bun.sleep(250);
     try { proc.kill(); } catch { /* already gone */ }
   };
-  return { proc, evalIn, windowInfo, close };
+  return { proc, evalIn, call, windowInfo, close };
 }
 
 // ---------------------------------------------------------------- 視窗啟動與基本斷言
@@ -302,7 +332,7 @@ ok('第一次啟動是全螢幕', info1.fullscreen === true && info1.state === '
   `state=${info1.state} ${info1.w}x${info1.h}@${info1.x},${info1.y}`);
 ok('知道自己落在哪張螢幕（含工作區）', !!info1.screen && !!info1.workArea,
   `screen=${info1.screen} primary=${info1.screenPrimary} work=${info1.workArea?.Width}x${info1.workArea?.Height}@${info1.workArea?.X},${info1.workArea?.Y}`);
-ok('狀態檔寫在 ADBVIEW_STATE_DIR（不碰使用者的 %AppData%）',
+ok('狀態檔寫在 ACCELON26_STATE_DIR（不碰使用者的 %AppData%）',
   norm(String(info1.statePath ?? '')) === norm(STATE_FILE), `${info1.statePath} vs ${STATE_FILE}`);
 
 // 關掉視窗（優雅關閉）→ Go 應該把設定寫進狀態檔
@@ -326,7 +356,8 @@ mkdirSync(STATE_DIR, { recursive: true });
 writeFileSync(STATE_FILE, JSON.stringify({ relX: 40, relY: 30, w: 900, h: 700, state: 'normal' }));
 const gui3 = await startGui(STATE_DIR);
 const info3 = await gui3.windowInfo();
-const wa = info3.workArea ?? { X: 0, Y: 0, Width: 0, Height: 0 };
+// 期望值要用「啟動時實際選的那張螢幕」的工作區（視窗框回推的不一定同一張）
+const wa = info3.launchWorkArea ?? info3.workArea ?? { X: 0, Y: 0, Width: 0, Height: 0 };
 const wantW = Math.min(900, wa.Width || 900);
 const wantH = Math.min(700, wa.Height || 700);
 const wantX = wa.X + Math.min(40, Math.max(0, (wa.Width || wantW) - wantW));
@@ -346,15 +377,110 @@ ok('恢復的位置接近要求（平台可能差幾十像素）', Math.abs(info
 await gui3.close();
 
 // 穩定性：上面那次關掉時記下的設定，再啟動一次、再關掉，兩次的設定要一樣（不會每次漂移）
-const savedA = existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, 'utf8')) : null;
-const gui4 = await startGui(STATE_DIR);
-const info4 = await gui4.windowInfo();
-await gui4.close();
-const savedB = existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, 'utf8')) : null;
-ok('連續兩次啟動的視窗設定不會漂移', !!savedA && !!savedB
-  && Math.abs(savedA.relX - savedB.relX) <= 2 && Math.abs(savedA.relY - savedB.relY) <= 2
-  && savedA.w === savedB.w && savedA.h === savedB.h && savedA.state === savedB.state,
-  `第一次 ${JSON.stringify(savedA)}｜第二次 ${JSON.stringify(savedB)}｜這次啟動 ${info4.w}x${info4.h}@${info4.x},${info4.y} state=${info4.state}`);
+// 平台在建立視窗後可能自己再挪一次（DPI/虛擬螢幕），所以要求的是「收斂」：
+// 再啟動幾次，必須在 3 次之內出現兩次完全相同的設定（往後就固定了）。
+const readState = () => (existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, 'utf8')) : null);
+const same = (a: any, b: any) => !!a && !!b
+  && Math.abs(a.relX - b.relX) <= 2 && Math.abs(a.relY - b.relY) <= 2
+  && a.w === b.w && a.h === b.h && a.state === b.state;
+let prev = readState();
+const seen = [JSON.stringify(prev)];
+let converged = false;
+let lastInfo: any = null;
+for (let i = 0; i < 3 && !converged; i++) {
+  const g = await startGui(STATE_DIR);
+  lastInfo = await g.windowInfo();
+  await g.close();
+  const now = readState();
+  seen.push(JSON.stringify(now));
+  converged = same(prev, now);
+  prev = now;
+}
+ok('連續啟動會收斂到同一組視窗設定（不會一直漂移）', converged,
+  seen.join(' → ') + (lastInfo ? `｜最後一次啟動 ${lastInfo.w}x${lastInfo.h}@${lastInfo.x},${lastInfo.y}` : ''));
 
+// ---- 線上更新：本地 HTTP 伺服器當作「已發佈的新版」 --------------------------------
+// 作者：「如果線上 built time 比用戶運行中的新，左上角閃動…用戶點下時，問是否確定更新…
+// 更新後，顯示改版新增或改進的功能。」測試用 ACCELON26_UPDATE_URL 指向本地伺服器，
+// 餵一份「比現在新」的 exe（自己的一份拷貝），不連外網、也不碰正式站。
+// 被更新的那顆 exe 是 build/tmp-upd 裡的**副本**，所以 build/desktop/accelon26.exe 不會被動到。
+const updDir = resolve(ROOT, 'build/tmp-upd');
+rmSync(updDir, { recursive: true, force: true });
+mkdirSync(updDir, { recursive: true });
+const oldExe = resolve(updDir, 'accelon26.exe');
+copyFileSync(EXE, oldExe);
+
+const serveDir = resolve(ROOT, 'build/tmp-update-serve');
+rmSync(serveDir, { recursive: true, force: true });
+mkdirSync(serveDir, { recursive: true });
+const servedExe = resolve(serveDir, 'accelon26.exe');
+copyFileSync(EXE, servedExe);
+const futureLM = new Date(Date.now() + 24 * 3600 * 1000).toUTCString();
+const server = Bun.serve({
+  port: 0,
+  fetch(req) {
+    if (req.method === 'HEAD') return new Response(null, { status: 200, headers: { 'Last-Modified': futureLM } });
+    return new Response(Bun.file(servedExe), { status: 200, headers: { 'Last-Modified': futureLM } });
+  },
+});
+const fakeUpdateURL = `http://127.0.0.1:${server.port}/accelon26.exe`;
+const before = statSync(oldExe).mtimeMs;
+
+const gui5 = await startGui(updDir, { exe: oldExe, env: { ACCELON26_UPDATE_URL: fakeUpdateURL } });
+let app5: any = null;
+for (let i = 0; i < 40; i++) { app5 = await gui5.call('main.AdbHost.AppInfo'); if (app5?.updateAvailable) break; await Bun.sleep(300); }
+ok('檢查到線上版本比較新（Last-Modified）', app5?.updateAvailable === true,
+  `本地 ${app5?.buildTimeText} vs 線上 ${(app5?.remoteBuildTime ?? '').slice(0, 16)}｜${app5?.note}`);
+ok('目錄可寫 → 允許更新；線上網址就是設定的那個', app5?.dirWritable === true && app5?.canUpdate === true && app5?.updateURL === fakeUpdateURL,
+  `dirWritable=${app5?.dirWritable} canUpdate=${app5?.canUpdate}`);
+const brandRaw = await gui5.evalIn<string>(`JSON.stringify({ cls: document.getElementById('brand').className, title: document.getElementById('brand').title })`);
+const brand = JSON.parse(brandRaw) as { cls: string; title: string };
+ok('左上角 hover hint 顯示建置時間', /built\s+\d{4}-\d{2}-\d{2}/.test(brand.title), brand.title);
+ok('左上角閃動並提示有新版本', brand.cls.includes('update') && /有新版本/.test(brand.title), `${brand.cls}｜${brand.title}`);
+
+// 點下左上角 → confirm（測試改成自動確定）→ Go 層下載、換檔、帶 -updated-from 重啟
+const tClick = Date.now();
+await gui5.evalIn(`(() => { window.confirm = () => true; document.getElementById('brand').click(); return 1; })()`).catch(() => undefined);
+for (let i = 0; i < 120 && gui5.proc.exitCode === null; i++) await Bun.sleep(250);
+ok('更新後舊行程結束（交給新版）', gui5.proc.exitCode !== null, `exit ${gui5.proc.exitCode}（${Math.round((Date.now() - tClick) / 1000)} s）`);
+ok('執行檔已被新版取代（mtime 變新）', statSync(oldExe).mtimeMs > before,
+  `${new Date(before).toISOString()} → ${new Date(statSync(oldExe).mtimeMs).toISOString()}`);
+ok('留下 .old（下次啟動自動清掉）', existsSync(oldExe + '.old'), oldExe + '.old');
+
+// 更新程式用 ＋1 的除錯埠啟動新版；埠有起來就順便驗一次「新版真的在跑」
+let gui6: Gui | null = null;
+try { gui6 = await startGui(updDir, { spawn: false, port: PORT + 1 }); } catch { gui6 = null; }
+if (gui6) {
+  const app6 = await gui6.call('main.AdbHost.AppInfo');
+  ok('新版帶著 -updated-from 啟動', !!app6?.updatedFrom, `updatedFrom=${app6?.updatedFrom}`);
+  await gui6.close();
+} else {
+  console.log('      （新行程的 DevTools 埠沒起來，改用在下面手動帶 -updated-from 驗改版說明）');
+}
+
+// 改版說明：直接照更新程式的方式啟動（-updated-from <舊建置時間>），驗左上角之外的那個說明框
+const notesDir = resolve(ROOT, 'build/tmp-state-notes');
+rmSync(notesDir, { recursive: true, force: true });
+const oldBuild = app5?.buildTime ?? '';
+await waitPortFree(PORT + 2);
+const proc7 = Bun.spawn([oldExe, '-updated-from', oldBuild], {
+  cwd: ROOT,
+  env: { ...process.env, ACCELON26_DEBUG_PORT: String(PORT + 2), ACCELON26_STATE_DIR: notesDir },
+  stdout: 'pipe', stderr: 'pipe',
+});
+const gui8 = await startGui(notesDir, { spawn: false, port: PORT + 2 });
+let notesVisible = false; let notesText = '';
+for (let i = 0; i < 30; i++) {
+  const r = await gui8.evalIn<string>(`JSON.stringify({ has: !!document.getElementById('notesBox'), text: document.getElementById('notesBox')?.textContent?.slice(0, 90) ?? '' })`);
+  const p = JSON.parse(r) as { has: boolean; text: string };
+  notesVisible = p.has; notesText = p.text;
+  if (notesVisible) break;
+  await Bun.sleep(300);
+}
+ok('更新後顯示改版說明（notesBox）', notesVisible, notesText);
+ok('新版啟動時把上次留下的 .old 清掉', !existsSync(oldExe + '.old'), oldExe + '.old');
+await gui8.close();
+try { proc7.kill(); } catch { /* already gone */ }
+server.stop(true);
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

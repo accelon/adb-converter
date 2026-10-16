@@ -22,6 +22,7 @@ interface HostCall { ByName(name: string, ...args: unknown[]): Promise<unknown>;
 
 let call: HostCall | null = null;
 let probed = false;
+let probe: Promise<HostCall | null> | null = null;   // 進行中的探測（共用，避免競態）
 /** why the host is absent (diagnostics: state().host) — a silently empty dropdown is a bug */
 let lastError = '';
 let lastCount = 0;
@@ -32,7 +33,13 @@ let lastCount = 0;
  * exists inside the desktop host.
  */
 async function hostCall(): Promise<HostCall | null> {
-  if (probed) return call;
+  // 一次就夠：**共用同一個 promise**，否則同時進來的第二個呼叫會在探測還沒完成時
+  // 看到 probed=true、call=null，誤判成「沒有宿主」（曾因此讓下拉變空）。
+  if (!probe) probe = probeHost();
+  return await probe;
+}
+
+async function probeHost(): Promise<HostCall | null> {
   probed = true;
   try {
     const dynamicImport = new Function('u', 'return import(u)') as (u: string) => Promise<Record<string, any>>;
@@ -99,6 +106,65 @@ async function hostSearchTokens(path: string, tokens: string[], groupTag: string
   const c = await hostCall();
   if (!c) return null;
   return await c.ByName('main.AdbHost.SearchTokens', path, tokens, groupTag, maxHits);
+}
+
+// ---- 桌面版自己的資訊與線上更新（作者 2026-10） ----------------------------------
+//
+// UI 只看到「建置時間」與「有沒有新版」這些事實；下載、換檔、重啟都在 Go 層
+// （wails/update.go），UI 不需要知道。
+
+/** 桌面宿主回報的應用資訊（wails/update.go 的 AppInfo）。 */
+export interface DesktopAppInfo {
+  name: string;
+  /** 建置時間（RFC3339；左上角 hover hint 就是用這個） */
+  buildTime: string;
+  /** 給人看的本地時間，例如 2026-10-16 21:30 */
+  buildTimeText: string;
+  buildSource: string;
+  exePath: string;
+  exeDir: string;
+  dirWritable: boolean;
+  canUpdate: boolean;
+  devBuild: boolean;
+  updateURL: string;
+  updateAvailable: boolean;
+  remoteBuildTime: string;
+  lastCheck: string;
+  note: string;
+  /** 非空＝這次是被更新後重啟的，值是舊版的建置時間（用來顯示改版說明） */
+  updatedFrom: string;
+}
+
+/** 一版的功能說明（wails/release_notes.json）。 */
+export interface DesktopReleaseNote { buildTime: string; title: string; items: string[] }
+
+/** 目前執行檔的資訊（不連網，用背景檢查的快取結果）。 */
+export async function desktopAppInfo(): Promise<DesktopAppInfo | null> {
+  const c = await hostCall();
+  if (!c) return null;
+  return await c.ByName('main.AdbHost.AppInfo') as DesktopAppInfo | null;
+}
+
+/** 立刻檢查一次線上版本（使用者主動確認時用）。 */
+export async function desktopCheckUpdate(): Promise<DesktopAppInfo | null> {
+  const c = await hostCall();
+  if (!c) return null;
+  return await c.ByName('main.AdbHost.CheckUpdate') as DesktopAppInfo | null;
+}
+
+/** 下載並安裝新版；成功時這個行程會被新的取代。 */
+export async function desktopInstallUpdate(): Promise<{ ok: boolean; error?: string } | null> {
+  const c = await hostCall();
+  if (!c) return null;
+  return await c.ByName('main.AdbHost.InstallUpdate') as { ok: boolean; error?: string } | null;
+}
+
+/** 比 since（舊版建置時間）新的改版說明。 */
+export async function desktopReleaseNotes(since: string): Promise<DesktopReleaseNote[]> {
+  const c = await hostCall();
+  if (!c) return [];
+  const notes = await c.ByName('main.AdbHost.ReleaseNotes', since) as DesktopReleaseNote[] | null;
+  return notes ?? [];
 }
 
 /** one host file, in the shape the rest of the viewer already understands */
