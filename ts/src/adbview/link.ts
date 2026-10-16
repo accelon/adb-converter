@@ -62,11 +62,15 @@ function nodeContaining(va: number): { realm: { from: number; to: number }; name
 async function linkTo(va: number, token: string, units: number | undefined, opts: { newTab?: boolean; exact?: boolean; phrase?: string; noMark?: boolean; name?: string; mode?: 'reuse' | 'node' | 'hit' } = {}): Promise<void> {
   if (!mapper) return;
   const el = await mapper.elementAt(va);
-  if (!el) { setStatus('VA ' + fmtInt(va) + '：找不到對應位置', 'err'); return; }
-  const u = Math.max(1, units ?? el.element.vaUnits);
+  const node = nodeContaining(va);
+  // A tree link carries everything it needs from the NODE (its realm), so a failed
+  // element lookup must not swallow it: on a drifting database `elementAt` returns
+  // null for tag VAs the tree knows perfectly well (yinshun's last 書 did), and the
+  // click then did nothing at all — Ctrl+click included.
+  if (!el && !node) { setStatus('VA ' + fmtInt(va) + '：找不到對應位置', 'err'); return; }
+  const u = Math.max(1, units ?? el?.element.vaUnits ?? 1);
 
   const doc = docOfVa(va);
-  const node = nodeContaining(va);
   const firstLink = docTabs.length === 0;
   const useNode = !!node && (opts.mode === 'node' || !docTabs.length);
   // Without a node the realm is the owning `<檔>` — NOT the whole VA space: in a
@@ -116,11 +120,11 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   // on fgdict); `phrase` paints something other than the label (全文 pane: label
   // 法王家, hit 法王); `noMark` links to a spot without painting (原書分頁).
   s.pinned = {
-    va, text: el.element.text, token, units: u, line,
+    va, text: el?.element.text ?? '', token, units: u, line,
     exact: !!opts.exact || !!opts.phrase, phrase: opts.phrase, noMark: !!opts.noMark,
   };
   pinnedHit = s.pinned;
-  lastReveal = `va=${va} units=${u} element=${el.element.va}/${el.element.vaUnits}`;
+  lastReveal = `va=${va} units=${u} element=${el ? el.element.va + '/' + el.element.vaUnits : 'node'}`;
   setDocActive(docTabs.indexOf(s));
 
   const tLink = performance.now();
@@ -138,7 +142,7 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
     if (localStorage.getItem(DOCFS_KEY) === null) autoFitFont();
   }
   // label carries the directory node's name (a tag click has no text of its own)
-  const what = s.name || token || el.element.text;
+  const what = s.name || token || el?.element.text || '';
   const totalRows = boundsOfRealm(s.realm).total;
   const pageInfo = s.cache
     ? '（共 ' + fmtInt(totalRows) + ' 行，第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(pageBounds(s.realm, s.page).pages) + ' 頁' + (auto ? '，自動跟隨命中' : '') + '）'
