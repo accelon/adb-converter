@@ -9,6 +9,7 @@ import { $, altKey, displayName, escapeHtml, fmtBytes, fmtInt, mapper, mods, new
 import { showTab } from './ui';
 import { showToken } from './panes';
 import { paintTreeActive, revealHit } from './link';
+import { growUntil, mounted, renderChunked } from './lazy-list';
 import { lastResult, showNodeHits } from './summary';
 
 /** directory tree state (one entry per `<樹>` declaration) */
@@ -271,7 +272,7 @@ function hitBadge(count: number, total: number, where = '', hint = ''): string {
   return `<span class="tCount hit t${tier}${big}" title="${title}">${fmtInt(count)}</span>`;
 }
 
-async function renderDirTree() {
+async function renderDirTree(): Promise<void> {
   const box = $('#dirTree');
   const d = dirTrees[dirActive];
   if (!d || !mapper) {
@@ -281,98 +282,105 @@ async function renderDirTree() {
     return;
   }
   const rows = flattenTree(d.roots, (n) => d.open.has(n.va));
-  // Labels are resolved for the ROWS BEING DRAWN (the entry tier first, a node's
-  // children when it is expanded) instead of for every node up front.
-  for (const r of rows) {
-    const n = r.node;
-    if (d.labels.has(n.va)) continue;
-    // the row's text comes from `d.labels`, so it must be filled even when the node
-    // already carries a label
-    n.label = n.label || (await labelFor(n.tag, n.va, n.vaEnd));
-    d.labels.set(n.va, n.label);
-  }
   d.loaded = true;
   // While a search is active the badge is ALWAYS the hit count of this node's realm
   // (`[va, vaEnd)`) — the same number whether the node is open or collapsed. The
   // child count is only shown when there is no search to report on.
   const searching = !!lastResult;
   const totalHits = lastResult?.hits.length ?? 0;
-  box.innerHTML = rows.map((r) => {
-    const n = r.node;
-    const open = d.open.has(n.va);
-    const twisty = r.hasChildren ? (open ? '▾' : '▸') : '·';
-    const hits = searching ? realmHits(n.va, n.vaEnd) : 0;
-    let badge = '';
-    if (searching) {
-      if (hits > 0) badge = hitBadge(hits, totalHits, '此節點範圍內 ', '；點一下顯示這些命中');
-    } else if (r.hasChildren && !open) {
-      badge = `<span class="tCount">${fmtInt(n.children.length)}</span>`;
-    }
-    return `<div class="tRow" data-va="${n.va}">
+  // Rows are mounted a CHUNK at a time (lazy-list): fgdict's tree is 6,966 rows /
+  // ~35k DOM nodes, and building it in one go blocked the main thread for ~390 ms.
+  // `min: mounted(box)` keeps an already opened tree as far open as it was.
+  await renderChunked(box, rows, {
+    // an already open tree stays as far open as the reader had scrolled it
+    min: mounted(box),
+    // Labels are resolved for the ROWS BEING DRAWN (the entry tier first, a node's
+    // children when it is expanded) instead of for every node up front.
+    prepare: async (slice) => {
+      for (const r of slice) {
+        const n = r.node;
+        if (d.labels.has(n.va)) continue;
+        n.label = n.label || (await labelFor(n.tag, n.va, n.vaEnd));
+        d.labels.set(n.va, n.label);
+      }
+    },
+    html: (r) => {
+      const n = r.node;
+      const open = d.open.has(n.va);
+      const twisty = r.hasChildren ? (open ? '▾' : '▸') : '·';
+      const hits = searching ? realmHits(n.va, n.vaEnd) : 0;
+      let badge = '';
+      if (searching) {
+        if (hits > 0) badge = hitBadge(hits, totalHits, '此節點範圍內 ', '；點一下顯示這些命中');
+      } else if (r.hasChildren && !open) {
+        badge = `<span class="tCount">${fmtInt(n.children.length)}</span>`;
+      }
+      return `<div class="tRow" data-va="${n.va}">
       <span class="tTwisty">${twisty}</span>
       <span class="tDot" style="background:${depthColor(n.depth)}"></span>
       <span class="tTag">${escapeHtml(n.tag)}</span>
-      <span class="tName">${escapeHtml(d.labels.get(n.va) || `#${n.index}`)}</span>
+      <span class="tName">${escapeHtml(d.labels.get(n.va) || '#' + n.index)}</span>
       ${badge}
     </div>`;
-  }).join('');
-  paintTreeActive();
-  box.querySelectorAll<HTMLElement>('.tRow').forEach((el) => {
-    const va = Number(el.dataset.va);
-    const node = findNode(d.roots, va);
-    const hasKids = !!node?.children.length;
-    const setOpen = (open: boolean) => {
-      if (open) {
+    },
+    bind: (el, r) => {
+      const node = r.node;
+      const va = node.va;
+      const hasKids = !!node.children.length;
+      const setOpen = (open: boolean) => {
+        if (open) {
+          d.open.add(va);
+        } else {
+          // Collapsing closes the WHOLE branch: otherwise an expanded subtree pops
+          // back open the next time this node is expanded.
+          d.open.delete(va);
+          for (const x of iterNodes(node.children)) d.open.delete(x.va);
+        }
+        void renderDirTree();
+      };
+      const openAll = () => {
+        for (const x of iterNodes(node.children)) d.open.add(x.va);
         d.open.add(va);
-      } else {
-        // Collapsing closes the WHOLE branch: otherwise an expanded subtree pops
-        // back open the next time this node is expanded.
-        d.open.delete(va);
-        for (const x of iterNodes(node?.children ?? [])) d.open.delete(x.va);
-      }
-      void renderDirTree();
-    };
-    const openAll = () => {
-      for (const x of iterNodes(node!.children)) d.open.add(x.va);
-      d.open.add(va);
-      void renderDirTree();
-    };
-    // Hit zones come from `closest`, not `ev.target.classList`: the click may
-    // land on a text node inside the span.
-    //   tTwisty / tDot / tName  開得起來就開，並聯動本文；開著就只關，不動本文
-    //   Ctrl/Cmd + 上述任一       聯動本文時改開一個新的本文分頁
-    //   Alt + tTwisty/tName        展開全部子孫（舊版是 Ctrl）
-    //   tCount                    顯示該節點命中的摘要（不移動本文）
-    el.onclick = (ev) => {
-      const t = ev.target as HTMLElement | null;
-      const onCount = !!t?.closest('.tCount');
-      const onNode = !!t?.closest('.tTwisty') || !!t?.closest('.tDot') || !!t?.closest('.tName');
-      if (!onCount && !onNode) return;
-      const label = node?.label || `VA ${va}`;
-      const wantsNewTab = newTabKey(ev);
+        void renderDirTree();
+      };
+      // Hit zones come from `closest`, not `ev.target.classList`: the click may
+      // land on a text node inside the span.
+      //   tTwisty / tDot / tName  開得起來就開，並聯動本文；開著就只關，不動本文
+      //   Ctrl/Cmd + 上述任一       聯動本文時改開一個新的本文分頁
+      //   Alt + tTwisty/tName        展開全部子孫（舊版是 Ctrl）
+      //   tCount                    顯示該節點命中的摘要（不移動本文）
+      el.onclick = (ev) => {
+        const t = ev.target as HTMLElement | null;
+        const onCount = !!t?.closest('.tCount');
+        const onNode = !!t?.closest('.tTwisty') || !!t?.closest('.tDot') || !!t?.closest('.tName');
+        if (!onCount && !onNode) return;
+        const label = node.label || `VA ${va}`;
+        const wantsNewTab = newTabKey(ev);
 
-      // 點 tCount：顯示該節點命中的摘要（功能二：輸入只更新摘要，這裡才是看命中）
-      if (onCount) {
-        void showNodeHits({ from: va, to: node?.vaEnd ?? va }, label, realmHits(va, node?.vaEnd ?? va));
-        void revealHit(va, label, 1, { newTab: wantsNewTab, mode: 'node' });
-        return;
-      }
+        // 點 tCount：顯示該節點命中的摘要（功能二：輸入只更新摘要，這裡才是看命中）
+        if (onCount) {
+          void showNodeHits({ from: va, to: node.vaEnd }, label, realmHits(va, node.vaEnd));
+          void revealHit(va, label, 1, { newTab: wantsNewTab, mode: 'node' });
+          return;
+        }
 
-      // 聯動本文（點色塊/名稱/開合箭頭都是同一個「打開並聯動」動作）
-      const link = () => void revealHit(va, label, 1, { newTab: wantsNewTab, mode: 'node' });
-      const open = d.open.has(va);
+        // 聯動本文（點色塊/名稱/開合箭頭都是同一個「打開並聯動」動作）
+        const link = () => void revealHit(va, label, 1, { newTab: wantsNewTab, mode: 'node' });
+        const open = d.open.has(va);
 
-      if (altKey(ev) && (t?.closest('.tTwisty') || t?.closest('.tName'))) {
-        // Alt：展開全部子孫（舊版是 Ctrl）；沒有子節點時退回一般開合
-        if (hasKids) { openAll(); link(); return; }
-      }
-      // 可開就開；已開就只關（收合整枝）。無論開或關，點的是節點本身，
-      // 都要聯動本文（點節點名／色塊／箭頭＝同一個「打開並聯動」動作）。
-      if (open) setOpen(false);
-      else if (hasKids) setOpen(true);
-      link();
-    };
+        if (altKey(ev) && (t?.closest('.tTwisty') || t?.closest('.tName'))) {
+          // Alt：展開全部子孫（舊版是 Ctrl）；沒有子節點時退回一般開合
+          if (hasKids) { openAll(); link(); return; }
+        }
+        // 可開就開；已開就只關（收合整枝）。無論開或關，點的是節點本身，
+        // 都要聯動本文（點節點名／色塊／箭頭＝同一個「打開並聯動」動作）。
+        if (open) setOpen(false);
+        else if (hasKids) setOpen(true);
+        link();
+      };
+    },
   });
+  paintTreeActive();
   const head = $('#dirMeta');
   if (head) {
     const t = d.tree;
@@ -381,6 +389,7 @@ async function renderDirTree() {
       + (t.fullText ? '　s="*" 全文' : `　s="${t.scope}"`);
   }
 }
+
 
 /**
  * Depth colour: HSV with the hue rotating over the levels and the value held at
@@ -435,14 +444,9 @@ async function renderFreq() {
   let rows: { from: number; to: number; name: string; count: number; firstHit?: number }[] = [];
   let res: SearchResult | null = null;
   if (!q) {
-    // names are a source walk each, so only the shown slice is resolved
-    const slice = segs.slice(0, 200);
-    await nameSegs(slice, segTag);
-    rows = slice.map((s) => ({ ...s, count: 0 }));
-    meta.textContent = `${fmtInt(segs.length)} 段：未輸入條件，列出段名`
-      + (segs.length > slice.length ? `（僅列前 ${slice.length}）` : '');
-    list.innerHTML = rows.map((s) => `<div class="snippet" data-va="${s.from}"><div><b>${
-      escapeHtml(displayName(s.name))}</b></div></div>`).join('');
+    // names are a source walk each, so they are resolved per mounted chunk
+    rows = segs.map((s) => ({ ...s, count: 0 }));
+    meta.textContent = `${fmtInt(segs.length)} 段：未輸入條件，列出段名（捲動分批載入全部）`;
   } else {
     res = await session.search(q);
     const counts = segs.map((s) => ({ ...s, count: 0, firstHit: -1 }));
@@ -460,34 +464,31 @@ async function renderFreq() {
       }
     }
     const withHits = counts.filter((c) => c.count > 0);
-    const shown = withHits.sort((a, b) => b.count - a.count).slice(0, 200);
-    await nameSegs(shown, segTag);
-    rows = shown;
+    rows = withHits.sort((a, b) => b.count - a.count);
     const total = res.hits.length;
     meta.textContent = `「${q}」${fmtInt(total)} 筆命中，分布於 ${fmtInt(withHits.length)} / ${fmtInt(segs.length)} 段`
-      + `（依命中數排序，0 不顯示${shown.length < withHits.length ? `，僅列前 ${shown.length}` : ''}）`;
-    // The count rides on the SAME line as the name: as its own line it pushed the
-    // name down and hid the ranking (the badge is the tree's graded one).
-    list.innerHTML = shown.map((s) => `<div class="snippet" data-va="${s.from}">
-        <div><b>${escapeHtml(displayName(s.name))}</b> ${hitBadge(s.count, total)}</div></div>`).join('')
-      || '<p class="dim">沒有命中。</p>';
+      + '（依命中數排序，0 不顯示）';
   }
-  list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
-    el.onclick = (ev) => {
-      const va = Number(el.dataset.va);
-      const row = rows.find((h) => h.from === va);
-      const name = (el.querySelector('b')?.textContent ?? '').trim();
+  const total = res?.hits.length ?? 0;
+  // One row per segment, mounted a chunk at a time (yinshun has 6,978 of them): the
+  // list stays complete, the DOM holds only what the reader is looking at.
+  await renderChunked(list, rows, {
+    prepare: (slice) => nameSegs(slice, segTag),
+    html: (s) => `<div class="snippet" data-va="${s.from}">
+        <div><b>${escapeHtml(displayName(s.name))}</b>${s.count > 0 ? ' ' + hitBadge(s.count, total) : ''}</div></div>`,
+    bind: (el, s) => {
+      const name = () => displayName(s.name) || '段';
       // The tab is named after the SEGMENT (法王家) but the jump goes to the first
       // HIT inside it, where the QUERY (法王) is what gets painted.
-      const at = row && row.firstHit !== undefined && row.firstHit >= 0 ? row.firstHit : va;
-      // token = what gets painted (the query), name = the tab label (the segment)
-      void revealHit(at, q || name, 1, { ...(mods(ev) ?? {}), exact: true, phrase: q || undefined, name });
-      // the 摘要 pane follows the row that was clicked, scoped to that segment
-      if (row) void showNodeHits({ from: row.from, to: row.to }, name, row.count, res, q || undefined);
-    };
+      el.onclick = (ev) => {
+        const at = s.firstHit !== undefined && s.firstHit >= 0 ? s.firstHit : s.from;
+        void revealHit(at, q || name(), 1, { ...(mods(ev) ?? {}), exact: true, phrase: q || undefined, name: name() });
+        // the 摘要 pane follows the row that was clicked, scoped to that segment
+        void showNodeHits({ from: s.from, to: s.to }, name(), s.count, res, q || undefined);
+      };
+    },
   });
 }
-
 /**
  * The `s="~…"` tab (西文): the tokens of the database restricted to the code-point
  * range the scope names. With no input it lists them; with input it filters by
@@ -512,22 +513,21 @@ async function renderLatin() {
   const q = ($('#latinQuery') as HTMLInputElement).value.trim();
   const mode = ($('#latinMode') as HTMLSelectElement | null)?.value ?? 'any';
   const hit = q ? inRange.filter((t) => modeMatch(displayName(t.name), q, mode)) : inRange;
-  const shown = hit.slice(0, 600);
   const hex = (n: number) => 'U+' + n.toString(16).toUpperCase().padStart(4, '0');
   meta.textContent = `${hex(from)}–${hex(to)} 範圍內 ${fmtInt(inRange.length)} 個 token`
-    + (q ? `；「${q}」${MODE_NAMES[mode] ?? '任意'} 符合 ${fmtInt(hit.length)} 個` : '')
-    + (shown.length < hit.length ? `（僅列前 ${shown.length}）` : '');
-  list.innerHTML = shown.map((t) => `<div class="snippet" data-i="${t.i}">
-      <div><b>${escapeHtml(displayName(t.name))}</b> <span class="dim">${fmtBytes(t.bytes)}</span></div></div>`).join('')
-    || '<p class="dim">沒有符合的 token。</p>';
-  list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
-    el.onclick = () => {
-      const t = tokens.find((x) => x.i === Number(el.dataset.i));
-      if (t) void showToken(t);
-    };
+    + (q ? `；「${q}」${MODE_NAMES[mode] ?? '任意'} 符合 ${fmtInt(hit.length)} 個` : '（捲動分批載入全部）');
+  if (!hit.length) {
+    list.innerHTML = '<p class="dim">沒有符合的 token。</p>';
+    return;
+  }
+  await renderChunked(list, hit, {
+    html: (t) => `<div class="snippet" data-i="${t.i}">
+      <div><b>${escapeHtml(displayName(t.name))}</b> <span class="dim">${fmtBytes(t.bytes)}</span></div></div>`,
+    bind: (el, t) => {
+      el.onclick = () => void showToken(t);
+    },
   });
 }
-
 /**
  * The segments of a `s="*…"` scope that names one.
  *
@@ -754,44 +754,51 @@ async function renderTerms(): Promise<void> {
     }
   }
 
+  let items: { from: number; name: string; count: number }[] = [];
+  let res: SearchResult | null = null;
   if (!q) {
-    const slice = segs.slice(0, 200);
-    if (usable) for (let i = 0; i < slice.length; i++) slice[i].name = names[i] ?? '';
-    else await nameSegs(slice, tag);
-    meta.textContent = `${fmtInt(segs.length)} 個詞條（<${tag}> 包住的字）：未輸入條件，列出前 ${fmtInt(slice.length)} 個`;
-    list.innerHTML = slice.map((s) => `<div class="snippet" data-va="${s.from}">
-        <div><b>${escapeHtml(displayName(s.name))}</b></div></div>`).join('');
+    items = segs.map((s) => ({ from: s.from, name: '', count: 0 }));
+    meta.textContent = `${fmtInt(segs.length)} 個詞條（<${tag}> 包住的字）：未輸入條件，捲動分批載入全部`;
   } else if (usable) {
-    const shown = hits.slice(0, 300);
+    items = hits;
     meta.textContent = `「${q}」${modeName}：${fmtInt(hits.length)} 個詞條符合`
-      + `（共 ${fmtInt(segs.length)} 個；只比對 <${tag}> 包住的字）`
-      + (hits.length > shown.length ? `；僅列前 ${fmtInt(shown.length)}` : '');
-    list.innerHTML = shown.map((h) => `<div class="snippet" data-va="${h.from}">
-        <div><b>${escapeHtml(displayName(h.name))}</b></div></div>`).join('')
-      || '<p class="dim">沒有符合的詞條。</p>';
+      + `（共 ${fmtInt(segs.length)} 個；只比對 <${tag}> 包住的字）`;
   } else {
     // no string table in this database: fall back to the full-text search + names
-    const res = await session.search(q);
+    res = await session.search(q);
     const counts = countHitsPerSegment(segs, res.hits);
     const withHits = segs.map((s, i) => ({ ...s, count: counts[i] })).filter((s) => s.count > 0)
-      .sort((a, b) => b.count - a.count).slice(0, 200);
-    await nameSegs(withHits, tag);
-    const byName = withHits.filter((s) => displayName(s.name).includes(q));
-    const out = byName.length ? byName : withHits;
+      .sort((a, b) => b.count - a.count);
+    items = withHits;
     meta.textContent = `「${q}」：${fmtInt(withHits.length)} 個詞條有命中（此庫沒有 <${tag}> 字串表，先用內文搜尋）`;
-    list.innerHTML = out.map((s) => `<div class="snippet" data-va="${s.from}">
-        <div class="snippetHead">${fmtInt(s.count)} 筆</div>
-        <div><b>${escapeHtml(displayName(s.name))}</b></div></div>`).join('')
-      || '<p class="dim">沒有命中。</p>';
   }
-  list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
-    // pass the TERM as the token: it is what the status shows and what the painter
-    // marks inside the line
-    const name = (el.querySelector('b')?.textContent ?? tag).trim();
-    el.onclick = (ev) => void revealHit(Number(el.dataset.va), name, 1, { ...(mods(ev) ?? {}), exact: true });
+  if (!items.length) {
+    list.innerHTML = '<p class="dim">沒有符合的詞條。</p>';
+    return;
+  }
+  // Mounted a chunk at a time: fgdict has 22,648 詞條, so the list is complete but
+  // the DOM only ever holds what the reader is looking at.
+  await renderChunked(list, items, {
+    // The indexer already STORED the innerText of every instance as a string table
+    // (caches/詞 for fgdict, 22,648 entries in instance order); a database without it
+    // falls back to a bounded source walk, per mounted chunk only.
+    prepare: (slice, from, to) => {
+      if (usable) {
+        for (let i = from; i < to; i++) slice[i - from].name = names[i] ?? '';
+      } else {
+        return nameSegs(slice, tag);
+      }
+    },
+    html: (h) => `<div class="snippet" data-va="${h.from}">
+        ${h.count > 0 ? `<div class="snippetHead">${fmtInt(h.count)} 筆</div>` : ''}
+        <div><b>${escapeHtml(displayName(h.name))}</b></div></div>`,
+    bind: (el, h) => {
+      // pass the TERM as the token: it is what the status shows and what the painter
+      // marks inside the line
+      el.onclick = (ev) => void revealHit(h.from, displayName(h.name) || tag, 1, { ...(mods(ev) ?? {}), exact: true });
+    },
   });
 }
-
 /** the `頁.n` folio list: label + the VA of that `<頁>` instance (cached) */
 let folioCache: { label: string; va: number }[] | null = null;
 
@@ -846,20 +853,29 @@ async function renderFolio(): Promise<void> {
     hit = entries.filter((e) => e.label.includes(q));
     hit.sort((a, b) => rank(a.label) - rank(b.label));   // exact match first
   }
-  const shown = hit.slice(0, 300);
   meta.textContent = `${fmtInt(entries.length)} 個原書分頁`
-    + (q ? `；「${q}」符合 ${fmtInt(hit.length)} 個` : `（可輸入頁碼，列出前 ${fmtInt(shown.length)} 個）`)
-    + (shown.length < hit.length ? `；僅列前 ${fmtInt(shown.length)}` : '');
-  list.innerHTML = shown.map((e) => `<div class="snippet${q && e.label === q ? ' active' : ''}" data-va="${e.va}">
-      <div><b>${escapeHtml(e.label)}</b></div></div>`).join('')
-    || '<p class="dim">沒有符合的頁碼。</p>';
-  list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
-    const label = (el.textContent ?? '').trim();
-    // 原書分頁 is a milestone, not a hit: jump to the <`頁`> node itself
-    // (mode:'node' gives the page its own realm, so the tab is named 1/2/… and a
-    // repeat click reuses it instead of opening a second tab) and paint nothing.
-    el.onclick = (ev) => void revealHit(Number(el.dataset.va), label, 1, { ...(mods(ev) ?? {}), mode: 'node', noMark: true });
+    + (q ? `；「${q}」符合 ${fmtInt(hit.length)} 個` : '（可輸入頁碼；捲動分批載入全部）');
+  if (!hit.length) {
+    list.innerHTML = '<p class="dim">沒有符合的頁碼。</p>';
+    return;
+  }
+  await renderChunked(list, hit, {
+    html: (e) => `<div class="snippet${q && e.label === q ? ' active' : ''}" data-va="${e.va}">
+      <div><b>${escapeHtml(e.label)}</b></div></div>`,
+    bind: (el, e) => {
+      // 原書分頁 is a milestone, not a hit: jump to the <頁> node itself
+      // (mode:'node' gives the page its own realm, so the tab is named 1/2/… and a
+      // repeat click reuses it instead of opening a second tab) and paint nothing.
+      el.onclick = (ev) => void revealHit(e.va, e.label, 1, { ...(mods(ev) ?? {}), mode: 'node', noMark: true });
+    },
   });
+}
+/** mount every row of the current tree (tests assert on the whole list) */
+export async function growTreeFully(): Promise<number> {
+  const box = $('#dirTree');
+  if (!box) return 0;
+  await growUntil(box, () => !box.querySelector('.moreRows'));
+  return box.querySelectorAll('.tRow').length;
 }
 
 export const setDirLoading = (b: boolean): void => { dirLoading = b; };

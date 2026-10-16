@@ -21,6 +21,8 @@ import { appendTokenRows, renderContainers, renderDocs, renderMeta, renderResour
 import { dirActive, dirError, dirLoading, dirTrees, folioCache, labelTables, loadDirectoryTrees, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, resetScopes, setDirError, setDirLoading, syncTreeTabs, treePhases } from './scopes';
 import { SNIPPET_LIMIT, lastResult, renderSnippets, resetSummary, runSearch, searchSeq, showNodeHits, snippetScope, snippetScopeQuery, snippetShown, summaryResult } from './summary';
 import { cursorNode, lastReveal, nodeLabelOf, paintTreeActive, pinnedHit, resetLink, revealCursorInTree, revealHit, showLine } from './link';
+import { resetTextPane } from './text-pane';
+import { setLogoBase, updateDocLogo } from './logo';
 import { DOCFS_DEFAULT, DOCFS_KEY, autoFitFont, boundsCache, boundsOfRealm, docActive, docFontSized, docOfVa, docSession, docTabs, ensurePage, fitDebugInfo, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, paintAsked, readDocFont, renderDocTabs, resetDocPane, sessionFor, setDocFont, wholeRealm } from './doc-pane';
 import { paintHit } from './paint';
 
@@ -125,6 +127,7 @@ export async function openFile(file: File): Promise<'opened' | 'existing' | 'ref
   // and read-only from here).
   resetScopes();
   resetDocPane();
+  resetTextPane();
   resetLink();
   const T0 = performance.now();
   const io = new BlobIO(file);
@@ -215,10 +218,12 @@ export async function openFile(file: File): Promise<'opened' | 'existing' | 'ref
     console.log('[open]', lastOpen);
     renderMeta(reader, openMs, tokenMs, layoutMs, docsMs);
     void renderResources();
+    setLogoBase(file.name);        // <file>_logo.png lives in this database's resources
     const dbName = h.dbcname || h.dbname;
     if (registerOpenDb(file, dbName).replaced) {
       setStatus(`${dbName}：${file.name} 取代了同名的庫（它的舊分頁已關閉）`, 'info');
     }
+    void updateDocLogo();          // 本文區還空著 → 顯示這個庫自己的 logo
     return 'opened';
   } catch (e) {
     setStatus('開啟失敗：' + (e as Error).message, 'err');

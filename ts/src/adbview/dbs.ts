@@ -16,6 +16,7 @@ import { restorePanes, snapshotPanes } from './panes';
 import { restoreScopes, snapshotScopes } from './scopes';
 import { restoreSummary, snapshotSummary } from './summary';
 import { restoreLink, snapshotLink } from './link';
+import { restoreTextPane, snapshotTextPane } from './text-pane';
 
 export const MAX_DBS = 5;
 
@@ -23,7 +24,7 @@ export interface DbSlot {
   id: number;
   name: string;
   file: File;
-  core: unknown; docPane: unknown; scopes: unknown; summary: unknown; link: unknown; panes: unknown;
+  core: unknown; docPane: unknown; scopes: unknown; summary: unknown; link: unknown; panes: unknown; text: unknown;
 }
 
 export const openDbs: DbSlot[] = [];
@@ -78,6 +79,7 @@ export function saveInto(slot: DbSlot): void {
   slot.summary = snapshotSummary();
   slot.link = snapshotLink();
   slot.panes = snapshotPanes();
+  slot.text = snapshotTextPane();   // 右欄「文字內容」分頁也屬於這個庫
 }
 function loadFrom(slot: DbSlot): void {
   dbLog.push('load ' + slot.name + ' tabs=' + ((slot.docPane as any)?.docTabs?.length ?? -1));
@@ -88,6 +90,7 @@ function loadFrom(slot: DbSlot): void {
   restoreSummary(slot.summary);
   restoreLink(slot.link);
   restorePanes(slot.panes);
+  restoreTextPane(slot.text);
   activeId = slot.id;
   loadedId = slot.id;
 }
@@ -98,7 +101,7 @@ export function registerOpenDb(file: File, name: string): { ok: boolean; reason?
   if (same < 0 && openDbs.length >= MAX_DBS) {
     return { ok: false, reason: '最多同時開啟 ' + MAX_DBS + ' 個資料庫（先關掉一個）' };
   }
-  const slot: DbSlot = { id: ++seq, name, file, core: null, docPane: null, scopes: null, summary: null, link: null, panes: null };
+  const slot: DbSlot = { id: ++seq, name, file, core: null, docPane: null, scopes: null, summary: null, link: null, panes: null, text: null };
   saveInto(slot);
   if (same >= 0) openDbs[same] = slot;
   else openDbs.push(slot);

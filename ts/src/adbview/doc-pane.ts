@@ -262,6 +262,7 @@ function renderDoc(s: DocSession): void {
   if (s.pinned) void paintHit(s.pinned.va, s.pinned.units);
   else if (dt.lineNumbers.length) document.getElementById('L' + nFirst)?.scrollIntoView({ block: 'start' });
   scheduleCursorSync();
+  void updateDocLogo();   // 有文字就把 logo 收起來
 }
 
 /** the .docBody elements that already carry the scroll listener (one per render) */
@@ -335,6 +336,7 @@ function closeDocTab(i: number): void {
     if (strip) strip.innerHTML = '';
     const pager = $('#docPager') as HTMLElement | null;
     if (pager) pager.hidden = true;
+    void updateDocLogo();   // 分頁全關了：本文區又空了
     return;
   }
   docActive = Math.max(0, Math.min(docActive > i ? docActive - 1 : docActive, docTabs.length - 1));
@@ -608,6 +610,7 @@ export function resetDocPane(): void {
 import { DocRow } from './adb';
 
 import { VaPaMapper } from './vapa';
+import { updateDocLogo } from './logo';
 
 /** everything the document pane keeps for ONE database */
 function snapshotDocPane() {

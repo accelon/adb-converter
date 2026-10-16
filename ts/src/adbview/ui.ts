@@ -9,7 +9,7 @@ import { $, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, setStatus
 import { DOCFS_DEFAULT, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, fitDebugInfo, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, renderDocTabs, setDocFont } from './doc-pane';
 import { cursorNode, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
 import { appendTokenRows, renderContainers, renderDocs, renderMeta, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
-import { dirActive, dirError, dirLoading, dirTrees, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, syncTreeTabs, treePhases } from './scopes';
+import { dirActive, dirError, dirLoading, dirTrees, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, syncTreeTabs, treePhases, growTreeFully } from './scopes';
 import { SNIPPET_LIMIT, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 
 // -------------------------------------------------------------------- wiring
@@ -142,7 +142,8 @@ function showTab(name: string, col: 'left' | 'right' = 'left') {
   if (btn && (btn.hidden || getComputedStyle(btn).display === 'none')) return;
   root.querySelectorAll('.tabBtn').forEach((b) => b.classList.toggle('active', (b as HTMLElement).dataset.tab === name));
   root.querySelectorAll('.tabPane').forEach((p) => p.classList.toggle('active', (p as HTMLElement).dataset.tab === name));
-  if (col === 'right' && dirTrees.length) void renderDirTree();   // built lazily
+  // the right column's 文字內容 pane draws itself (text-pane owns that rendering)
+  if (col === 'right' && name === 'text') void renderTextPane();
   // left panes are built on demand: each one walks its own tree/attribute table
   if (col === 'left') {
     if (name === 'freq') void renderFreq();
@@ -350,6 +351,7 @@ function boot() {
     const f = e.dataTransfer?.files?.[0];
     if (f) void openFile(f);
   });
+  initTextPane();   // Ctrl+點樹節點／本文分頁 → 右欄文字內容
   setStatus('請選擇或拖入 .adb 檔案（13j / yinshun 皆可直接開啟）', 'info');
   installDebugApi();
 }
@@ -368,6 +370,8 @@ export function installDebugApi(): void {
     right: document.documentElement.style.getPropertyValue('--right'),
   } }),
   status: () => $('#status').textContent,
+  /** mount every 目錄樹 row (rows are mounted lazily; tests assert on the whole tree) */
+  growTree: growTreeFully,
   setDocFont, autoFitFont, docFont: () => readDocFont(),
   setAdvanced, isAdvanced: () => advanced,
   openBreakdown: () => lastOpen,
@@ -405,6 +409,8 @@ export function installDebugApi(): void {
     docFont: readDocFont(),
     advanced,
     rightTab: $('#colRight .tabBtn.active')?.getAttribute('data-tab') ?? null,
+    text: textState(),
+    logo: logoState(),
     leftTab: $('#colLeft .tabBtn.active')?.getAttribute('data-tab') ?? null,
     treePhases,
     dirActive,
@@ -460,6 +466,8 @@ export function installDebugApi(): void {
 import { loadTree } from './search';
 
 import { MAX_DBS, dbLog, openDbs, setDbHooks } from './dbs';
+import { initTextPane, renderTextPane, textState } from './text-pane';
+import { logoState, updateDocLogo } from './logo';
 
 export { ADV_KEY, COLS_KEY, DEFAULT_COLS, MAX_SIDE, MIN_SIDE, advanced, applyCols, attachSplitter, boot, defaultLeftTab, readAdvanced, readCols, saveCols, setAdvanced, setSide, showTab, toggleSide };
 
@@ -474,6 +482,11 @@ function refreshAll(): void {
   renderDocs();
   renderTokens(reader.classStats(), 0);
   syncTreeTabs();
+  void updateDocLogo();          // 本文區還空著就顯示這個庫自己的 logo
+  // The tree belongs to the database's state, so it is re-shown after a switch. It is
+  // mounted a CHUNK at a time (lazy-list): fgdict's 6,966 rows used to be built
+  // synchronously in the switch (measured 390 ms), now only a screenful is.
+  if (dirTrees.length) void renderDirTree();
   const cur = docSession();
   renderDocTabs(cur);
   if (cur) void ensurePage(cur);
@@ -497,7 +510,9 @@ function clearDbUi(): void {
     const el = $(sel);
     if (el) el.innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
   }
+  resetTextPane();
   $('#docText').innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
+  void updateDocLogo();
   renderDocTabs(null);
   ($('#docTabs') as HTMLElement | null)!.hidden = true;
   setStatus('已關閉資料庫', 'info');

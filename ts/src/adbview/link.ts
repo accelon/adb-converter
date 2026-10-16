@@ -7,6 +7,7 @@
  */
 import { $, displayName, docs, fmtInt, mapper, reader, setStatus } from './viewer';
 import { dirActive, dirTrees, renderDirTree } from './scopes';
+import { growUntil } from './lazy-list';
 import { DOCFS_KEY, autoFitFont, boundsOfRealm, docActive, docFontSized, docOfVa, docSession, docTabs, ensurePage, lastLink, pageBounds, renderDocTabs, sessionFor, sessionForRealm, setDocActive, setDocFontSized, setLastLink, wholeRealm } from './doc-pane';
 
 /** the hit the middle pane is currently showing (VA + its element text) */
@@ -237,7 +238,11 @@ async function revealCursorInTree(): Promise<void> {
     d.open.add(va);
   }
   await renderDirTree();
-  const row = $('#dirTree .tRow[data-va="' + cursorNode.va + '"]') as HTMLElement | null;
+  // rows are mounted a chunk at a time (lazy-list), so the row to reveal may not be
+  // in the DOM yet: mount further chunks until it is (a row deep in a 6,966-row tree)
+  const sel = '#dirTree .tRow[data-va="' + cursorNode.va + '"]';
+  await growUntil($('#dirTree'), () => !!document.querySelector(sel));
+  const row = $(sel) as HTMLElement | null;
   row?.scrollIntoView({ block: 'center' });
 }
 

@@ -178,6 +178,11 @@
   .docPager .mini[aria-disabled="true"] { opacity: .4; cursor: default; }
   .docPager .mini[aria-disabled="true"]:hover { border-color: var(--line); }
   .pagerInfo { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 右欄「文字內容」分頁（純參考的另一段本文）＋ 本文區空白時由 adb 內取出的 logo */
+  .textTabs { display: flex; align-items: stretch; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; flex: 0 0 auto; }
+  .docLogoArea { display: flex; align-items: center; justify-content: center; padding: 26px 10px; }
+  .docLogoArea[hidden] { display: none; }
+  .docLogoArea img { max-width: 62%; max-height: 52vh; opacity: .92; border-radius: 6px; }
   .docLine { display: flex; gap: 10px; padding: 1px 3px; border-radius: 3px; }
   .docLine:hover { background: #262626; }
   .docLine.hitLine { background: #33302a; }
@@ -374,6 +379,7 @@
         <div class="docTabStrip" id="docTabStrip"></div>
         <button class="mini" id="docTabAdd" title="新分頁（Ctrl+點任何聯動處也可以）">＋</button>
       </div>
+      <div class="docLogoArea" id="docLogo" hidden><img id="docLogoImg" alt=""></div>
       <div id="docText"><p class="dim">點左側 token，會自動跳到該 token 在文中的位置並只塗紅它。</p></div>
       <div class="docPager" id="docPager" hidden>
         <button class="mini" id="pagePrev" title="上一頁（網頁分頁，不是原書的葉）">◀ 上一頁</button>
@@ -388,12 +394,22 @@
   <section class="col" id="colRight">
     <div class="tabs" id="tabsRight">
       <button class="tabBtn active" data-tab="sum">摘要</button>
+      <button class="tabBtn" data-tab="text" hidden>文字內容</button>
       <button class="tabBtn advOnly" data-tab="meta">META</button>
       <button class="tabBtn advOnly" data-tab="capacity">容量</button>
       <button class="tabBtn advOnly" data-tab="docs">文件</button>
       <button class="tabBtn advOnly" data-tab="images">圖片</button>
     </div>
     <div class="pane grow tabs-host" id="paneRight">
+      <div class="tabPane" data-tab="text">
+        <div class="textTabs" id="textTabs"></div>
+        <div id="textBody" class="scrollArea"></div>
+        <div class="docPager" id="textPager" hidden>
+          <button class="mini" id="textPrev" title="上一頁（網頁分頁）">◀ 上一頁</button>
+          <span class="pagerInfo" id="textPageInfo"></span>
+          <button class="mini" id="textNext" title="下一頁（網頁分頁）">下一頁 ▶</button>
+        </div>
+      </div>
       <div class="tabPane active" data-tab="sum">
         <div id="searchMeta" class="note"></div>
         <div id="searchList" class="scrollArea"></div>

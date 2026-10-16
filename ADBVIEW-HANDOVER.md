@@ -32,6 +32,20 @@
 >
 > **最終**：13j **67/67**、yinshun **75/75**、fgdict **78/78**。
 
+> **本輪（2026-10 後半，多庫之後）依作者五點回報改了：** §3.4／§3.5 有完整說明。
+> 一）**切換資料庫變快**：yinshun→fgdict 的同步成本 **381–445 ms → 4 ms**（fgdict→yinshun 34–44 → 3 ms），
+> 原因是右欄切分頁時重建了（左欄的）6,966 列目錄樹 —— 修好觸發點＋列改成**分批掛上 DOM**（`lazy-list.ts`），
+> 目錄樹／名詞／頻次／原書分頁／西文都只在需要時掛一屏。
+> 二）**切換 adb 時樹的狀態不丟**：展開集合與標籤住在 `DirTree`（隨 slot 保存），DOM 只是它的投影；
+> probe 實測 yinshun 展開一本書（44→47 列）→ 切到 fgdict → 切回來仍是 47 列且同一個節點開著。
+> 三）**本文區空白時顯示資料庫自己的 logo**：從 adb 的 `resources` 取 `<dbname>_logo.*`（yinshun 有，
+> 320×480；13j／fgdict 沒有就不顯示）。
+> 四）**右欄「文字內容」分頁**（新模組 `text-pane.ts`）：Ctrl+點樹節點＝把該段文字送到右欄（中間不動）、
+> Ctrl+點本文分頁＝複製到右欄、Shift+點＝搬到右欄；**右欄純參考，不連動左樹**。
+> 五）文字內容頁刻意獨立成模組 —— 下一步要改的是「把行內 XML 標籤變成 HTML」，只會動 `renderTextPane()`。
+>
+> **測試**：13j **73/73**、yinshun **82/82**、fgdict **85/85**；`check-map-ids.ts` 79/79。
+
 ---
 
 ## 0. 設計原則：先查 adb 內已有的資料，不要硬幹（遇到新需求先讀這節）
@@ -233,6 +247,70 @@ UI：`#dbAdd`＝固定在 chip 列左邊的「＋」（`#file` 選完就隱藏�
 
 **待辦**：`file-protocol-test.ts` 的多庫回歸、關閉 active 時挑選下一個的策略（目前取陣列最後一個）。
 
+### 3.4 切換資料庫的「慢」＝一次把幾千列塞進 DOM（2026-10，已修）
+
+作者回報「從 yinshun 切到 fgdict 明顯慢，fgdict→yinshun 很快」。量測（`build/probe-switch.ts`，
+在頁面裡用兩次 `performance.now()` 夾住 chip 的 click，量的是**同步**成本）：
+
+| 方向 | 修前 | 修後 |
+|---|---|---|
+| fgdict → yinshun | 34–44 ms | 2–4 ms |
+| yinshun → fgdict | **381–445 ms** | 2–4 ms |
+
+原因不是「名詞／全文節點太多」（那兩頁本來就只列 200／300 列），而是 **目錄樹**：
+`showTab(name,'right')` 裡有一行 `if (col === 'right' && dirTrees.length) void renderDirTree();`
+——**任何右欄分頁被切換都會重建（左欄的）目錄樹**，而 fgdict 的樹是 6,966 列／34,837 個 DOM 節點，
+全部同步建在 click 的處理函式裡（一次 `innerHTML`）。切換資料庫時 `refreshAll()` 一定會呼叫
+`showTab(rt,'right')`，所以每次切到 fgdict 都要付這 390 ms。
+
+修法兩層：
+
+1. **觸發點修對**：目錄樹改成在 `refreshAll()` 裡依「左欄 `dir` 分頁是否顯示」重建，右欄切換不再碰它。
+2. **列分批掛上**（新模組 `lazy-list.ts`）：`renderChunked(box, items, { html, bind, prepare, min })`
+   先掛 `CHUNK = 200` 列，捲到接近底部（或點「還有 N 列…」）再掛下一批。
+   `prepare(slice, from, to)` 只為**即將顯示的列**做非同步工作（`labelFor`、`nameSegs`、
+   `caches/詞` 的字串表）；`growUntil(box, pred)` 給「必須捲到某一列」用（🌲 展開樹）。
+   目錄樹用 `min: mounted(box)`：展開／收合後仍保留讀者已經捲出來的那麼多列。
+
+同一套分批掛列也用在 名詞（fgdict 22,648 詞條）、頻次（yinshun 6,978 段）、原書分頁（6,959 頁）、
+西文（碼位範圍內的 token）：清單仍然是**完整**的，只是 DOM 一次只放一屏。
+診斷：`state().dirRows`（現在掛了幾列）＋ `#dirTree .moreRows` 的提示；測試端有
+`window.__adbview.growTree()` 先把整棵樹掛完再斷言（見 `file-protocol-test.ts` 的「目錄樹分批掛上 DOM」）。
+
+**代價與界線**：`#dirTree` 的列不再保證全部都在 DOM。要數整棵樹的斷言要先 `growTree()`；
+`paintTreeActive()` 只會亮**已掛上**的列。fgdict 沒有 `s="*"`，它的目錄樹面板是隱藏的，
+所以「樹的形狀」斷言（幾本書／逐層展開）在 fgdict 用 `dirTabShown` 跳過（13j／yinshun 完整覆蓋）。
+
+**樹的狀態在切換時不會丟**：展開集合 `d.open`、已解出的標籤 `d.labels`、`parentOf` 都在
+`DirTree` 物件裡，而 `DirTree` 由 `snapshotScopes/restoreScopes` 隨資料庫的 slot 一起保存
+（DOM 只是從 `d.open` 重畫出來的結果）。所以切走再切回來，樹還是原本展開的樣子。
+
+### 3.5 右欄「文字內容」＋ 本文區的 logo（2026-10）
+
+**右欄「文字內容」＝第二個閱讀窗格（純參考）**，新模組 `text-pane.ts`。作者指定的操作：
+
+| 動作 | 結果 |
+|---|---|
+| Ctrl+點 **樹節點**（含箭頭） | 該節點的文字放到右欄「文字內容」；**中間本文完全不動** |
+| Ctrl+點 **本文分頁**（`#docTabStrip`） | 複製到右欄並顯示（中間那個分頁留著） |
+| Shift+點 **本文分頁** | 搬到右欄（中間讓出那一個分頁） |
+| 在右欄捲動／點 | **不連動左邊的樹**（只有中間的本文驅動樹與游標） |
+
+* 這些點擊用**捕捉階段**的 listener（`initTextPane()`，掛在 `#dirTree` 與 `#docTabStrip` 上）：
+  Ctrl/Shift 的點擊被它 `stopPropagation` 吃掉，所以樹列自己的 handler（`scopes.ts` 的 `bind`）
+  與本文分頁的 handler 都不會看到那個點擊。
+* 右欄多一個分頁鍵 `[data-tab=text]`，**有文字分頁時才出現**（`syncTextTab()`）；
+  分頁籤在 `#textTabs`、內容在 `#textBody`、翻頁在 `#textPager`（`#textPrev`／`#textPageInfo`／`#textNext`）。
+* **文字內容頁刻意獨立成模組**：`renderTextPane()` 是**唯一**決定「一行長什麼樣」的地方，
+  目前是純文字（`mapper.docText` ＋ 行表），下一步要把行內的 XML 標籤變成 HTML —— 那時只改這裡。
+* 右欄分頁也住在資料庫的 slot 裡（`snapshotTextPane/restoreTextPane`），關掉資料庫就一起收掉。
+
+**本文區空白時的 logo**：新模組 `logo.ts`。`#docText` 裡沒有任何 `.docLine` 時，顯示這個資料庫
+**自己在 adb 內的**圖：`resources` 容器裡名稱符合 `<dbname>_logo.*` 或 `<檔名>_logo.*` 的那一筆
+（yinshun 是 `yinshun_logo.png`，320×480）。圖用 `resourceBytes(i)` 直接取（resources 不壓縮）
+並以 blob URL 顯示；沒有這個資源的庫（13j、fgdict）就什麼都不顯示。`state().logo` 有
+`{ name, at, shown }` 可診斷。開檔時 `setLogoBase(file.name)` 讓檔名也成為候選。
+
 ### 3.1 分區名稱與 id（溝通時直接用；示意圖 [adbview-map.html](adbview-map.html)）
 
 | 統一稱呼 | 選擇器 | 備註 |
@@ -241,15 +319,16 @@ UI：`#dbAdd`＝固定在 chip 列左邊的「＋」（`#file` 選完就隱藏�
 | 三欄容器 | `#main` | `--left` 25fr・`--center` 50fr・`--right` 25fr，6px 分隔線 |
 | 左欄／中欄／右欄 | `#colLeft`／`#colMid`／`#colRight` | `#splitLeft`／`#splitRight` 拖到 15% 以下即收合 |
 | 左欄分頁列／窗格區 | `#tabsLeft`／`#paneLeft` | 分頁鍵＝`[data-tab=dir\|terms\|freq\|folio\|latin\|token]` |
-| 右欄分頁列／窗格區 | `#tabsRight`／`#paneRight` | `[data-tab=sum\|meta\|capacity\|docs\|images]` |
+| 右欄分頁列／窗格區 | `#tabsRight`／`#paneRight` | `[data-tab=sum\|text\|meta\|capacity\|docs\|images]`（`text`＝文字內容，有文字分頁才出現） |
 | 目錄樹本體 | `#dirTree` | 面板＝`#paneLeft [data-tab=dir]` |
 | 名詞／頻次／原書分頁／西文清單 | `#termsList`／`#freqList`／`#folioList`／`#latinList` | 各自的 meta＝`#termsMeta` 等 |
 | 位置篩選（名詞／西文共用一套） | `#termsMode`／`#latinMode` | 任意／開頭／中間／結尾；`modeMatch()` 一份實作（`scopes.ts`） |
 | 摘要清單 | `#searchList` | 面板＝`#paneRight [data-tab=sum]` |
 | 文件工具列 | `#docBar` | `#treeReveal`(🌲)・`#docTitle`・字級 `#fsDown`/`#fsValue`/`#fsUp`/`#fsAuto`/`#fsReset` |
 | 本文分頁籤條 | `#docTabStrip`（父層 `#docTabs`，另有 `#docTabAdd`） | 分頁 ≥ 1 才顯示 |
-| 本文 | `#docText` | 行元素 `L<行號>`、命中行 `.hitLine` |
+| 本文 | `#docText` | 行元素 `L<行號>`、命中行 `.hitLine`；空白時旁邊顯示 `#docLogo`→`#docLogoImg` |
 | 分頁列 | `#docPager` | `#pagePrev`／`#pageInfo`／`#pageNext`；分頁 ≥ 2 才顯示 |
+| 右欄文字內容 | `#textTabs`／`#textBody`／`#textPager` | 分頁籤／文字／翻頁（`#textPrev`／`#textPageInfo`／`#textNext`） |
 
 沒有 id 的 `[data-tab]` 面板，一律用 `#paneLeft`／`#paneRight` 當前綴指稱（`showTab(name, 'left' | 'right')` 用的鍵就是它）。
 
@@ -336,9 +415,9 @@ DOM 列數也固定。
 
 | 測試 | 結果 |
 |---|---|
-| `file-protocol-test.ts`（13j） | **68/68** |
-| `file-protocol-test.ts`（yinshun） | **77/77** |
-| `file-protocol-test.ts`（fgdict） | **80/80** |
+| `file-protocol-test.ts`（13j） | **73/73** |
+| `file-protocol-test.ts`（yinshun） | **82/82** |
+| `file-protocol-test.ts`（fgdict） | **85/85** |
 | `test/tree.test.ts` | 40/40 |
 | `test/search.test.ts`（13j） | 19/19 |
 | `test/adbview.test.ts` / `test/vapa.test.ts` | 22/22、13/13 |
@@ -349,6 +428,13 @@ DOM 列數也固定。
 * 點節點（開得起來就開）並聯動本文；Ctrl+點另開本文分頁；Ctrl+點箭頭不再爆開；
   Alt+點節點名展開全部子孫；切換分頁不會再生分頁
 * 本文分頁：每頁 ≤200 行、只有一頁時分頁列隱藏、多頁時上一頁／下一頁真的換頁且翻得回去
+* **本輪新增**：本文區空白時顯示資料庫自己的 logo（沒有這個資源就保持隱藏）
+* **本輪新增**：目錄樹分批掛上 DOM（首批 ≤200 列、有「還有 N 列」提示、`growTree()` 掛完＝全部）
+* **本輪改寫**：Ctrl+點樹節點＝送右欄文字內容且**中間本文不動**（含箭頭；原本是開新分頁）；
+  Alt+點仍是展開全部子孫
+* **本輪新增**：Ctrl+點本文分頁＝複製到右欄、Shift+點＝搬到右欄（中間讓出）、右欄捲動不連動左樹
+* fgdict 沒有 `s="*"`（目錄樹面板隱藏）：樹的形狀斷言（幾本書／逐層展開）用 `dirTabShown` 跳過，
+  由 13j／yinshun 覆蓋
 
 ## 7. 待辦事項
 

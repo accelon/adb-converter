@@ -127,6 +127,11 @@
         </div>
       </div>
 
+      <div class="box solid">
+        <div class="head"><span class="rname">本文區空白時的 logo</span><span class="rid">#docLogo</span><span class="cond">本文沒有任何內容時顯示</span></div>
+        <div class="dim">圖從 adb 自己的 <span class="sel">resources</span> 取出（<span class="sel">&lt;dbname&gt;_logo.png</span>，例：yinshun_logo.png）→ <span class="rid">#docLogoImg</span></div>
+      </div>
+
       <div class="box solid" style="flex:1">
         <div class="head"><span class="rname">本文</span><span class="rid">#docText</span></div>
         <div class="dim">每次聯動只載一頁（<span class="sel">PAGE_LINES = 200</span> 行）；命中用 <span class="sel">mark.hitLine</span> 塗紅。</div>
@@ -151,6 +156,7 @@
         <div class="head"><span class="rname">右欄分頁列</span><span class="rid">#tabsRight</span></div>
         <div class="parts">
           <span class="chip"><span class="sel">[data-tab=sum]</span> 摘要</span>
+          <span class="chip"><span class="sel">[data-tab=text]</span> 文字內容 <span class="cond">有文字分頁時顯示</span></span>
           <span class="chip"><span class="sel">[data-tab=meta]</span> META <span class="cond">進階</span></span>
           <span class="chip"><span class="sel">[data-tab=capacity]</span> 容量 <span class="cond">進階</span></span>
           <span class="chip"><span class="sel">[data-tab=docs]</span> 文件 <span class="cond">進階</span></span>
@@ -162,6 +168,7 @@
         <div class="head"><span class="rname">右欄窗格區</span><span class="rid">#paneRight</span></div>
         <div class="parts">
           <span class="chip"><span class="sel">[data-tab=sum]</span> <span class="rid">#searchMeta</span> <span class="rid">#searchList</span> <span class="rid">#searchMore</span></span>
+          <span class="chip"><span class="sel">[data-tab=text]</span> <span class="rid">#textTabs</span> <span class="rid">#textBody</span> <span class="rid">#textPager</span>（<span class="rid">#textPrev</span> <span class="rid">#textPageInfo</span> <span class="rid">#textNext</span>）</span>
           <span class="chip"><span class="sel">[data-tab=meta]</span> <span class="rid">#meta</span> <span class="rid">#containers</span></span>
           <span class="chip"><span class="sel">[data-tab=capacity]</span> <span class="rid">#capacity</span></span>
           <span class="chip"><span class="sel">[data-tab=docs]</span> <span class="rid">#docs</span></span>
@@ -201,12 +208,14 @@
   <tr><td>本文分頁列</td><td><code>#docTabs</code> → <code>#docTabStrip</code> <code>#docTabAdd</code></td><td>Ctrl＋任何聯動＝另開分頁；label 優先顯示詞名／節點名</td></tr>
   <tr><td>本文</td><td><code>#docText</code></td><td>只放當前頁的 200 行；行元素 id 為 <span class="sel">L&lt;行號&gt;</span></td></tr>
   <tr><td>分頁列</td><td><code>#docPager</code> → <code>#pagePrev</code> <code>#pageInfo</code> <code>#pageNext</code></td><td>頁＝網頁分頁（200 行），不是原書的葉</td></tr>
+  <tr><td>空白時的 logo</td><td><code>#docLogo</code> → <code>#docLogoImg</code></td><td>本文區沒有 <span class="sel">.docLine</span> 時顯示資料庫自己的 logo（adb 的 <span class="sel">resources</span>）</td></tr>
 </table>
 
 <h2>4. 右欄</h2>
 <table>
   <tr><th>分頁名</th><th>鍵</th><th>面板內的 id</th><th>行為</th></tr>
   <tr><td>摘要</td><td><code>sum</code></td><td><code>#searchMeta</code> <code>#searchList</code> <code>#searchMore</code></td><td>搜尋／點 <code>tCount</code> 的命中清單；聯動時強制打開右欄</td></tr>
+  <tr><td>文字內容</td><td><code>text</code></td><td><code>#textTabs</code> <code>#textBody</code> <code>#textPager</code></td><td>Ctrl+點樹節點／Ctrl+點本文分頁＝複製到這裡、Shift+點＝搬過來；<b>純參考，不連動左樹</b></td></tr>
   <tr><td>META</td><td><code>meta</code></td><td><code>#meta</code> <code>#containers</code></td><td rowspan="4"><span class="cond">進階模式</span>才出現</td></tr>
   <tr><td>容量</td><td><code>capacity</code></td><td><code>#capacity</code></td></tr>
   <tr><td>文件</td><td><code>docs</code></td><td><code>#docs</code></td></tr>
@@ -232,6 +241,7 @@
   <tr><td>本文分頁籤條</td><td><code>#docTabStrip</code></td><td>父層 <code>#docTabs</code></td></tr>
   <tr><td>本文</td><td><code>#docText</code></td><td>單行 id＝<span class="sel">L&lt;行號&gt;</span>、命中行 <span class="sel">.hitLine</span></td></tr>
   <tr><td>分頁列</td><td><code>#docPager</code></td><td><code>#pageInfo</code> 顯示「第 n / m 頁　行 a–b」</td></tr>
+  <tr><td>右欄文字內容面板</td><td><code>#paneRight [data-tab=text]</code></td><td>內含 <code>#textTabs</code>（分頁籤）與 <code>#textBody</code>（文字）</td></tr>
 </table>
 
 <h2>6. 顯示／隱藏與尺寸規則</h2>
@@ -240,7 +250,9 @@
   <li><b>進階模式</b>：<code>#advToggle</code> 為 <span class="sel">body</span> 加上 <span class="sel">.advanced</span>；所有 <span class="sel">.advOnly</span>（token／META／容量／文件／圖片）才出現。</li>
   <li><b>左欄分頁的存在性</b>：由 <code>syncTreeTabs()</code> 依 <span class="sel">s=</span> 種類決定（沒有對應的 <span class="sel">s=</span> 就 <span class="cond">hidden</span>）；目前頁若被隱藏會自動落到第一個存在的頁。</li>
   <li><b>窄畫面</b>：<span class="sel">@media (max-width: 900px)</span> 時三欄變單欄，只剩 <code>#colMid</code>。</li>
-  <li><b>條件元素</b>：<code>#docTabs</code> 在分頁 ≥ 1 時顯示、<code>#docPager</code> 在分頁 ≥ 2 時顯示。</li>
+  <li><b>條件元素</b>：<code>#docTabs</code> 在分頁 ≥ 1 時顯示、<code>#docPager</code>／<code>#textPager</code> 在分頁 ≥ 2 時顯示、
+    <code>#docLogo</code> 在本文區沒有任何 <span class="sel">.docLine</span> 且該庫有 logo 資源時顯示、
+    右欄 <span class="sel">[data-tab=text]</span> 分頁在有一個以上的文字分頁時才出現。</li>
   <li><b>面板標題</b>：分頁名目前由 <span class="sel">s=</span> 推導（<span class="sel">syncTreeTabs</span>）；規格上應取 <code>&lt;樹&gt;…&lt;/樹&gt;</code> 的元素內容，尚未實作（HANDOVER §7 P1 第 4 項）。</li>
 </ul>
 

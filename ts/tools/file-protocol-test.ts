@@ -182,6 +182,24 @@ try {
   }))()`);
   ok('UI rendered from the local file', Number(dom.rows) >= 200 && String(dom.meta).length > 10, JSON.stringify(dom).slice(0, 160));
 
+  // 本文區還空著時，顯示這個資料庫自己在 adb 裡的 logo（resources 的 <dbname>_logo.png）：
+  // 有這個資源就必須真的畫出來，沒有就要保持隱藏（13j／fgdict 都沒有）。
+  const logo = await cdp.eval<{ name: string; shown: boolean; w: number }>(`
+    (async () => {
+      for (let i = 0; i < 30; i++) {
+        const img = document.getElementById('docLogoImg');
+        if (img && img.naturalWidth > 0) break;
+        await new Promise(r => setTimeout(r, 200));
+      }
+      const st = window.__adbview.state();
+      const img = document.getElementById('docLogoImg');
+      return { name: st.logo.name, shown: !document.getElementById('docLogo').hidden, w: img ? img.naturalWidth : 0 };
+    })()
+  `);
+  ok('本文區空白時顯示資料庫自己的 logo（resources 裡的 <dbname>_logo.png）',
+    logo.name ? (logo.shown && logo.w > 0) : !logo.shown,
+    logo.name ? logo.name + ' ' + logo.w + 'px 顯示中' : '此庫沒有 logo 資源，保持隱藏');
+
   // 開檔後：預設不是進階模式 —— 沒有 posting list 面板、沒有 token 分頁
   const initial = await cdp.eval<{ postingGone: boolean; adv: boolean; leftTab: string; rightTab: string; tokenHidden: boolean }>(`
     (() => {
@@ -204,6 +222,10 @@ try {
   ok('預設模式：左欄只有搜尋、右欄第一分頁是目錄',
     initial.adv === false && !!initial.firstTab && initial.leftTab === initial.firstTab && initial.tokenHidden,
     JSON.stringify(initial));
+
+  // 目錄樹只存在於宣告了 s="*" 的庫（fgdict 沒有，它落在名詞）：在 fgdict 這棵樹是隱藏
+  // 面板，所以「樹的形狀」斷言（幾本書、逐層展開）只在看得到它的庫上跑。
+  const dirTabShown = await cdp.eval<boolean>("getComputedStyle(document.querySelector('#colLeft .tabBtn[data-tab=\"dir\"]')).display !== 'none'");
 
   // isolate: bisect where the token-click path hangs (printed, not asserted)
   const iso1 = await cdp.eval<string>("(() => { window.__adbview.setAdvanced(true); window.__adbview.showTab('token','left'); return 'iso1 ok'; })()");
@@ -510,13 +532,28 @@ try {
       };
     })()
   `);
-  ok('目錄樹狀態可用', dirState.html > 100 && dirState.dirRows > 0,
+  ok('目錄樹狀態可用', !dirTabShown || (dirState.html > 100 && dirState.dirRows > 0),
     `${dirState.dirRows} 列在 DOM，pane ${dirState.pane}，loading=${dirState.loading}｜${dirState.meta}${dirState.err ? ' ERR ' + dirState.err.slice(0, 120) : ''}`);
-  ok('目錄樹列出 <樹> 的節點', tree.rows >= 2,
+  ok('目錄樹列出 <樹> 的節點', !dirTabShown || tree.rows >= 2,
     `${tree.rows} 列（twisty ${tree.twisty}），第一層標籤 ${JSON.stringify(tree.labels)}｜${tree.meta}`);
   const dirState2 = await cdp.eval<{ tiers: string[]; nodes: number; roots: number }>(`window.__adbview.state().dirInfo`);
   ok('預設目錄＝第一個有 t= 的 <樹>', dirState2?.tiers?.length > 0 && dirState2.nodes > 0,
     `${dirState2?.roots} 根 / ${dirState2?.nodes} 節點，層級 ${JSON.stringify(dirState2?.tiers)}`);
+
+  // 目錄樹的列是「捲到底才掛上 DOM」（lazy-list）：先確認機制，再把整棵樹掛完，
+  // 因為後面幾組斷言要看全部（fgdict 6,966 列，全掛上是 3.5 萬個節點）。
+  const lazyTree = await cdp.eval<{ first: number; more: string; all: number }>(`
+    (async () => {
+      const box = document.getElementById('dirTree');
+      const more = box.querySelector('.moreRows');
+      const first = box.querySelectorAll('.tRow').length;
+      const all = more ? await window.__adbview.growTree() : first;
+      return { first, more: more ? more.textContent.slice(0, 40) : '', all };
+    })()
+  `);
+  ok('目錄樹分批掛上 DOM（捲到底才載入更多）',
+    lazyTree.first <= 200 && (lazyTree.more ? lazyTree.all > lazyTree.first : lazyTree.all === lazyTree.first),
+    `首批 ${lazyTree.first} 列／全部 ${lazyTree.all} 列${lazyTree.more ? '（' + lazyTree.more + '）' : '（一屏裝得下）'}`);
 
   // 逐層展開：書 → 章（13j 的 `t="章,節,項."` 尾點讓章成為末層，所以只有兩層；
   // yinshun 的 t= 沒有尾點，章底下還有節，可以展開三層）
@@ -549,18 +586,18 @@ try {
   `);
   // a database without s="*" has no 目錄 pane at all (fgdict): its tree is a
   // page-folio index, so the chapter-expansion check does not apply
-  const dirTabShown = await cdp.eval<boolean>("getComputedStyle(document.querySelector('#colLeft .tabBtn[data-tab=\"dir\"]')).display !== 'none'");
   ok('目錄樹可逐層展開（書 → 章→ 節）',
     !dirTabShown || (depthTest.afterBook > depthTest.bookRows && (!depthTest.deeper || depthTest.afterChapter > depthTest.afterBook)),
     `收合 ${depthTest.bookRows} 列 → 展開書 ${depthTest.afterBook} 列`
     + `${depthTest.deeper ? ` → 展開章 ${depthTest.afterChapter} 列` : '（此庫此書的章為末層）'}`
     + `；章標籤 ${JSON.stringify(depthTest.chapterLabels)}；層級 ${depthTest.levels}`);
-  ok('第一層子節點有名字', depthTest.chapterLabels.every((s) => !!s && s.trim().length > 0),
+  ok('第一層子節點有名字', !dirTabShown || depthTest.chapterLabels.every((s) => !!s && s.trim().length > 0),
     JSON.stringify(depthTest.chapterLabels));
 
   // 每一本書都能展開（只有第一本帶 t=，其餘用標籤層級預設），且點書（的節點記號）會跳到該 <書> 所在行
   const everyBook = await cdp.eval<{ expandable: number; total: number; clicked: string; line: string | null; status: string; bookLabels: string[] }>(`
     (async () => {
+      await window.__adbview.growTree();     // 列是 lazy 掛上的：這一組要看整棵樹
       const rows = () => [...document.querySelectorAll('#dirTree .tRow')];
       const bookRows = rows().filter((r) => r.querySelector('.tTag')?.textContent === '書');
       // a row is expandable when it shows a twisty at all (▸ collapsed / ▾ open)
@@ -593,18 +630,18 @@ try {
   const fallbacks = everyBook.bookLabels.filter((s) => /^#\d+$/.test(s)).length;
   // the book count belongs to the database (13j 13, yinshun 44, fgdict 7)
   const wantBooks = ({ '13j': 13, yinshun: 44, fgdict: 7 } as Record<string, number>)[everyBook.db ?? ''] ?? 1;
-  ok('每本書都有名字', everyBook.bookLabels.length >= wantBooks && everyBook.bookLabels.every((s) => !!s && !!s.trim()),
+  ok('每本書都有名字', !dirTabShown || (everyBook.bookLabels.length >= wantBooks && everyBook.bookLabels.every((s) => !!s && !!s.trim())),
     `${everyBook.bookLabels.length} 本（${everyBook.db}），其中 ${fallbacks} 個用編號 fallback`);
   ok('主要書名都解析出來（前 10 本無 #N fallback）',
-    everyBook.bookLabels.slice(0, 10).every((s) => !!s && !/^#\d+$/.test(s)),
+    !dirTabShown || everyBook.bookLabels.slice(0, 10).every((s) => !!s && !/^#\d+$/.test(s)),
     `${JSON.stringify(everyBook.bookLabels.slice(0, 5))} … ${JSON.stringify(everyBook.bookLabels.slice(-2))}`);
   // A book whose range holds no child tier at all is legitimately a leaf, so the
   // requirement is that the great majority expand (13j 13/13 after the inherited
   // slot fix; yinshun 43/44).
   ok('絕大多數書都能展開（範圍內沒有子層的書是葉節點）',
-    everyBook.expandable >= everyBook.total - 1,
+    !dirTabShown || everyBook.expandable >= everyBook.total - 1,
     `${everyBook.expandable}/${everyBook.total} 本可展開`);
-  ok('點目錄節點跳到該位置的本文', !!everyBook.line, `點「${everyBook.clicked}」→ 行 ${everyBook.line}；${everyBook.status}`);
+  ok('點目錄節點跳到該位置的本文', !dirTabShown || !!everyBook.line, `點「${everyBook.clicked}」→ 行 ${everyBook.line}；${everyBook.status}`);
 
   // 目錄節點顯示「該節點 realm 內的命中數」（用 posting 的 VA 與節點範圍算）
   const realm = await cdp.eval<{ total: number; badges: number[]; first: number; rows: number }>(`
@@ -667,13 +704,16 @@ try {
     && badgeClick.minVa >= badgeClick.from && badgeClick.maxVa < badgeClick.to,
     `徽章 ${badgeClick.badge}、${badgeClick.snippets} 筆摘要落在 [${badgeClick.from}, ${badgeClick.to})｜${badgeClick.meta}`);
 
-  // 聯動本文的動作：Ctrl+點 → 開新的本文分頁；Alt+點 → 展開全部子孫（舊版是 Ctrl）
+  // 聯動本文的動作：Ctrl+點樹節點 → 送到右欄「文字內容」（中間本文不動，2026-10 作者指定）；
+  // Alt+點 → 展開全部子孫（舊版是 Ctrl）
   const clicks = await cdp.eval<{
     tabNew: number; tabSame: number; tabAfterPages: number; altExpands: boolean;
-    nodeOpens: boolean; ctrlOld: boolean; ctrlRows: number; ctrlBook: string; ctrlWasOpen: boolean;
+    nodeOpens: boolean; ctrlKept: boolean; ctrlToText: boolean; ctrlRows: number; ctrlBook: string; ctrlWasOpen: boolean;
+    textNew: number; textLines: number; textTab: string | null;
     before: number; after: number; label: string; dotLine: string | null; dotStatus: string;
   }>(`
     (async () => {
+      await window.__adbview.growTree();     // 列是 lazy 掛上的：這一組要看整棵樹
       const rows = () => [...document.querySelectorAll('#dirTree .tRow')];
       const books = () => rows().filter((r) => r.querySelector('.tTag')?.textContent === '書');
       const spec = () => window.__adbview.state().docTabs.length;
@@ -697,32 +737,44 @@ try {
       const after = rows().length;
       const tabSame = spec() - beforeTabs;
       const nodeOpens = after > before && !!document.querySelector('#docText .docLine.hitLine');
-      // Ctrl+點：聯動本文時開一個新的本文分頁
+      // Ctrl+點：把該節點的文字放到右欄「文字內容」；中間本文完全不動
       const beforeCtrlTabs = spec();
+      const beforeText = window.__adbview.state().text.tabs.length;
       const target = books()[books().length - 1];
-      const ctrlCount = beforeCtrlTabs;
-      void ctrlCount;
       target.querySelector('.tName').dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true }));
-      // The link is ASYNC and can be slow: this is the last book, so its first page
-      // decodes blocks at the very end of the 24 MB database. A fixed 1400 ms sleep
-      // read the tab count before the tab existed (measured: the same click landed
-      // 1.2 s later, during the next step). Poll for it instead.
-      for (let i = 0; i < 40 && spec() === beforeCtrlTabs; i++) await new Promise((r) => setTimeout(r, 250));
-      const tabNew = spec() - beforeCtrlTabs;
-      // Ctrl+點箭頭不該展開全部子孫：把一本書打開後 Ctrl+點它的箭頭，應該收合
-      const b2 = books()[2];
-      if (b2.querySelector('.tTwisty').textContent.trim() === '▸') {
-        b2.querySelector('.tTwisty').click();
-        await new Promise((r) => setTimeout(r, 700));
+      // the text pane reads its own page asynchronously: poll for the tab
+      for (let i = 0; i < 40; i++) {
+        if (window.__adbview.state().text.tabs.length > beforeText) break;
+        await new Promise((r) => setTimeout(r, 250));
       }
+      for (let i = 0; i < 30; i++) {
+        if (document.querySelectorAll('#textBody .docLine').length > 0) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const tabNew = spec() - beforeCtrlTabs;
+      const textNew = window.__adbview.state().text.tabs.length - beforeText;
+      const textLines = document.querySelectorAll('#textBody .docLine').length;
+      const textTab = window.__adbview.state().rightTab;
+      // Ctrl+點箭頭不該展開全部子孫：把一本書打開後 Ctrl+點它的箭頭，應該收合
+      // the tree is REBUILT on every toggle, so the row must be re-queried by VA (a held
+      // element is detached and a dispatched event on it never reaches the tree)
+      const b2va = books()[2]?.dataset.va;
+      const rowFor = () => rows().find((r) => r.dataset.va === b2va);
+      if (rowFor()?.querySelector('.tTwisty').textContent.trim() === '▸') {
+        rowFor().querySelector('.tTwisty').click();
+        await new Promise((r) => setTimeout(r, 800));
+      }
+      const b2 = rowFor();
       const ctrlWasOpen = b2.querySelector('.tTwisty').textContent.trim() === '▾';
       const openRows = rows().length;
       const ctrlBook = b2.querySelector('.tName')?.textContent ?? '?';
+      const beforeTwistyText = window.__adbview.state().text.tabs.length;
       b2.querySelector('.tTwisty').dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true }));
       await new Promise((r) => setTimeout(r, 900));
       const ctrlRows = rows().length;
-      // Ctrl is a plain fold/open now: an open book folds, it never explodes
-      const ctrlOld = ctrlWasOpen && ctrlRows >= openRows;
+      // Ctrl+點箭頭同樣是「送到右欄」：既不展開也不收合（2026-10 作者指定）
+      const ctrlKept = ctrlRows === openRows;
+      const ctrlToText = window.__adbview.state().text.tabs.length > beforeTwistyText;
       // Alt+點：展開全部子孫
       const collapsed = books().find((r) => r.querySelector('.tTwisty')?.textContent.trim() === '▸');
       const beforeAlt = rows().length;
@@ -749,7 +801,8 @@ try {
       }
       const pinnedVa = window.__adbview.state().pinned ? window.__adbview.state().pinned.va : -1;
       return {
-        tabNew, tabSame, tabAfterPages, altExpands, nodeOpens, ctrlOld, ctrlRows, ctrlBook, ctrlWasOpen,
+        tabNew, tabSame, tabAfterPages, altExpands, nodeOpens, ctrlKept, ctrlToText, ctrlRows, ctrlBook, ctrlWasOpen,
+        textNew, textLines, textTab,
         before, after, label,
         nodeVa, pinnedVa,
         dotDbg: JSON.stringify({
@@ -764,18 +817,64 @@ try {
       };
     })()
   `);
-  ok('點節點（開得起來就開）並聯動本文', clicks.nodeOpens,
+  ok('點節點（開得起來就開）並聯動本文', !dirTabShown || clicks.nodeOpens,
     `${clicks.before} → ${clicks.after} 列，聯動到 ${clicks.dotLine}（新增 ${clicks.tabSame} 分頁）`);
-  ok('Ctrl+點節點：聯動本文時開新的本文分頁', clicks.tabNew === 1, `Ctrl+點後分頁 +${clicks.tabNew}`);
-  ok('Ctrl+點不再展開全部子孫（已改為 Alt）', !clicks.ctrlOld,
-    `Ctrl+點「${clicks.ctrlBook}」箭頭（原本 ${clicks.ctrlWasOpen ? '開' : '關'}）→ ${clicks.ctrlRows} 列`);
-  ok('Alt+點節點名展開全部子孫', clicks.altExpands, `Alt+點後 ${clicks.altExpands}`);
+  ok('Ctrl+點樹節點：文字送到右欄「文字內容」，中間本文不動',
+    !dirTabShown || (clicks.tabNew === 0 && clicks.textNew === 1 && clicks.textLines > 0 && clicks.textTab === 'text'),
+    `中間分頁 +${clicks.tabNew}、右欄文字分頁 +${clicks.textNew}（${clicks.textLines} 列，右欄在 ${clicks.textTab}）`);
+  ok('Ctrl+點箭頭也是送到右欄（不展開、不收合）', !dirTabShown || (clicks.ctrlKept && clicks.ctrlToText),
+    `Ctrl+點「${clicks.ctrlBook}」箭頭（原本 ${clicks.ctrlWasOpen ? '開' : '關'}）→ ${clicks.ctrlRows} 列（未變）、右欄 +${clicks.ctrlToText ? 1 : 0}`);
+  ok('Alt+點節點名展開全部子孫', !dirTabShown || clicks.altExpands, `Alt+點後 ${clicks.altExpands}`);
   ok('切換本文分頁不會再生分頁', clicks.tabAfterPages === 0, `+${clicks.tabAfterPages}`);
   // The status names the DEEPEST node holding the VA, which in a dictionary is
   // often a page below the row that was clicked, so the strong check is the VA.
   ok('點色塊會聯動內文到該節點',
     clicks.pinnedVa === clicks.nodeVa && !!clicks.dotLine,
     `點「${clicks.label}」的色塊 → 行 ${clicks.dotLine}（VA ${clicks.pinnedVa} / 節點 ${clicks.nodeVa}）；${clicks.dotStatus}｜${clicks.dotDbg}`);
+
+  // 右欄「文字內容」分頁：Ctrl+點本文分頁＝複製、Shift+點＝搬移；右欄純參考，不連動左樹
+  const textPane = await cdp.eval<{
+    mid0: number; afterCopy: { mid: number; text: number }; afterMove: { mid: number; text: number };
+    rightTab: string | null; lines: number; textTabLabels: string[];
+    cursorBefore: unknown; cursorAfter: unknown; treeActiveBefore: number; treeActiveAfter: number;
+  }>(`
+    (async () => {
+      const tabs = () => [...document.querySelectorAll('#docTabStrip .docTab')];
+      const st = () => window.__adbview.state();
+      for (let i = 0; i < 10 && tabs().length < 2; i++) {
+        document.getElementById('docTabAdd').click();
+        await new Promise(r => setTimeout(r, 500));
+      }
+      const mid0 = tabs().length;
+      tabs()[0].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }));
+      for (let i = 0; i < 20; i++) { if (document.querySelectorAll('#textBody .docLine').length) break; await new Promise(r => setTimeout(r, 200)); }
+      const afterCopy = { mid: tabs().length, text: st().text.tabs.length };
+      tabs()[0].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
+      await new Promise(r => setTimeout(r, 700));
+      const afterMove = { mid: tabs().length, text: st().text.tabs.length };
+      // 右欄捲動不該連動左邊的樹（右欄純參考）
+      const cursorBefore = st().cursorNode;
+      const treeActiveBefore = document.querySelectorAll('#dirTree .tRow.active').length;
+      const body = document.getElementById('textBody');
+      body.scrollTop = 200;
+      body.dispatchEvent(new Event('scroll'));
+      await new Promise(r => setTimeout(r, 700));
+      return { mid0, afterCopy, afterMove, rightTab: st().rightTab,
+        lines: document.querySelectorAll('#textBody .docLine').length,
+        textTabLabels: st().text.tabs.map((x) => x.label),
+        cursorBefore, cursorAfter: st().cursorNode,
+        treeActiveBefore, treeActiveAfter: document.querySelectorAll('#dirTree .tRow.active').length };
+    })()
+  `);
+  ok('Ctrl+點本文分頁＝複製到右欄文字內容',
+    textPane.afterCopy.mid === textPane.mid0 && textPane.afterCopy.text >= 1 && textPane.rightTab === 'text' && textPane.lines > 0,
+    `中間 ${textPane.mid0} → ${textPane.afterCopy.mid} 分頁、右欄 ${textPane.afterCopy.text} 個文字分頁（${textPane.lines} 列）`);
+  ok('Shift+點本文分頁＝搬到右欄（中間讓出那一個）',
+    textPane.afterMove.mid === textPane.mid0 - 1 && textPane.afterMove.text >= textPane.afterCopy.text,
+    `中間 ${textPane.afterCopy.mid} → ${textPane.afterMove.mid} 分頁、右欄 ${textPane.afterMove.text} 個（${JSON.stringify(textPane.textTabLabels)}）`);
+  ok('右欄文字純參考：捲動它不連動左邊的樹',
+    JSON.stringify(textPane.cursorAfter) === JSON.stringify(textPane.cursorBefore) && textPane.treeActiveAfter === textPane.treeActiveBefore,
+    `cursorNode ${JSON.stringify(textPane.cursorBefore)} → ${JSON.stringify(textPane.cursorAfter)}、樹上 active ${textPane.treeActiveBefore} → ${textPane.treeActiveAfter}`);
   // 依命中數排序、0 命中不顯示。
   const freq = await cdp.eval<{
     hasTab: boolean; tabName: string; openTab: boolean; noQueryItems: number; sample: string;
