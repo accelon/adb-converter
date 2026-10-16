@@ -204,6 +204,10 @@
     border-radius: 5px; cursor: pointer; font: inherit; padding: 0 10px;
   }
   .searchBar button:hover { border-color: var(--accent); }
+  .searchBar select.modeSel {
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 5px; cursor: pointer; font: inherit; font-size: 13px; padding: 0 4px;
+  }
   .snippet {
     background: var(--panel); border: 1px solid var(--line); border-left: 3px solid transparent;
     border-radius: 5px; padding: 6px 9px; margin-bottom: 6px; cursor: pointer; font-size: 15px;
@@ -287,7 +291,13 @@
       <!-- 名詞：s="$詞"（tag 包裹）。詞條＝<詞> 的實例，字典式查詢。 -->
       <div class="tabPane" data-tab="terms">
         <div class="searchBar">
-          <input type="search" id="termsQuery" placeholder="輸入詞條（名詞）" autocomplete="off" spellcheck="false">
+          <input type="search" id="termsQuery" placeholder="輸入詞條（比對 <詞> 包住的字）" autocomplete="off" spellcheck="false">
+          <select id="termsMode" class="modeSel" title="比對位置：開頭＝^、結尾＝$、中間＝兩者都不是">
+            <option value="any">全部</option>
+            <option value="start">開頭</option>
+            <option value="mid">中間</option>
+            <option value="end">結尾</option>
+          </select>
           <button id="termsClear" title="清除">✕</button>
         </div>
         <div id="termsMeta" class="note"></div>

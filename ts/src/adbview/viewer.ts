@@ -30,7 +30,7 @@ let showAllClasses = false;
 let opening = false;
 
 /** the hit the middle pane is currently showing (VA + its element text) */
-let pinnedHit: { va: number; text: string; token: string; units: number; line: number } | null = null;
+let pinnedHit: { va: number; text: string; token: string; units: number; line: number; exact?: boolean } | null = null;
 let lastReveal = '';
 
 /** search state */
@@ -489,7 +489,7 @@ interface DocSession {
   page: number;
   /** the `<檔>` the realm lives in */
   doc: DocRow;
-  pinned: { va: number; text: string; token: string; units: number; line: number } | null;
+  pinned: { va: number; text: string; token: string; units: number; line: number; exact?: boolean } | null;
   /** last rendered page (per session, so switching tabs does not re-read) */
   cache: { page: number; dt: Awaited<ReturnType<VaPaMapper['docText']>>; key: string } | null;
 }
@@ -558,11 +558,7 @@ function edgeLine(va: number): number {
  * start, the realm really begins on the NEXT line.
  */
 function realmFirstLine(realm: { from: number; to: number }): number {
-  const v = mapper?.linesVirtual ?? [];
-  if (!v.length) return 0;
-  let first = edgeLine(realm.from);
-  if (first < v.length - 1 && v[first] <= realm.from) first++;
-  return Math.min(first, v.length - 1);
+  return mapper ? mapper.lineOfVa(realm.from) : 0;
 }
 
 /** last line of a realm: the last line that STARTS before the realm ends */
@@ -725,7 +721,7 @@ function showsLine(s: DocSession | null, line: number): boolean {
  * the tab's realm). Otherwise the current tab is kept when it already contains
  * the hit, which is what keeps clicks inside one chapter in one tab.
  */
-async function linkTo(va: number, token: string, units: number | undefined, opts: { newTab?: boolean; mode?: 'reuse' | 'node' | 'hit' } = {}): Promise<void> {
+async function linkTo(va: number, token: string, units: number | undefined, opts: { newTab?: boolean; exact?: boolean; mode?: 'reuse' | 'node' | 'hit' } = {}): Promise<void> {
   if (!mapper) return;
   const el = await mapper.elementAt(va);
   if (!el) { setStatus('VA ' + fmtInt(va) + '：找不到對應位置', 'err'); return; }
@@ -748,7 +744,10 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
     to: Math.min(raw.to, whole.to),
   };
   if (realm.to <= realm.from) { realm.from = whole.from; realm.to = whole.to; }
-  const name = useNode ? node!.name : (doc.name || token || el.element.text || reader?.header.dbname || '');
+  // The tab label must mean something to a reader: the node that was linked, or the
+  // TERM/token that was clicked. The XML file name (Fgdict1.xml) is an implementation
+  // detail, so it is only the last resort.
+  const name = useNode ? node!.name : (token || el.element.text || doc.name || reader?.header.dbname || '');
   const cur = docSession();
   const covers = !!cur && realm.to > realm.from && realm.from >= cur.realm.from && realm.to <= cur.realm.to;
   const s = opts.newTab
@@ -760,10 +759,11 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   // yinshun both do), so an element's line may fall outside the realm's line
   // range. Snap it back inside, or the page would not contain the pinned line.
   const rb = boundsOfRealm(realm);
-  let line = el.element.line ?? edgeLine(va);
-  if (line < rb.first || line > rb.last) line = edgeLine(va);
+  // the LINE comes from the line table, not from the mapper's walk: the walk drifts
+  // on fgdict and a tag click would land one line high (or on another entry)
+  let line = mapper.lineOfVa(va);
   if (line < rb.first || line > rb.last) line = rb.first;
-  s.pinned = { va, text: el.element.text, token, units: u, line };
+  s.pinned = { va, text: el.element.text, token, units: u, line, exact: !!opts.exact };
   pinnedHit = s.pinned;
   lastReveal = `va=${va} units=${u} element=${el.element.va}/${el.element.vaUnits}`;
   docActive = docTabs.indexOf(s);
@@ -789,7 +789,7 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
 }
 
 /** a search/summary link: the same action, plus the "snippet" token name */
-async function revealHit(va: number, token: string, units?: number, opts: { newTab?: boolean; mode?: 'reuse' | 'node' | 'hit' } = {}): Promise<void> {
+async function revealHit(va: number, token: string, units?: number, opts: { newTab?: boolean; exact?: boolean; mode?: 'reuse' | 'node' | 'hit' } = {}): Promise<void> {
   return linkTo(va, token, units, opts);
 }
 
@@ -916,6 +916,12 @@ function scheduleCursorSync(): void {
   });
 }
 
+/** a short tab label (the full name stays in the tooltip) */
+function shortLabel(name: string, max = 8): string {
+  const t = displayName(name).trim();
+  return t.length > max ? t.slice(0, max) + '…' : t;
+}
+
 /** the document tab strip: one chip per linked node, ✕ to close, ＋ for a new one */
 function renderDocTabs(s: DocSession): void {
   const bar = $('#docTabs');
@@ -926,7 +932,7 @@ function renderDocTabs(s: DocSession): void {
   bar.hidden = docTabs.length < 1;
   strip.innerHTML = docTabs.map((t, i) =>
     '<span class="docTab' + (i === docActive ? ' active' : '') + '" data-i="' + i + '" title="' + escapeHtml(t.name) + '">'
-    + '<span class="docTabName">' + escapeHtml(displayName(t.name).slice(0, 24)) + '</span>'
+    + '<span class="docTabName">' + escapeHtml(shortLabel(t.name, 8)) + '</span>'
     + '<span class="docTabClose" data-close="' + i + '" title="關閉分頁">✕</span></span>').join('');
   strip.querySelectorAll<HTMLElement>('.docTab').forEach((el) => {
     el.onclick = (ev) => {
@@ -1028,9 +1034,45 @@ async function goPage(s: DocSession, page: number, keepLine: boolean): Promise<v
  * the page that holds it — otherwise the second half of a word cut by a hard
  * break (or a hit just past the page edge) would silently stay unpainted.
  */
+/**
+ * Mark `phrase` inside a rendered line by plain text search.
+ *
+ * Used when the mapper's span disagrees with the line table: the walk's VA scale
+ * drifts from the stored one (fgdict by >1000 VA), so the exact span cannot be
+ * trusted, but the phrase the reader searched for is still findable in the line.
+ */
+function markPhraseInLine(line: number | undefined, phrase: string | undefined, va: number): boolean {
+  if (line === undefined || !phrase) return false;
+  const node = document.getElementById('L' + line)?.querySelector<HTMLElement>('.lineText')?.firstChild;
+  if (!node || node.nodeType !== Node.TEXT_NODE) return false;
+  const text = node.textContent ?? '';
+  const at = text.indexOf(phrase);
+  if (at < 0) return false;
+  const range = document.createRange();
+  range.setStart(node, at);
+  range.setEnd(node, at + phrase.length);
+  const mark = document.createElement('mark');
+  mark.className = 'docHit';
+  mark.dataset.va = String(va);
+  try {
+    range.surroundContents(mark);
+  } catch {
+    return false;
+  }
+  mark.scrollIntoView({ block: 'center' });
+  return true;
+}
+
 async function paintHit(va: number, units?: number): Promise<void> {
   const s = docSession();
   if (!mapper || !s) return;
+  // A node-label link (名詞 / 原書分頁) names the node itself, so marking its text in
+  // the line the reader was sent to is walk-independent — and on a drifting database
+  // (fgdict) it is the ONLY correct answer: the span path painted an unrelated
+  // character on the right line. Search hits and token clicks keep the span path,
+  // where the token name can differ from the source text (yinshun normalizes) and
+  // the same phrase may occur several times in one line.
+  if (s.pinned?.exact && markPhraseInLine(s.pinned.line, s.pinned.token, va)) return;
   let spans = units && units > 1 ? await mapper.phraseSpans(va, units) : await mapper.lineSpans(va);
   if (!spans.length) {
     // A heading TAG carries no inline text span (lineSpans skips tags), so a
@@ -1042,7 +1084,13 @@ async function paintHit(va: number, units?: number): Promise<void> {
   // The page is chosen by the LINK (linkTo follows the hit explicitly), never by
   // the painter: if the hit is not on the page now on screen, there is simply
   // nothing to mark. Moving the page here made 上一頁／下一頁 impossible.
-  if (spans.some((x) => !document.getElementById('L' + x.line))) return;
+  if (spans.some((x) => !document.getElementById('L' + x.line))) {
+    // The walk's spans can disagree with the line table (fgdict drifts by >1000 VA,
+    // so its element lookup returns the wrong text). The reader was sent to the
+    // table line, so mark the searched phrase inside THAT line instead.
+    markPhraseInLine(s.pinned?.line, s.pinned?.token, va);
+    return;
+  }
   let firstMark: HTMLElement | null = null;
   for (const sp of spans) {
     const row = document.getElementById('L' + sp.line);
@@ -1265,15 +1313,39 @@ async function loadDirectoryTrees() {
   const declared = session?.trees?.length ? session.trees : await loadTrees(reader);
   for (const t of declared) {
     if (!t.tiers.length) continue;
+    // The indexer may have stored the tier-1 names as a string table (`caches/書`
+    // for fgdict: 7 entries in instance order). When the table lines up with the
+    // instances exactly, use it — it is the same text nodeLabel hunts for, but one
+    // container parse instead of a source walk per node.
+    const firstTag = t.tiers[0] ?? '';
+    const firstVas = firstTag ? await tagVas(firstTag) : [];
+    const firstNames = firstTag ? await reader.cachedStrings(firstTag) : [];
+    const namesOk = firstNames.length > 0 && firstNames.length === firstVas.length;
     const instances = await loadTree(reader, t, {
       attrsAt: async (va) => {
         const el = await mapper!.elementAt(va);
         return el ? parseAttrs(el.element.text) : {};
       },
-      label: (va, vaEnd) => mapper!.nodeLabel(va, vaEnd),
+      label: (va, vaEnd) => {
+        if (namesOk) {
+          const i = lowerBound(firstVas, va);
+          if (firstVas[i] === va && firstNames[i]) return firstNames[i];
+        }
+        return mapper!.nodeLabel(va, vaEnd);
+      },
     });
     if (!instances.length) continue;
     const roots = buildTree(instances);
+    // loadTree stops labelling after MAX_LABEL_NODES (fgdict has 29,614 instances,
+    // so its last two books lost their names). The cached string table is free, so
+    // fill the first-tier labels again from it.
+    if (namesOk) {
+      for (const node of iterNodes(roots)) {
+        if (node.tag !== firstTag) continue;
+        const i = lowerBound(firstVas, node.va);
+        if (firstVas[i] === node.va && firstNames[i]) node.label = firstNames[i];
+      }
+    }
     // share the labels with the search grouping, so a book has one name
     const byTag = new Map<string, string[]>();
     for (const node of iterNodes(roots)) {
@@ -1570,12 +1642,17 @@ async function renderFreq() {
     list.innerHTML = '<p class="dim">此庫沒有 <code>&lt;樹 s="*u=…"&gt;</code> 可用的分段。</p>';
     return;
   }
+  // A tag-name scope (`*詞`) wraps every segment with one tag, so the segment name
+  // is exactly what that tag wraps; an attribute scope (`*u=文`) needs the
+  // leading-text heuristic instead.
+  const spec = treeScope(/^\*./).replace(/^\*/, '').trim();
+  const segTag = spec && spec.indexOf('=') < 0 ? spec : undefined;
   // 頻次 has its OWN input: the two panes are independent searches.
   const q = ($('#freqQuery') as HTMLInputElement).value.trim();
   if (!q) {
     // names are a source walk each, so only the shown slice is resolved
     const slice = segs.slice(0, 200);
-    await nameSegs(slice);
+    await nameSegs(slice, segTag);
     meta.textContent = `${fmtInt(segs.length)} 段：未輸入條件，列出段名`
       + (segs.length > slice.length ? `（僅列前 ${slice.length}）` : '');
     list.innerHTML = slice.map((s) => `<div class="snippet" data-va="${s.from}"><div><b>${
@@ -1592,7 +1669,7 @@ async function renderFreq() {
       if (at >= 0 && h.va < counts[at].to) counts[at].count++;
     }
     const shown = counts.filter((c) => c.count > 0).sort((a, b) => b.count - a.count).slice(0, 200);
-    await nameSegs(shown);
+    await nameSegs(shown, segTag);
     meta.textContent = `「${q}」${fmtInt(res.hits.length)} 筆命中，分布於 ${fmtInt(counts.filter((c) => c.count > 0).length)} / ${fmtInt(segs.length)} 段`
       + `（依命中數排序，0 不顯示${shown.length < counts.filter((c) => c.count > 0).length ? `，僅列前 ${shown.length}` : ''}）`;
     list.innerHTML = shown.map((s) => `<div class="snippet" data-va="${s.from}">
@@ -1699,11 +1776,39 @@ async function freqSegments(): Promise<{ from: number; to: number; name: string 
 }
 
 /** resolve the display names of the given segments (bounded to the shown slice) */
-async function nameSegs(segs: { from: number; to: number; name: string }[]): Promise<void> {
+async function nameSegs(segs: { from: number; to: number; name: string }[], tag?: string): Promise<void> {
   if (!mapper) return;
+  if (tag) {
+    // The indexer already STORED the innerText of every instance as a string table
+    // (`caches/詞` for fgdict, 22,648 entries in instance order). Reading it is one
+    // container parse; slicing the same text out of `source` costs a bzip2 decode
+    // per block touched, so the cache wins whenever it is present and complete.
+    const vas = await tagVas(tag);
+    const cached = reader ? await reader.cachedStrings(tag) : [];
+    const usable = cached.length === vas.length;
+    for (const s of segs) {
+      if (s.name) continue;
+      if (usable) {
+        const i = lowerBound(vas, s.from);
+        if (vas[i] === s.from && cached[i]) { s.name = cached[i]; continue; }
+      }
+      const wrapped = await wrappedText(tag, s.from, vas);
+      s.name = wrapped || (await mapper.nodeLabel(s.from, s.to)) || `VA ${s.from}`;
+    }
+    return;
+  }
   for (const s of segs) {
     if (!s.name) s.name = (await mapper.nodeLabel(s.from, s.to)) || `VA ${s.from}`;
   }
+}
+
+/** the VA of every instance of one tag (from the `tags` container, ascending) */
+async function tagVas(tag: string): Promise<number[]> {
+  if (!reader) return [];
+  const c = reader.containers.get('tags');
+  const at = c?.names.indexOf(tag) ?? -1;
+  if (at < 0) return [];
+  return (await reader.decodeBlockList('tags', at)).slice().sort((a, b) => a - b);
 }
 
 /**
@@ -1712,12 +1817,53 @@ async function nameSegs(segs: { from: number; to: number; name: string }[]): Pro
  */
 async function tagSegments(tag: string): Promise<{ from: number; to: number; name: string }[]> {
   if (!reader) return [];
-  const c = reader.containers.get('tags');
-  const at = c?.names.indexOf(tag) ?? -1;
-  if (at < 0) return [];
-  const vas = (await reader.decodeBlockList('tags', at)).slice().sort((a, b) => a - b);
+  const vas = await tagVas(tag);
   const max = reader.header.maxBlockOffset;
   return vas.map((va, i) => ({ from: va, to: i + 1 < vas.length ? vas[i + 1] : max, name: '' }));
+}
+
+/** first index whose value is >= v (values ascending) */
+function lowerBound(xs: number[], v: number): number {
+  let lo = 0, hi = xs.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (xs[mid] < v) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * The text WRAPPED by `<tag>…</tag>` for one instance — sliced out of the cached
+ * source block, NOT derived from a VA→PA walk.
+ *
+ * fgdict's `<詞>一</詞>` is the headword, but the mapper's walk drifts here, so
+ * `nodeLabel` returned a neighbouring entry's tail (measured: `<詞>一</詞>`
+ * came out as 「』」 一一」). The source text is the ground truth: the line table
+ * says which lines hold the instance, the `tags` container says which `<tag>`
+ * occurrence on that line this one is, and the block cache supplies the text.
+ */
+async function wrappedText(tag: string, va: number, tagVasList: number[], maxChars = 60): Promise<string> {
+  if (!mapper) return '';
+  const line = mapper.edgeLine(va);
+  const lineVaStart = line > 0 ? (mapper.linesVirtual[line - 1] ?? 0) : 0;
+  let ordinal = 0;
+  for (let i = lowerBound(tagVasList, lineVaStart); i < tagVasList.length && tagVasList[i] < va; i++) ordinal++;
+  const open = '<' + tag;
+  const close = '</' + tag;
+  let text = await mapper.lineText(line);
+  let at = -1;
+  for (let k = 0; k <= ordinal; k++) {
+    at = text.indexOf(open, at + 1);
+    if (at < 0) return '';
+  }
+  let end = text.indexOf(close, at);
+  // a headword may be split by a hard line break (which costs no VA): keep reading
+  for (let more = line + 1; end < 0 && more < line + 6; more++) {
+    text += await mapper.lineText(more);
+    end = text.indexOf(close, at);
+  }
+  if (end < 0) return '';
+  return text.slice(at, end).replace(/^<[^>]*>/, '').replace(/<[^>]*>/g, '').trim().slice(0, maxChars);
 }
 
 /** hits per segment (segments are VA-ascending and disjoint) */
@@ -1740,17 +1886,22 @@ function treeScope(re: RegExp): string {
 }
 
 /**
- * 名詞 (`s="$詞"`): the `<詞>` instances as a dictionary term list.
+ * 名詞 (`s="$詞"`): the terms the `<詞>` tags wrap, matched the way the format's
+ * scheme does — **only against the innerText**, with the position as the mode:
  *
- * No query: the first slice of terms (name = the wrapped text, i.e. the headword).
- * With a query: the terms whose realm holds a hit, then — because this is the
- * dictionary lookup — the terms whose HEADWORD contains the query are listed
- * first. 全文 (`s="*詞"`) is the same data without that headword filter.
+ *   開頭 (^)   the term STARTS with the query
+ *   中間       the query occurs inside but neither at the start nor at the end
+ *   結尾 ($)   the term ENDS with the query
+ *   全部       anywhere
+ *
+ * The names come from the indexer's own string table (`caches/詞`, 22,648 entries in
+ * instance order) — one container parse. Slicing them out of `source` instead costs
+ * a bzip2 decode per block touched, and the mapper's VA walk drifts on fgdict.
  */
 async function renderTerms(): Promise<void> {
   const meta = $('#termsMeta');
   const list = $('#termsList');
-  if (!reader || !mapper || !session) { list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>'; return; }
+  if (!reader || !session) { list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>'; return; }
   const tag = treeScope(/^\$/).replace(/^\$/, '').trim();
   const segs = tag ? await tagSegments(tag) : [];
   if (!segs.length) {
@@ -1758,37 +1909,65 @@ async function renderTerms(): Promise<void> {
     list.innerHTML = '<p class="dim">此庫沒有 <code>&lt;樹 s="$…"&gt;</code> 的詞條。</p>';
     return;
   }
+  const names = await reader.cachedStrings(tag);
+  const usable = names.length === segs.length;
+  const modeEl = $('#termsMode') as HTMLSelectElement | null;
+  const mode = modeEl?.value ?? 'any';
+  if (modeEl) modeEl.disabled = !usable;
+  const modeName = { any: '全部', start: '開頭', mid: '中間', end: '結尾' }[mode] ?? '全部';
   const q = ($('#termsQuery') as HTMLInputElement).value.trim();
+
+  const hits: { from: number; name: string; count: number }[] = [];
+  if (usable && q) {
+    // pure table scan: no source read, no full-text search, no VA walk
+    for (let i = 0; i < names.length; i++) {
+      const n = names[i];
+      if (!n || !n.includes(q)) continue;
+      const atStart = n.startsWith(q);
+      const atEnd = n.endsWith(q);
+      if (mode === 'start' && !atStart) continue;
+      if (mode === 'end' && !atEnd) continue;
+      if (mode === 'mid' && (atStart || atEnd)) continue;
+      hits.push({ from: segs[i].from, name: n, count: 0 });
+      if (hits.length >= 2000) break;
+    }
+  }
+
   if (!q) {
-    // names are a source walk each, so only the shown slice is resolved
     const slice = segs.slice(0, 200);
-    await nameSegs(slice);
-    meta.textContent = `${fmtInt(segs.length)} 個詞條（<${tag}>）：未輸入條件，列出前 ${fmtInt(slice.length)} 個`;
+    if (usable) for (let i = 0; i < slice.length; i++) slice[i].name = names[i] ?? '';
+    else await nameSegs(slice, tag);
+    meta.textContent = `${fmtInt(segs.length)} 個詞條（<${tag}> 包住的字）：未輸入條件，列出前 ${fmtInt(slice.length)} 個`;
     list.innerHTML = slice.map((s) => `<div class="snippet" data-va="${s.from}">
         <div><b>${escapeHtml(displayName(s.name))}</b></div></div>`).join('');
+  } else if (usable) {
+    const shown = hits.slice(0, 300);
+    meta.textContent = `「${q}」${modeName}：${fmtInt(hits.length)} 個詞條符合`
+      + `（共 ${fmtInt(segs.length)} 個；只比對 <${tag}> 包住的字）`
+      + (hits.length > shown.length ? `；僅列前 ${fmtInt(shown.length)}` : '');
+    list.innerHTML = shown.map((h) => `<div class="snippet" data-va="${h.from}">
+        <div><b>${escapeHtml(displayName(h.name))}</b></div></div>`).join('')
+      || '<p class="dim">沒有符合的詞條。</p>';
   } else {
+    // no string table in this database: fall back to the full-text search + names
     const res = await session.search(q);
     const counts = countHitsPerSegment(segs, res.hits);
-    const withHits = segs
-      .map((s, i) => ({ ...s, count: counts[i] }))
-      .filter((s) => s.count > 0)
-      .sort((a, b) => b.count - a.count);
-    const shown = withHits.slice(0, 200);
-    await nameSegs(shown);
-    const byName = shown.filter((s) => displayName(s.name).includes(q));
-    const out = byName.length ? byName : shown;
-    meta.textContent = `「${q}」：${fmtInt(withHits.length)} 個詞條有命中`
-      + (byName.length
-        ? `，其中 ${fmtInt(byName.length)} 個詞條名直接含「${q}」`
-        : '（沒有詞條名直接符合，列出有命中的詞條）')
-      + (shown.length < withHits.length ? `；僅列前 ${fmtInt(shown.length)}` : '');
+    const withHits = segs.map((s, i) => ({ ...s, count: counts[i] })).filter((s) => s.count > 0)
+      .sort((a, b) => b.count - a.count).slice(0, 200);
+    await nameSegs(withHits, tag);
+    const byName = withHits.filter((s) => displayName(s.name).includes(q));
+    const out = byName.length ? byName : withHits;
+    meta.textContent = `「${q}」：${fmtInt(withHits.length)} 個詞條有命中（此庫沒有 <${tag}> 字串表，先用內文搜尋）`;
     list.innerHTML = out.map((s) => `<div class="snippet" data-va="${s.from}">
         <div class="snippetHead">${fmtInt(s.count)} 筆</div>
         <div><b>${escapeHtml(displayName(s.name))}</b></div></div>`).join('')
       || '<p class="dim">沒有命中。</p>';
   }
   list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
-    el.onclick = (ev) => void revealHit(Number(el.dataset.va), tag, 1, mods(ev));
+    // pass the TERM as the token: it is what the status shows and what the painter
+    // marks inside the line
+    const name = (el.querySelector('b')?.textContent ?? tag).trim();
+    el.onclick = (ev) => void revealHit(Number(el.dataset.va), name, 1, { ...(mods(ev) ?? {}), exact: true });
   });
 }
 
@@ -1855,7 +2034,7 @@ async function renderFolio(): Promise<void> {
     || '<p class="dim">沒有符合的頁碼。</p>';
   list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
     const label = (el.textContent ?? '').trim();
-    el.onclick = (ev) => void revealHit(Number(el.dataset.va), '原書分頁 ' + label, 1, mods(ev));
+    el.onclick = (ev) => void revealHit(Number(el.dataset.va), label, 1, mods(ev));
   });
 }
 
@@ -2166,6 +2345,8 @@ function boot() {
   wireOwnSearch('#latinQuery', '#latinClear', () => void renderLatin());
   wireOwnSearch('#termsQuery', '#termsClear', () => void renderTerms());
   wireOwnSearch('#folioQuery', '#folioClear', () => void renderFolio());
+  const termsMode = $('#termsMode') as HTMLSelectElement | null;
+  if (termsMode) termsMode.onchange = () => void renderTerms();
 
   // every left pane is built on demand — showTab() dispatches to its renderer
   $('#colLeft').querySelectorAll<HTMLElement>('.tabBtn').forEach((b) => {

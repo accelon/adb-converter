@@ -5,6 +5,12 @@
 
 > 本輪（2026-02 後半）依作者指示改了目錄區與本文區的行為，並修好三個資料庫的
 > 瀏覽器測試。三項需求的規格寫在 §2，實作重點與踩到的坑在 §8。
+>
+> **狀態：暫停等作者測試回報。** 目前 13j 64/64、yinshun 68/68、fgdict 68/68
+> （最後一輪只驗 fgdict，依作者指示）。可用版本＝ `build/adbview.html`（單檔，
+> 雙擊開啟即可）。fgdict 已確認：名詞頁（快取字串表＋開頭／中間／結尾）、
+> 全文頁、原書分頁（6,959 頁碼）、詞條聯動跳行與塗紅、本文分頁標籤顯示詞名。
+> **尚未回歸驗證**：13j／yinshun 在最後幾項修改後沒有重跑（作者要求先集中 fgdict）。
 
 ---
 
@@ -63,7 +69,7 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   | scope | 分頁 | 內容 |
   |---|---|---|
   | `*` | 目錄 | `t=` 層級樹＋全文搜尋 |
-  | `$詞` | 名詞 | `<詞>` 的每個實例＝一個詞條；有輸入時先列「詞條名含搜尋詞」者（字典查詢） |
+  | `$詞` | 名詞 | `<詞>` 的每個實例＝一個詞條；輸入時**只比對 `<詞>` 包住的字**，可選 開頭(`^`)／中間／結尾(`$`)／全部 |
   | `*u=文` | 頻次 | 依屬性分段，命中數排序、0 不顯示 |
   | `*詞` | 全文 | 依標籤分段（同一個 pane，只是頁名不同） |
   | `頁.n` | 原書分頁 | `<頁>` 的 `n` 值清單（fgdict 6,959 個），可用選的或**輸入頁碼**跳過去 |
@@ -132,6 +138,17 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   （踩過的坑：用 `<檔>` 範圍會讓每頁被夾成 1 行。）
 * **映射器行號 vs 行表漂移**：`elementAt` 走的行號（walk）與 `linesVirtual` 的行號在檔界可能差 1 行
   （fgdict 每個檔界都差）。所以釘住的命中行要**夾回當前頁實際渲染的行**，否則標不到紅。
+* **`caches` 容器是現成的字串表**（本輪最重要的發現）：`caches` 內是若干「本身也是容器」的區塊，
+  以名稱為鍵，fgdict 有 `書`（7 個書名）與 `詞`（22,648 個詞條 innerText），
+  yinshun 之類有 `檔`（`docNames()` 已在用）。**順序＝實例序號**，與 `tags` 容器的實例一一對應。
+  讀它只要一次容器解析；改從內文切同樣的字要對每個碰到的區塊 bunzip，慢且容易取錯。
+  `AdbReader.cachedStrings(key)` 就是這個入口。fgdict 的書名（P0）與詞條名都靠它解決。
+* **fgdict 的 VA walk 漂移很大**：`elementAt(219386)` 會回傳別的區塊的第一個元素（walk VA 與
+  儲存 VA 差 >1000），所以 fgdict 上 **VA→PA 的走訪不可信**；行表（`linesVirtual`/`linesPhysical`）
+  與 `caches`／`tags` 才是 ground truth。跳行用 `lineOfVa(va)`（`edgeLine` ＋「VA 等於某行結尾時
+  屬於下一行」的修正），塗紅則對「節點標籤連結」改用「在該行原文中找詞條字串」(`markPhraseInLine`)。
+* **本文分頁標籤**顯示「詞名／來源節點名」（`shortLabel` 截 8 字，完整名在 tooltip），
+  不再顯示 `Fgdict1.xml` 這種對讀者無意義的檔名。
 
 ## 5. 效能
 
@@ -169,7 +186,7 @@ DOM 列數也固定。
 |---|---|
 | `file-protocol-test.ts`（13j） | **64/64** |
 | `file-protocol-test.ts`（yinshun） | **68/68** |
-| `file-protocol-test.ts`（fgdict） | 66 passed, **2 failed**（皆為同一個 P0：書名 fallback，見 §7） |
+| `file-protocol-test.ts`（fgdict） | **68/68**（書名 P0 已由 `caches/書` 解決） |
 | `test/tree.test.ts` | 40/40 |
 | `test/search.test.ts`（13j） | 19/19 |
 | `test/adbview.test.ts` / `test/vapa.test.ts` | 22/22、13/13 |
@@ -183,12 +200,10 @@ DOM 列數也固定。
 
 ## 7. 待辦事項
 
-### P0 — 已診斷、待修
+### P0 — 已解決
 
-1. **fgdict 的 6/7 本書名取不到**（`#2`…`#7` fallback），連帶 2 個測試失敗。
-   fgdict 有 `書.l`、`書.t`、`頁.n` 屬性表，但 `nodeLabel` 目前只查內文。
-   → 讓 `nodeLabel` 先查 `<tag>.n`／`<tag>.l` 屬性（用 `attributeValues` 的指標對到實例序號），
-     失敗才走內文。**這也會讓 fgdict 的目錄節點名與狀態列一致。**
+1. ~~fgdict 的 6/7 本書名取不到~~ → 已用 `caches/書`（7 個書名，實例序）解決；
+   `loadTree` 的 20,000 標籤預算會切掉後面的節點，所以第一層標籤另外從快取補一次。
 
 ### P1 — 未實作的規格
 

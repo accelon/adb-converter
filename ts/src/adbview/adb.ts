@@ -598,6 +598,23 @@ export class AdbReader {
     return out;
   }
 
+  /**
+   * A cached string table from the `caches` container, by name (`詞`, `書`, `檔`…).
+   *
+   * The indexer already extracted these (for fgdict: the innerText of every
+   * `<詞>`), so reading the table is ONE container parse — whereas slicing the
+   * same text out of `source` costs a bzip2 decode per block touched.
+   */
+  async cachedStrings(key: string): Promise<string[]> {
+    const caches = this.containers.get('caches');
+    const ci = caches?.names.indexOf(key) ?? -1;
+    if (!caches || ci < 0) return [];
+    const inner = await this.innerContainer('caches', ci);
+    const out: string[] = [];
+    for (let i = 0; i < inner.count; i++) out.push(await this.innerString(inner, i));
+    return out;
+  }
+
   /** A block that is itself a container (attributes/*, caches/*). */
   async innerContainer(container: string, index: number): Promise<Container> {
     const c = this.containers.get(container);

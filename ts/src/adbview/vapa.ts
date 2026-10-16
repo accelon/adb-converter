@@ -167,6 +167,22 @@ export class VaPaMapper {
   }
 
   /**
+   * The line that physically holds `va`.
+   *
+   * A VA equal to a line's END sits AFTER that line's last element, and since a
+   * hard line break costs no VA the next line starts at the same VA — so the
+   * element belongs to the NEXT line. Getting this wrong (the raw `edgeLine`)
+   * makes a tag click land one line high.
+   */
+  lineOfVa(va: number): number {
+    const v = this.linesV;
+    if (!v || !v.length) return 0;
+    let i = this.edgeLine(va);
+    while (i + 1 < v.length && va === v[i]) i++;
+    return i;
+  }
+
+  /**
    * Length (in code units) of the `p`-th percentile line of the whole document.
    * Used to pick a document font size at which most hard lines fit the pane, so
    * the reader does not fight soft wrapping. `sample` caps the scan (lines are
@@ -209,6 +225,25 @@ export class VaPaMapper {
   /** text of a PA range (cross-block safe), used for search summaries */
   async readSpan(block: number, paStart: number, paEnd: number): Promise<string> {
     return this.reader.textSpan(block, paStart, paEnd);
+  }
+
+  /**
+   * The raw text of hard line `i`, straight from the (cached) source block — the
+   * same slice `docText` renders, and the ground truth for anything that must be
+   * read by PA. Use this instead of walking VA→PA when accuracy matters: the walk
+   * can drift from the stored VA table, which silently yields a neighbouring
+   * element's text.
+   */
+  async lineText(i: number): Promise<string> {
+    await this.init();
+    const paS = this.lineStart(i);
+    const paE = this.linesEnds?.[i] ?? paS;
+    if (paE <= paS) return '';
+    let line = await this.reader.textSpan(Math.floor(paS / this.reader.header.srcBlockSize), paS, paE);
+    // getrange_physical skips a leading CR/LF of the line
+    if (line.charCodeAt(0) === 13) line = line.slice(1);
+    if (line.charCodeAt(0) === 10) line = line.slice(1);
+    return line;
   }
   get progress(): { lines: number; va: number; blocks: number; complete: boolean } {
     return { lines: this.lineCursor, va: this.va, blocks: this.blockCache.size, complete: this.walkedComplete };

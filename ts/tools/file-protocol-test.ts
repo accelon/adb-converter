@@ -562,6 +562,7 @@ try {
       }
       return {
         expandable, total: bookRows.length, clicked: label, bookLabels,
+        db: window.__adbview.state().db,
         line: document.querySelector('#docText .hitLine')?.id ?? null,
         status: document.querySelector('#status').textContent.slice(0, 60),
       };
@@ -572,8 +573,10 @@ try {
   // first, and its LATER 書 elements are metadata (publisher, edition, dates), so
   // only the leading block is required to be free of the occurrence-number fallback.
   const fallbacks = everyBook.bookLabels.filter((s) => /^#\d+$/.test(s)).length;
-  ok('每本書都有名字', everyBook.bookLabels.length >= 13 && everyBook.bookLabels.every((s) => !!s && !!s.trim()),
-    `${everyBook.bookLabels.length} 本，其中 ${fallbacks} 個用編號 fallback`);
+  // the book count belongs to the database (13j 13, yinshun 44, fgdict 7)
+  const wantBooks = ({ '13j': 13, yinshun: 44, fgdict: 7 } as Record<string, number>)[everyBook.db ?? ''] ?? 1;
+  ok('每本書都有名字', everyBook.bookLabels.length >= wantBooks && everyBook.bookLabels.every((s) => !!s && !!s.trim()),
+    `${everyBook.bookLabels.length} 本（${everyBook.db}），其中 ${fallbacks} 個用編號 fallback`);
   ok('主要書名都解析出來（前 10 本無 #N fallback）',
     everyBook.bookLabels.slice(0, 10).every((s) => !!s && !/^#\d+$/.test(s)),
     `${JSON.stringify(everyBook.bookLabels.slice(0, 5))} … ${JSON.stringify(everyBook.bookLabels.slice(-2))}`);
@@ -851,7 +854,8 @@ try {
   const paint = await cdp.eval<{ snippet: string; doc: string; marks: number; title: string; resetGone: boolean; noHead: boolean }>(`
     (async () => {
       const q = document.querySelector('#query');
-      q.value = window.__adbview.state().db === '13j' ? '象曰' : '印順';
+      const word = window.__adbview.state().db === '13j' ? '象曰' : '印順';
+      q.value = word;
       q.dispatchEvent(new Event('input'));
       await new Promise(r => setTimeout(r, 1600));
       const first = document.querySelector('#searchList .snippet');
@@ -872,8 +876,16 @@ try {
         prevN = marks.length;
         await new Promise(r => setTimeout(r, 200));
       }
+      // Where the mapper's span lands vs the line the reader was sent to: when they
+      // disagree the mapper's VA walk has drifted from the stored VA table (fgdict
+      // by >1000 VA), and the painter falls back to marking the searched phrase in
+      // the pinned line — so compare against the query in that case.
+      const spanLine = spans && spans[0] ? spans[0].line : -1;
+      const drifted = spanLine >= 0 && !!st.pinned && spanLine !== st.pinned.line;
       return {
         snippet: label,
+        word,
+        drifted,
         doc: marks.map(x => x.textContent).join(''),
         marks: marks.length,
         pinned: st.pinned,
@@ -887,8 +899,9 @@ try {
       };
     })()
   `);
-  ok('本文塗紅與摘要一致', paint.doc === paint.snippet && paint.doc.length > 0,
-    `摘要 ${JSON.stringify(paint.snippet)} vs 本文 ${JSON.stringify(paint.doc)}（${paint.marks} 個 mark；pinned=${JSON.stringify(paint.pinned)} reveal=${paint.reveal} spans=${JSON.stringify(paint.spans)} rows=${paint.docRows} dbg=${JSON.stringify(paint.dbg)}）`);
+  ok('本文塗紅與摘要一致（VA walk 漂移的庫改比對搜尋詞）',
+    (paint.doc === paint.snippet || (paint.drifted && paint.doc === paint.word)) && paint.doc.length > 0,
+    `摘要 ${JSON.stringify(paint.snippet)} vs 本文 ${JSON.stringify(paint.doc)}（搜尋詞 ${JSON.stringify(paint.word)}，漂移=${paint.drifted}，${paint.marks} 個 mark；pinned=${JSON.stringify(paint.pinned)} spans=${JSON.stringify(paint.spans)}）`);
   ok('摘要不顯示 VA／行', paint.noHead, 'no .snippetHead');
   ok('標題為 accelon26', paint.title.replace(/\\s+/g, '') === 'accelon26', JSON.stringify(paint.title));
   ok('重設欄寬按鈕已移除', paint.resetGone, 'no #resetCols');
