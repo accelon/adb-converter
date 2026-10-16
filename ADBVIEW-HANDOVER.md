@@ -622,7 +622,8 @@ UI 怎麼可能不知道 Go 層：`ts/src/adbview/adb.ts` 定義 `ByteSource`／
 cd ts; bun run tools/build-viewer.ts                  # 預設產物：../build/adbview.html（單檔，file:// 可開）
 cd ts; bun run tools/build-desktop.ts                 # 只在要桌面版時：同一份 HTML → ../wails/assets/index.html
 cd wails; go test ./...                               # Go 單元測試（不需要 GUI）
-cd wails; go build -o ../build/desktop/accelon26.exe .  # 打包 exe（HTML 內嵌）
+cd ts; bun run tools/release.ts --no-build           # 打包 exe → D:\accelon26\accelon26.exe（HTML 內嵌）
+#   或直接：cd wails; go build -ldflags "-H windowsgui" -o D:\accelon26\accelon26.exe .
 cd ..;   .\build\desktop\accelon26.exe -selftest         # 不開 GUI：列工作目錄的 adb + mmap 讀取計時
 cd ts; bun run tools/desktop-test.ts [--gui]          # 桌面版回歸：headless 5 項；--gui 再加視窗版 6 項
 ```
@@ -835,7 +836,7 @@ https://shutonggui.cn/accelon26/accelon26.exe 的 built time 比用戶運行中�
 永遠不檢查是否有更新；如果目前運行的 exe built time 和電腦時鐘差別不到 2 小時，表示是開發者
 本地 exe，就不必檢查更新了），更新後，顯示改版新增或改進的功能。」
 
-**改名**：exe 與應用識別都改成 `accelon26`（`build/desktop/accelon26.exe`、視窗標題、
+**改名**：exe 與應用識別都改成 `accelon26`（`D:\accelon26\accelon26.exe`、視窗標題、
 `%AppData%\accelon26\window.json`）；環境變數改成 `ACCELON26_*`。**viewer 模組本身仍叫 adbview**
 （`ts/src/adbview/`、HTML 產物 `build/adbview.html`）—— 那是同一份 UI，兩個宿主共用。
 
@@ -862,6 +863,10 @@ https://shutonggui.cn/accelon26/accelon26.exe 的 built time 比用戶運行中�
 **＋1 的除錯埠** `-debug-port`，避免兩個行程搶同一個埠）→ 0.7 秒後自己結束。`.old` 在新版
 啟動時自動清掉。
 
+**exe 放哪裡／怎麼建**（作者 2026-10）：exe **一律放到 `D:\accelon26\`**，用 **GUI 子系統**
+（`-ldflags "-H windowsgui"`）建置 —— 這樣 **Explorer 雙擊不會跳出命令列視窗**。
+console 版（看得到 log，開發用）加 `--console`。
+
 **發佈（作者說「發布」時）**：
 
 ```powershell
@@ -872,7 +877,7 @@ cd ts; bun run tools/release.ts --items-file notes.txt        # 一行一項（U
 # 然後把 build/desktop/accelon26.exe 上傳到 https://shutonggui.cn/accelon26/accelon26.exe
 ```
 
-**診斷**：`accelon26.exe -version`（建置時間／說明筆數／更新網址）、`main.AdbHost.AppInfo()`、
+**診斷**（`D:\accelon26\accelon26.exe -version`）（建置時間／說明筆數／更新網址）、`main.AdbHost.AppInfo()`、
 `CheckUpdate()`（立刻檢查一次）、`InstallUpdate()`、`ReleaseNotes(since)`。
 
 **驗證**：`tools/desktop-test.ts --gui` 37 項全過，其中更新相關：

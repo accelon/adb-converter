@@ -2,7 +2,7 @@
  * Desktop (Wails3) smoke test — the exe must list every `.adb` in its WORKING DIRECTORY
  * and read them through the host's mmap (no Blob.slice, no socket, no events).
  *
- *   bun run tools/desktop-test.ts [--exe ../build/desktop/accelon26.exe] [--gui] [--cwd ..]
+ *   bun run tools/desktop-test.ts [--exe D:\accelon26\accelon26.exe] [--gui] [--cwd ..]
  *
  * Default (headless): run the exe with `-selftest` in `--cwd` (the repository root, where
  * 13j.adb and fgdict.adb live) and check the listing + the read timing it prints.
@@ -19,7 +19,8 @@ import { SearchSession, queryTokens } from '../src/adbview/search';
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
 const ROOT = resolve(import.meta.dir, '../..');
-const EXE = resolve(opt('exe', resolve(ROOT, 'build/desktop/accelon26.exe')));
+// exe 現在放在 D:\accelon26\（作者 2026-10）；--exe 可覆寫
+const EXE = resolve(opt('exe', 'D:\\accelon26\\accelon26.exe'));
 const CWD = resolve(opt('cwd', ROOT));
 const GUI = args.includes('--gui');
 const PORT = Number(opt('port', '9222'));
@@ -30,7 +31,7 @@ const ok = (name: string, cond: boolean, detail = '') => {
   else { fail++; console.log('  FAIL ' + name + (detail ? '  ' + detail : '')); }
 };
 if (!existsSync(EXE)) {
-  console.error('missing ' + EXE + ' — build it first:  cd wails; go build -o ../build/desktop/accelon26.exe .');
+  console.error('missing ' + EXE + ' — build it first:  cd ts; bun run tools/release.ts --no-build');
   process.exit(2);
 }
 

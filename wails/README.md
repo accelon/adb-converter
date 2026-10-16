@@ -39,10 +39,10 @@ TypeScript 建置腳本產生，例如 `bun run tools/build-desktop.ts`）。本
 
 ```powershell
 go test ./...                                  # 單元測試（不需要 GUI）
-go build -o ..\build\desktop\accelon26.exe .     # 建置桌面 exe
+go build -ldflags "-H windowsgui" -o D:\accelon26\accelon26.exe .   # 建置桌面 exe（GUI 子系統，雙擊不跳命令列）
 cd ..
-..\build\desktop\accelon26.exe                   # GUI（在放 .adb 的目錄裡執行）
-..\build\desktop\accelon26.exe -selftest         # 無 GUI 自檢
+D:\accelon26\accelon26.exe                        # GUI（在放 .adb 的目錄裡執行）
+D:\accelon26\accelon26.exe -selftest              # 無 GUI 自檢
 ```
 
 `-selftest` 會在當前目錄列出所有 `.adb`（含中文顯示名），對

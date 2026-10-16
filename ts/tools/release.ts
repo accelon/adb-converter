@@ -1,7 +1,7 @@
 /**
  * 發佈流程（作者說「發布」時跑這支）：
  *
- *   cd ts && bun run tools/release.ts --items-file notes.txt   # 一行一項（UTF-8，推薦）
+ *   cd ts && bun run tools/release.ts --items-file notes.txt [--console] [--out D:\accelon26]
  *   cd ts && bun run tools/release.ts --items "ASCII only;第二項" [--title "…"] [--url https://…] [--no-build]
  *
  * ⚠ Windows 的 PowerShell 會把中文命令列參數弄成亂碼（實際踩過：release_notes.json 變成
@@ -24,7 +24,9 @@ const opt = (n: string, d = '') => { const i = args.indexOf('--' + n); return i 
 const ROOT = resolve(import.meta.dir, '../..');
 const WAILS = resolve(ROOT, 'wails');
 const NOTES = resolve(WAILS, 'release_notes.json');
-const EXE = resolve(ROOT, 'build/desktop/accelon26.exe');
+// exe 一律放到 D:\accelon26\（作者 2026-10）。可用 --out <目錄> 換地方。
+const OUT_DIR = opt('out', 'D:\\accelon26');
+const EXE = resolve(OUT_DIR, 'accelon26.exe');
 const URL = opt('url', 'https://shutonggui.cn/accelon26/accelon26.exe');
 const NO_BUILD = args.includes('--no-build');
 
@@ -35,9 +37,8 @@ const items = (itemsFile
 ).filter((s) => s && !s.startsWith('#'));
 const title = opt('title', '');
 if (!items.length && !args.includes('--no-build')) {
-  console.error('用法：bun run tools/release.ts --items-file notes.txt（一行一項，UTF-8）');
-  console.error('      bun run tools/release.ts --items "ASCII only;…" [--title "…"] [--url …] [--no-build]');
-  process.exit(2);
+  console.log('（沒有 --items／--items-file：只建置，不加改版說明）');
+  console.log('  加說明：bun run tools/release.ts --items-file notes.txt（一行一項，UTF-8）');
 }
 
 // 1) 改版說明
@@ -67,8 +68,10 @@ const run = (cmd: string[], cwd: string, label: string) => {
 };
 console.log('\n[1/3] 建置單檔 HTML → wails/assets/index.html');
 run(['bun', 'run', 'tools/build-desktop.ts'], resolve(ROOT, 'ts'), 'HTML 建置');
-console.log('[2/3] 建置 exe（內嵌 HTML ＋ 注入建置時間）');
-run(['go', 'build', '-ldflags', `-X main.buildTime=${buildTime}`, '-o', EXE, '.'], WAILS, 'go build');
+console.log('[2/3] 建置 exe（內嵌 HTML ＋ 注入建置時間' + (args.includes('--console') ? '，console 版' : '，GUI 版／雙擊不跳命令列') + '）');
+// -H windowsgui：GUI 子系統，雙擊才不會跳出命令列視窗（要 console 版就加 --console）。
+const ldflags = '-X main.buildTime=' + buildTime + (args.includes('--console') ? '' : ' -H windowsgui');
+run(['go', 'build', '-ldflags', ldflags, '-o', EXE, '.'], WAILS, 'go build');
 
 // 3) 驗證 exe 裡的建置時間
 console.log('[3/3] 驗證 exe');
