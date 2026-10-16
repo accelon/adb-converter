@@ -667,9 +667,17 @@ export class SearchSession {
    */
   async groupNames(): Promise<string[]> {
     if (!this.groupTag) return [];
-    const cached = this.reader.treeLabels?.get(this.groupTag);
-    if (cached?.length) return cached;
-    for (const key of [`${this.groupTag}.n`, `${this.groupTag}.id`]) {
+    // 1) The indexer already STORED the innerText of every instance as a string table
+    //    (caches/書 for all three databases: 13j 13, yinshun 44, fgdict 7 — each
+    //    exactly the instance count). One container parse, no source read, and it is
+    //    the same table the 目錄 tree's labels were resolved from.
+    const table = await this.reader.cachedStrings(this.groupTag);
+    if (table.length && table.length === (this.groupVa?.length ?? 0)) return table;
+    // 2) a tree walk may already have resolved them (free when it did)
+    const fromTree = this.reader.treeLabels?.get(this.groupTag);
+    if (fromTree?.length) return fromTree;
+    // 3) last resort: the attribute table
+    for (const key of [this.groupTag + '.n', this.groupTag + '.id']) {
       const av = await this.reader.attributeValues(key);
       if (av?.values.length) return av.values;
     }

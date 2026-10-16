@@ -292,9 +292,11 @@ UI：`#dbAdd`＝固定在 chip 列左邊的「＋」（`#file` 選完就隱藏�
 開頭就檢查，不顯示時直接清空 `#dirTree` 與 `#dirMeta`（免得換庫後留著上一個庫的列），
 `loadDirectoryTrees()` 的背景渲染也用同一個判斷。fgdict（`$詞`／`*詞`／`頁.n`，沒有 `s="*"`）
 因此 **0 列**在 DOM，左欄也真的沒有「目錄」這個分頁。
-**但樹的資料仍然建**（`dirTrees`）：`mapper.treeLabels` 由這裡填，而 `search.ts` 的分組標籤
-（`groupNames()`）會用它；不建的話 fgdict 這類庫只能退回屬性表（`<tag>.n`／`<tag>.id`）。
-要省下那 ~160 ms 的背景建樹，得先讓 `groupNames()` 有別的來源。
+**樹的資料仍然建**（`dirTrees`，作者 2026-10 確認「照建不畫 ok」）：現在它只服務目錄樹面板
+（`paintTreeActive`／展開集合／`dirInfo` 診斷），**搜尋分組不再需要它**——`groupNames()`
+改成先讀 adb 自己的 `caches/<標籤>` 字串表（13j 13、yinshun 44、fgdict 7，每個都與該標籤的
+實例數相同、內容也與樹標籤一致），其次才用 `treeLabels`，最後才是屬性表 `<tag>.n`／`<tag>.id`。
+所以那 ~160 ms 的背景建樹**可以**拿掉（只影響隱藏面板），但目前刻意留著。
 
 **代價與界線**：`#dirTree` 的列不再保證全部都在 DOM。要數整棵樹的斷言要先 `growTree()`；
 `paintTreeActive()` 只會亮**已掛上**的列。fgdict 沒有 `s="*"`，它的目錄樹面板是隱藏的，

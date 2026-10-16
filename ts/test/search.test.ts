@@ -36,6 +36,19 @@ for (const path of ADBS) {
     : reader.header.dbname === '13j' ? ['象曰', '之信', '潛龍勿用']
       : ['印順', 'Buddha', '大乘'];
 
+  // 摘要分組（依 書）的名字：直接讀 adb 自己的 `caches` 字串表（13j 13／yinshun 44／
+  // fgdict 7，每個都與該標籤的實例數相同），不必等目錄樹走完再借 treeLabels。
+  {
+    await session.init();          // groupTag／groupVa 由 init() 決定
+    const tag = session.groupTag;
+    const table = tag ? await reader.cachedStrings(tag) : [];
+    const names = await session.groupNames();
+    const inst = session.grouping.instances;
+    ok('分組名字直接來自 caches 字串表（不是目錄樹）',
+      !!tag && table.length > 0 && table.length === inst && JSON.stringify(names) === JSON.stringify(table),
+      `${tag || '(none)'}：caches ${table.length} 筆＝實例 ${inst}，名字 ${JSON.stringify(names.slice(0, 3))}…`);
+  }
+
   // ---- 1. tokenizer split ------------------------------------------------
   for (const q of queries.slice(0, 1)) {
     const toks = queryTokens(q);
