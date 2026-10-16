@@ -40,6 +40,7 @@ bun run test/index-match.ts # 反向索引認證
 
 * **[HANDOVER.md](HANDOVER.md) — 技術交件（先看這份）**：管線、工具、驗證結果、規則摘要、限制
 * [SPEC.md](SPEC.md) — `.adb` 協定規格（§15 索引複刻、§17 管線與驗證狀態）
+* [accelon-vs-tei.md](accelon-vs-tei.md) — Accelon 風格 XML（H1–H6 擴充）與 TEI 巢式結構對照：轉換處方與實測陷阱
 * [PASCAL-NOTES.md](PASCAL-NOTES.md) — Delphi 原始碼逐單元筆記
 * [FORMAT.md](FORMAT.md) — 早期英文逆向筆記
 * [TODO.md](TODO.md) — 待辦與後續計畫
