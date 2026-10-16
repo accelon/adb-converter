@@ -6,6 +6,7 @@
  * state it declares, and other modules get/set it through that module's exports.
  */
 import { $, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, setStatus, tokens, statusText } from './viewer';
+import { type AdbSource } from './adb';
 import { DOCFS_DEFAULT, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, fitDebugInfo, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, renderDocTabs, setDocFont } from './doc-pane';
 import { cursorNode, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
 import { appendTokenRows, renderContainers, renderDocs, renderMeta, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
@@ -198,9 +199,9 @@ function setAdvanced(on: boolean) {
 }
 
 /** identity of a pick, used to recognise the SAME pick fired twice */
-const pickSig = (fs: File[]) => fs.map((f) => f.name + ':' + f.size + ':' + f.lastModified).join('|');
-let picking: File[] | null = null;     // the pick currently loading, if any
-let queuedPick: File[] | null = null;  // a genuinely new pick that arrived meanwhile
+const pickSig = (fs: AdbSource[]) => fs.map((f) => f.name + ':' + f.size + ':' + f.lastModified).join('|');
+let picking: AdbSource[] | null = null;     // the pick currently loading, if any
+let queuedPick: AdbSource[] | null = null;  // a genuinely new pick that arrived meanwhile
 
 /**
  * Take a pick: every file enters the dropdown's catalogue (header read only) and the
@@ -211,7 +212,7 @@ let queuedPick: File[] | null = null;  // a genuinely new pick that arrived mean
  * `openFile() === 'busy'` for everything. So a pick that is still on the way in is
  * remembered, and the same pick is ignored.
  */
-async function openPicked(files: File[]): Promise<void> {
+async function openPicked(files: AdbSource[]): Promise<void> {
   if (picking) {
     if (files.length === picking.length && pickSig(files) === pickSig(picking)) return;
     queuedPick = files;      // a real second pick: run it once this one settles
@@ -239,6 +240,19 @@ async function openPicked(files: File[]): Promise<void> {
   const next = queuedPick;
   queuedPick = null;
   if (next) await openPicked(next);
+}
+
+/**
+ * Desktop build only: the exe lists every .adb in its working directory (the host
+ * reads just the headers) and opens the first one. On `file://` this is a no-op, so
+ * one page serves both builds.
+ */
+async function bootDesktop(): Promise<void> {
+  const srcs = await desktopSources();
+  if (!srcs.length) return;
+  for (const s of srcs) catalogAdd(s, s.name);
+  renderDbPick();
+  if (!openDbs.length) await openPicked([srcs[0]]);
 }
 
 function boot() {
@@ -358,6 +372,7 @@ function boot() {
   });
   initTextPane();   // Ctrl+點樹節點／本文分頁 → 右欄文字內容
   renderDbPick();   // the dropdown starts with its 「用 ＋ 開啟 .adb」 hint
+  void bootDesktop();   // desktop build: catalogue + open the adbs next to the exe
   setStatus('請選擇或拖入 .adb 檔案（13j / yinshun 皆可直接開啟）', 'info');
   installDebugApi();
 }
@@ -477,6 +492,7 @@ import { loadTree } from './search';
 import { MAX_DBS, catalogAddFile, catalogState, dbLog, openDbs, renderDbPick, setDbHooks } from './dbs';
 import { initTextPane, renderTextPane, textState } from './text-pane';
 import { logoState, updateDocLogo } from './logo';
+import { desktopSources } from './host';
 
 export { ADV_KEY, COLS_KEY, DEFAULT_COLS, MAX_SIDE, MIN_SIDE, advanced, applyCols, attachSplitter, boot, defaultLeftTab, readAdvanced, readCols, saveCols, setAdvanced, setSide, showTab, toggleSide };
 

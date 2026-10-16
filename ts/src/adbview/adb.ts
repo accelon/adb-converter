@@ -32,6 +32,26 @@ export const CLASS_HAN = 0, CLASS_LATIN = 1, CLASS_DIGIT = 2, CLASS_OTHER = 3;
 export const CLASS_NAMES = ['han', 'latin', 'digit', 'other'];
 export const CLASS_LABELS = ['漢字', '英數', '數字', '其他'];
 
+/**
+ * The byte source `BlobIO` needs: `size` plus `slice(start, end).arrayBuffer()`.
+ * A browser `Blob`/`File` and the desktop host's mmap-backed file both satisfy it.
+ */
+export interface ByteSource {
+  readonly size: number;
+  slice(start: number, end: number): { arrayBuffer(): Promise<ArrayBuffer> };
+}
+
+/**
+ * A database source: something with an identity (name + size + mtime, which is what
+ * "is this the file I already opened?" compares) and bytes. A picked `File` and the
+ * desktop host's file are interchangeable here, so no viewer code has to know which
+ * build it is running in.
+ */
+export interface AdbSource extends ByteSource {
+  readonly name: string;
+  readonly lastModified: number;
+}
+
 /** One `read` primitive is the whole transport contract. */
 export interface AdbIO {
   readonly size: number;
@@ -54,7 +74,7 @@ export class BlobIO implements AdbIO {
   maxRead = 0;
   /** reads served from the chunk cache instead of the blob */
   cached = 0;
-  constructor(private blob: Blob) { this.size = blob.size; }
+  constructor(private blob: ByteSource) { this.size = blob.size; }
 
   /**
    * Metadata (container name tables, attribute tables) is read in thousands of

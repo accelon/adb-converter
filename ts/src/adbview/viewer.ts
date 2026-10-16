@@ -8,8 +8,7 @@
  */
 import {
   AdbReader, BlobIO, CLASS_LABELS,
-  type AdbHeader, type Container, type DocRow, type TokenRow,
-} from './adb';
+  type AdbHeader, type Container, type DocRow, type TokenRow, type AdbSource } from './adb';
 import { VaPaMapper, parseAttrs } from './vapa';
 import {
   SearchSession, searchSummary, loadTrees, loadTree, buildTree, flattenTree, parseScope, loadInstanceAttrs,
@@ -113,7 +112,7 @@ export let lastOpen: {
  */
 let lastTreeMs = 0;
 
-export async function openFile(file: File): Promise<'opened' | 'existing' | 'refused' | 'busy'> {
+export async function openFile(file: AdbSource): Promise<'opened' | 'existing' | 'refused' | 'busy'> {
   // A load may be triggered twice by the picker (the browser fires `change`, and
   // callers often dispatch one as well). Without this guard the second run would
   // rebuild and discard the directory trees the first one produced.

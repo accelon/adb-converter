@@ -11,7 +11,7 @@
  * it; the ACTIVE chip carries the ✕ that closes it (and every tab that used it).
  */
 import { $, escapeHtml, openFile, restoreCore, snapshotCore } from './viewer';
-import { AdbReader, BlobIO } from './adb';
+import { AdbReader, BlobIO, type AdbSource } from './adb';
 import { restoreDocPane, snapshotDocPane } from './doc-pane';
 import { restorePanes, snapshotPanes } from './panes';
 import { restoreScopes, snapshotScopes } from './scopes';
@@ -24,7 +24,7 @@ export const MAX_DBS = 5;
 export interface DbSlot {
   id: number;
   name: string;
-  file: File;
+  file: AdbSource;
   /** MRU stamp: the largest is the most recently used (eviction takes the smallest) */
   usedAt: number;
   core: unknown; docPane: unknown; scopes: unknown; summary: unknown; link: unknown; panes: unknown; text: unknown;
@@ -36,7 +36,7 @@ export interface DbSlot {
  */
 export interface CatalogEntry {
   key: string;          // file identity: name + size + mtime
-  file: File;
+  file: AdbSource;
   name: string;         // 庫名 from the header
   usedAt: number;
 }
@@ -44,7 +44,7 @@ export interface CatalogEntry {
 export const openDbs: DbSlot[] = [];
 /** every database this session has offered (see CatalogEntry) */
 export const catalog: CatalogEntry[] = [];
-const fileKey = (f: File): string => f.name + ':' + f.size + ':' + f.lastModified;
+const fileKey = (f: AdbSource): string => f.name + ':' + f.size + ':' + f.lastModified;
 let useSeq = 0;
 /** diagnostics: what each save/restore saw (state().dbLog) */
 export const dbLog: string[] = [];
@@ -82,7 +82,7 @@ export function saveLoaded(): void {
 }
 
 /** the same file, already open (name + size + mtime): switch to it instead of reloading */
-export function alreadyOpen(file: File, name: string): DbSlot | null {
+export function alreadyOpen(file: AdbSource, name: string): DbSlot | null {
   return openDbs.find((d) => d.name === name && d.file.name === file.name
     && d.file.size === file.size && d.file.lastModified === file.lastModified) ?? null;
 }
@@ -118,7 +118,7 @@ export const slotOf = (e: CatalogEntry): DbSlot | null =>
   openDbs.find((s) => fileKey(s.file) === e.key && s.name === e.name) ?? null;
 
 /** remember a picked file (the caller already peeked its header for the name) */
-export function catalogAdd(file: File, name: string): CatalogEntry {
+export function catalogAdd(file: AdbSource, name: string): CatalogEntry {
   const key = fileKey(file);
   const hit = catalog.find((e) => e.key === key && e.name === name);
   if (hit) return hit;
@@ -133,7 +133,7 @@ export function catalogAdd(file: File, name: string): CatalogEntry {
  * this is what "只讀 header 就好" means. A file that is not an .adb keeps its name so
  * the reader can see what failed.
  */
-export async function catalogAddFile(file: File): Promise<CatalogEntry> {
+export async function catalogAddFile(file: AdbSource): Promise<CatalogEntry> {
   const key = fileKey(file);
   const hit = catalog.find((e) => e.key === key);
   if (hit) return hit;
@@ -215,7 +215,7 @@ export const catalogState = (): { name: string; file: string; open: boolean }[] 
   catalog.map((e) => ({ name: e.name, file: e.file.name, open: !!slotOf(e) }));
 
 /** called by openFile once the new database is loaded and rendered */
-export function registerOpenDb(file: File, name: string): { ok: boolean; replaced?: boolean } {
+export function registerOpenDb(file: AdbSource, name: string): { ok: boolean; replaced?: boolean } {
   const same = openDbs.findIndex((d) => d.name === name);
   const slot: DbSlot = { id: ++seq, name, file, usedAt: ++useSeq, core: null, docPane: null, scopes: null, summary: null, link: null, panes: null, text: null };
   saveInto(slot);
