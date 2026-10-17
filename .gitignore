@@ -1,4 +1,4 @@
-# 中間產物、資料檔一律不上傳
+# 中間產物、參考檔案一律不上傳
 *.adb
 *.xml
 *.bin
@@ -13,14 +13,20 @@ accelon3/
 # Delphi 參考原始碼（非本次產出，保留在本機）
 sourcecode/
 
-# 匯出/測試產物
+# Unihan 原始資料（繁簡通檢的來源；手動下載，不進 git）
+#   https://github.com/CNMan/Unicode/blob/master/Unihan/Unihan_Variants.txt
+# 產物 ts/src/accelon26/variant-data.ts 有 commit，建置不需要 vendor/
+vendor/
+
+# 匯出／測試產物
 *_small/
 *-small/
 *-small.adb
 *-small-report.json
 report-fgdict.md
 
-# 建置產物：Windows 資源物件（由 ts/tools/release.ts 從 logo128.png 產生）
+# 建置產物：Windows 資源檔（由 ts/tools/release.ts 從 logo128.png 產生）
 wails/*.syso
+wails/wails.exe
 build/windows/
 build/darwin/

@@ -1,4 +1,4 @@
-# wails/ — adbview 的 Wails3 桌面宿主
+# wails/ — accelon26 的 Wails3 桌面宿主
 
 這個目錄是**獨立的 Go module**（`github.com/accelon/adb-converter/wails`，巢狀在倉庫根
 module 裡，彼此不影響）。

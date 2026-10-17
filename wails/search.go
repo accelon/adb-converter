@@ -3,10 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
-	"runtime"
 	"strings"
-	"sync"
-	"time"
 	"unicode/utf16"
 )
 
@@ -376,75 +373,6 @@ type searchGroup struct {
 	Count int    `json:"count"`
 }
 
-// groupHits 依分群標籤的實例範圍統計命中（與 search.ts 的 groupHits 等價）。
-// 命中數多時會用 goroutine 分塊平行（作者：計算量大的函式可以做 Go 平行版）。
-func groupHits(hits []phraseHit, groupVa []int32, maxVa int32, names []string) []searchGroup {
-	if len(groupVa) == 0 {
-		return nil
-	}
-	groups := make([]searchGroup, len(groupVa))
-	for i, from := range groupVa {
-		to := maxVa
-		if i+1 < len(groupVa) {
-			to = groupVa[i+1]
-		}
-		name := "#" + itoa(i+1)
-		if i < len(names) {
-			name = names[i]
-		}
-		groups[i] = searchGroup{Name: name, From: from, To: to}
-	}
-	const parallelAt = 20000
-	if len(hits) >= parallelAt {
-		workers := runtimeNumCPU()
-		partial := make([][]int, workers)
-		var wg sync.WaitGroup
-		chunk := (len(hits) + workers - 1) / workers
-		for w := 0; w < workers; w++ {
-			lo := w * chunk
-			hi := lo + chunk
-			if hi > len(hits) {
-				hi = len(hits)
-			}
-			if lo >= hi {
-				continue
-			}
-			partial[w] = make([]int, len(groups))
-			wg.Add(1)
-			go func(w, lo, hi int) {
-				defer wg.Done()
-				counts := partial[w]
-				for _, h := range hits[lo:hi] {
-					i := binarySearchLE(groupVa, h.VA)
-					if i < 0 {
-						continue
-					}
-					if h.VA >= groups[i].From && h.VA < groups[i].To {
-						counts[i]++
-					}
-				}
-			}(w, lo, hi)
-		}
-		wg.Wait()
-		for _, counts := range partial {
-			for i, c := range counts {
-				groups[i].Count += c
-			}
-		}
-		return groups
-	}
-	for _, h := range hits {
-		i := binarySearchLE(groupVa, h.VA)
-		if i < 0 {
-			continue
-		}
-		if h.VA >= groups[i].From && h.VA < groups[i].To {
-			groups[i].Count++
-		}
-	}
-	return groups
-}
-
 func itoa(n int) string {
 	if n == 0 {
 		return "0"
@@ -460,22 +388,6 @@ func itoa(n int) string {
 }
 
 // ---- 暴露給 webview 的查詢入口 --------------------------------------------------
-
-// SearchOut 是一次查詢回給 TypeScript 的全部東西：命中、缺詞、分群統計，以及各階段耗時
-// （診斷用；前端不必依賴它們）。
-type SearchOut struct {
-	Query     string        `json:"query"`
-	Tokens    []string      `json:"tokens"`
-	Hits      []phraseHit   `json:"hits"`
-	Missing   []string      `json:"missing"`
-	Truncated bool          `json:"truncated"`
-	GroupTag  string        `json:"groupTag"`
-	Groups    []searchGroup `json:"groups"`
-	LookupMs  float64       `json:"lookupMs"`
-	AndMs     float64       `json:"andMs"`
-	GroupMs   float64       `json:"groupMs"`
-	Parallel  bool          `json:"parallel"`
-}
 
 // indexOfName 線性找名稱表中的索引（tags 只有上百個名稱）。
 func indexOfName(c *adbContainer, name string) int {
@@ -557,94 +469,3 @@ func (h *AdbHost) Postings(path string, token string) ([]int32, error) {
 	}
 	return f.blockList("tokens", i)
 }
-
-// SearchTokens 一次做完：查詞 → 解 posting（多詞平行）→ plAnd → 分群統計。
-// TypeScript 端只要切好詞（語言層留在 TS），其餘索引運算都在這裡。
-func (h *AdbHost) SearchTokens(path string, tokens []string, groupTag string, maxHits int) (*SearchOut, error) {
-	if maxHits <= 0 {
-		maxHits = 5000
-	}
-	f, err := h.searchFile(path)
-	if err != nil {
-		return nil, err
-	}
-	toks, ok := f.container("tokens")
-	if !ok {
-		return nil, fmt.Errorf("no tokens container")
-	}
-	out := &SearchOut{Tokens: tokens, GroupTag: groupTag, Hits: []phraseHit{}, Groups: []searchGroup{}}
-
-	lists := make([][]int32, len(tokens))
-	missing := make([]string, 0)
-	var mu sync.Mutex
-	lookup := func(i int, t string) {
-		idx := tokenIndexByName(toks, t)
-		if idx < 0 {
-			mu.Lock()
-			missing = append(missing, t)
-			mu.Unlock()
-			return
-		}
-		l, err := f.blockList("tokens", idx)
-		if err != nil {
-			mu.Lock()
-			missing = append(missing, t)
-			mu.Unlock()
-			return
-		}
-		lists[i] = l
-	}
-
-	// 多個詞的 posting 各自解壓：這是唯一「計算量隨語料成長」的步驟，所以平行。
-	t0 := time.Now()
-	if len(tokens) > 1 {
-		out.Parallel = true
-		var wg sync.WaitGroup
-		for i, t := range tokens {
-			wg.Add(1)
-			go func(i int, t string) {
-				defer wg.Done()
-				lookup(i, t)
-			}(i, t)
-		}
-		wg.Wait()
-	} else {
-		for i, t := range tokens {
-			lookup(i, t)
-		}
-	}
-	out.LookupMs = msSince(t0)
-	if len(missing) > 0 {
-		out.Missing = missing
-		return out, nil
-	}
-
-	t1 := time.Now()
-	out.Hits = phraseMatch(lists, maxHits)
-	out.AndMs = msSince(t1)
-	out.Truncated = len(out.Hits) >= maxHits
-
-	if len(out.Hits) > 0 && groupTag != "" {
-		t2 := time.Now()
-		if tags, ok := f.container("tags"); ok {
-			if ti := indexOfName(tags, groupTag); ti >= 0 {
-				groupVa, err := f.blockList("tags", ti)
-				if err == nil && len(groupVa) > 0 {
-					names, _ := f.cachedStrings(groupTag)
-					if len(names) != len(groupVa) {
-						names = nil // 名稱表對不上就退回 #N（與 TypeScript 端的規則一致）
-					}
-					out.Groups = groupHits(out.Hits, groupVa, f.maxVa, names)
-				}
-			}
-		}
-		out.GroupMs = msSince(t2)
-	}
-	return out, nil
-}
-
-func msSince(t time.Time) float64 {
-	return float64(time.Since(t).Microseconds()) / 1000
-}
-
-func runtimeNumCPU() int { return runtime.NumCPU() }

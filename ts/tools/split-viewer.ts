@@ -1,10 +1,10 @@
 /// <reference types='bun' />
-/** One-off: split ts/src/adbview/viewer.ts into modules (see ADBVIEW-HANDOVER 3.2).
+/** One-off: split ts/src/accelon26/viewer.ts into modules (see ACCELON26-HANDOVER 3.2).
  *  usage:  bun run build/split-viewer.ts <module>       (doc-pane | link | summary | scopes | panes | ui)
  *  Rebuilds the ownership registry from what is already on disk, so it can run
  *  once per module in separate processes. */
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
-const DIR = 'ts/src/adbview/';
+const DIR = 'ts/src/accelon26/';
 const V = DIR + 'viewer.ts';
 const RE = /^(export )?(async )?function ([A-Za-z_$][\w$]*)|^(export )?(const|let|class|interface|type) ([A-Za-z_$][\w$]*)/;
 
@@ -85,7 +85,7 @@ const importLines = Object.keys(byModule).sort().map((mod) => {
   const from = mod === '' ? './viewer' : './' + mod;
   return "import { " + byModule[mod].sort().join(', ') + " } from '" + from + "';";
 });
-const head = '/**\n * ' + spec.title + '\n *\n * Split out of viewer.ts (ADBVIEW-HANDOVER 3.2). Shared state is read from\n * ./viewer and the other split modules as ESM live bindings; a module OWNS the\n * state it declares, and other modules get/set it through that module\'s exports.\n */\n' + importLines.join('\n') + '\n\n';
+const head = '/**\n * ' + spec.title + '\n *\n * Split out of viewer.ts (ACCELON26-HANDOVER 3.2). Shared state is read from\n * ./viewer and the other split modules as ESM live bindings; a module OWNS the\n * state it declares, and other modules get/set it through that module\'s exports.\n */\n' + importLines.join('\n') + '\n\n';
 const modName = process.argv[2];
 writeFileSync(DIR + modName + '.ts', head + payload + '\n\nexport { ' + picked.map((p) => p.name).sort().join(', ') + ' };\n', 'utf8');
 

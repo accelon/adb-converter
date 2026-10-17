@@ -72,7 +72,7 @@ run(['bun', 'run', 'tools/build-desktop.ts'], resolve(ROOT, 'ts'), 'HTML 建置'
 // 注意：wails3 generate syso **一定要給 -arch**，否則會產生 0 位元組的檔案，連結時會失敗。
 // .syso 是建置產物（gitignore）；沒有 wails3 就跳過（只是沒有圖示，仍然可建置）。
 function prepareIcon(): void {
-  const png = resolve(ROOT, 'ts/src/adbview/appicon.png');
+  const png = resolve(ROOT, 'ts/src/accelon26/appicon.png');
   if (!existsSync(png)) { console.log('（沒有 logo128.png，略過圖示）'); return; }
   const ico = resolve(ROOT, 'build/windows/icon.ico');
   const syso = resolve(WAILS, 'accelon26.syso');

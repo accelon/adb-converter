@@ -146,7 +146,7 @@ TEI:       <div type="chapter"><head>乾</head>…本文…</div>
            └──────── 章「乾」的範圍＝這個元素 ────────┘
 ~~~
 
-Accelon 這側的推導規則（實作見 [search.ts](ts/src/adbview/search.ts)）：
+Accelon 這側的推導規則（實作見 [search.ts](ts/src/accelon26/search.ts)）：
 
 1. **節點範圍** ＝ `[自己, 下一個同標籤實例)`：`vaEnd` 是下一個同標籤的位址，不是 `</章>` 的位置。
 2. **層級** ＝ `<樹 t="…">` 宣告的層序；每個實例可用自己的 `t=` 再往下加層（`<書 t="章,節,項.">`），
@@ -207,7 +207,7 @@ Accelon 這側的推導規則（實作見 [search.ts](ts/src/adbview/search.ts)�
 
 - `source` ＝ 可任意切片渲染的文字流；`tags`／`tokens`／`tables`／`attributes` ＝ 全域上下文
   （「這一行在哪一章」、「這一章有幾個命中」、「第幾頁」）。
-- 所以 adbview 的渲染成本只跟**畫面大小**有關，與資料庫大小無關：
+- 所以 accelon26 的渲染成本只跟**畫面大小**有關，與資料庫大小無關：
   每個節點只載入自己的 VA 區間、200 行一頁、用 `Blob.slice()` 讀任意塊。
   `.adb` 能做到 4.7 G 字規模，這是根本原因。
 - TEI 要做同樣的事，得先把整棵樹載入或先「補齊祖先」，成本隨文件大小成長。
@@ -291,7 +291,7 @@ Accelon 這側的推導規則（實作見 [search.ts](ts/src/adbview/search.ts)�
 ### 8.1 Accelon → TEI
 
 1. 先做**合法化**（[xmlrepair.ts](ts/src/xmlrepair.ts) 已實作整條；只有要交給 XML 工具才需要，
-   adbview 直接渲染並不需要，見 §4）：補根、逃脫裸 `&`／`<`、
+   accelon26 直接渲染並不需要，見 §4）：補根、逃脫裸 `&`／`<`、
    補或丟收尾標籤、屬性補引號、丟 C0 控制字元與孤立代理、必要時把標籤名改寫成安全名。
 2. 切文件：碰到 `<檔>` 開一份新 `<TEI>`；最後一個開著的 `<檔>` 補 `</檔>` 或用檔案邊界。
 3. 建 `teiHeader`：`集` → `titleStmt/title`、`英文名` → 第二個 `title`、

@@ -25,7 +25,7 @@ import (
 //   4. 記憶的位置是**相對該螢幕工作區原點**（Wails 的 WindowXY ＋ Screen 就是這個語意），
 //      所以換螢幕／換解析度都不會把視窗丟到畫面外；大小再夾進工作區
 //
-// 狀態檔：%AppData%\adbview\window.json（可用 ACCELON26_STATE_DIR 覆寫，測試與可攜版用）
+// 狀態檔：%AppData%\accelon26\window.json（可用 ACCELON26_STATE_DIR 覆寫，測試與可攜版用）
 
 const (
 	stateNormal     = "normal"
@@ -453,7 +453,7 @@ func (t *windowTracker) info() map[string]any {
 
 // screensInfo 是 -screens 的輸出：列舉到的每一張螢幕、游標位置、以及會選哪一張。
 func screensInfo(app *application.App) string {
-	out := "adbview -screens\n"
+	out := "accelon26 -screens\n"
 	x, y, hasCursor := w32.GetCursorPos()
 	if hasCursor {
 		out += fmt.Sprintf("cursor: (%d,%d)\n", x, y)

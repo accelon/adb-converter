@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// 索引查詢（postings／plAnd／分群）對真實語料的煙霧測試：
+// 索引查詢（postings／plAnd／詞組命中）對真實語料的煙霧測試：
 // 這支不碰 GUI，卡住或 panic 都會直接看得見。
-func TestSearchTokensOnCorpus(t *testing.T) {
+func TestSearchQueryOnCorpus(t *testing.T) {
 	// 白名單要求檔案在「當前工作目錄」之內，而 go test 的 cwd 是 wails/，
 	// 所以先切到倉庫根目錄（那裡才有 13j.adb），結束再切回來。
 	cwd, err := os.Getwd()
@@ -18,33 +18,34 @@ func TestSearchTokensOnCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = os.Chdir(cwd) }()
-	cases := []struct {
-		adb, tag string
-		tokens   []string
-	}{
-		{"13j.adb", "書", []string{"象", "曰"}},
-		{"13j.adb", "書", []string{"孟", "子"}},
+	cases := []struct{ adb, query string }{
+		{"13j.adb", "象曰"},
+		{"13j.adb", "孟子"},
 	}
 	for _, c := range cases {
 		if _, err := os.Stat(c.adb); err != nil {
 			t.Skipf("沒有 %s", c.adb)
 		}
 		h := &AdbHost{}
-		out, err := h.SearchTokens(c.adb, c.tokens, c.tag, 5000)
+		out, err := h.SearchQuery(c.adb, c.query, 5000, nil)
 		if err != nil {
-			t.Fatalf("SearchTokens(%v): %v", c.tokens, err)
+			t.Fatalf("SearchQuery(%q): %v", c.query, err)
 		}
-		t.Logf("%v：hits=%d missing=%v groups=%d（lookup %.2f ms／plAnd %.2f ms／group %.2f ms，平行=%v）",
-			c.tokens, len(out.Hits), out.Missing, len(out.Groups), out.LookupMs, out.AndMs, out.GroupMs, out.Parallel)
-		if len(out.Hits) == 0 {
-			t.Errorf("%v：沒有命中", c.tokens)
+		hits := 0
+		if len(out.Clauses) > 0 {
+			hits = len(out.Clauses[0].Hits)
+		}
+		t.Logf("%q：clauses=%d hits=%d missing=%v（%.2f ms）",
+			c.query, len(out.Clauses), hits, out.Missing, out.Ms)
+		if hits == 0 {
+			t.Errorf("%q：沒有命中", c.query)
 		}
 		// Postings 也要能用
-		post, err := h.Postings(c.adb, c.tokens[0])
+		post, err := h.Postings(c.adb, "象")
 		if err != nil {
-			t.Fatalf("Postings(%s): %v", c.tokens[0], err)
+			t.Fatalf("Postings(象): %v", err)
 		}
-		t.Logf("  Postings(%q)=%d 筆", c.tokens[0], len(post))
+		t.Logf("  Postings(象)=%d 筆", len(post))
 		h.CloseAll()
 	}
 }

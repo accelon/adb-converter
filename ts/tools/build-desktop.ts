@@ -6,7 +6,7 @@
  * It builds the SAME single-file HTML as tools/build-viewer.ts (see page-build.ts) and
  * writes it to wails/assets/index.html, which the Go host embeds with
  * `//go:embed all:assets`. Only the I/O plumbing differs: on the desktop the page reads
- * through the host's mmap'd ranges (ts/src/adbview/host.ts) instead of Blob.slice().
+ * through the host's mmap'd ranges (ts/src/accelon26/host.ts) instead of Blob.slice().
  *
  * The HTML build stays the default product — this script is only run when the desktop
  * host is being built (see wails/README.md for `go build`).

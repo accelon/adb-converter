@@ -9,8 +9,8 @@
  *   - tags container        : the VA of every tag instance
  * If both match, the mapping is exact rather than approximate.
  */
-import { AdbReader, SyncIO } from '../src/adbview/adb';
-import { VaPaMapper } from '../src/adbview/vapa';
+import { AdbReader, SyncIO } from '../src/accelon26/adb';
+import { VaPaMapper } from '../src/accelon26/vapa';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d?: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };

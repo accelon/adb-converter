@@ -7,9 +7,9 @@
  * the query tokens joined — i.e. the phrase really is in the text, and it may
  * sit on either side of a hard line break.
  */
-import { AdbReader, SyncIO } from '../src/adbview/adb';
-import { VaPaMapper } from '../src/adbview/vapa';
-import { SearchSession, searchSummary, queryTokens, phraseMatch } from '../src/adbview/search';
+import { AdbReader, SyncIO } from '../src/accelon26/adb';
+import { VaPaMapper } from '../src/accelon26/vapa';
+import { SearchSession, searchSummary, queryTokens, phraseMatch } from '../src/accelon26/search';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d?: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };

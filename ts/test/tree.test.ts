@@ -11,9 +11,9 @@
  *      between siblings.
  *   4. Only `s="*"` (=full text) trees are picked for the search grouping.
  */
-import { AdbReader, SyncIO } from '../src/adbview/adb';
-import { VaPaMapper, parseAttrs } from '../src/adbview/vapa';
-import { loadTrees, loadTree, buildTree, flattenTree, parseTiers, parseScope, SearchSession } from '../src/adbview/search';
+import { AdbReader, SyncIO } from '../src/accelon26/adb';
+import { VaPaMapper, parseAttrs } from '../src/accelon26/vapa';
+import { loadTrees, loadTree, buildTree, flattenTree, parseTiers, parseScope, SearchSession } from '../src/accelon26/search';
 
 const args = process.argv.slice(2);
 const ADBS = args.reduce<string[]>((acc, a, i) => (a === '--adb' ? [...acc, args[i + 1]] : acc), []);

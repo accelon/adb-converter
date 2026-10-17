@@ -1,7 +1,7 @@
 version: '3'
 
 # 極簡 Taskfile：只針對 wails/ 這個 Go module。
-# 注意：真正的 adbview 網頁不在這裡建置 —— assets/index.html 由倉庫根目錄的
+# 注意：真正的 accelon26 網頁不在這裡建置 —— assets/index.html 由倉庫根目錄的
 # TypeScript 建置腳本產生（例如 bun run tools/build-desktop.ts）。
 # 這裡不依賴 npm/node。
 

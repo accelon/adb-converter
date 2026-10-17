@@ -18,8 +18,8 @@
  * up is expected — and this mapper exists to highlight search hits in the
  * viewer, not to rebuild the index.
  */
-import { AdbReader, SyncIO } from '../src/adbview/adb';
-import { VaPaMapper } from '../src/adbview/vapa';
+import { AdbReader, SyncIO } from '../src/accelon26/adb';
+import { VaPaMapper } from '../src/accelon26/vapa';
 import { normalize } from '../src/tokenize';
 
 const args = process.argv.slice(2);

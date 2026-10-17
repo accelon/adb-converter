@@ -1,5 +1,5 @@
 /**
- * Screenshot harness: open build/adbview.html from file://, hand it an .adb,
+ * Screenshot harness: open build/accelon26.html from file://, hand it an .adb,
  * drive the new document pane (node link + Ctrl tab + paging) and save a PNG.
  *
  *   bun run tools/shot.ts [--adb path] [--out build/shot.png] [--w 1600] [--h 1000]
@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
-const HTML = resolve(opt('html', resolve(import.meta.dir, '../../build/adbview.html')));
+const HTML = resolve(opt('html', resolve(import.meta.dir, '../../build/accelon26.html')));
 const ADB = resolve(opt('adb', resolve(import.meta.dir, '../../13j.adb')));
 const OUT = resolve(opt('out', resolve(import.meta.dir, '../../build/shot.png')));
 const W = Number(opt('w', '1600'));
@@ -98,15 +98,15 @@ const state = await cdp.eval<string>(`
   (async () => {
     const wait = (fn, n = 60) => new Promise(async (res) => { for (let i = 0; i < n; i++) { if (fn()) return res(true); await new Promise((r) => setTimeout(r, 200)); } res(false); });
     const q = document.querySelector('#query');
-    q.value = window.__adbview.state().db === '13j' ? '象曰' : '大乘';
+    q.value = window.__accelon26.state().db === '13j' ? '象曰' : '大乘';
     q.dispatchEvent(new Event('input'));
     await wait(() => document.querySelector('#dirTree .tCount.hit'));
     const books = [...document.querySelectorAll('#dirTree .tRow')].filter((r) => r.querySelector('.tTag')?.textContent === '書');
     books[0].querySelector('.tDot').click();
-    await wait(() => window.__adbview.state().docTabs.length >= 1 && document.querySelector('#docText .docLine'));
+    await wait(() => window.__accelon26.state().docTabs.length >= 1 && document.querySelector('#docText .docLine'));
     books[1].querySelector('.tDot').dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true }));
-    await wait(() => window.__adbview.state().docTabs.length >= 2);
-    const st = window.__adbview.state();
+    await wait(() => window.__accelon26.state().docTabs.length >= 2);
+    const st = window.__accelon26.state();
     return JSON.stringify({ db: st.db, tabs: st.docTabs.map((t) => t.name), page: st.docPage, pages: st.docTabPages, pagerHidden: st.pagerHidden });
   })()
 `);

@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>accelon26 分區示意圖（DOM id 對照）</title>
+<style>
+  :root { --line:#2c313c; --bg:#171a21; --panel:#1e222b; --ink:#e7e9ef; --dim:#98a0b3; --id:#ff7a90; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:22px 26px 60px; background:var(--bg); color:var(--ink);
+         font:14px/1.6 system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  h2 { font-size:15px; margin:26px 0 8px; color:var(--id); border-bottom:1px solid var(--line); padding-bottom:4px; }
+  .lead { color:var(--dim); margin:0 0 10px; }
+  code, .rid { font-family:ui-monospace,Consolas,monospace; font-size:12.5px; }
+  .rid { color:var(--id); }
+  .sel { color:#22d3ee; font-family:ui-monospace,Consolas,monospace; font-size:12.5px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .chip { border:1px solid var(--line); border-radius:6px; padding:3px 8px; background:var(--panel); color:var(--dim); }
+  table { border-collapse:collapse; width:100%; }
+  th, td { text-align:left; padding:3px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:600; }
+  td code { color:var(--id); }
+</style>
+</head>
+<body>
+  <h1>accelon26 分區示意圖</h1>
+  <p class="lead">所有分區的名稱一律以 <b>DOM id</b> 為準（紅字）；分頁面板另外標 <span class="sel">[data-tab=…]</span>。
+  這份檔案由 <code>ts/tools/gen-map.ts</code> 從 <code>ts/src/accelon26/accelon26.template.html</code> 掃出來，
+  <code>bun run tools/check-map-ids.ts</code> 會雙向比對它和 <code>build/accelon26.html</code>。</p>
+  <p class="lead">對應產物：<code>build/accelon26.html</code>（file:// 版）與 <code>wails/assets/index.html</code>（桌面版，同一份）。</p>
+
+    <h2>動態產生</h2>
+    <div class="chips">
+      <span class="chip"><span class="rid">#docTrail</span> 本文上方的 breadcrumb（祖先＋同層）</span>
+      <span class="chip"><span class="rid">#thumbNote</span> 動態產生</span>
+      <span class="chip"><span class="rid">#toggleAll</span> 動態產生</span>
+      <span class="chip"><span class="rid">#Ln</span> 動態產生</span>
+    </div>
+    <table>
+      <tr><th>id</th><th>所在分頁</th><th>說明</th></tr>
+      <tr><td><code>#docTrail</code></td><td>—</td><td>本文上方的 breadcrumb（祖先＋同層）</td></tr>
+      <tr><td><code>#thumbNote</code></td><td>—</td><td>—</td></tr>
+      <tr><td><code>#toggleAll</code></td><td>—</td><td>—</td></tr>
+      <tr><td><code>#Ln</code></td><td>—</td><td>—</td></tr>
+    </table>
+
+    <h2>頂欄</h2>
+    <div class="chips">
+      <span class="chip"><span class="rid">#header</span> 頂欄</span>
+      <span class="chip"><span class="rid">#brand</span> 左上角標題；桌面版 hover 顯示建置時間、有新版本時閃動</span>
+      <span class="chip"><span class="rid">#toggleLeft</span> 顯示／隱藏左欄</span>
+      <span class="chip"><span class="rid">#toggleRight</span> 顯示／隱藏右欄</span>
+      <span class="chip"><span class="rid">#dbPickBtn</span> 📁 adb 選單（file:// 的第一項是「加入 adb」）</span>
+      <span class="chip"><span class="rid">#dbPickMenu</span> adb 選單展開後的面板</span>
+      <span class="chip"><span class="rid">#file</span> 隱藏的 <input type=file>，只由「加入 adb」觸發</span>
+      <span class="chip"><span class="rid">#searchAllBtn</span> 🔍 搜尋所有 adb（沒有開庫時隱藏）</span>
+      <span class="chip"><span class="rid">#dbHint</span> 沒有資料庫時的閃爍提示</span>
+      <span class="chip"><span class="rid">#dbTabs</span> 每個已開啟的庫一個 chip（active 才有 ✕）</span>
+      <span class="chip"><span class="rid">#status</span> 狀態列：只顯示錯誤／忙碌</span>
+      <span class="chip"><span class="rid">#settingsBtn</span> 🔧 設置（最右邊）</span>
+      <span class="chip"><span class="rid">#main</span> 頂欄</span>
+    </div>
+    <table>
+      <tr><th>id</th><th>所在分頁</th><th>說明</th></tr>
+      <tr><td><code>#header</code></td><td>—</td><td>—</td></tr>
+      <tr><td><code>#brand</code></td><td>—</td><td>左上角標題；桌面版 hover 顯示建置時間、有新版本時閃動</td></tr>
+      <tr><td><code>#toggleLeft</code></td><td>—</td><td>顯示／隱藏左欄</td></tr>
+      <tr><td><code>#toggleRight</code></td><td>—</td><td>顯示／隱藏右欄</td></tr>
+      <tr><td><code>#dbPickBtn</code></td><td>—</td><td>📁 adb 選單（file:// 的第一項是「加入 adb」）</td></tr>
+      <tr><td><code>#dbPickMenu</code></td><td>—</td><td>adb 選單展開後的面板</td></tr>
+      <tr><td><code>#file</code></td><td>—</td><td>隱藏的 <input type=file>，只由「加入 adb」觸發</td></tr>
+      <tr><td><code>#searchAllBtn</code></td><td>—</td><td>🔍 搜尋所有 adb（沒有開庫時隱藏）</td></tr>
+      <tr><td><code>#dbHint</code></td><td>—</td><td>沒有資料庫時的閃爍提示</td></tr>
+      <tr><td><code>#dbTabs</code></td><td>—</td><td>每個已開啟的庫一個 chip（active 才有 ✕）</td></tr>
+      <tr><td><code>#status</code></td><td>—</td><td>狀態列：只顯示錯誤／忙碌</td></tr>
+      <tr><td><code>#settingsBtn</code></td><td>—</td><td>🔧 設置（最右邊）</td></tr>
+      <tr><td><code>#main</code></td><td>—</td><td>—</td></tr>
+    </table>
+
+    <h2>左欄</h2>
+    <div class="chips">
+      <span class="chip"><span class="rid">#colLeft</span> 左欄</span>
+      <span class="chip"><span class="rid">#tabsLeft</span> 左欄</span>
+      <span class="chip"><span class="rid">#fsLeftPick</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#paneLeft</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#query</span> 目錄分頁的查詢輸入</span>
+      <span class="chip"><span class="rid">#queryClear</span> <span class="sel">[data-tab=dir]</span></span>
+      <span class="chip"><span class="rid">#dirMeta</span> <span class="sel">[data-tab=dir]</span></span>
+      <span class="chip"><span class="rid">#dirTree</span> 目錄樹（分批掛上 DOM）</span>
+      <span class="chip"><span class="rid">#termsQuery</span> 名詞分頁的輸入</span>
+      <span class="chip"><span class="rid">#termsMode</span> 名詞比對位置三態 toggle（開頭／中間／結尾）</span>
+      <span class="chip"><span class="rid">#termsCount</span> 一般模式顯示的符合詞條數</span>
+      <span class="chip"><span class="rid">#termsClear</span> <span class="sel">[data-tab=terms]</span></span>
+      <span class="chip"><span class="rid">#termsMeta</span> 進階模式的完整統計</span>
+      <span class="chip"><span class="rid">#termsList</span> 名詞分頁的詞條清單</span>
+      <span class="chip"><span class="rid">#freqQuery</span> 全文．頻次的輸入</span>
+      <span class="chip"><span class="rid">#freqClear</span> <span class="sel">[data-tab=freq]</span></span>
+      <span class="chip"><span class="rid">#freqMeta</span> 頻次統計</span>
+      <span class="chip"><span class="rid">#freqList</span> 分段命中數清單</span>
+      <span class="chip"><span class="rid">#folioQuery</span> 原書分頁的輸入</span>
+      <span class="chip"><span class="rid">#folioClear</span> <span class="sel">[data-tab=folio]</span></span>
+      <span class="chip"><span class="rid">#folioMeta</span> 原書分頁統計</span>
+      <span class="chip"><span class="rid">#folioList</span> 頁碼清單</span>
+      <span class="chip"><span class="rid">#latinQuery</span> 西文分頁的輸入</span>
+      <span class="chip"><span class="rid">#latinMode</span> 西文比對位置</span>
+      <span class="chip"><span class="rid">#latinClear</span> <span class="sel">[data-tab=latin]</span></span>
+      <span class="chip"><span class="rid">#latinMeta</span> 西文統計</span>
+      <span class="chip"><span class="rid">#latinList</span> 西文 token 清單</span>
+      <span class="chip"><span class="rid">#tokenSummary</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#tokenClasses</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#tokenTitle</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#tokenMore</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#tokenRows</span> token 統計</span>
+      <span class="chip"><span class="rid">#splitLeft</span> 左欄分隔線</span>
+    </div>
+    <table>
+      <tr><th>id</th><th>所在分頁</th><th>說明</th></tr>
+      <tr><td><code>#colLeft</code></td><td>—</td><td>—</td></tr>
+      <tr><td><code>#tabsLeft</code></td><td>—</td><td>—</td></tr>
+      <tr><td><code>#fsLeftPick</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#paneLeft</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#query</code></td><td><code>dir</code></td><td>目錄分頁的查詢輸入</td></tr>
+      <tr><td><code>#queryClear</code></td><td><code>dir</code></td><td>—</td></tr>
+      <tr><td><code>#dirMeta</code></td><td><code>dir</code></td><td>—</td></tr>
+      <tr><td><code>#dirTree</code></td><td><code>dir</code></td><td>目錄樹（分批掛上 DOM）</td></tr>
+      <tr><td><code>#termsQuery</code></td><td><code>terms</code></td><td>名詞分頁的輸入</td></tr>
+      <tr><td><code>#termsMode</code></td><td><code>terms</code></td><td>名詞比對位置三態 toggle（開頭／中間／結尾）</td></tr>
+      <tr><td><code>#termsCount</code></td><td><code>terms</code></td><td>一般模式顯示的符合詞條數</td></tr>
+      <tr><td><code>#termsClear</code></td><td><code>terms</code></td><td>—</td></tr>
+      <tr><td><code>#termsMeta</code></td><td><code>terms</code></td><td>進階模式的完整統計</td></tr>
+      <tr><td><code>#termsList</code></td><td><code>terms</code></td><td>名詞分頁的詞條清單</td></tr>
+      <tr><td><code>#freqQuery</code></td><td><code>freq</code></td><td>全文．頻次的輸入</td></tr>
+      <tr><td><code>#freqClear</code></td><td><code>freq</code></td><td>—</td></tr>
+      <tr><td><code>#freqMeta</code></td><td><code>freq</code></td><td>頻次統計</td></tr>
+      <tr><td><code>#freqList</code></td><td><code>freq</code></td><td>分段命中數清單</td></tr>
+      <tr><td><code>#folioQuery</code></td><td><code>folio</code></td><td>原書分頁的輸入</td></tr>
+      <tr><td><code>#folioClear</code></td><td><code>folio</code></td><td>—</td></tr>
+      <tr><td><code>#folioMeta</code></td><td><code>folio</code></td><td>原書分頁統計</td></tr>
+      <tr><td><code>#folioList</code></td><td><code>folio</code></td><td>頁碼清單</td></tr>
+      <tr><td><code>#latinQuery</code></td><td><code>latin</code></td><td>西文分頁的輸入</td></tr>
+      <tr><td><code>#latinMode</code></td><td><code>latin</code></td><td>西文比對位置</td></tr>
+      <tr><td><code>#latinClear</code></td><td><code>latin</code></td><td>—</td></tr>
+      <tr><td><code>#latinMeta</code></td><td><code>latin</code></td><td>西文統計</td></tr>
+      <tr><td><code>#latinList</code></td><td><code>latin</code></td><td>西文 token 清單</td></tr>
+      <tr><td><code>#tokenSummary</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#tokenClasses</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#tokenTitle</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#tokenMore</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#tokenRows</code></td><td><code>token</code></td><td>token 統計</td></tr>
+      <tr><td><code>#splitLeft</code></td><td><code>token</code></td><td>左欄分隔線</td></tr>
+    </table>
+
+    <h2>中欄</h2>
+    <div class="chips">
+      <span class="chip"><span class="rid">#colMid</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#docBar</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#treeReveal</span> 把目錄樹展開到目前節點</span>
+      <span class="chip"><span class="rid">#docTitle</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#fsBodyPick</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#hbToggle</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#showHardBreaks</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#rawToggle</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#showRaw</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#docTabs</span> 本文分頁列</span>
+      <span class="chip"><span class="rid">#docTabStrip</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#docTabAdd</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#docLogo</span> 本文空白時顯示這個庫的 logo</span>
+      <span class="chip"><span class="rid">#docLogoImg</span> logo 圖</span>
+      <span class="chip"><span class="rid">#docText</span> 中間本文（一頁一頁載入）</span>
+      <span class="chip"><span class="rid">#docPager</span> 本文換頁</span>
+      <span class="chip"><span class="rid">#pagePrev</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#pageInfo</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#pageNext</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#splitRight</span> 右欄分隔線</span>
+    </div>
+    <table>
+      <tr><th>id</th><th>所在分頁</th><th>說明</th></tr>
+      <tr><td><code>#colMid</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#docBar</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#treeReveal</code></td><td><code>token</code></td><td>把目錄樹展開到目前節點</td></tr>
+      <tr><td><code>#docTitle</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#fsBodyPick</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#hbToggle</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#showHardBreaks</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#rawToggle</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#showRaw</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#docTabs</code></td><td><code>token</code></td><td>本文分頁列</td></tr>
+      <tr><td><code>#docTabStrip</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#docTabAdd</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#docLogo</code></td><td><code>token</code></td><td>本文空白時顯示這個庫的 logo</td></tr>
+      <tr><td><code>#docLogoImg</code></td><td><code>token</code></td><td>logo 圖</td></tr>
+      <tr><td><code>#docText</code></td><td><code>token</code></td><td>中間本文（一頁一頁載入）</td></tr>
+      <tr><td><code>#docPager</code></td><td><code>token</code></td><td>本文換頁</td></tr>
+      <tr><td><code>#pagePrev</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#pageInfo</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#pageNext</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#splitRight</code></td><td><code>token</code></td><td>右欄分隔線</td></tr>
+    </table>
+
+    <h2>右欄</h2>
+    <div class="chips">
+      <span class="chip"><span class="rid">#colRight</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#tabsRight</span> <span class="sel">[data-tab=token]</span></span>
+      <span class="chip"><span class="rid">#fsRightPick</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#paneRight</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#textTabs</span> 右欄「文字內容」的分頁</span>
+      <span class="chip"><span class="rid">#textBody</span> 右欄「文字內容」的內文</span>
+      <span class="chip"><span class="rid">#textPager</span> 右欄「文字內容」換頁</span>
+      <span class="chip"><span class="rid">#textPrev</span> <span class="sel">[data-tab=text]</span></span>
+      <span class="chip"><span class="rid">#textPageInfo</span> <span class="sel">[data-tab=text]</span></span>
+      <span class="chip"><span class="rid">#textNext</span> <span class="sel">[data-tab=text]</span></span>
+      <span class="chip"><span class="rid">#searchMeta</span> 摘要統計（幾筆命中、幾個詞組）</span>
+      <span class="chip"><span class="rid">#searchList</span> 摘要卡片清單</span>
+      <span class="chip"><span class="rid">#searchMore</span> 摘要「還有更多」提示</span>
+      <span class="chip"><span class="rid">#dictList</span> 右欄「詞典」上區：詞條清單</span>
+      <span class="chip"><span class="rid">#dictBody</span> 右欄「詞典」下區：詞條正文＋開頭/結尾</span>
+      <span class="chip"><span class="rid">#meta</span> META 分頁</span>
+      <span class="chip"><span class="rid">#containers</span> META：容器清單</span>
+      <span class="chip"><span class="rid">#capacity</span> 容量分頁</span>
+      <span class="chip"><span class="rid">#docs</span> 文件分頁</span>
+      <span class="chip"><span class="rid">#resources</span> 圖片分頁</span>
+      <span class="chip"><span class="rid">#allSearchBackdrop</span> 搜尋彈窗背景</span>
+    </div>
+    <table>
+      <tr><th>id</th><th>所在分頁</th><th>說明</th></tr>
+      <tr><td><code>#colRight</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#tabsRight</code></td><td><code>token</code></td><td>—</td></tr>
+      <tr><td><code>#fsRightPick</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#paneRight</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#textTabs</code></td><td><code>text</code></td><td>右欄「文字內容」的分頁</td></tr>
+      <tr><td><code>#textBody</code></td><td><code>text</code></td><td>右欄「文字內容」的內文</td></tr>
+      <tr><td><code>#textPager</code></td><td><code>text</code></td><td>右欄「文字內容」換頁</td></tr>
+      <tr><td><code>#textPrev</code></td><td><code>text</code></td><td>—</td></tr>
+      <tr><td><code>#textPageInfo</code></td><td><code>text</code></td><td>—</td></tr>
+      <tr><td><code>#textNext</code></td><td><code>text</code></td><td>—</td></tr>
+      <tr><td><code>#searchMeta</code></td><td><code>sum</code></td><td>摘要統計（幾筆命中、幾個詞組）</td></tr>
+      <tr><td><code>#searchList</code></td><td><code>sum</code></td><td>摘要卡片清單</td></tr>
+      <tr><td><code>#searchMore</code></td><td><code>sum</code></td><td>摘要「還有更多」提示</td></tr>
+      <tr><td><code>#dictList</code></td><td><code>dict</code></td><td>右欄「詞典」上區：詞條清單</td></tr>
+      <tr><td><code>#dictBody</code></td><td><code>dict</code></td><td>右欄「詞典」下區：詞條正文＋開頭/結尾</td></tr>
+      <tr><td><code>#meta</code></td><td><code>meta</code></td><td>META 分頁</td></tr>
+      <tr><td><code>#containers</code></td><td><code>meta</code></td><td>META：容器清單</td></tr>
+      <tr><td><code>#capacity</code></td><td><code>capacity</code></td><td>容量分頁</td></tr>
+      <tr><td><code>#docs</code></td><td><code>docs</code></td><td>文件分頁</td></tr>
+      <tr><td><code>#resources</code></td><td><code>images</code></td><td>圖片分頁</td></tr>
+      <tr><td><code>#allSearchBackdrop</code></td><td><code>images</code></td><td>搜尋彈窗背景</td></tr>
+    </table>
+
+    <h2>設置彈窗</h2>
+    <div class="chips">
+      <span class="chip"><span class="rid">#settingsBox</span> 設置彈窗</span>
+      <span class="chip"><span class="rid">#settingsTitle</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#settingsClose</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#setPageMarks</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#setVariants</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#simSeg</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#simDemo</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#setAdvanced</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#setStats</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#settingsDone</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#aboutBackdrop</span> 關於彈窗背景</span>
+    </div>
+    <table>
+      <tr><th>id</th><th>所在分頁</th><th>說明</th></tr>
+      <tr><td><code>#settingsBox</code></td><td><code>images</code></td><td>設置彈窗</td></tr>
+      <tr><td><code>#settingsTitle</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#settingsClose</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#setPageMarks</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#setVariants</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#simSeg</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#simDemo</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#setAdvanced</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#setStats</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#settingsDone</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#aboutBackdrop</code></td><td><code>images</code></td><td>關於彈窗背景</td></tr>
+    </table>
+
+    <h2>搜尋彈窗</h2>
+    <div class="chips">
+      <span class="chip"><span class="rid">#allSearchBox</span> 「搜尋所有 adb」彈窗</span>
+      <span class="chip"><span class="rid">#allSearchTitle</span> 「搜尋 n 個數據庫」標題</span>
+      <span class="chip"><span class="rid">#allSearchClose</span> 關閉搜尋彈窗</span>
+      <span class="chip"><span class="rid">#allSearchQuery</span> 搜尋所有 adb 的輸入</span>
+      <span class="chip"><span class="rid">#allSearchGo</span> 開始搜尋（每查完一個庫就更新一次）</span>
+      <span class="chip"><span class="rid">#allSearchMsg</span> 進度／結果摘要</span>
+      <span class="chip"><span class="rid">#allSearchList</span> 各庫命中數清單（依命中數排序）</span>
+      <span class="chip"><span class="rid">#settingsBackdrop</span> 設置彈窗背景</span>
+    </div>
+    <table>
+      <tr><th>id</th><th>所在分頁</th><th>說明</th></tr>
+      <tr><td><code>#allSearchBox</code></td><td><code>images</code></td><td>「搜尋所有 adb」彈窗</td></tr>
+      <tr><td><code>#allSearchTitle</code></td><td><code>images</code></td><td>「搜尋 n 個數據庫」標題</td></tr>
+      <tr><td><code>#allSearchClose</code></td><td><code>images</code></td><td>關閉搜尋彈窗</td></tr>
+      <tr><td><code>#allSearchQuery</code></td><td><code>images</code></td><td>搜尋所有 adb 的輸入</td></tr>
+      <tr><td><code>#allSearchGo</code></td><td><code>images</code></td><td>開始搜尋（每查完一個庫就更新一次）</td></tr>
+      <tr><td><code>#allSearchMsg</code></td><td><code>images</code></td><td>進度／結果摘要</td></tr>
+      <tr><td><code>#allSearchList</code></td><td><code>images</code></td><td>各庫命中數清單（依命中數排序）</td></tr>
+      <tr><td><code>#settingsBackdrop</code></td><td><code>images</code></td><td>設置彈窗背景</td></tr>
+    </table>
+
+    <h2>關於彈窗</h2>
+    <div class="chips">
+      <span class="chip"><span class="rid">#aboutBox</span> 關於彈窗</span>
+      <span class="chip"><span class="rid">#aboutLogo</span> 關於彈窗的大 logo</span>
+      <span class="chip"><span class="rid">#aboutTitle</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#aboutSite</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#aboutClose</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#aboutBuild</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#aboutMode</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#aboutExe</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#aboutUpdateMsg</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#aboutInstall</span> <span class="sel">[data-tab=images]</span></span>
+    </div>
+    <table>
+      <tr><th>id</th><th>所在分頁</th><th>說明</th></tr>
+      <tr><td><code>#aboutBox</code></td><td><code>images</code></td><td>關於彈窗</td></tr>
+      <tr><td><code>#aboutLogo</code></td><td><code>images</code></td><td>關於彈窗的大 logo</td></tr>
+      <tr><td><code>#aboutTitle</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#aboutSite</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#aboutClose</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#aboutBuild</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#aboutMode</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#aboutExe</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#aboutUpdateMsg</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#aboutInstall</code></td><td><code>images</code></td><td>—</td></tr>
+    </table>
+</body>
+</html>

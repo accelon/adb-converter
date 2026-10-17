@@ -10,7 +10,7 @@
  */
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { AdbReader, SyncIO, blockRange } from '../src/adbview/adb';
+import { AdbReader, SyncIO, blockRange } from '../src/accelon26/adb';
 import { bzip2 } from '../src/vendor/bzip2.js';
 
 const args = process.argv.slice(2);

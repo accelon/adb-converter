@@ -1,11 +1,11 @@
 /**
  * Headless browser test for the single-file mockup.
  *
- *   bun run tools/browser-test.ts [--html ../build/adbview.html] [--adb ..\\13j.adb]
+ *   bun run tools/browser-test.ts [--html ../build/accelon26.html] [--adb ..\\13j.adb]
  *
  * Starts a tiny static server (so the page is an http origin and the test can
  * hand the page a real .adb), launches Edge/Chrome headless with the DevTools
- * protocol, then drives `window.__adbview` exactly like a user would:
+ * protocol, then drives `window.__accelon26` exactly like a user would:
  * open a database, list tokens, show a document, show a token's posting list.
  * Asserts the DOM actually changed.
  */
@@ -14,7 +14,7 @@ import { existsSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
-const HTML = resolve(opt('html', resolve(import.meta.dir, '../../build/adbview.html')));
+const HTML = resolve(opt('html', resolve(import.meta.dir, '../../build/accelon26.html')));
 const ADB = resolve(opt('adb', resolve(import.meta.dir, '../../13j.adb')));
 const PORT = Number(opt('port', '8931'));
 
@@ -41,7 +41,7 @@ const server = Bun.serve({
   hostname: '127.0.0.1',
   async fetch(req) {
     const url = new URL(req.url);
-    if (url.pathname === '/' || url.pathname === '/adbview.html') {
+    if (url.pathname === '/' || url.pathname === '/accelon26.html') {
       return new Response(Bun.file(HTML), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
     if (url.pathname === '/test.adb') {
@@ -144,12 +144,12 @@ class Cdp {
 
 try {
   const cdp = await Cdp.attach(await devtoolsUrl());
-  await cdp.openPage(base + '/adbview.html');
+  await cdp.openPage(base + '/accelon26.html');
   await Bun.sleep(600); // let DOMContentLoaded run
 
-  ok('page loaded the viewer bundle', await cdp.eval<boolean>('!!window.__adbview'), 'window.__adbview present');
-  ok('initial status asks for a file', (await cdp.eval<string>('window.__adbview.status()') ?? '').includes('選擇'),
-    await cdp.eval<string>('window.__adbview.status()'));
+  ok('page loaded the viewer bundle', await cdp.eval<boolean>('!!window.__accelon26'), 'window.__accelon26 present');
+  ok('initial status asks for a file', (await cdp.eval<string>('window.__accelon26.status()') ?? '').includes('選擇'),
+    await cdp.eval<string>('window.__accelon26.status()'));
 
   // hand the page a real database, exactly like the file picker / drop would
   const opened = await cdp.eval<{ db: string; tokens: number; docs: number; ms: number; status: string }>(`
@@ -158,9 +158,9 @@ try {
       const res = await fetch('/test.adb');
       const blob = await res.blob();
       const file = new File([blob], 'test.adb', { type: 'application/octet-stream' });
-      await window.__adbview.openFile(file);
-      const s = window.__adbview.state();
-      return { db: s.db, tokens: s.tokens, docs: s.docs, ms: performance.now() - t0, status: window.__adbview.status() };
+      await window.__accelon26.openFile(file);
+      const s = window.__accelon26.state();
+      return { db: s.db, tokens: s.tokens, docs: s.docs, ms: performance.now() - t0, status: window.__accelon26.status() };
     })()
   `);
   ok('opened the adb from a Blob (file picker path)', !!opened.db, JSON.stringify(opened));
@@ -183,8 +183,8 @@ try {
   // this switches that mode on first.
   const tokenResult = await cdp.eval<string>(`
     (async () => {
-      window.__adbview.setAdvanced(true);
-      window.__adbview.showTab('token', 'left');
+      window.__accelon26.setAdvanced(true);
+      window.__accelon26.showTab('token', 'left');
       await new Promise(r => setTimeout(r, 400));
       const rows = document.querySelectorAll('#tokenRows .tokenRow');
       rows[0].click();
@@ -210,7 +210,7 @@ try {
         tok,
         mark: document.querySelector('#docText mark.docHit')?.textContent ?? '(no mark)',
         line: hl ? hl.id : null,
-        pinned: window.__adbview.state().pinned,
+        pinned: window.__accelon26.state().pinned,
       };
     })()
   `);
@@ -223,18 +223,18 @@ try {
   // side toggles and right-column tabs (columns are width-based now)
   const ui = await cdp.eval<{ tab: string; cols: string; grid: string; leftTokens: boolean; rightTabs: boolean }>(`
     (async () => {
-      window.__adbview.setAdvanced(true);
-      window.__adbview.showTab('docs', 'right');
+      window.__accelon26.setAdvanced(true);
+      window.__accelon26.showTab('docs', 'right');
       const tab = document.querySelector('#colRight .tabBtn.active')?.getAttribute('data-tab');
-      window.__adbview.setCols(25, 25);                      // both open
-      window.__adbview.toggleSide('left');                   // -> 0/25
+      window.__accelon26.setCols(25, 25);                      // both open
+      window.__accelon26.toggleSide('left');                   // -> 0/25
       await new Promise(r => setTimeout(r, 60));
-      const mid = window.__adbview.cols();
-      window.__adbview.toggleSide('right');                  // -> 0/0
+      const mid = window.__accelon26.cols();
+      window.__accelon26.toggleSide('right');                  // -> 0/0
       await new Promise(r => setTimeout(r, 60));
-      const c = window.__adbview.cols();
+      const c = window.__accelon26.cols();
       const grid = getComputedStyle(document.querySelector('main')).gridTemplateColumns;
-      window.__adbview.setCols(25, 0);
+      window.__accelon26.setCols(25, 0);
       return {
         tab, cols: c.left + '/' + c.right, mid: mid.left + '/' + mid.right, grid,
         leftTokens: !!document.querySelector('#colLeft #tokenRows'),

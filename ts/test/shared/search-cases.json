@@ -1,0 +1,2606 @@
+{
+ "version": 2,
+ "source": "tools/make-search-cases.ts（TS 後端）",
+ "cases": [
+  {
+   "db": "13j",
+   "query": "乾",
+   "clauses": [
+    {
+     "text": "乾",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "乾"
+     ],
+     "missing": [],
+     "occurrences": 146,
+     "units": 1,
+     "first": [
+      49,
+      56,
+      94
+     ],
+     "last": 816458
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "象曰",
+   "clauses": [
+    {
+     "text": "象曰",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "象",
+      "曰"
+     ],
+     "missing": [],
+     "occurrences": 446,
+     "units": 2,
+     "first": [
+      223,
+      1438,
+      1462
+     ],
+     "last": 800855
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "象曰 潛龍",
+   "clauses": [
+    {
+     "text": "象曰",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "象",
+      "曰"
+     ],
+     "missing": [],
+     "occurrences": 446,
+     "units": 2,
+     "first": [
+      223,
+      1438,
+      1462
+     ],
+     "last": 800855
+    },
+    {
+     "text": "潛龍",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "潛",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 7,
+     "units": 2,
+     "first": [
+      69,
+      238,
+      393
+     ],
+     "last": 581773
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "潛龍+勿用",
+   "clauses": [
+    {
+     "text": "潛龍",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "潛",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 7,
+     "units": 2,
+     "first": [
+      69,
+      238,
+      393
+     ],
+     "last": 581773
+    },
+    {
+     "text": "勿用",
+     "role": "required",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "勿",
+      "用"
+     ],
+     "missing": [],
+     "occurrences": 23,
+     "units": 2,
+     "first": [
+      71,
+      240,
+      395
+     ],
+     "last": 741876
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "潛龍-勿用",
+   "clauses": [
+    {
+     "text": "潛龍",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "潛",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 7,
+     "units": 2,
+     "first": [
+      69,
+      238,
+      393
+     ],
+     "last": 581773
+    },
+    {
+     "text": "勿用",
+     "role": "excluded",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "勿",
+      "用"
+     ],
+     "missing": [],
+     "occurrences": 23,
+     "units": 2,
+     "first": [
+      71,
+      240,
+      395
+     ],
+     "last": 741876
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "潛龍*勿用",
+   "clauses": [
+    {
+     "text": "潛龍",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "潛",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 7,
+     "units": 2,
+     "first": [
+      69,
+      238,
+      393
+     ],
+     "last": 581773
+    },
+    {
+     "text": "勿用",
+     "role": "optional",
+     "near": 0,
+     "wild": false,
+     "tokens": [
+      "勿",
+      "用"
+     ],
+     "missing": [],
+     "occurrences": 23,
+     "units": 2,
+     "first": [
+      71,
+      240,
+      395
+     ],
+     "last": 741876
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "乾.元",
+   "clauses": [
+    {
+     "text": "乾.元",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "乾",
+      "元"
+     ],
+     "missing": [],
+     "occurrences": 1,
+     "units": 3,
+     "first": [
+      56
+     ],
+     "last": 56
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "見.龍",
+   "clauses": [
+    {
+     "text": "見.龍",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "見",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 2,
+     "units": 3,
+     "first": [
+      140,
+      581819
+     ],
+     "last": 581819
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": ".乾",
+   "clauses": [
+    {
+     "text": "乾",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "乾"
+     ],
+     "missing": [],
+     "occurrences": 146,
+     "units": 1,
+     "first": [
+      49,
+      56,
+      94
+     ],
+     "last": 816458
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "乾. 元",
+   "clauses": [
+    {
+     "text": "乾",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "乾"
+     ],
+     "missing": [],
+     "occurrences": 146,
+     "units": 1,
+     "first": [
+      49,
+      56,
+      94
+     ],
+     "last": 816458
+    },
+    {
+     "text": "元",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "元"
+     ],
+     "missing": [],
+     "occurrences": 372,
+     "units": 1,
+     "first": [
+      58,
+      155,
+      314
+     ],
+     "last": 806047
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "緣起 性空",
+   "clauses": [
+    {
+     "text": "緣起",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "緣",
+      "起"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    },
+    {
+     "text": "性空",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "性",
+      "空"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "緣起*性空",
+   "clauses": [
+    {
+     "text": "緣起",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "緣",
+      "起"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    },
+    {
+     "text": "性空",
+     "role": "optional",
+     "near": 0,
+     "wild": false,
+     "tokens": [
+      "性",
+      "空"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "緣起+性空-無明",
+   "clauses": [
+    {
+     "text": "緣起",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "緣",
+      "起"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    },
+    {
+     "text": "性空",
+     "role": "required",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "性",
+      "空"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    },
+    {
+     "text": "無明",
+     "role": "excluded",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "無",
+      "明"
+     ],
+     "missing": [],
+     "occurrences": 1,
+     "units": 2,
+     "first": [
+      631183
+     ],
+     "last": 631183
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "菩薩",
+   "clauses": [
+    {
+     "text": "菩薩",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "菩",
+      "薩"
+     ],
+     "missing": [
+      "菩",
+      "薩"
+     ],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "菩.心",
+   "clauses": [
+    {
+     "text": "菩.心",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "菩",
+      "心"
+     ],
+     "missing": [
+      "菩"
+     ],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "涅槃 解脫",
+   "clauses": [
+    {
+     "text": "涅槃",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "涅",
+      "槃"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    },
+    {
+     "text": "解脫",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "解",
+      "脫"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "zzz 不存在",
+   "clauses": [
+    {
+     "text": "zzz",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "zzz"
+     ],
+     "missing": [
+      "zzz"
+     ],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    },
+    {
+     "text": "不存在",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "不",
+      "存",
+      "在"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "-無明",
+   "clauses": [
+    {
+     "text": "無明",
+     "role": "excluded",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "無",
+      "明"
+     ],
+     "missing": [],
+     "occurrences": 1,
+     "units": 2,
+     "first": [
+      631183
+     ],
+     "last": 631183
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "光明 無明",
+   "clauses": [
+    {
+     "text": "光明",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "光",
+      "明"
+     ],
+     "missing": [],
+     "occurrences": 4,
+     "units": 2,
+     "first": [
+      4070,
+      5475,
+      15906
+     ],
+     "last": 111000
+    },
+    {
+     "text": "無明",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "無",
+      "明"
+     ],
+     "missing": [],
+     "occurrences": 1,
+     "units": 2,
+     "first": [
+      631183
+     ],
+     "last": 631183
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "佛.法",
+   "clauses": [
+    {
+     "text": "佛.法",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "佛",
+      "法"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "乾",
+   "clauses": [
+    {
+     "text": "乾",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "乾"
+     ],
+     "missing": [],
+     "occurrences": 295,
+     "units": 1,
+     "first": [
+      31122,
+      143118,
+      168020
+     ],
+     "last": 7671107
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "象曰",
+   "clauses": [
+    {
+     "text": "象曰",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "象",
+      "曰"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "象曰 潛龍",
+   "clauses": [
+    {
+     "text": "象曰",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "象",
+      "曰"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    },
+    {
+     "text": "潛龍",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "潛",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 1,
+     "units": 2,
+     "first": [
+      1686519
+     ],
+     "last": 1686519
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "潛龍+勿用",
+   "clauses": [
+    {
+     "text": "潛龍",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "潛",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 1,
+     "units": 2,
+     "first": [
+      1686519
+     ],
+     "last": 1686519
+    },
+    {
+     "text": "勿用",
+     "role": "required",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "勿",
+      "用"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "潛龍-勿用",
+   "clauses": [
+    {
+     "text": "潛龍",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "潛",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 1,
+     "units": 2,
+     "first": [
+      1686519
+     ],
+     "last": 1686519
+    },
+    {
+     "text": "勿用",
+     "role": "excluded",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "勿",
+      "用"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "潛龍*勿用",
+   "clauses": [
+    {
+     "text": "潛龍",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "潛",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 1,
+     "units": 2,
+     "first": [
+      1686519
+     ],
+     "last": 1686519
+    },
+    {
+     "text": "勿用",
+     "role": "optional",
+     "near": 0,
+     "wild": false,
+     "tokens": [
+      "勿",
+      "用"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "乾.元",
+   "clauses": [
+    {
+     "text": "乾.元",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "乾",
+      "元"
+     ],
+     "missing": [],
+     "occurrences": 4,
+     "units": 3,
+     "first": [
+      2723460,
+      7117740,
+      7169545
+     ],
+     "last": 7169717
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "見.龍",
+   "clauses": [
+    {
+     "text": "見.龍",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "見",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 4,
+     "units": 3,
+     "first": [
+      596672,
+      4980804,
+      4990844
+     ],
+     "last": 5675421
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": ".乾",
+   "clauses": [
+    {
+     "text": "乾",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "乾"
+     ],
+     "missing": [],
+     "occurrences": 295,
+     "units": 1,
+     "first": [
+      31122,
+      143118,
+      168020
+     ],
+     "last": 7671107
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "乾. 元",
+   "clauses": [
+    {
+     "text": "乾",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "乾"
+     ],
+     "missing": [],
+     "occurrences": 295,
+     "units": 1,
+     "first": [
+      31122,
+      143118,
+      168020
+     ],
+     "last": 7671107
+    },
+    {
+     "text": "元",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "元"
+     ],
+     "missing": [],
+     "occurrences": 2813,
+     "units": 1,
+     "first": [
+      13158,
+      73668,
+      75829
+     ],
+     "last": 7674161
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "緣起 性空",
+   "clauses": [
+    {
+     "text": "緣起",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "緣",
+      "起"
+     ],
+     "missing": [],
+     "occurrences": 4632,
+     "units": 2,
+     "first": [
+      1371,
+      4013,
+      6759
+     ],
+     "last": 7676496
+    },
+    {
+     "text": "性空",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "性",
+      "空"
+     ],
+     "missing": [],
+     "occurrences": 2051,
+     "units": 2,
+     "first": [
+      661,
+      3359,
+      8212
+     ],
+     "last": 7676391
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "緣起*性空",
+   "clauses": [
+    {
+     "text": "緣起",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "緣",
+      "起"
+     ],
+     "missing": [],
+     "occurrences": 4632,
+     "units": 2,
+     "first": [
+      1371,
+      4013,
+      6759
+     ],
+     "last": 7676496
+    },
+    {
+     "text": "性空",
+     "role": "optional",
+     "near": 0,
+     "wild": false,
+     "tokens": [
+      "性",
+      "空"
+     ],
+     "missing": [],
+     "occurrences": 2051,
+     "units": 2,
+     "first": [
+      661,
+      3359,
+      8212
+     ],
+     "last": 7676391
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "緣起+性空-無明",
+   "clauses": [
+    {
+     "text": "緣起",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "緣",
+      "起"
+     ],
+     "missing": [],
+     "occurrences": 4632,
+     "units": 2,
+     "first": [
+      1371,
+      4013,
+      6759
+     ],
+     "last": 7676496
+    },
+    {
+     "text": "性空",
+     "role": "required",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "性",
+      "空"
+     ],
+     "missing": [],
+     "occurrences": 2051,
+     "units": 2,
+     "first": [
+      661,
+      3359,
+      8212
+     ],
+     "last": 7676391
+    },
+    {
+     "text": "無明",
+     "role": "excluded",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "無",
+      "明"
+     ],
+     "missing": [],
+     "occurrences": 1870,
+     "units": 2,
+     "first": [
+      43022,
+      59650,
+      59655
+     ],
+     "last": 7633005
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "菩薩",
+   "clauses": [
+    {
+     "text": "菩薩",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "菩",
+      "薩"
+     ],
+     "missing": [],
+     "occurrences": 12388,
+     "units": 2,
+     "first": [
+      1959,
+      2778,
+      4717
+     ],
+     "last": 7675936
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "菩.心",
+   "clauses": [
+    {
+     "text": "菩.心",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "菩",
+      "心"
+     ],
+     "missing": [],
+     "occurrences": 1506,
+     "units": 3,
+     "first": [
+      959,
+      3582,
+      4717
+     ],
+     "last": 7675936
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "涅槃 解脫",
+   "clauses": [
+    {
+     "text": "涅槃",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "涅",
+      "槃"
+     ],
+     "missing": [],
+     "occurrences": 5560,
+     "units": 2,
+     "first": [
+      973,
+      3630,
+      10329
+     ],
+     "last": 7668401
+    },
+    {
+     "text": "解脫",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "解",
+      "脫"
+     ],
+     "missing": [],
+     "occurrences": 5351,
+     "units": 2,
+     "first": [
+      3618,
+      7221,
+      7752
+     ],
+     "last": 7667179
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "zzz 不存在",
+   "clauses": [
+    {
+     "text": "zzz",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "zzz"
+     ],
+     "missing": [
+      "zzz"
+     ],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    },
+    {
+     "text": "不存在",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "不",
+      "存",
+      "在"
+     ],
+     "missing": [],
+     "occurrences": 60,
+     "units": 3,
+     "first": [
+      76881,
+      81839,
+      441608
+     ],
+     "last": 7493490
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "-無明",
+   "clauses": [
+    {
+     "text": "無明",
+     "role": "excluded",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "無",
+      "明"
+     ],
+     "missing": [],
+     "occurrences": 1870,
+     "units": 2,
+     "first": [
+      43022,
+      59650,
+      59655
+     ],
+     "last": 7633005
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "光明 無明",
+   "clauses": [
+    {
+     "text": "光明",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "光",
+      "明"
+     ],
+     "missing": [],
+     "occurrences": 1076,
+     "units": 2,
+     "first": [
+      38365,
+      42782,
+      61646
+     ],
+     "last": 7662931
+    },
+    {
+     "text": "無明",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "無",
+      "明"
+     ],
+     "missing": [],
+     "occurrences": 1870,
+     "units": 2,
+     "first": [
+      43022,
+      59650,
+      59655
+     ],
+     "last": 7633005
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "佛.法",
+   "clauses": [
+    {
+     "text": "佛.法",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "佛",
+      "法"
+     ],
+     "missing": [],
+     "occurrences": 616,
+     "units": 3,
+     "first": [
+      16076,
+      27470,
+      31866
+     ],
+     "last": 7638076
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "乾",
+   "clauses": [
+    {
+     "text": "乾",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "乾"
+     ],
+     "missing": [],
+     "occurrences": 769,
+     "units": 1,
+     "first": [
+      39361,
+      79148,
+      86274
+     ],
+     "last": 6150050
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "象曰",
+   "clauses": [
+    {
+     "text": "象曰",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "象",
+      "曰"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "象曰 潛龍",
+   "clauses": [
+    {
+     "text": "象曰",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "象",
+      "曰"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    },
+    {
+     "text": "潛龍",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "潛",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 1,
+     "units": 2,
+     "first": [
+      265011
+     ],
+     "last": 265011
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "潛龍+勿用",
+   "clauses": [
+    {
+     "text": "潛龍",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "潛",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 1,
+     "units": 2,
+     "first": [
+      265011
+     ],
+     "last": 265011
+    },
+    {
+     "text": "勿用",
+     "role": "required",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "勿",
+      "用"
+     ],
+     "missing": [],
+     "occurrences": 2,
+     "units": 2,
+     "first": [
+      1927592,
+      3590301
+     ],
+     "last": 3590301
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "潛龍-勿用",
+   "clauses": [
+    {
+     "text": "潛龍",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "潛",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 1,
+     "units": 2,
+     "first": [
+      265011
+     ],
+     "last": 265011
+    },
+    {
+     "text": "勿用",
+     "role": "excluded",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "勿",
+      "用"
+     ],
+     "missing": [],
+     "occurrences": 2,
+     "units": 2,
+     "first": [
+      1927592,
+      3590301
+     ],
+     "last": 3590301
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "潛龍*勿用",
+   "clauses": [
+    {
+     "text": "潛龍",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "潛",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 1,
+     "units": 2,
+     "first": [
+      265011
+     ],
+     "last": 265011
+    },
+    {
+     "text": "勿用",
+     "role": "optional",
+     "near": 0,
+     "wild": false,
+     "tokens": [
+      "勿",
+      "用"
+     ],
+     "missing": [],
+     "occurrences": 2,
+     "units": 2,
+     "first": [
+      1927592,
+      3590301
+     ],
+     "last": 3590301
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "乾.元",
+   "clauses": [
+    {
+     "text": "乾.元",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "乾",
+      "元"
+     ],
+     "missing": [],
+     "occurrences": 31,
+     "units": 3,
+     "first": [
+      151088,
+      679168,
+      686509
+     ],
+     "last": 5572180
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "見.龍",
+   "clauses": [
+    {
+     "text": "見.龍",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "見",
+      "龍"
+     ],
+     "missing": [],
+     "occurrences": 2,
+     "units": 3,
+     "first": [
+      273728,
+      3114264
+     ],
+     "last": 3114264
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": ".乾",
+   "clauses": [
+    {
+     "text": "乾",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "乾"
+     ],
+     "missing": [],
+     "occurrences": 769,
+     "units": 1,
+     "first": [
+      39361,
+      79148,
+      86274
+     ],
+     "last": 6150050
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "乾. 元",
+   "clauses": [
+    {
+     "text": "乾",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "乾"
+     ],
+     "missing": [],
+     "occurrences": 769,
+     "units": 1,
+     "first": [
+      39361,
+      79148,
+      86274
+     ],
+     "last": 6150050
+    },
+    {
+     "text": "元",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "元"
+     ],
+     "missing": [],
+     "occurrences": 6571,
+     "units": 1,
+     "first": [
+      4568,
+      4727,
+      4761
+     ],
+     "last": 6156096
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "緣起 性空",
+   "clauses": [
+    {
+     "text": "緣起",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "緣",
+      "起"
+     ],
+     "missing": [],
+     "occurrences": 922,
+     "units": 2,
+     "first": [
+      51799,
+      77316,
+      77349
+     ],
+     "last": 6147781
+    },
+    {
+     "text": "性空",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "性",
+      "空"
+     ],
+     "missing": [],
+     "occurrences": 194,
+     "units": 2,
+     "first": [
+      50714,
+      51984,
+      52025
+     ],
+     "last": 6114160
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "緣起*性空",
+   "clauses": [
+    {
+     "text": "緣起",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "緣",
+      "起"
+     ],
+     "missing": [],
+     "occurrences": 922,
+     "units": 2,
+     "first": [
+      51799,
+      77316,
+      77349
+     ],
+     "last": 6147781
+    },
+    {
+     "text": "性空",
+     "role": "optional",
+     "near": 0,
+     "wild": false,
+     "tokens": [
+      "性",
+      "空"
+     ],
+     "missing": [],
+     "occurrences": 194,
+     "units": 2,
+     "first": [
+      50714,
+      51984,
+      52025
+     ],
+     "last": 6114160
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "緣起+性空-無明",
+   "clauses": [
+    {
+     "text": "緣起",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "緣",
+      "起"
+     ],
+     "missing": [],
+     "occurrences": 922,
+     "units": 2,
+     "first": [
+      51799,
+      77316,
+      77349
+     ],
+     "last": 6147781
+    },
+    {
+     "text": "性空",
+     "role": "required",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "性",
+      "空"
+     ],
+     "missing": [],
+     "occurrences": 194,
+     "units": 2,
+     "first": [
+      50714,
+      51984,
+      52025
+     ],
+     "last": 6114160
+    },
+    {
+     "text": "無明",
+     "role": "excluded",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "無",
+      "明"
+     ],
+     "missing": [],
+     "occurrences": 1141,
+     "units": 2,
+     "first": [
+      6278,
+      6287,
+      10788
+     ],
+     "last": 6153011
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "菩薩",
+   "clauses": [
+    {
+     "text": "菩薩",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "菩",
+      "薩"
+     ],
+     "missing": [],
+     "occurrences": 10748,
+     "units": 2,
+     "first": [
+      3951,
+      3995,
+      4077
+     ],
+     "last": 6157327
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "菩.心",
+   "clauses": [
+    {
+     "text": "菩.心",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "菩",
+      "心"
+     ],
+     "missing": [],
+     "occurrences": 842,
+     "units": 3,
+     "first": [
+      1788,
+      8041,
+      8052
+     ],
+     "last": 6147109
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "涅槃 解脫",
+   "clauses": [
+    {
+     "text": "涅槃",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "涅",
+      "槃"
+     ],
+     "missing": [],
+     "occurrences": 3807,
+     "units": 2,
+     "first": [
+      2352,
+      4039,
+      4203
+     ],
+     "last": 6157389
+    },
+    {
+     "text": "解脫",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "解",
+      "脫"
+     ],
+     "missing": [],
+     "occurrences": 1728,
+     "units": 2,
+     "first": [
+      8413,
+      14349,
+      16274
+     ],
+     "last": 6137262
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "zzz 不存在",
+   "clauses": [
+    {
+     "text": "zzz",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "zzz"
+     ],
+     "missing": [
+      "zzz"
+     ],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    },
+    {
+     "text": "不存在",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "不",
+      "存",
+      "在"
+     ],
+     "missing": [],
+     "occurrences": 26,
+     "units": 3,
+     "first": [
+      861123,
+      1004482,
+      1004740
+     ],
+     "last": 6130406
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "-無明",
+   "clauses": [
+    {
+     "text": "無明",
+     "role": "excluded",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "無",
+      "明"
+     ],
+     "missing": [],
+     "occurrences": 1141,
+     "units": 2,
+     "first": [
+      6278,
+      6287,
+      10788
+     ],
+     "last": 6153011
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "光明 無明",
+   "clauses": [
+    {
+     "text": "光明",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "光",
+      "明"
+     ],
+     "missing": [],
+     "occurrences": 1379,
+     "units": 2,
+     "first": [
+      7879,
+      15071,
+      15096
+     ],
+     "last": 6158234
+    },
+    {
+     "text": "無明",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "無",
+      "明"
+     ],
+     "missing": [],
+     "occurrences": 1141,
+     "units": 2,
+     "first": [
+      6278,
+      6287,
+      10788
+     ],
+     "last": 6153011
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "佛.法",
+   "clauses": [
+    {
+     "text": "佛.法",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "佛",
+      "法"
+     ],
+     "missing": [],
+     "occurrences": 451,
+     "units": 3,
+     "first": [
+      694,
+      3448,
+      24942
+     ],
+     "last": 6153054
+    }
+   ]
+  }
+ ],
+ "variantCases": [
+  {
+   "db": "13j",
+   "query": "菩薩",
+   "groups": [
+    "萨薩"
+   ],
+   "clauses": [
+    {
+     "text": "菩薩",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "菩",
+      "薩"
+     ],
+     "missing": [
+      "菩",
+      "薩"
+     ],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "眾生",
+   "groups": [
+    "众眾衆"
+   ],
+   "clauses": [
+    {
+     "text": "眾生",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "眾",
+      "生"
+     ],
+     "missing": [],
+     "occurrences": 1,
+     "units": 2,
+     "first": [
+      332601
+     ],
+     "last": 332601
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "說服",
+   "groups": [
+    "說説说"
+   ],
+   "clauses": [
+    {
+     "text": "說服",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "說",
+      "服"
+     ],
+     "missing": [],
+     "occurrences": 3,
+     "units": 2,
+     "first": [
+      182041,
+      182050,
+      311897
+     ],
+     "last": 311897
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "涅槃 解脫",
+   "groups": [
+    "脫脱"
+   ],
+   "clauses": [
+    {
+     "text": "涅槃",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "涅",
+      "槃"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    },
+    {
+     "text": "解脫",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "解",
+      "脫"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "菩.心",
+   "groups": [],
+   "clauses": [
+    {
+     "text": "菩.心",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "菩",
+      "心"
+     ],
+     "missing": [
+      "菩"
+     ],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "佛.法",
+   "groups": [],
+   "clauses": [
+    {
+     "text": "佛.法",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "佛",
+      "法"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "菩薩",
+   "groups": [
+    "萨薩"
+   ],
+   "clauses": [
+    {
+     "text": "菩薩",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "菩",
+      "薩"
+     ],
+     "missing": [],
+     "occurrences": 12388,
+     "units": 2,
+     "first": [
+      1959,
+      2778,
+      4717
+     ],
+     "last": 7675936
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "眾生",
+   "groups": [
+    "众眾衆"
+   ],
+   "clauses": [
+    {
+     "text": "眾生",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "眾",
+      "生"
+     ],
+     "missing": [],
+     "occurrences": 8611,
+     "units": 2,
+     "first": [
+      6997,
+      7079,
+      7270
+     ],
+     "last": 7661918
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "說服",
+   "groups": [
+    "說説说"
+   ],
+   "clauses": [
+    {
+     "text": "說服",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "說",
+      "服"
+     ],
+     "missing": [],
+     "occurrences": 10,
+     "units": 2,
+     "first": [
+      249056,
+      2458359,
+      2630747
+     ],
+     "last": 7630188
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "涅槃 解脫",
+   "groups": [
+    "脫脱"
+   ],
+   "clauses": [
+    {
+     "text": "涅槃",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "涅",
+      "槃"
+     ],
+     "missing": [],
+     "occurrences": 5560,
+     "units": 2,
+     "first": [
+      973,
+      3630,
+      10329
+     ],
+     "last": 7668401
+    },
+    {
+     "text": "解脫",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "解",
+      "脫"
+     ],
+     "missing": [],
+     "occurrences": 5351,
+     "units": 2,
+     "first": [
+      3618,
+      7221,
+      7752
+     ],
+     "last": 7667179
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "菩.心",
+   "groups": [],
+   "clauses": [
+    {
+     "text": "菩.心",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "菩",
+      "心"
+     ],
+     "missing": [],
+     "occurrences": 1506,
+     "units": 3,
+     "first": [
+      959,
+      3582,
+      4717
+     ],
+     "last": 7675936
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "佛.法",
+   "groups": [],
+   "clauses": [
+    {
+     "text": "佛.法",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "佛",
+      "法"
+     ],
+     "missing": [],
+     "occurrences": 616,
+     "units": 3,
+     "first": [
+      16076,
+      27470,
+      31866
+     ],
+     "last": 7638076
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "菩薩",
+   "groups": [
+    "萨薩"
+   ],
+   "clauses": [
+    {
+     "text": "菩薩",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "菩",
+      "薩"
+     ],
+     "missing": [],
+     "occurrences": 10748,
+     "units": 2,
+     "first": [
+      3951,
+      3995,
+      4077
+     ],
+     "last": 6157327
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "眾生",
+   "groups": [
+    "众眾衆"
+   ],
+   "clauses": [
+    {
+     "text": "眾生",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "眾",
+      "生"
+     ],
+     "missing": [],
+     "occurrences": 5934,
+     "units": 2,
+     "first": [
+      2164,
+      3254,
+      3346
+     ],
+     "last": 6154795
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "說服",
+   "groups": [
+    "說説说"
+   ],
+   "clauses": [
+    {
+     "text": "說服",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "說",
+      "服"
+     ],
+     "missing": [],
+     "occurrences": 7,
+     "units": 2,
+     "first": [
+      754740,
+      1593499,
+      1725270
+     ],
+     "last": 4858397
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "涅槃 解脫",
+   "groups": [
+    "脫脱"
+   ],
+   "clauses": [
+    {
+     "text": "涅槃",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "涅",
+      "槃"
+     ],
+     "missing": [],
+     "occurrences": 3807,
+     "units": 2,
+     "first": [
+      2352,
+      4039,
+      4203
+     ],
+     "last": 6157389
+    },
+    {
+     "text": "解脫",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "解",
+      "脫"
+     ],
+     "missing": [],
+     "occurrences": 1728,
+     "units": 2,
+     "first": [
+      8413,
+      14349,
+      16274
+     ],
+     "last": 6137262
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "菩.心",
+   "groups": [],
+   "clauses": [
+    {
+     "text": "菩.心",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "菩",
+      "心"
+     ],
+     "missing": [],
+     "occurrences": 842,
+     "units": 3,
+     "first": [
+      1788,
+      8041,
+      8052
+     ],
+     "last": 6147109
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "佛.法",
+   "groups": [],
+   "clauses": [
+    {
+     "text": "佛.法",
+     "role": "optional",
+     "near": -1,
+     "wild": true,
+     "tokens": [
+      "佛",
+      "法"
+     ],
+     "missing": [],
+     "occurrences": 451,
+     "units": 3,
+     "first": [
+      694,
+      3448,
+      24942
+     ],
+     "last": 6153054
+    }
+   ]
+  }
+ ]
+}

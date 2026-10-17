@@ -1,4 +1,4 @@
-// Command accelon26 是 adbview 單檔 HTML 應用的 Wails3 桌面宿主（作者 2026-10 改名）。
+// Command accelon26 是 accelon26 單檔 HTML 應用的 Wails3 桌面宿主（作者 2026-10 改名）。
 // Go 層極薄：只註冊一個 AdbHost service（列 *.adb + mmap 讀位元組區間），
 // UI 全在 assets/index.html 裡（由倉庫根目錄的 TypeScript 建置腳本產生）。
 package main
@@ -16,7 +16,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-// assets 裡就是建置好的單檔 adbview；webview 開啟 "/" 時由它提供 index.html。
+// assets 裡就是建置好的單檔 accelon26；webview 開啟 "/" 時由它提供 index.html。
 // 這個目錄必須一直存在，否則 //go:embed 會編譯失敗。
 //
 //go:embed all:assets

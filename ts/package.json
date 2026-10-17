@@ -10,7 +10,10 @@
     "bench": "bun run src/cli.ts bench",
     "test": "bun run test/verify.ts",
     "test:index": "bun run test/index-match.ts",
-    "test:small": "bun run tools/make-small.ts D:\\accelon3\\yinshun\\yinshun.adb --docs 10"
+    "test:small": "bun run tools/make-small.ts D:\\accelon3\\yinshun\\yinshun.adb --docs 10",
+    "test:backend": "bun run test/backend-cases.test.ts",
+    "test:go": "cd ../wails && go test ./...",
+    "cases": "bun run tools/make-search-cases.ts"
   },
   "engines": { "bun": ">=1.1" },
   "license": "Apache-2.0"

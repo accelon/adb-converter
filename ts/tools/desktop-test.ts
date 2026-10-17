@@ -14,8 +14,8 @@
  */
 import { resolve } from 'node:path';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { AdbReader, SyncIO, blockRange } from '../src/adbview/adb';
-import { SearchSession, queryTokens } from '../src/adbview/search';
+import { AdbReader, SyncIO, blockRange } from '../src/accelon26/adb';
+import { SearchSession, queryTokens } from '../src/accelon26/search';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
@@ -155,7 +155,7 @@ async function startGui(stateDir: string, opts: { spawn?: boolean; env?: Record<
     return r.result.value as T;
   };
   for (let i = 0; i < 100; i++) {
-    const ready = await evalIn<boolean>('!!(window.__adbview && window.__adbview.state)').catch(() => false);
+    const ready = await evalIn<boolean>('!!(window.__accelon26 && window.__accelon26.state)').catch(() => false);
     if (ready) break;
     await Bun.sleep(300);
   }
@@ -193,20 +193,43 @@ async function startGui(stateDir: string, opts: { spawn?: boolean; env?: Record<
 rmSync(STATE_DIR, { recursive: true, force: true });
 const gui = await startGui(STATE_DIR);
 const evalIn = gui.evalIn;
-const st = await evalIn<string>(`JSON.stringify({
-  href: location.href.slice(0, 30),
-  catalog: window.__adbview.state().catalog,
-  options: [...document.getElementById('dbPick').options].map((o) => o.textContent),
-  db: window.__adbview.state().db,
-  open: window.__adbview.openBreakdown(),
-})`);
+const st = await evalIn<string>(`(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const btn = document.getElementById('dbPickBtn');
+  const menu = document.getElementById('dbPickMenu');
+  const closedAtStart = menu.hidden;
+  btn.click();
+  await sleep(250);
+  const options = [...menu.querySelectorAll('.dbPickItem')].map((i) => i.textContent);
+  const openAfterClick = !menu.hidden;
+  btn.click();   // 收起，後面的步驟自己會再開
+  await sleep(150);
+  return JSON.stringify({
+    href: location.href.slice(0, 30),
+    catalog: window.__accelon26.state().catalog,
+    options,
+    closedAtStart, openAfterClick,
+    db: window.__accelon26.state().db,
+    open: window.__accelon26.openBreakdown(),
+  });
+})()`);
 console.log('--- window state ---');
 console.log(st);
-const parsed = JSON.parse(st) as { catalog: { name: string; open: boolean }[]; options: string[]; db: string; open: any };
+const parsed = JSON.parse(st) as {
+  catalog: { name: string; open: boolean }[]; options: string[]; db: string; open: any;
+  closedAtStart: boolean; openAfterClick: boolean;
+};
 ok('視窗頁面啟動（desktop host 有回應）', parsed.options.length > 1, JSON.stringify(parsed.options));
-ok('下拉已含工作目錄的兩個 adb',
+ok('右上資料夾按鈕：預設收起、按一下展開清單',
+  parsed.closedAtStart === true && parsed.openAfterClick === true,
+  `start hidden=${parsed.closedAtStart}、click 後展開=${parsed.openAfterClick}`);
+ok('資料夾清單已含工作目錄的兩個 adb',
   parsed.catalog.some((c) => c.name.includes('十三經')) && parsed.catalog.some((c) => c.name.includes('佛光大辭典')),
   JSON.stringify(parsed.catalog.map((c) => c.name)));
+// 作者 2026-10：桌面版不需要「加入 adb」（啟動時已列出工作目錄的 adb）
+ok('桌面版的下拉沒有「加入 adb」那一項（file:// 版才有）',
+  !parsed.options.some((o) => o.includes('加入 adb')),
+  JSON.stringify(parsed.options));
 ok('啟動時沒有把每個 adb 都載入（只讀檔頭）', parsed.catalog.filter((c) => c.open).length <= 1,
   parsed.catalog.filter((c) => c.open).length + ' 個已載入');
 ok('開第一個 adb 是用 mmap 讀的（有 read 統計）', !!parsed.open && parsed.open.reads > 0,
@@ -214,26 +237,29 @@ ok('開第一個 adb 是用 mmap 讀的（有 read 統計）', !!parsed.open && 
 
 // pick the OTHER database from the dropdown and time it
 const second = await evalIn<string>(`(async () => {
-  const sel = document.getElementById('dbPick');
-  const cur = document.getElementById('dbPick').selectedIndex;
-  // the option label of a database that is not loaded yet carries the （未載入） suffix
-  const name = (o) => o.textContent.replace('（未載入）', '');
-  const opt = [...sel.options].find((o, i) => i !== cur);
-  if (!opt) return JSON.stringify({ skipped: true });
-  const want = name(opt);
-  const before = window.__adbview.state().db;
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  // 右上黃色資料夾 → 清單（作者 2026-10）
+  document.getElementById('dbPickBtn').click();
+  await sleep(250);
+  const items = [...document.querySelectorAll('#dbPickMenu .dbPickItem')];
+  const cur = items.findIndex((i) => i.classList.contains('active'));
+  // 尚未載入的項目，標籤後面帶（未載入）
+  const name = (t) => t.replace('（未載入）', '');
+  const item = items.find((i, k) => k !== cur);
+  if (!item) return JSON.stringify({ skipped: true });
+  const want = name(item.textContent);
+  const before = window.__accelon26.state().db;
   const t0 = performance.now();
-  sel.value = opt.value;
-  sel.dispatchEvent(new Event('change'));
+  item.click();
   let wall = 0;
   for (let i = 0; i < 120; i++) {
     await new Promise((r) => setTimeout(r, 100));
-    if (window.__adbview.openBreakdown()?.file === want) { wall = Math.round(performance.now() - t0); break; }
+    if (window.__accelon26.openBreakdown()?.file === want) { wall = Math.round(performance.now() - t0); break; }
   }
   await new Promise((r) => setTimeout(r, 800));
-  return JSON.stringify({ picked: want, before, now: window.__adbview.state().db, wallMs: wall, open: window.__adbview.openBreakdown() });
+  return JSON.stringify({ picked: want, before, now: window.__accelon26.state().db, wallMs: wall, open: window.__accelon26.openBreakdown() });
 })()`);
-console.log('--- 從下拉選另一個 ---');
+console.log('--- 從資料夾清單選另一個 ---');
 console.log(second);
 const picked = JSON.parse(second) as { skipped?: boolean; picked?: string; before?: string; now?: string; wallMs?: number; open?: any };
 ok('從下拉選另一個 adb 會載入它（換掉原本的）',
@@ -244,8 +270,8 @@ ok('桌面宿主的開檔成本有被量到（reads/ioMs 都有值）',
   picked.skipped || (picked.open.reads > 0 && picked.open.ioMs > 0 && picked.open.totalMs > 0),
   picked.skipped ? '只有一個資料庫' : `totalMs=${picked.open.totalMs?.toFixed?.(1)} ioMs=${picked.open.ioMs?.toFixed?.(1)}`);
 
-// ---- Go 的索引查詢（postings + plAnd + 分群）必須與 TypeScript 引擎完全相同 -----
-// 作者：「把 plAnd、posting group 也做 go 版，TypeScript 直接取得詞 posting 和分群統計」。
+// ---- Go 的查詢後端（詞組命中）必須與 TypeScript 引擎完全相同 ---------------------
+// 作者 2026-10：兩邊都只回「每個詞組的命中」，分段／BM25／分群統計只有 TS 一份。
 const searchCases: { adb: string; q: string }[] = [
   { adb: resolve(CWD, '13j.adb'), q: '象曰' },
   { adb: resolve(CWD, '13j.adb'), q: '孟子' },
@@ -257,30 +283,26 @@ for (const c of searchCases) {
   const reader = await AdbReader.open(new SyncIO(c.adb));
   const session = new SearchSession(reader);
   await session.init();
-  const tag = session.grouping.tag;
   const t0 = performance.now();
   const ts = await session.search(c.q);
   const tsMs = performance.now() - t0;
-  const tokens = queryTokens(c.q);
   const goOut = await evalIn<string>(`(async () => {
     const m = await new Function('u', 'return import(u)')('/wails/runtime.js');
     const t0 = performance.now();
-    const out = await m.Call.ByName('main.AdbHost.SearchTokens', ${JSON.stringify(c.adb.replace(/\\/g, '/'))}, ${JSON.stringify(tokens)}, ${JSON.stringify(tag)}, 5000);
+    const out = await m.Call.ByName('main.AdbHost.SearchQuery', ${JSON.stringify(c.adb.replace(/\\/g, '/'))}, ${JSON.stringify(c.q)}, 5000, []);
     return JSON.stringify({ ms: Math.round(performance.now() - t0), out });
 })()`);
   const go = JSON.parse(goOut) as { ms: number; out: any };
-  const goHits = (go.out?.hits ?? []) as { va: number; units: number }[];
+  const goHits = ((go.out?.clauses?.[0]?.hits ?? []) as { va: number; units: number }[]);
   const tsHits = ts.hits as { va: number; units: number }[];
   const sameHits = tsHits.length === goHits.length
     && tsHits.every((h, i) => h.va === goHits[i].va && h.units === goHits[i].units);
   const tsGroups = ts.groups.map((g) => `${g.name}:${g.from}:${g.to}:${g.count}`).join('|');
-  const goGroups = ((go.out?.groups ?? []) as any[]).map((g) => `${g.name}:${g.from}:${g.to}:${g.count}`).join('|');
-  const sameGroups = tsGroups === goGroups && tsGroups.length > 0;
-  ok(`Go 的索引查詢與 TypeScript 相同（${c.adb.split(/[\\\\/]/).pop()} 「${c.q}」）`,
-    sameHits && sameGroups && tsGroups.split('|').length === ts.groups.length,
-    `hits ${tsHits.length}${sameHits ? '' : '(不同)'}、groups ${ts.groups.length}/${(go.out?.groups ?? []).length}${sameGroups ? '' : '(不同)'}`
-    + `｜TS ${tsMs.toFixed(1)} ms vs Go ${go.ms} ms（Go 內部 lookup ${go.out?.lookupMs?.toFixed?.(1)} / plAnd ${go.out?.andMs?.toFixed?.(1)} / group ${go.out?.groupMs?.toFixed?.(1)} ms，平行=${go.out?.parallel}）`
-    + `，missing ${JSON.stringify(go.out?.missing ?? [])}`);
+  const goClauseMiss = (go.out?.clauses?.[0]?.missing ?? []) as string[];
+  ok(`Go 的查詢後端與 TypeScript 相同（${c.adb.split(/[\\\\/]/).pop()} 「${c.q}」）`,
+    sameHits && tsGroups.length > 0,
+    `hits ${tsHits.length}${sameHits ? '' : '(不同)'}、groups ${ts.groups.length}（TS 自己算）`
+    + `｜TS ${tsMs.toFixed(1)} ms vs Go ${go.ms} ms（Go 回 ${go.out?.clauses?.length ?? 0} 個詞組，missing ${JSON.stringify(goClauseMiss)}）`);
 }
 
 // ---- 視窗 UI 真的走 Go 的索引路徑（不是只有直接呼叫 binding） -------------------
@@ -288,17 +310,89 @@ const uiSearch = await evalIn<string>(`(async () => {
   const q = document.getElementById('query');
   q.value = '大乘';
   q.dispatchEvent(new Event('input'));
-  for (let i = 0; i < 80; i++) { await new Promise(r => setTimeout(r, 200)); if (window.__adbview.state().hostSearch) break; }
+  for (let i = 0; i < 80; i++) { await new Promise(r => setTimeout(r, 200)); if (window.__accelon26.state().hostSearch) break; }
   for (let i = 0; i < 40; i++) { await new Promise(r => setTimeout(r, 200)); if (document.querySelectorAll('#searchList .snippet').length) break; }
-  const st = window.__adbview.state();
+  const st = window.__accelon26.state();
   return JSON.stringify({ db: st.db, hostSearch: st.hostSearch,
     snippets: document.querySelectorAll('#searchList .snippet').length,
     meta: document.getElementById('searchMeta').textContent.slice(0, 50) });
 })()`);
 const ui = JSON.parse(uiSearch) as { db: string; hostSearch: any; snippets: number; meta: string };
-ok('視窗內輸入查詢走 Go 的索引路徑（state().hostSearch 有值、摘要有出來）',
-  !!ui.hostSearch && ui.hostSearch.hits > 0 && ui.snippets > 0,
-  `${ui.db}「大乘」：hits=${ui.hostSearch?.hits}、摘要 ${ui.snippets} 筆、${ui.hostSearch?.ms?.toFixed?.(1)} ms（Go 內部 lookup ${ui.hostSearch?.lookupMs?.toFixed?.(1)} / plAnd ${ui.hostSearch?.andMs?.toFixed?.(1)} / group ${ui.hostSearch?.groupMs?.toFixed?.(1)} ms）｜${ui.meta}`);
+ok('視窗內輸入查詢走 Go 的查詢後端（state().hostSearch 有值、摘要有出來）',
+  !!ui.hostSearch && ui.hostSearch.clauses > 0 && ui.snippets > 0,
+  `${ui.db}「大乘」：Go 回答 ${ui.hostSearch?.clauses} 個詞組、${ui.hostSearch?.ms?.toFixed?.(1)} ms、摘要 ${ui.snippets} 筆｜${ui.meta}`);
+
+// ---- 後端分界（作者 2026-10）：多詞組／運算子／萬用字元要走 Go 的 SearchQuery ----
+// 這一段驗的是「桌面版真的用 Go 後端」：state().backend 是 'go'、goQueries 會增加，
+// 而且命中的詞組數／命中數與純 TS 後端一致（共用測試集在 ts/test/shared/）。
+const multiSearch = await evalIn<string>(`(async () => {
+  const before = window.__accelon26.state().goQueries ?? 0;
+  const q = document.getElementById('query');
+  const out = [];
+  for (const query of ['大乘 般若', '菩薩.心', '緣起*性空', '涅槃 解脫']) {
+    q.value = query;
+    q.dispatchEvent(new Event('input'));
+    for (let i = 0; i < 100; i++) {
+      await new Promise(r => setTimeout(r, 200));
+      const st = window.__accelon26.state();
+      if (st.searchQuery === query && st.multi) break;
+    }
+    await new Promise(r => setTimeout(r, 400));
+    const st = window.__accelon26.state();
+    out.push({
+      query,
+      backend: st.backend,
+      goQueries: st.goQueries,
+      clauses: st.multi?.clauses?.map((c) => ({ text: c.text, occ: c.occurrences, wild: c.wildcard })) ?? null,
+      hits: st.multi?.hits ?? 0,
+      docs: st.multi?.docs ?? 0,
+      snippets: document.querySelectorAll('#searchList .snippet').length,
+    });
+  }
+  return JSON.stringify({ before, out });
+})()`);
+const multiRes = JSON.parse(multiSearch) as { before: number; out: any[] };
+ok('桌面版的多詞組查詢走 Go 後端（backend=go、goQueries 增加）',
+  multiRes.out.every((r) => r.backend === 'go' && r.goQueries > multiRes.before && r.clauses?.length > 0),
+  multiRes.out.map((r) => `${JSON.stringify(r.query)}:${r.clauses?.map((c: any) => c.occ).join('/')} (go ${r.goQueries})`).join('、'));
+ok('桌面版的多詞組查詢有結果（命中與文件都 > 0）',
+  multiRes.out.every((r) => r.hits > 0 && r.snippets > 0),
+  multiRes.out.map((r) => `${JSON.stringify(r.query)} hits=${r.hits} docs=${r.docs} 摘要=${r.snippets}`).join('｜'));
+
+// ---- 繁簡通檢（作者 2026-10）：變體組由 TS 傳進 Go，posting 聯集在 Go 做 --------
+// yinshun 是繁體庫：打簡體「菩萨」在通檢關閉時應該 0 命中；打開通檢（萨／薩 同組）
+// 就必須有命中，而且仍然走 Go 後端（state().backend = 'go'、goQueries 增加）。
+const variantRun = await evalIn<string>(`(async () => {
+  const wait = async (fn, n = 100) => { for (let i = 0; i < n; i++) { if (fn()) return true; await new Promise(r => setTimeout(r, 200)); } return false; };
+  const st = () => window.__accelon26.state();
+  const q = document.getElementById('query');
+  const ask = async (text) => {
+    q.value = text;
+    q.dispatchEvent(new Event('input'));
+    await wait(() => st().searchQuery === text);
+    await new Promise(r => setTimeout(r, 600));
+    return st();
+  };
+  window.__accelon26.setVariants(false);
+  const off = await ask('菩萨 般若');
+  window.__accelon26.setVariants(true);
+  const before = st().goQueries ?? 0;
+  const on = await ask('菩萨 般若');
+  const after = st().goQueries ?? 0;
+  const snippets = document.querySelectorAll('#searchList .snippet').length;
+  window.__accelon26.setVariants(false);
+  return JSON.stringify({
+    offHits: off.multi?.hits ?? 0, onHits: on.multi?.hits ?? 0,
+    offClauses: off.multi?.clauses?.map((c) => c.occurrences) ?? null,
+    backend: on.backend, goBefore: before, goAfter: after, snippets,
+    clauses: on.multi?.clauses?.map((c) => ({ text: c.text, occ: c.occurrences })) ?? null,
+  });
+})()`);
+const vr = JSON.parse(variantRun) as { offHits: number; onHits: number; offClauses: number[]; backend: string; goBefore: number; goAfter: number; snippets: number; clauses: any[] };
+ok('桌面版繁簡通檢也走 Go（簡體查詢在繁體庫有命中）',
+  vr.backend === 'go' && vr.goAfter > vr.goBefore && vr.onHits > 0 && vr.snippets > 0
+  && vr.offClauses?.[0] === 0 && vr.clauses?.[0]?.occ > 0,
+  `菩萨 般若：通檢關 ${vr.offHits} 筆 → 開 ${vr.onHits} 筆（摘要 ${vr.snippets}）｜backend=${vr.backend}、goQueries ${vr.goBefore} → ${vr.goAfter}｜詞組 ${JSON.stringify(vr.clauses)}`);
 
 // ---- Go bzip2（桌面）與 TypeScript bzip2（file:// 的退路）必須逐字相同 ----------
 // 作者：「bzip2 解壓，有 Go 版就用 Go，沒有才退回 typescript」—— 兩條路要驗到等價。
