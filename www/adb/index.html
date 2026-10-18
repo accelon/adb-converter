@@ -293,8 +293,8 @@
       <a href="../index.html#contact">聯絡</a>
       <a href="index.html">公開數據庫</a>
       <button type="button" class="themeBtn" id="themeBtn" aria-label="切換亮底／暗底" title="切換亮底／暗底">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
-        <span id="themeLabel">暗底</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true" id="themeIcon"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
+        <span id="themeLabel">亮底</span>
       </button>
     </nav>
   </div>
@@ -365,24 +365,30 @@
 </footer>
 
 <script>
-  // 亮底／暗底：跟官網同一個 localStorage key，兩頁切換會同步。
+  // 亮底／暗底：跟官網同一個 localStorage key、同一個行為 —— 按鈕上顯示的是**現在**
+  // 的底色（亮底＝現在是亮底），圖示也跟著換（作者 2026-10：這裡一度寫成「下一個」而反了）。
   (function () {
-    var key = 'accelon26.site.theme';
+    var root = document.documentElement;
     var btn = document.getElementById('themeBtn');
     var label = document.getElementById('themeLabel');
-    function paint() {
-      var dark = document.documentElement.getAttribute('data-theme') === 'dark';
-      if (label) label.textContent = dark ? '亮底' : '暗底';
-      if (btn) btn.title = dark ? '切成亮底' : '切成暗底';
+    var icon = document.getElementById('themeIcon');
+    var KEY = 'accelon26.site.theme';
+    var SUN = '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/>';
+    var MOON = '<path d="M20 14.6A8.6 8.6 0 1 1 9.4 4a6.9 6.9 0 0 0 10.6 10.6z"/>';
+    function paint(t) {
+      root.setAttribute('data-theme', t);
+      if (label) label.textContent = t === 'dark' ? '暗底' : '亮底';
+      if (btn) btn.setAttribute('aria-pressed', t === 'dark' ? 'true' : 'false');
+      if (icon) icon.innerHTML = t === 'dark' ? MOON : SUN;
     }
-    if (btn) btn.addEventListener('click', function () {
-      var dark = document.documentElement.getAttribute('data-theme') === 'dark';
-      var next = dark ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      try { localStorage.setItem(key, next); } catch (e) { /* 無痕模式 */ }
-      paint();
-    });
-    paint();
+    paint(root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+    if (btn) {
+      btn.addEventListener('click', function () {
+        var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        try { localStorage.setItem(KEY, next); } catch (e) { /* 無痕模式 */ }
+        paint(next);
+      });
+    }
   }());
 </script>
 </body>
