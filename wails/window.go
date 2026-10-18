@@ -243,7 +243,6 @@ func launchWorkArea(app *application.App, win *application.WebviewWindow) (appli
 	return s.WorkArea, s.Name, true
 }
 
-
 // screenOfRect 找出某個矩形（視窗的絕對座標）落在哪張螢幕上；找不到就回主螢幕。
 func screenOfRect(app *application.App, r application.Rect) *application.Screen {
 	if s := application.ScreenNearestPhysicalRect(r); s != nil {
