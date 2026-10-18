@@ -6,20 +6,20 @@
  *   bun run tools/make-adb-index.ts --index https://shutonggui.cn/accelon26/adb/index.txt
  *
  * 作者維護的清單在伺服器 `/accelon26/adb/index.txt`（一行一個 .adb 檔名，`#` 是註解），
- * 同一個目錄就是公開的 .adb 本體。這支**只讀不下載 adb**：本機 D:\accelon3 就有，
- * 直接讀檔頭與 source 區塊（作者 2026-10-18）。
+ * 同一個目錄就是公開的 .adb 本體。這支**只讀檔頭、不下載 adb**：本機工作文件夾
+ * `accelon3/` 就有那些檔（作者 2026-10）。
  *
  * 每個資料庫取四樣：
  *   中文名     adb 檔頭 offset 128..192（utf-16le 的 dbcname；沒有就用 dbname）
- *   字數       解壓 source 區塊後的字元數 —— 跟程式裡「字數」那一欄同一個算法
+ *   字數（約） adb 檔頭 offset 96 的 maxblockoffset（最大的文字位置）—— 不必解壓整本，
+ *              跟精確字數差 1–7%（作者 2026-10：「不必計算精確的字數，大概就好，不然很慢」）
  *   建置日期   檔案時間（adb 檔頭沒有日期欄位）
  *   檔案大小   stat
  *
  * 頁面的 <style>／頁首／頁尾直接從 www/index.html 抓過來，所以官網改樣式時這頁會跟著改。
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
-import { AdbReader, BlobIO, type AdbSource } from '../src/accelon26/adb';
+import { join, resolve } from 'node:path';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d = '') => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : d; };
@@ -28,7 +28,7 @@ const ROOT = resolve(import.meta.dir, '../..');
 const SITE = resolve(ROOT, 'www');
 const OUT = resolve(opt('out', resolve(SITE, 'adb')));
 const INDEX_URL = opt('index', 'https://shutonggui.cn/accelon26/adb/index.txt');
-const ADB_DIR = resolve(opt('adb-dir', 'D:\\accelon3'));
+const ADB_DIR = resolve(opt('adb-dir', resolve(ROOT, 'accelon3')));
 const SITE_URL = 'https://shutonggui.cn/accelon26/';
 
 // ---- 清單 ---------------------------------------------------------------------
@@ -72,34 +72,15 @@ const utf16z = (b: Uint8Array, from: number, to: number) => {
 
 async function inspect(path: string, fileName: string) {
   const st = statSync(path);
-  const f = Bun.file(path);
-  const hdr = new Uint8Array(await f.slice(0, 256).arrayBuffer());
+  const hdr = new Uint8Array(await Bun.file(path).slice(0, 256).arrayBuffer());
   const dbname = asciiZ(hdr, 0, 32);
   const dbcname = utf16z(hdr, 128, 192);
-
-  const src: AdbSource = {
-    name: fileName,
-    lastModified: st.mtimeMs,
-    size: f.size,
-    slice: (start, end) => f.slice(start, end),
-  };
-  let chars: number | null = null;
-  const t0 = performance.now();
-  try {
-    const r = await AdbReader.open(new BlobIO(src));
-    const c = r.containers.get('source');
-    if (c) {
-      let n = 0;
-      for (let i = 0; i < c.count; i++) n += (await r.sourceText(i)).length;
-      chars = n;
-    }
-  } catch (e) {
-    console.error(`  ! ${fileName} 字數算不出來：${String(e)}`);
-  }
-  const ms = Math.round(performance.now() - t0);
+  // 字數（約）：檔頭 offset 96 的 maxblockoffset＝最大的文字位置。
+  // 精確字數要把每個 source 區塊解壓再數，五本要四秒多；這裡只讀 4 個位元組。
+  const chars = hdr.length >= 100 ? new DataView(hdr.buffer, 96, 4).getInt32(0, true) : 0;
   // 下載連結與檔名一律用 index.txt 的那個名字（那才是伺服器上的檔名）；
   // dbname／dbcname 只是檔頭裡的名字，不一定相同。
-  return { fileName, name: dbcname || dbname || fileName, dbname, chars, size: st.size, mtime: st.mtimeMs, ms };
+  return { fileName, name: dbcname || dbname || fileName, dbname, chars: chars > 0 ? chars : null, size: st.size, mtime: st.mtimeMs };
 }
 
 // ---- 逐筆 ---------------------------------------------------------------------
@@ -109,11 +90,11 @@ for (const fileName of names) {
   if (!hit) {
     console.warn(`  ! 本機找不到 ${fileName}（${ADB_DIR}）→ 這一列只顯示檔名`);
     const clean = fileName.replace(/\.adb$/i, '');
-    rows.push({ fileName, name: clean, dbname: clean, chars: null, size: 0, mtime: 0, ms: 0 });
+    rows.push({ fileName, name: clean, dbname: clean, chars: null, size: 0, mtime: 0 });
     continue;
   }
   const r = await inspect(hit.path, fileName);
-  console.log(`  ${fileName}  ${r.name}  ${r.chars ?? '?'} 字  ${(r.size / 1048576).toFixed(1)} MB  ${r.ms} ms  (${hit.path})`);
+  console.log(`  ${fileName}  ${r.name}  ${r.chars ?? '?'} 字（約）  ${(r.size / 1048576).toFixed(1)} MB  (${hit.path})`);
   rows.push(r);
 }
 
@@ -201,12 +182,12 @@ const html = `<!DOCTYPE html>
     <h1>公開數據庫</h1>
     <p>這些 <code>.adb</code> 都可以直接下載：放進 <code>accelon3.exe</code> 同一個資料夾，
       accelon26 開啟時就會自動列出來；也可以在程式裡用 <code>📁</code> 或拖進視窗。</p>
-    <p class="dbMeta">共 ${rows.length} 個資料庫${known ? ` · 合計 ${fmtInt(totalChars)} 字` : ''} · 下載約 ${fmtSize(totalSize)}</p>
+    <p class="dbMeta">共 ${rows.length} 個資料庫${known ? ` · 合計約 ${fmtInt(totalChars)} 字` : ''} · 下載約 ${fmtSize(totalSize)}</p>
   </section>
 
   <table class="dbTable">
     <thead>
-      <tr><th>資料庫</th><th class="num">字數</th><th class="num">建置日期</th><th class="num">檔案大小</th><th class="dl">下載</th></tr>
+      <tr><th>資料庫</th><th class="num">字數（約）</th><th class="num">建置日期</th><th class="num">檔案大小</th><th class="dl">下載</th></tr>
     </thead>
     <tbody>
 ${body}
@@ -214,7 +195,8 @@ ${body}
   </table>
 
   <div class="dbNote">
-    <b>關於這些資料庫</b>：由作者整理公開，歡迎自由使用。字數是解壓後的字元總數（與程式裡「字數」那一欄相同），
+    <b>關於這些資料庫</b>：由作者整理公開，歡迎自由使用。字數取自 adb 檔頭的
+    <code>maxblockoffset</code>（最大的文字位置），是**近似值**（比精確字數少 1–7%，不必解壓整本）；
     建置日期取自檔案時間。想增補資料庫或發現錯誤，請<a href="../index.html#contact">留言給作者</a>。
   </div>
 </main>

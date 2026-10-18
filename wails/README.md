@@ -39,11 +39,14 @@ TypeScript 建置腳本產生，例如 `bun run tools/build-desktop.ts`）。本
 
 ```powershell
 go test ./...                                  # 單元測試（不需要 GUI）
-go build -ldflags "-H windowsgui" -o D:\accelon26\accelon26.exe .   # 建置桌面 exe（GUI 子系統，雙擊不跳命令列）
-cd ..
-D:\accelon26\accelon26.exe                        # GUI（在放 .adb 的目錄裡執行）
-D:\accelon26\accelon26.exe -selftest              # 無 GUI 自檢
+go build -ldflags "-H windowsgui" -o ..\accelon3\accelon26.exe .   # 建置桌面 exe（GUI 子系統，雙擊不跳命令列）
+cd ..\accelon3
+accelon26.exe                                     # GUI（.adb 就在這個資料夾，會自動列出來）
+accelon26.exe -selftest                           # 無 GUI 自檢
 ```
+
+> exe 一律產在 `accelon3\`（工作文件夾，作者 2026-10）：那是 accelon3 的資料夾，
+> 幾十個 `.adb` 都在裡面，建完直接雙擊就能測。`accelon3/` 不進版控。
 
 `-selftest` 會在當前目錄列出所有 `.adb`（含中文顯示名），對
 128 KiB x 200 次的 mmap+base64 讀取計時，驗證越界讀取會回報錯誤，然後結束。

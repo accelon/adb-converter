@@ -12,9 +12,9 @@ tasks:
       - echo "assets/index.html 由倉庫根目錄的 TypeScript 建置腳本產生；本任務不呼叫 node/npm。"
 
   build:
-    summary: 建置桌面宿主到 D:\accelon26\accelon26.exe（GUI 子系統）
+    summary: 建置桌面宿主到 accelon3\accelon26.exe（GUI 子系統；那裡就是 accelon3 的資料夾，.adb 都在）
     cmds:
-      - go build -ldflags "-H windowsgui" -o D:\accelon26\accelon26.exe .
+      - go build -ldflags "-H windowsgui" -o ..\accelon3\accelon26.exe .
 
   test:
     summary: 執行 Go 單元測試
@@ -22,15 +22,15 @@ tasks:
       - go test ./...
 
   selftest:
-    summary: 建置後在倉庫根目錄做無 GUI 自檢
+    summary: 建置後在 accelon3\ 做無 GUI 自檢（順便列出那裡的 .adb）
     cmds:
       - task: build
-      - cmd: D:\accelon26\accelon26.exe -selftest
-        dir: ..
+      - cmd: accelon26.exe -selftest
+        dir: ../accelon3
 
   run:
-    summary: 建置後從倉庫根目錄啟動 GUI
+    summary: 建置後從 accelon3\ 啟動 GUI（那裡有 .adb）
     cmds:
       - task: build
-      - cmd: D:\accelon26\accelon26.exe
-        dir: ..
+      - cmd: accelon26.exe
+        dir: ../accelon3

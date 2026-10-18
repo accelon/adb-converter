@@ -1,7 +1,7 @@
 /**
  * 發佈流程（作者說「發布」時跑這支）：
  *
- *   cd ts && bun run tools/release.ts --items-file notes.txt [--console] [--out D:\accelon26]
+ *   cd ts && bun run tools/release.ts --items-file notes.txt [--console] [--out <目錄>]
  *   cd ts && bun run tools/release.ts --items "ASCII only;第二項" [--title "…"] [--url https://…] [--no-build]
  *
  * ⚠ Windows 的 PowerShell 會把中文命令列參數弄成亂碼（實際踩過：release_notes.json 變成
@@ -28,8 +28,9 @@ const opt = (n: string, d = '') => { const i = args.indexOf('--' + n); return i 
 const ROOT = resolve(import.meta.dir, '../..');
 const WAILS = resolve(ROOT, 'wails');
 const NOTES = resolve(WAILS, 'release_notes.json');
-// exe 一律放到 D:\accelon26\（作者 2026-10）。可用 --out <目錄> 換地方。
-const OUT_DIR = opt('out', 'D:\\accelon26');
+// exe 一律產在**工作文件夾的 accelon3/**（作者 2026-10）：那裡就是 accelon3 的資料夾，
+// 幾十個 .adb 都在，建完直接雙擊就能看／測，不必先搬檔案。`--out <目錄>` 可以換地方。
+const OUT_DIR = opt('out', resolve(ROOT, 'accelon3'));
 const EXE = resolve(OUT_DIR, 'accelon26.exe');
 const URL = opt('url', 'https://shutonggui.cn/accelon26/accelon26.exe');
 const NO_BUILD = args.includes('--no-build');

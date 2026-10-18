@@ -21,8 +21,8 @@ import { SearchSession, queryTokens } from '../src/accelon26/search';
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
 const ROOT = resolve(import.meta.dir, '../..');
-// exe 現在放在 D:\accelon26\（作者 2026-10）；--exe 可覆寫
-const EXE = resolve(opt('exe', 'D:\\accelon26\\accelon26.exe'));
+// exe 產在工作文件夾的 accelon3/（作者 2026-10）；--exe 可覆寫
+const EXE = resolve(opt('exe', resolve(import.meta.dir, '../..', 'accelon3', 'accelon26.exe')));
 const CWD = resolve(opt('cwd', ROOT));
 const GUI = args.includes('--gui');
 // --quick：跳過線上更新／改版說明那幾段（要開視窗、下載 16 MB、跑好幾次）——

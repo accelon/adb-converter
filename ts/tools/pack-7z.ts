@@ -1,7 +1,7 @@
 /**
  * 只重打包官網下載檔（作者 2026-10-18）：exe ＋ README.txt／README-tc.txt → www/accelon26.7z。
  *
- *   bun run tools/pack-7z.ts                       # 用 D:\accelon26\accelon26.exe（已發佈的那顆）
+ *   bun run tools/pack-7z.ts                       # 用 accelon3\accelon26.exe（已發佈的那顆）
  *   bun run tools/pack-7z.ts --exe <路徑>
  *
  * 什麼時候用：**只改到壓縮檔內容**（例如說明文字）時。它不動 exe、不動 versions.json，
@@ -14,7 +14,7 @@ import { README_SIMPLIFIED, README_TRADITIONAL, writeTextFileBom } from './readm
 const args = process.argv.slice(2);
 const opt = (n: string, d = '') => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : d; };
 const ROOT = resolve(import.meta.dir, '../..');
-const EXE = resolve(opt('exe', 'D:\\accelon26\\accelon26.exe'));
+const EXE = resolve(opt('exe', resolve(ROOT, 'accelon3', 'accelon26.exe')));
 const OUT = resolve(opt('out', resolve(ROOT, 'www', 'accelon26.7z')));
 const SEVEN_ZIP = 'C:\\Program Files\\7-Zip\\7z.exe';
 const FILES = ['accelon26.exe', 'README.txt', 'README-tc.txt'];

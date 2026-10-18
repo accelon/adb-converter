@@ -96,11 +96,12 @@ CI 會建 arm64／x86_64 兩個 zip 並附到 Release，之後
 4. 從 `https://shutonggui.cn/accelon26/` 抓回 `versions.json` 與整顆 exe，重算 sha256
    對照；不一致就以非 0 結束。
 
-手動檢查（不開 GUI）：
+手動檢查（不開 GUI，在 `accelon3\` 目錄）：
 
 ```powershell
-D:\accelon26\accelon26.exe -version        # 建置時間、說明筆數、更新網址、versions.json 網址
-D:\accelon26\accelon26.exe -check-update   # 真的連一次網，印出 JSON（updateAvailable／checkOK／note）
+cd accelon3
+.\accelon26.exe -version        # 建置時間、說明筆數、更新網址、versions.json 網址
+.\accelon26.exe -check-update   # 真的連一次網，印出 JSON（updateAvailable／checkOK／note）
 ```
 
 ## 3. 使用者的程式怎麼判斷

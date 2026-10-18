@@ -487,6 +487,24 @@ export async function loadTree(
     inst.children = use?.tiers ?? [];
     inst.childTerminal = use?.terminal ?? false;
   }
+  /**
+   * 沒有任何實例宣告 `t=` 的時候，**用 `<樹 t="…">` 的層級順序當階層**。
+   *
+   * jc（中醫笈成）就是這樣：`<樹 s="*" t="書名,章,節,項,目,條">` 宣告了六層，但
+   * 1,358 個 `<書名>`、17,189 個 `<章>`… 自己都沒有 `t=`。那時 `buildTree` 會把每一層
+   * 都當成根，目錄就變成「書名／章／節」混在一起的一長條（作者 2026-10 回報：
+   * 一打開看到的是一本書的內目，不是書單）。
+   *
+   * 注意只往**下一層**要：`inst.children = chain[depth+1…]`，不含自己那一層
+   * （含自己會讓 書名 宣告 書名 當子節點，樹會爆開 —— 這是舊的坑）。
+   */
+  if (out.length && !out.some((i) => i.children.length)) {
+    for (const inst of out) {
+      const rest = chain.slice(inst.depth + 1).filter((t) => t !== inst.tag);
+      inst.children = [...new Set(rest)];
+      inst.childTerminal = false;
+    }
+  }
 
   out.sort((a, b) => a.va - b.va || a.depth - b.depth);
   // NOTE: a node's `children` stays empty when its own tag carries no `t=` —

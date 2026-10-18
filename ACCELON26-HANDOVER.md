@@ -1183,9 +1183,9 @@ UI 怎麼可能不知道 Go 層：`ts/src/accelon26/adb.ts` 定義 `ByteSource`�
 cd ts; bun run tools/build-viewer.ts                  # 預設產物：../build/accelon26.html（單檔，file:// 可開）
 cd ts; bun run tools/build-desktop.ts                 # 只在要桌面版時：同一份 HTML → ../wails/assets/index.html
 cd wails; go test ./...                               # Go 單元測試（不需要 GUI）
-cd ts; bun run tools/release.ts --no-build           # 打包 exe → D:\accelon26\accelon26.exe（HTML 內嵌）
-#   或直接：cd wails; go build -ldflags "-H windowsgui" -o D:\accelon26\accelon26.exe .
-cd ..;   .\build\desktop\accelon26.exe -selftest         # 不開 GUI：列工作目錄的 adb + mmap 讀取計時
+cd ts; bun run tools/release.ts --no-build           # 打包 exe → accelon3\accelon26.exe（HTML 內嵌）
+#   或直接：cd wails; go build -ldflags "-H windowsgui" -o ..\accelon3\accelon26.exe .
+cd ..\accelon3; .\accelon26.exe -selftest            # 不開 GUI：列工作目錄的 adb + mmap 讀取計時
 cd ts; bun run tools/desktop-test.ts [--gui]          # 桌面版回歸：headless 5 項；--gui 再加視窗版 6 項
 ```
 
@@ -1444,9 +1444,10 @@ UI，兩個宿主共用；桌面版內嵌的那一份仍叫 `wails/assets/index.
 （`handedOff` 區分「交棒後結束」與「正常關閉」，交棒的那一支不刪）。
 `InstallUpdate` 有鎖（`installMu.TryLock`），連點兩次只會有一次真的動手。
 
-**exe 放哪裡／怎麼建**（作者 2026-10）：exe **一律放到 `D:\accelon26\`**，用 **GUI 子系統**
-（`-ldflags "-H windowsgui"`）建置 —— 這樣 **Explorer 雙擊不會跳出命令列視窗**。
-console 版（看得到 log，開發用）加 `--console`。
+**exe 放哪裡／怎麼建**（作者 2026-10）：exe **一律產在工作文件夾的 `accelon3\`**（`release.ts`、
+`go build`、Taskfile、`deploy.ts` 的預設都是那裡）—— 那是 accelon3 的資料夾，幾十個 `.adb` 都在，
+建完直接雙擊就能測。用 **GUI 子系統**（`-ldflags "-H windowsgui"`）建置 —— 這樣
+**Explorer 雙擊不會跳出命令列視窗**。console 版（看得到 log，開發用）加 `--console`。
 
 **發佈（作者說「發布」時）**：
 
@@ -1477,7 +1478,7 @@ cd ts; bun run tools/deploy.ts [--site]                       # 上傳 exe → v
 * 驗證：`ExtractAssociatedIcon` 從 exe 取出 32×32 圖示（與來源相同）；網頁版在瀏覽器測試裡斷言
   `link[rel=icon]` 是 PNG data URI 且頁面標題是 accelon26。
 
-**診斷**：`D:\accelon26\accelon26.exe -version`（建置時間／說明筆數／更新網址／versions.json
+**診斷**：`accelon3\accelon26.exe -version`（建置時間／說明筆數／更新網址／versions.json
 網址）、`-check-update`（真的連一次網，印出 `AppInfo` 的 JSON：`updateAvailable`、`checkOK`、
 `note`）、`main.AdbHost.AppInfo()`、`CheckUpdate()`（立刻檢查一次；90 秒內剛檢查過就回快取）、
 `InstallUpdate()`、`ReleaseNotes(since)`。

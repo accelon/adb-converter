@@ -37,8 +37,10 @@ const WITH_SITE = args.includes('--site');
 // 讓所有 Windows 使用者白更新一次。
 const SITE_ONLY = args.includes('--site-only');
 const SITE = WITH_SITE || SITE_ONLY;
-const EXE = resolve(opt('exe', 'D:\\accelon26\\accelon26.exe'));
-const MANIFEST = resolve(opt('manifest', 'D:\\accelon26\\versions.json'));
+// exe 與 versions.json 由 tools/release.ts 產在工作文件夾的 accelon3/（作者 2026-10；
+// 那裡是 accelon3 的資料夾，.adb 都在，建完就能直接測）。accelon3/ 不進版控。
+const EXE = resolve(opt('exe', resolve(ROOT, 'accelon3', 'accelon26.exe')));
+const MANIFEST = resolve(opt('manifest', resolve(ROOT, 'accelon3', 'versions.json')));
 
 function die(msg: string): never {
   console.error('✗ ' + msg);

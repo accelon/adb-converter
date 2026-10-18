@@ -305,45 +305,45 @@
     <h1>公開數據庫</h1>
     <p>這些 <code>.adb</code> 都可以直接下載：放進 <code>accelon3.exe</code> 同一個資料夾，
       accelon26 開啟時就會自動列出來；也可以在程式裡用 <code>📁</code> 或拖進視窗。</p>
-    <p class="dbMeta">共 5 個資料庫 · 合計 27,151,468 字 · 下載約 75.2 MB</p>
+    <p class="dbMeta">共 5 個資料庫 · 合計約 25,135,279 字 · 下載約 75.2 MB</p>
   </section>
 
   <table class="dbTable">
     <thead>
-      <tr><th>資料庫</th><th class="num">字數</th><th class="num">建置日期</th><th class="num">檔案大小</th><th class="dl">下載</th></tr>
+      <tr><th>資料庫</th><th class="num">字數（約）</th><th class="num">建置日期</th><th class="num">檔案大小</th><th class="dl">下載</th></tr>
     </thead>
     <tbody>
         <tr>
           <td class="db"><b>十三經</b><span class="file">13j.adb</span></td>
-          <td class="num">831,156</td>
+          <td class="num">818,554</td>
           <td class="num">2006-01-19</td>
           <td class="num">2.1 MB</td>
           <td class="dl"><a href="13j.adb" download>下載</a></td>
         </tr>
         <tr>
           <td class="db"><b>佛光大辭典</b><span class="file">fgdict.adb</span></td>
-          <td class="num">6,619,481</td>
+          <td class="num">6,158,835</td>
           <td class="num">2005-08-10</td>
           <td class="num">18.2 MB</td>
           <td class="dl"><a href="fgdict.adb" download>下載</a></td>
         </tr>
         <tr>
           <td class="db"><b>太虛大師全書</b><span class="file">taixu.adb</span></td>
-          <td class="num">6,554,326</td>
+          <td class="num">6,279,142</td>
           <td class="num">2006-01-20</td>
           <td class="num">19.5 MB</td>
           <td class="dl"><a href="taixu.adb" download>下載</a></td>
         </tr>
         <tr>
           <td class="db"><b>于淩波居士論著</b><span class="file">yulinpo.adb</span></td>
-          <td class="num">4,298,674</td>
+          <td class="num">4,201,838</td>
           <td class="num">2006-10-24</td>
           <td class="num">11.6 MB</td>
           <td class="dl"><a href="yulinpo.adb" download>下載</a></td>
         </tr>
         <tr>
           <td class="db"><b>印順法師佛學著作集</b><span class="file">yinshun.adb</span></td>
-          <td class="num">8,847,831</td>
+          <td class="num">7,676,910</td>
           <td class="num">2008-04-07</td>
           <td class="num">23.8 MB</td>
           <td class="dl"><a href="yinshun.adb" download>下載</a></td>
@@ -352,7 +352,8 @@
   </table>
 
   <div class="dbNote">
-    <b>關於這些資料庫</b>：由作者整理公開，歡迎自由使用。字數是解壓後的字元總數（與程式裡「字數」那一欄相同），
+    <b>關於這些資料庫</b>：由作者整理公開，歡迎自由使用。字數取自 adb 檔頭的
+    <code>maxblockoffset</code>（最大的文字位置），是**近似值**（比精確字數少 1–7%，不必解壓整本）；
     建置日期取自檔案時間。想增補資料庫或發現錯誤，請<a href="../index.html#contact">留言給作者</a>。
   </div>
 </main>
