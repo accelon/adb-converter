@@ -28,6 +28,9 @@ const ctx = computeTierContext(roots);
 console.log(`層級：${JSON.stringify([...ctx.depthOf])} levels=${ctx.levels}`);
 ok('computeTierContext：三個層級都記到', ctx.levels === 3 && ctx.depthOf.get('書') === 0
   && ctx.depthOf.get('章') === 1 && ctx.depthOf.get('節') === 2, JSON.stringify([...ctx.depthOf]));
+ok('computeTierContext：色號依標籤第一次出現的順序（章≠節）',
+  ctx.tagChroma?.get('書') === 0 && ctx.tagChroma?.get('章') === 1 && ctx.tagChroma?.get('節') === 2,
+  JSON.stringify([...(ctx.tagChroma ?? new Map())]));
 
 setTierContext(ctx);
 ok('setTierContext 會更新模組狀態', tierContext().levels === 3);
@@ -95,6 +98,17 @@ ok('標題字級：正文上一層只 +2px、每往上一層再 +2px（不依資
   && tierHtml.includes(`data-depth="1" style="font-size:min(calc(1em + ${2 * LEVEL_STEP_PX}px)`)
   && tierHtml.includes(`data-depth="0" style="font-size:min(calc(1em + ${3 * LEVEL_STEP_PX}px)`),
   tierHtml.split('\n').map((h) => h.slice(0, 110)).join(' ｜ '));
+
+// 作者 2026-10-18：同一個庫裡「章」和「節」可能位在同一層（depth 一樣），
+// 顏色要跟著標籤走，兩者才會分得開。
+const sameDepth = new Accelon3Renderer({
+  depthOf: new Map([['章', 1], ['節', 1]]), levels: 2,
+  tagChroma: new Map([['章', 0], ['節', 1]]),
+});
+const zhang = sameDepth.line('<章>甲</章>', 1);
+const jie = sameDepth.line('<節>乙</節>', 2);
+ok('章與節同一層、不同標籤 → 不同顏色',
+  zhang.includes('--tag-text-0') && jie.includes('--tag-text-1'), zhang + ' ｜ ' + jie);
 
 const hard = new Accelon3Renderer(ctx);
 ok('原書分行（預設）：<頁> 是 .pageBreak 分隔',

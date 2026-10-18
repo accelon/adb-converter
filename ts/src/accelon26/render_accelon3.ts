@@ -20,6 +20,12 @@ export interface RenderContext {
   depthOf: Map<string, number>;
   /** 樹有幾層（最大深度 + 1）；0＝這個庫沒有樹 */
   levels: number;
+  /**
+   * 標籤 → 色號（0–7，依標籤第一次出現的順序，作者 2026-10-18）。
+   * 顏色跟著**標籤**而不是深度：同一個庫裡「章」和「節」即使位在同一層，
+   * 也會拿到不同的顏色。沒有這個表時退回深度。
+   */
+  tagChroma?: Map<string, number>;
 }
 
 /** 沒有樹（例如 fgdict 沒有 `s="*"`）時：所有標籤都當普通文字 */
@@ -57,19 +63,22 @@ export const LEVEL_MAX_SCALE = 1.8;
  */
 export function computeTierContext(roots: TreeNode[], limit = 20000): RenderContext {
   const depthOf = new Map<string, number>();
+  const tagChroma = new Map<string, number>();
   let levels = 0;
   let seen = 0;
   const walk = (nodes: TreeNode[], depth: number) => {
     for (const n of nodes) {
       if (seen++ >= limit) return;
       if (!depthOf.has(n.tag) || depthOf.get(n.tag)! > depth) depthOf.set(n.tag, depth);
+      // 色號依「標籤第一次出現的順序」：章、節 即使同深度也會拿到不同顏色（作者 2026-10-18）
+      if (!tagChroma.has(n.tag)) tagChroma.set(n.tag, tagChroma.size);
       levels = Math.max(levels, depth + 1);
       if (n.children.length) walk(n.children, depth + 1);
       if (seen >= limit) return;
     }
   };
   walk(roots, 0);
-  return { depthOf, levels };
+  return { depthOf, levels, tagChroma };
 }
 
 // 目前資料庫的層級（由 scopes.ts 在樹建好／換庫時設定；這支模組本身不 import 任何 UI）
@@ -81,6 +90,15 @@ export function setTierContext(ctx: RenderContext | null): void {
 
 export function tierContext(): RenderContext {
   return current;
+}
+
+/**
+ * 標籤的色號（0–7，作者 2026-10-18）：有 `tagChroma` 就依標籤，否則退回深度。
+ * 內文標題、breadcrumb、目錄樹的 tDot 都用這一個，顏色才會一致。
+ */
+export function tagChromaIndex(tag: string, depth: number, ctx: RenderContext = current): number {
+  const n = ctx.tagChroma?.get(tag) ?? depth;
+  return ((n % 8) + 8) % 8;
 }
 
 function esc(s: string): string {
@@ -221,7 +239,7 @@ export class Accelon3Renderer {
     const up = Math.max(0, this.ctx.levels - 1 - depth);
     const n = steps ?? up;
     const size = !this.opts.headScale ? '' : n > 0 ? `font-size:min(calc(1em + ${n * LEVEL_STEP_PX}px), ${LEVEL_MAX_SCALE}em);` : 'font-size:1em;';
-    return `<span class="h" data-tag="${esc(tag)}" data-up="${up}" data-depth="${depth}" style="${size}--tagtext:var(--tag-text-${depth % 8})">`;
+    return `<span class="h" data-tag="${esc(tag)}" data-up="${up}" data-depth="${depth}" style="${size}--tagtext:var(--tag-text-${tagChromaIndex(tag, depth, this.ctx)})">`;
   }
 
   /** `<頁>`：原書分行時是右靠的分隔；不保留硬換行時是行內的小字頁碼 */

@@ -1075,7 +1075,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T05:15:24.929Z","buildTimeText":"2026-10-18 13:15"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T05:17:59.963Z","buildTimeText":"2026-10-18 13:17"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -5751,6 +5751,7 @@ designed by C.S.Yap`;
   var LEVEL_MAX_SCALE = 1.8;
   function computeTierContext(roots, limit = 20000) {
     const depthOf = new Map;
+    const tagChroma = new Map;
     let levels = 0;
     let seen = 0;
     const walk = (nodes, depth) => {
@@ -5759,6 +5760,8 @@ designed by C.S.Yap`;
           return;
         if (!depthOf.has(n.tag) || depthOf.get(n.tag) > depth)
           depthOf.set(n.tag, depth);
+        if (!tagChroma.has(n.tag))
+          tagChroma.set(n.tag, tagChroma.size);
         levels = Math.max(levels, depth + 1);
         if (n.children.length)
           walk(n.children, depth + 1);
@@ -5767,11 +5770,18 @@ designed by C.S.Yap`;
       }
     };
     walk(roots, 0);
-    return { depthOf, levels };
+    return { depthOf, levels, tagChroma };
   }
   var current = EMPTY_CTX;
   function setTierContext(ctx) {
     current = ctx ?? EMPTY_CTX;
+  }
+  function tierContext() {
+    return current;
+  }
+  function tagChromaIndex(tag, depth, ctx = current) {
+    const n = ctx.tagChroma?.get(tag) ?? depth;
+    return (n % 8 + 8) % 8;
   }
   function esc(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -5839,7 +5849,7 @@ designed by C.S.Yap`;
       const up = Math.max(0, this.ctx.levels - 1 - depth);
       const n = steps ?? up;
       const size = !this.opts.headScale ? "" : n > 0 ? `font-size:min(calc(1em + ${n * LEVEL_STEP_PX}px), ${LEVEL_MAX_SCALE}em);` : "font-size:1em;";
-      return `<span class="h" data-tag="${esc(tag)}" data-up="${up}" data-depth="${depth}" style="${size}--tagtext:var(--tag-text-${depth % 8})">`;
+      return `<span class="h" data-tag="${esc(tag)}" data-up="${up}" data-depth="${depth}" style="${size}--tagtext:var(--tag-text-${tagChromaIndex(tag, depth, this.ctx)})">`;
     }
     pageMark(attrs) {
       this.pageSeq++;
@@ -9755,7 +9765,7 @@ designed by C.S.Yap`;
         }
         return `<div class="tRow" data-va="${n.va}">
       <span class="tTwisty">${twisty}</span>
-      <span class="tDot" style="background:${depthColor(n.depth)}"></span>
+      <span class="tDot" style="background:${depthColor(n.depth, n.tag)}"></span>
       <span class="tTag">${escapeHtml(n.tag)}</span>
       <span class="tName">${escapeHtml(d.labels.get(n.va) || "#" + n.index)}</span>
       ${badge}
@@ -9833,9 +9843,10 @@ designed by C.S.Yap`;
     if (box)
       box.scrollTop = 0;
   }
-  function depthColor(depth) {
-    const n = (depth % 8 + 8) % 8;
-    return `var(--tag-${n}, hsl(${depth * 55 % 360}, 55%, 32%))`;
+  function depthColor(depth, tag) {
+    const idx = tag ? tierContext().tagChroma?.get(tag) : undefined;
+    const n = ((idx ?? depth) % 8 + 8) % 8;
+    return `var(--tag-${n}, hsl(${(idx ?? depth) * 55 % 360}, 55%, 32%))`;
   }
   function* iterNodes(ns) {
     for (const n of ns) {
@@ -11117,7 +11128,7 @@ designed by C.S.Yap`;
     const items = anc.map((a) => {
       const full = escapeHtml(a.label);
       const short = escapeHtml(trailLabel(a.label));
-      return `<span class="trailWrap" data-va="${a.va}">` + `<button type="button" class="trail" data-va="${a.va}" data-tag="${escapeHtml(a.tag)}"` + ` title="「${full}」：點一下換同一層的其他節點"` + ` style="--tagtext:var(--tag-text-${a.depth % 8})">${short}<span class="trailCaret">▾</span></button>` + "</span>";
+      return `<span class="trailWrap" data-va="${a.va}">` + `<button type="button" class="trail" data-va="${a.va}" data-tag="${escapeHtml(a.tag)}"` + ` title="「${full}」：點一下換同一層的其他節點"` + ` style="--tagtext:var(--tag-text-${tagChromaIndex(a.tag, a.depth)})">${short}<span class="trailCaret">▾</span></button>` + "</span>";
     });
     const sibs = self ? siblingsOf(self.va) : [];
     let sibHtml = "";
@@ -11125,12 +11136,12 @@ designed by C.S.Yap`;
       if (sibs.length > MAX_INLINE_SIBS) {
         const full = escapeHtml(self.label);
         const short = escapeHtml(trailLabel(self.label));
-        sibHtml = `<span class="trailSibs"><span class="trailWrap">` + `<button type="button" class="trail trailMore" data-va="${self.va}" data-tag="${escapeHtml(self.tag)}"` + ` title="「${full}」：同層 ${sibs.length} 個節點，點一下選"` + ` style="--tagtext:var(--tag-text-${self.depth % 8})">${short}<span class="trailCaret">▾</span></button>` + `</span><span class="trailCount">同層 ${sibs.length}</span></span>`;
+        sibHtml = `<span class="trailSibs"><span class="trailWrap">` + `<button type="button" class="trail trailMore" data-va="${self.va}" data-tag="${escapeHtml(self.tag)}"` + ` title="「${full}」：同層 ${sibs.length} 個節點，點一下選"` + ` style="--tagtext:var(--tag-text-${tagChromaIndex(self.tag, self.depth)})">${short}<span class="trailCaret">▾</span></button>` + `</span><span class="trailCount">同層 ${sibs.length}</span></span>`;
       } else {
         sibHtml = '<span class="trailSibs">' + sibs.map((n) => {
           const full = escapeHtml(n.label);
           const short = escapeHtml(trailLabel(n.label));
-          const style = `--tagtext:var(--tag-text-${n.depth % 8})`;
+          const style = `--tagtext:var(--tag-text-${tagChromaIndex(n.tag, n.depth)})`;
           if (n.va === self.va) {
             return `<span class="trailSib cur" data-va="${n.va}" title="「${full}」（目前這一節）" style="${style}">${short}</span>`;
           }
@@ -11200,7 +11211,7 @@ designed by C.S.Yap`;
           item.dataset.va = String(n.va);
           item.dataset.tag = n.tag;
           item.textContent = n.label;
-          item.style.setProperty("--tagtext", `var(--tag-text-${n.depth % 8})`);
+          item.style.setProperty("--tagtext", `var(--tag-text-${tagChromaIndex(n.tag, n.depth)})`);
           item.onclick = (e2) => {
             e2.stopPropagation();
             closeMenus();

@@ -435,7 +435,11 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
     （第一個後面直接接內文的標題），那一層＝+2px、往上一層再 +2px（`depthSteps`）——
     所以「丁一」只比內文大 2px、「丙一」比「丁一」大 2px；比正文更深的子標題（戊、己、庚…）
     也維持 +2px，不會反過來把上面的祖先撐大。同一個標題在不同頁面大小可以不同。
-    字色＝該層的**亮色**主題變數 `--tag-text-N`（比 tDot 的 `--tag-N` 亮、彩度高）；
+    字色＝該層的**亮色**主題變數 `--tag-text-N`（比 tDot 的 `--tag-N` 亮、彩度高）。
+    **N 跟著標籤走，不是深度**（作者 2026-10-18）：`computeTierContext` 會建 `tagChroma`
+    （標籤第一次出現的順序），所以同一個庫裡「章」和「節」即使位在同一層（例如攝大乘論講記
+    兩者都是 depth 1），也會拿到不同顏色；目錄樹的 `tDot` 與 breadcrumb 共用同一個索引，
+    三處顏色一致。沒有 `tagChroma` 時才退回深度。
     標題不用底色（作者 2026-10：底色在深色主題上不明顯）。
   * **字級控制移到各自的欄**（作者 2026-10）：左欄的 `#fsLeftPick` 在左欄分頁列、
     中欄的 `#fsBodyPick` 在本文工具列、右欄的 `#fsRightPick` 在右欄分頁列。

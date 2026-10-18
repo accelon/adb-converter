@@ -13,7 +13,7 @@ import { growUntil, mounted, renderChunked } from './lazy-list';
 import { lastResult, showNodeHits } from './summary';
 import { parseQuery, namePattern } from './query';
 import { variantNamePattern, variantSearchOn } from './variants';
-import { computeTierContext, setTierContext } from './render_accelon3';
+import { computeTierContext, setTierContext, tierContext } from './render_accelon3';
 
 /** directory tree state (one entry per `<樹>` declaration) */
 interface DirTree {
@@ -360,7 +360,7 @@ async function renderDirTree(): Promise<void> {
       }
       return `<div class="tRow" data-va="${n.va}">
       <span class="tTwisty">${twisty}</span>
-      <span class="tDot" style="background:${depthColor(n.depth)}"></span>
+      <span class="tDot" style="background:${depthColor(n.depth, n.tag)}"></span>
       <span class="tTag">${escapeHtml(n.tag)}</span>
       <span class="tName">${escapeHtml(d.labels.get(n.va) || '#' + n.index)}</span>
       ${badge}
@@ -458,11 +458,13 @@ function collapseDirTree(): void {
  * ~30%, so depth reads at a glance while every row keeps the same height and
  * indent (no file-manager style growing whitespace).
  */
-function depthColor(depth: number): string {
+function depthColor(depth: number, tag?: string): string {
   // 顏色是**主題變數**（作者 2026-10：不要寫死；換 theme 只要改 CSS 的 --tag-N）。
   // 內文的標題底色也用同一組變數，所以 tDot 與標題一定同色。
-  const n = ((depth % 8) + 8) % 8;
-  return `var(--tag-${n}, hsl(${(depth * 55) % 360}, 55%, 32%))`;
+  // 作者 2026-10-18：色號跟著**標籤**（章、節 即使同一層也不同色）；沒有 tagChroma 才退回深度。
+  const idx = tag ? tierContext().tagChroma?.get(tag) : undefined;
+  const n = (((idx ?? depth) % 8) + 8) % 8;
+  return `var(--tag-${n}, hsl(${((idx ?? depth) * 55) % 360}, 55%, 32%))`;
 }
 
 function* iterNodes(ns: TreeNode[]): Generator<TreeNode> {
