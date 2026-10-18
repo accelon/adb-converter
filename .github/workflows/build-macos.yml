@@ -111,11 +111,11 @@ jobs:
           echo "version exit=$V"
           TMPD=$(mktemp -d)
           dd if=/dev/zero of="$TMPD/synthetic.adb" bs=1024 count=512 2>/dev/null
-          echo "── -selftest（$TMPD）"
+          echo "── -selftest（${TMPD}）"
           ( cd "$TMPD" && "$BIN" -selftest ); S=$?
           echo "selftest exit=$S"
           if [ "$S" -ne 0 ]; then
-            echo "::error title=smoke::selftest 失敗（exit $S）"
+            echo "::error title=smoke::selftest 失敗（exit ${S}）"
           fi
           if [ -f build/macos/x86_64/accelon26 ]; then
             file build/macos/x86_64/accelon26    # 確認真的是 Mach-O 64-bit x86_64

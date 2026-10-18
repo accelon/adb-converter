@@ -27,7 +27,7 @@ trap 'echo "FAILED (line $LINENO): $BASH_COMMAND" >&2' ERR
 ARCH="${1:?用法: bash scripts/package-macos.sh <arm64|x86_64> [binary]}"
 case "$ARCH" in
   arm64|x86_64) ;;
-  *) echo "不認得的架構：$ARCH（只能 arm64 或 x86_64）" >&2; exit 1 ;;
+  *) echo "不認得的架構：${ARCH}（只能 arm64 或 x86_64）" >&2; exit 1 ;;
 esac
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # wails/
@@ -38,11 +38,11 @@ APP="$OUT/$ARCH/accelon26.app"
 ZIP="$OUT/accelon26-macos-$ARCH.zip"
 
 if [ ! -f "$BIN" ]; then
-  echo "找不到執行檔：$BIN（先 go build，或用第 2 個參數指定）" >&2
+  echo "找不到執行檔：${BIN}（先 go build，或用第 2 個參數指定）" >&2
   exit 1
 fi
 
-echo "→ 打包 $BIN（$ARCH）"
+echo "→ 打包 ${BIN}（${ARCH}）"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/accelon26"
