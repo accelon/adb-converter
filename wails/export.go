@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 // ExportResult 是「導出文字與圖片」的結果（UI 直接顯示這幾個數字）。
@@ -33,10 +34,43 @@ type ExportResult struct {
 	Folder     string `json:"folder,omitempty"`
 	Chars      int64  `json:"chars"`      // 文字字元數（UTF-16 code unit，含標記）
 	Blocks     int    `json:"blocks"`     // source 區塊數
+	Lines      int64  `json:"lines"`      // 保留的硬換行數（＝行數）
 	ImageCount int    `json:"imageCount"` // 導出的圖片張數
 	ImageBytes int64  `json:"imageBytes"`
 	ZipBytes   int64  `json:"zipBytes"`
 	Ms         int64  `json:"ms"`
+}
+
+// hardBreak 是 txt 裡保留的硬換行。用 CRLF：這份檔多半在 Windows 上打開
+// （記事本與多數編輯器都認得；Unix 工具也吃得下）。
+const hardBreak = "\r\n"
+
+// lineEnds 讀 tables/lines.physical：每一行的**結束位置**（原始單位是 UTF-16LE 位元組，
+// `>>1` 就是 code unit 索引）。沒有這個表就回 nil（導出的 txt 就沒有換行）。
+func (f *adbSearchFile) lineEnds() []int64 {
+	t, ok := f.container("tables")
+	if !ok {
+		return nil
+	}
+	idx := -1
+	for i, n := range t.names {
+		if n == "lines.physical" {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return nil
+	}
+	ends, err := f.blockList("tables", idx)
+	if err != nil || len(ends) == 0 {
+		return nil
+	}
+	out := make([]int64, len(ends))
+	for i, b := range ends {
+		out[i] = int64(b) >> 1
+	}
+	return out
 }
 
 // exportReadme 放在 zip 裡，說明這個壓縮檔是什麼、不是什麼。
@@ -44,6 +78,7 @@ const exportReadme = `accelon26 導出（文字 ＋ 圖片）
 
 這個壓縮檔只包含資料庫的內容：
   *.txt          全部文字（source 容器解壓後的原樣標記，XML 形式）
+                 **保留原書的硬換行**（依 tables/lines.physical，行尾是 CRLF）
   images/…       resources 容器裡的每一個資源（圖片等）
 
 不含 tokens／postings／tags／tables／attributes／caches 這些「即時建置」的索引
@@ -185,11 +220,16 @@ func writeExportZip(f *adbSearchFile, base, out string, res *ExportResult) error
 		return err
 	}
 
-	// 2) 文字：每個 source 區塊解壓 → 截到第一個 NUL → UTF-16LE 解碼 → 串進同一個檔
+	// 2) 文字：每個 source 區塊解壓 → 截到第一個 NUL → 依 lines.physical 的「每行結尾」
+	//    插入硬換行（作者 2026-10）。行結尾是「所有 source 區塊串起來之後」的位元組偏移，
+	//    而一行可能跨區塊（13j：42,173 個行尾只有 13 個落在區塊邊界上），所以要在
+	//    整個串流上邊寫邊切。
 	tw, err := zw.CreateHeader(&zip.FileHeader{Name: base + ".txt", Method: zip.Deflate, Modified: now})
 	if err != nil {
 		return err
 	}
+	lineCU := f.lineEnds() // 每行結尾（UTF-16 code unit 索引）
+	var pos, li int64
 	for i := 0; i < src.count; i++ {
 		r0, r1 := blockRangeOf(src, i)
 		if r0 < 0 || r1 > int64(len(f.view)) || r1 < r0 {
@@ -202,12 +242,40 @@ func writeExportZip(f *adbSearchFile, base, out string, res *ExportResult) error
 		if n := firstNulUnit(raw); n >= 0 {
 			raw = raw[:n*2]
 		}
-		if _, err := io.WriteString(tw, decodeUTF16LE(raw)); err != nil {
-			return err
+		units := make([]uint16, len(raw)/2)
+		for j := range units {
+			units[j] = uint16(raw[j*2]) | uint16(raw[j*2+1])<<8
 		}
-		res.Chars += int64(len(raw)) / 2
+		n := int64(len(units))
+		off := int64(0)
+		// 這一個區塊裡的所有行尾（含剛好落在區塊結尾的那一個）
+		for li < int64(len(lineCU)) && lineCU[li] <= pos+n {
+			e := lineCU[li] - pos
+			if e < 0 {
+				li++ // 理論上不會：行尾在區塊開頭之前（資料壞掉就跳過）
+				continue
+			}
+			if e > off {
+				if _, err := io.WriteString(tw, string(utf16.Decode(units[off:e]))); err != nil {
+					return err
+				}
+				off = e
+			}
+			if _, err := io.WriteString(tw, hardBreak); err != nil {
+				return err
+			}
+			li++
+		}
+		if off < n {
+			if _, err := io.WriteString(tw, string(utf16.Decode(units[off:n]))); err != nil {
+				return err
+			}
+		}
+		pos += n
+		res.Chars += n
 		res.Blocks++
 	}
+	res.Lines = li // 實際插入的換行數（= 行數，資料正常時等於檔頭的 linecount）
 
 	// 3) 圖片：resources 容器（未壓縮，一塊就是一個資源）
 	if rsrc, ok := f.container("resources"); ok && rsrc.count > 0 {

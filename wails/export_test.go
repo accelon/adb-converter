@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf16"
 )
 
 // TestSafeZipName：資源名稱只留檔名，不能帶出 ../ 之類的路徑。
@@ -98,6 +99,21 @@ func TestExportZip(t *testing.T) {
 			if strings.Contains(strings.ToLower(name), bad) {
 				t.Errorf("索引內容不該被導出：%s", name)
 			}
+		}
+	}
+	// 硬換行（作者 2026-10）：lines.physical 有幾行，txt 就要有幾個換行
+	if real {
+		if res.Lines != 42173 {
+			t.Errorf("換行數 = %d，want 42173（13j 檔頭 linecount）", res.Lines)
+		}
+		got := int64(strings.Count(string(body), hardBreak))
+		if got != res.Lines {
+			t.Errorf("txt 裡的 %q 有 %d 個，want %d", hardBreak, got, res.Lines)
+		}
+		// 換行是「插進去」不是「取代」：去掉換行後要剛好是原本的字元數
+		stripped := int64(len(utf16.Encode([]rune(strings.ReplaceAll(string(body), hardBreak, "")))))
+		if stripped != res.Chars {
+			t.Errorf("去掉換行後 %d 個 code unit，want %d", stripped, res.Chars)
 		}
 	}
 }

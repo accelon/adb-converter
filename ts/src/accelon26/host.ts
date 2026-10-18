@@ -223,10 +223,13 @@ export async function desktopCharCount(path: string): Promise<number | null> {
 export interface DesktopExportResult {
   ok: boolean;
   error?: string;
+  note?: string;
   path?: string;
   folder?: string;
   chars?: number;
   blocks?: number;
+  /** 保留的硬換行數（＝行數，來自 tables/lines.physical） */
+  lines?: number;
   imageCount?: number;
   imageBytes?: number;
   zipBytes?: number;

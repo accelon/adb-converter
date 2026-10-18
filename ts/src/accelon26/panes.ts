@@ -76,7 +76,9 @@ async function setupExport(): Promise<void> {
       return;
     }
     const mib = (n?: number) => ((n ?? 0) / 1048576).toFixed(1) + ' MiB';
-    const parts = [`文字 ${fmtInt(res.chars ?? 0)} 字`, `${fmtInt(res.blocks ?? 0)} 個區塊`];
+    const parts = [`文字 ${fmtInt(res.chars ?? 0)} 字`];
+    if (res.lines) parts.push(`${fmtInt(res.lines)} 行（保留硬換行）`);
+    parts.push(`${fmtInt(res.blocks ?? 0)} 個區塊`);
     if (res.imageCount) parts.push(`圖片 ${fmtInt(res.imageCount)} 張（${mib(res.imageBytes)}）`);
     if (msg) {
       msg.textContent = `✓ 已存到 ${res.folder}（${mib(res.zipBytes)}，${secs} 秒）：` +
