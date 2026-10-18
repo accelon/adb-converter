@@ -642,6 +642,71 @@
 .dbPickMenu .dbPickEmpty { color: var(--dim); font-size: 12px; padding: 4px 8px; }
 .dbPickMenu .dbPickAdd { color: #ffd479; }
 .dbPickMenu .dbPickSep { height: 1px; background: var(--line); margin: 4px 2px; }
+/* ---- 操作導覽（作者 2026-10）：聚光燈 ＋ 說明氣泡 ----
+   聚光燈是「一個貼在目標上的空 div ＋ 9999px 的 box-shadow」：四周壓暗、目標亮著。
+   它一律 pointer-events:none —— 整個導覽從頭到尾都不擋操作（「你來」那幾步更是必須
+   如此），也就不會有「遮罩吃掉點擊」這種事。z-index 高於所有彈窗（80–85）。 */
+#tourSpot {
+  position: fixed; z-index: 89; pointer-events: none;
+  border-radius: 8px; border: 2px solid #ffd479;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,.55), 0 0 22px rgba(255,212,121,.45);
+}
+#tourSpot[hidden] { display: none; }
+#tourBubble {
+  position: fixed; z-index: 90; left: 50%; transform: translateX(-50%);
+  width: min(760px, 92vw); max-height: 46vh; overflow: auto;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--accent);
+  border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.7); padding: 12px 16px 10px;
+}
+#tourBubble[hidden] { display: none; }
+#tourBubble.paused { border-color: var(--warn); }
+.tourHead { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tourWhere { flex: 1 1 auto; font-size: 12px; color: var(--dim); letter-spacing: .02em; }
+#tourText { font-size: 15px; line-height: 1.75; }
+#tourText p { margin: 0 0 8px; }
+#tourText p:last-child { margin-bottom: 0; }
+#tourText b { color: #ffd479; }
+#tourText code { background: #1b1b1b; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 13px; }
+#tourNote { font-size: 12.5px; color: var(--warn); margin: 6px 0 0; }
+#tourNote[hidden] { display: none; }
+.tourBtns { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.tourProg { flex: 1 1 auto; font-size: 12px; color: var(--dim); text-align: right; }
+#tourBubble button {
+  background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 7px; font: inherit; font-size: 13px; padding: 4px 12px; cursor: pointer;
+}
+#tourBubble button:hover { border-color: var(--accent); }
+#tourBubble button.primary { background: var(--accent); color: #08243f; border-color: transparent; font-weight: 700; }
+#tourBubble button[hidden] { display: none; }
+/* 導覽選單（🎬）：一份劇本一列 */
+/* 一次都沒看過導覽時，🎬 輕輕呼吸一下（作者 2026-10）：小白不會知道一個沒看過的
+   圖示是做什麼用的。播過一次就永遠不再提示（進度存在 localStorage）。 */
+#tourBtn.nudge { color: #ffd479; border-color: #ffd479; animation: tourNudge 1.8s ease-in-out infinite; }
+@keyframes tourNudge {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,212,121,0); }
+  50% { box-shadow: 0 0 0 4px rgba(255,212,121,.16); }
+}
+@media (prefers-reduced-motion: reduce) { #tourBtn.nudge { animation: none; } }
+#tourBackdrop { position: fixed; inset: 0; z-index: 86; background: rgba(0,0,0,.55); }
+#tourBackdrop[hidden], #tourBox[hidden] { display: none; }
+#tourBox {
+  position: fixed; z-index: 87; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  width: min(620px, 92vw); max-height: 82vh; overflow: auto;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.65); padding: 16px 20px 14px;
+}
+.tourList { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.tourRow { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel2); }
+.tourName { font-size: 16px; font-weight: 700; color: #7cc0ff; }
+.tourIntro { font-size: 13px; margin: 4px 0; line-height: 1.65; }
+.tourMeta { font-size: 12px; color: var(--dim); }
+.tourActs { display: flex; gap: 8px; margin-top: 8px; }
+.tourActs button {
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 7px; font: inherit; font-size: 13px; padding: 4px 14px; cursor: pointer;
+}
+.tourActs button:hover { border-color: var(--accent); }
+.tourActs button.primary { background: var(--accent); color: #08243f; border-color: transparent; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -660,6 +725,8 @@
   <span class="dbHint" id="dbHint">← 開啟資料庫</span>
   <span class="dbTabs" id="dbTabs"></span>
   <span class="status" id="status"></span>
+  <!-- 操作導覽（作者 2026-10）：跟著做一次的入場券 -->
+  <button class="sideToggle" id="tourBtn" title="操作導覽：跟著做一次（開庫、查詞、看本文）">🎬</button>
   <!-- 設置（齒輪）在最右邊：作者 2026-10 把它移到原本資料夾按鈕的位置 -->
   <button class="sideToggle" id="settingsBtn" title="設置（進階模式、繁簡通檢、文字顯示）">🔧</button>
 </header>
@@ -909,7 +976,38 @@
   <p class="aboutFoot">原始碼與操作說明見官網；有問題請在官網回報。</p>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-17T14:07:27.551Z","buildTimeText":"2026-10-17 22:07"};</script>
+<!-- 操作導覽（作者 2026-10）：🎬 選一份劇本，播放器一步一步做給你看。
+     聚光燈與氣泡的內容全部由 tour.ts 產生；這裡只放殼。 -->
+<div id="tourSpot" hidden></div>
+<div id="tourBubble" role="dialog" aria-live="polite" hidden>
+  <div class="tourHead">
+    <span class="tourWhere" id="tourWhere"></span>
+    <button type="button" class="aboutClose" id="tourX" title="結束導覽（Esc）">✕</button>
+  </div>
+  <div id="tourText"></div>
+  <div id="tourNote" hidden></div>
+  <div class="tourBtns">
+    <button type="button" id="tourPrev" title="上一個場景（←）" hidden>← 上一場景</button>
+    <button type="button" id="tourReplay" title="重播本場景" hidden>重播</button>
+    <span class="tourProg" id="tourProg"></span>
+    <button type="button" id="tourDone" hidden>我做好了</button>
+    <button type="button" id="tourSkip" hidden>略過這步</button>
+    <button type="button" id="tourNext" class="primary" hidden>下一個場景 →</button>
+  </div>
+</div>
+
+<!-- 導覽選單：🎬 -->
+<div id="tourBackdrop" hidden></div>
+<div id="tourBox" role="dialog" aria-modal="true" aria-labelledby="tourTitle" hidden>
+  <div class="setHead">
+    <h2 id="tourTitle">操作導覽</h2>
+    <button id="tourClose" class="aboutClose" title="關閉（Esc）">✕</button>
+  </div>
+  <p class="setHint">跟著做一次就會用。每個場景做完會停住，由你決定要不要往下。</p>
+  <div id="tourList" class="tourList"></div>
+</div>
+
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T01:20:40.484Z","buildTimeText":"2026-10-18 09:20"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -6675,11 +6773,817 @@ designed by C.S.Yap`;
     }, true);
   }
 
+  // src/accelon26/tour-data.ts
+  var TOUR_INDEX = [
+    {
+      id: "first-run",
+      title: "第一次使用",
+      intro: "十分鐘走一遍：開庫、查詞、看本文、目錄、頻次、設置、詞典。邊做邊講，隨時可以按「結束」。",
+      scenes: 10,
+      steps: 123,
+      require: "",
+      bytes: 5442
+    }
+  ];
+  var TOUR_BLOBS = {
+    "first-run": "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ggcBBAAxMjAwBAEUACNzZWFyY2hMaXN0IC5zbmlwcGV0BwEDADkwMAIBCAAjZG9jVGV4dAEBVgDmnKzmlofot7PliLDpgqPkuIDlj6XvvIzlkb3kuK3omZXloZfntIXjgIJDdHJsK+m7nuaRmOimgeacg+WPpumWi+S4gOWAi+WIhumggeavlOi8g+OAggcBBAAxNTAwHgDmnKzmlofvvJrlrZfntJroiIfljp/mm7jliIbooYy3AOacrOaWh+S4iuaWueeahCAqKlQqKiDmmK/lrZfntJrvvIjpu57kuIDkuIsgKzJweO+8jEFsdCvpu54g4oiSMnB477yJ44CCCuOAjOWOn+abuOWIhuihjOOAjemWi+iRl+aZguS/neeVmeWOn+abuOeahOaPm+ihjOiIh+mggeeivO+8m+WPlua2iOWwseiuiuaIkOmAo+e6jOaOkueJiO+8jOiugOmVt+auteiQveabtOmghuOAgg8AAgELACNmc0JvZHlQaWNrBwEDADYwMAEBTQDlrZfntJrlj6rlvbHpn7/nlavpnaLvvIzkuI3lvbHpn7/os4fmlpnjgILlt6bmrITjgIHlj7PmrITlkITmnInoh6rlt7HnmoQgVOOAggcBAwA4MDACAQ8AI3Nob3dIYXJkQnJlYWtzBwEDADUwMAQBDwAjc2hvd0hhcmRCcmVha3MHAQMAOTAwAQFXAOePvuWcqOaYr+OAjOmAo+iRl+aOkuOAje+8muWPquacieaomemhjOiIh+epuuihjOacg+aWt+ihjO+8jOmAmeS4gOihjOaHieipsuiuiumVt+S6huOAggcBBAAxMjAwBAEPACNzaG93SGFyZEJyZWFrcwcBAwA5MDABASQA5YaN6bue5LiA5qyh5bCx5Zue5Yiw5Y6f5pu45YiG6KGM44CCBwEDADYwMAMACQDnm67pjITmqLm7AOOAjOebrumMhOOAjeWIhumggeS4i+mdouaYr+mAmeacrOabuOeahOebrumMhOOAgum7nuS4gOWIl++8muacrOaWh+i3s+WIsOmCo+ijoe+8m+acieWwj+WtqeeahOWPr+S7peWxlemWi+OAggrmkJzlsIvmoYbmiZPnmoTmmK/nm67pjIToo6HnmoTlkI3lrZfmmYLvvIznrKblkIjnmoTnm67pjITmnIPkuq7lh7rlkb3kuK3m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"
+  };
+
+  // src/accelon26/tour-format.ts
+  var TOUR_MAGIC = "AC26T";
+  var TOUR_FMT = 1;
+  var OP = {
+    text: 1,
+    point: 2,
+    unpoint: 3,
+    click: 4,
+    type: 5,
+    key: 6,
+    wait: 7,
+    waitFor: 8,
+    tab: 9,
+    side: 10,
+    set: 11,
+    call: 12,
+    user: 13,
+    require: 14,
+    skipIf: 15
+  };
+  var OP_NAME = Object.fromEntries(Object.entries(OP).map(([k, v]) => [v, k]));
+  var enc = new TextEncoder;
+  var dec = new TextDecoder("utf-8");
+  class Reader {
+    d;
+    i = 0;
+    constructor(d) {
+      this.d = d;
+    }
+    u8() {
+      return this.d[this.i++] ?? 0;
+    }
+    u16() {
+      const v = (this.d[this.i] ?? 0) | (this.d[this.i + 1] ?? 0) << 8;
+      this.i += 2;
+      return v;
+    }
+    u32() {
+      const v = ((this.d[this.i] ?? 0) | (this.d[this.i + 1] ?? 0) << 8 | (this.d[this.i + 2] ?? 0) << 16 | (this.d[this.i + 3] ?? 0) << 24) >>> 0;
+      this.i += 4;
+      return v;
+    }
+    raw(n) {
+      const r = this.d.subarray(this.i, this.i + n);
+      this.i += n;
+      return r;
+    }
+    str() {
+      return dec.decode(this.raw(this.u16()));
+    }
+    ascii(n) {
+      return String.fromCharCode(...this.raw(n));
+    }
+    get eof() {
+      return this.i >= this.d.length;
+    }
+  }
+  var CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0;n < 256; n++) {
+      let c = n;
+      for (let k = 0;k < 8; k++)
+        c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(bytes) {
+    let c = 4294967295;
+    for (let i = 0;i < bytes.length; i++)
+      c = CRC_TABLE[(c ^ bytes[i]) & 255] ^ c >>> 8;
+    return (c ^ 4294967295) >>> 0;
+  }
+  function decodeTour(bytes) {
+    const r = new Reader(bytes);
+    const magic = r.ascii(5);
+    if (magic !== TOUR_MAGIC)
+      throw new Error(`不是導覽宏（magic=${JSON.stringify(magic)}）`);
+    const fmt = r.u8();
+    if (fmt !== TOUR_FMT)
+      throw new Error(`導覽宏格式版本 ${fmt}，這支程式只認得 ${TOUR_FMT}（請更新 accelon26）`);
+    r.u8();
+    const want = r.u32();
+    const got = crc32(bytes.subarray(r.i));
+    if (want !== got)
+      throw new Error(`導覽宏損壞（CRC ${got.toString(16)} ≠ ${want.toString(16)}）`);
+    const tour = {
+      id: r.str(),
+      title: r.str(),
+      intro: r.str(),
+      require: r.str(),
+      scenes: []
+    };
+    const n = r.u16();
+    for (let i = 0;i < n; i++) {
+      const sc = { title: r.str(), body: r.str(), steps: [] };
+      const m = r.u16();
+      for (let j = 0;j < m; j++) {
+        const op = r.u8();
+        const argc = r.u8();
+        const args = [];
+        for (let k = 0;k < argc; k++)
+          args.push(r.str());
+        if (!OP_NAME[op])
+          throw new Error(`場景 ${i + 1} 第 ${j + 1} 步：未知指令 ${op}`);
+        sc.steps.push({ op, args });
+      }
+      tour.scenes.push(sc);
+    }
+    if (!r.eof)
+      throw new Error(`導覽宏尾端有 ${bytes.length - r.i} bytes 多餘資料`);
+    return tour;
+  }
+  function fromBase64(b64) {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0;i < bin.length; i++)
+      out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  // src/accelon26/tour.ts
+  var PKEY = (id) => `accelon26.tour.${id}`;
+  var app = null;
+  var cur = null;
+  var seq = 0;
+  var phase = "idle";
+  var waitKind = "none";
+  var note = "";
+  var pointSel = null;
+  var failed = [];
+  var pending = null;
+  var userDone = false;
+  var skipReq = false;
+  var raf = 0;
+  var cache = new Map;
+  var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  var el = (id) => document.getElementById(id);
+  function q(sel) {
+    try {
+      return document.querySelector(sel);
+    } catch {
+      return null;
+    }
+  }
+  function visible(e) {
+    if (!e)
+      return false;
+    const r = e.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== "hidden";
+  }
+  function evalCond(cond) {
+    let c = cond.trim();
+    let neg = false;
+    if (c.startsWith("!")) {
+      neg = true;
+      c = c.slice(1).trim();
+    }
+    let yes = false;
+    try {
+      yes = atom(c);
+    } catch {
+      yes = false;
+    }
+    return neg ? !yes : yes;
+  }
+  function atom(c) {
+    if (c.startsWith("api:")) {
+      const body = c.slice(4);
+      const eq = body.indexOf("=");
+      const path = (eq < 0 ? body : body.slice(0, eq)).trim();
+      const want = eq < 0 ? null : body.slice(eq + 1).trim();
+      let v;
+      try {
+        v = path.split(".").reduce((o, k) => o == null ? undefined : o[k], app?.state() ?? {});
+      } catch {
+        v = undefined;
+      }
+      return want === null ? !!v : String(v) === want;
+    }
+    if (c.startsWith("count:")) {
+      const m = /^(.*?)\s*(>=|<=|==|!=|>|<)\s*(\d+)$/.exec(c.slice(6).trim());
+      if (m) {
+        const n = document.querySelectorAll(m[1]).length;
+        const k = Number(m[3]);
+        switch (m[2]) {
+          case ">=":
+            return n >= k;
+          case "<=":
+            return n <= k;
+          case "==":
+            return n === k;
+          case "!=":
+            return n !== k;
+          case ">":
+            return n > k;
+          default:
+            return n < k;
+        }
+      }
+      try {
+        return document.querySelectorAll(c.slice(6).trim()).length > 0;
+      } catch {
+        return false;
+      }
+    }
+    if (c.startsWith("text:")) {
+      const body = c.slice(5);
+      const eq = body.indexOf("=");
+      if (eq < 0)
+        return false;
+      const e = q(body.slice(0, eq).trim());
+      return !!e && (e.textContent ?? "").includes(body.slice(eq + 1).trim());
+    }
+    return visible(q(c));
+  }
+  function load(id) {
+    let t = cache.get(id);
+    if (t)
+      return t;
+    const b64 = TOUR_BLOBS[id];
+    if (!b64)
+      return null;
+    try {
+      t = decodeTour(fromBase64(b64));
+      cache.set(id, t);
+      return t;
+    } catch (e) {
+      console.error("[tour] 宏解不開", e);
+      return null;
+    }
+  }
+  function tourProgress(id) {
+    try {
+      return Math.max(0, Number(localStorage.getItem(PKEY(id)) ?? "0") || 0);
+    } catch {
+      return 0;
+    }
+  }
+  function saveProgress(scene) {
+    if (!cur)
+      return;
+    try {
+      localStorage.setItem(PKEY(cur.id), String(scene));
+    } catch {}
+  }
+  var mdLite = (src) => src.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").split(/\n{2,}/).map((p) => "<p>" + p.replace(/\n/g, "<br>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>") + "</p>").join("");
+  function setText(md) {
+    const e = el("tourText");
+    if (e)
+      e.innerHTML = mdLite(md);
+  }
+  function setNote(msg) {
+    note = msg;
+    const e = el("tourNote");
+    if (e) {
+      e.textContent = msg;
+      e.hidden = !msg;
+    }
+  }
+  function pointAt(sel) {
+    pointSel = sel;
+    layout();
+  }
+  function layout() {
+    const spot = el("tourSpot");
+    const bubble = el("tourBubble");
+    if (!spot || !bubble || bubble.hidden)
+      return;
+    const target = pointSel ? q(pointSel) : null;
+    const r = target ? target.getBoundingClientRect() : null;
+    const has = !!r && r.width > 0 && r.height > 0;
+    spot.hidden = !has;
+    if (has && r) {
+      const pad = 4;
+      spot.style.left = Math.round(r.left - pad) + "px";
+      spot.style.top = Math.round(r.top - pad) + "px";
+      spot.style.width = Math.round(r.width + pad * 2) + "px";
+      spot.style.height = Math.round(r.height + pad * 2) + "px";
+      const lower = r.top + r.height / 2 > window.innerHeight / 2;
+      bubble.style.top = lower ? "18px" : "";
+      bubble.style.bottom = lower ? "" : "18px";
+    } else {
+      bubble.style.top = "";
+      bubble.style.bottom = "18px";
+      if (pointSel) {
+        if (!note.startsWith("⚠ 找不到"))
+          setNote(`⚠ 找不到「${pointSel}」，或它目前看不到`);
+      }
+    }
+    if (has && note.startsWith("⚠ 找不到"))
+      setNote("");
+  }
+  function startRaf() {
+    if (raf)
+      return;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      layout();
+    };
+    raf = requestAnimationFrame(tick);
+  }
+  function stopRaf() {
+    if (raf)
+      cancelAnimationFrame(raf);
+    raf = 0;
+  }
+  function showBubble(on) {
+    const b = el("tourBubble");
+    if (b)
+      b.hidden = !on;
+    if (!on) {
+      const s = el("tourSpot");
+      if (s)
+        s.hidden = true;
+      stopRaf();
+      return;
+    }
+    startRaf();
+  }
+  function show2(id, on, label) {
+    const b = el(id);
+    if (!b)
+      return;
+    b.hidden = !on;
+    if (on && label)
+      b.textContent = label;
+  }
+  function updateUi() {
+    if (!cur)
+      return;
+    const sc = cur.tour.scenes[cur.scene];
+    const where = el("tourWhere");
+    if (where)
+      where.textContent = `場景 ${cur.scene + 1} / ${cur.tour.scenes.length} · ${sc.title}`;
+    const prog = el("tourProg");
+    if (prog)
+      prog.textContent = `${Math.min(cur.step, sc.steps.length)} / ${sc.steps.length}`;
+    const last = cur.scene >= cur.tour.scenes.length - 1;
+    show2("tourNext", waitKind === "next", last ? "完成 ✓" : "下一個場景 →");
+    show2("tourDone", waitKind === "user");
+    show2("tourSkip", waitKind === "user" || waitKind === "cond" || waitKind === "pause", waitKind === "pause" ? "略過這步" : waitKind === "cond" ? "略過等待" : "略過這步");
+    show2("tourReplay", waitKind !== "none");
+    show2("tourPrev", !!cur && cur.scene > 0);
+    const bubble = el("tourBubble");
+    if (bubble)
+      bubble.classList.toggle("paused", waitKind === "pause");
+  }
+  function beginScene(sc) {
+    setText(sc.body);
+    setNote("");
+    pointSel = null;
+    waitKind = "none";
+    phase = "running";
+    updateUi();
+    layout();
+  }
+  function interrupt() {
+    const p = pending;
+    pending = null;
+    if (p)
+      p("stop");
+    userDone = false;
+    skipReq = false;
+  }
+  function ask(kind) {
+    waitKind = kind;
+    phase = kind === "next" ? "waiting" : "running";
+    updateUi();
+    return new Promise((res) => {
+      pending = (v) => {
+        pending = null;
+        res(v);
+      };
+    });
+  }
+  function fail(msg) {
+    note = msg;
+    if (cur)
+      failed.push({ scene: cur.scene, step: cur.step, msg });
+    setNote(msg);
+    return "pause";
+  }
+  async function exec(st, my) {
+    const a = st.args;
+    switch (st.op) {
+      case OP.text:
+        setText(a[0]);
+        return "ok";
+      case OP.point:
+        pointAt(a[0]);
+        return "ok";
+      case OP.unpoint:
+        pointAt(null);
+        return "ok";
+      case OP.click: {
+        const e = q(a[0]);
+        if (!visible(e))
+          return fail(`找不到「${a[0]}」（或它目前看不到）`);
+        e.click();
+        await sleep(60);
+        return "ok";
+      }
+      case OP.type: {
+        const e = q(a[0]);
+        if (!e)
+          return fail(`找不到輸入框「${a[0]}」`);
+        e.focus();
+        e.value = a[1] ?? "";
+        e.dispatchEvent(new Event("input", { bubbles: true }));
+        await sleep(60);
+        return "ok";
+      }
+      case OP.key: {
+        const target = a[1] ? q(a[1]) : document.activeElement;
+        if (!target)
+          return fail(`找不到「${a[1] ?? "目前焦點"}」`);
+        target.dispatchEvent(new KeyboardEvent("keydown", { key: a[0], bubbles: true, cancelable: true }));
+        await sleep(60);
+        return "ok";
+      }
+      case OP.wait:
+        await sleep(Number(a[0]) || 0);
+        return "ok";
+      case OP.waitFor:
+        return waitCond(a[0], Number(a[1]) || 5000, my);
+      case OP.tab:
+        app?.tab(a[0], a[1]);
+        await sleep(120);
+        return "ok";
+      case OP.side:
+        app?.side(a[0], a[1] === "on");
+        await sleep(120);
+        return "ok";
+      case OP.set:
+        if (!app?.set(a[0], a[1] ?? ""))
+          return fail(`不認得的設定「${a[0]}」`);
+        await sleep(120);
+        return "ok";
+      case OP.call:
+        try {
+          await app?.call(a[0], a[1] ?? "");
+        } catch (e) {
+          return fail(`${a[0]} 失敗：${e?.message ?? e}`);
+        }
+        return "ok";
+      case OP.user:
+        return waitUser(a[0], a[1] ?? "", my);
+      case OP.require:
+        return waitCond(a[0], 120000, my, `需要：${a[0]}`);
+      case OP.skipIf:
+        if (evalCond(a[0])) {
+          note = `（本場景不適用：${a[0]}）`;
+          return "skip";
+        }
+        return "ok";
+      default:
+        return fail(`未知指令 ${st.op}`);
+    }
+  }
+  async function waitCond(cond, timeout, my, hint = "") {
+    if (evalCond(cond))
+      return "ok";
+    waitKind = "cond";
+    updateUi();
+    const t0 = performance.now();
+    while (my === seq) {
+      if (skipReq) {
+        skipReq = false;
+        setNote(`（跳過等待：${cond}）`);
+        return "ok";
+      }
+      if (evalCond(cond)) {
+        setNote("");
+        return "ok";
+      }
+      const waited = performance.now() - t0;
+      if (waited > timeout)
+        return fail(`等不到「${cond}」（${Math.round(timeout)} ms）`);
+      setNote(`${hint || "等"}：${cond}…`);
+      await sleep(100);
+    }
+    return "ok";
+  }
+  async function waitUser(text, cond, my) {
+    setText(text);
+    if (cond && evalCond(cond)) {
+      setText(text);
+      return "ok";
+    }
+    waitKind = "user";
+    updateUi();
+    while (my === seq) {
+      if (userDone) {
+        userDone = false;
+        return "ok";
+      }
+      if (skipReq) {
+        skipReq = false;
+        return "ok";
+      }
+      if (cond && evalCond(cond))
+        return "ok";
+      await sleep(120);
+    }
+    return "ok";
+  }
+  async function play(id, from) {
+    if (!app)
+      return;
+    const tour = load(id);
+    if (!tour) {
+      openTourMenu();
+      return;
+    }
+    interrupt();
+    seq++;
+    const my = seq;
+    const start = Math.max(0, Math.min(from ?? tourProgress(id), tour.scenes.length - 1));
+    cur = { id, tour, scene: start, step: 0 };
+    failed = [];
+    note = "";
+    closeTourMenu();
+    showBubble(true);
+    loop(my).catch((e) => {
+      if (my !== seq)
+        return;
+      fail(`導覽中斷：${e?.message ?? e}`);
+      phase = "paused";
+      waitKind = "pause";
+      updateUi();
+    });
+  }
+  async function loop(my) {
+    outer:
+      while (my === seq && cur) {
+        const sc = cur.tour.scenes[cur.scene];
+        if (!sc) {
+          finish();
+          return;
+        }
+        beginScene(sc);
+        while (cur.step < sc.steps.length) {
+          const r = await exec(sc.steps[cur.step], my);
+          if (my !== seq)
+            return;
+          if (r === "skip") {
+            cur.scene++;
+            cur.step = 0;
+            continue outer;
+          }
+          if (r === "pause") {
+            const act2 = await ask("pause");
+            if (my !== seq)
+              return;
+            if (act2 === "stop")
+              return stopTour();
+            if (act2 === "replay") {
+              cur.step = 0;
+              beginScene(sc);
+              updateUi();
+              continue;
+            }
+          }
+          cur.step++;
+          updateUi();
+        }
+        phase = "waiting";
+        waitKind = "next";
+        setText(sc.body);
+        setNote("");
+        saveProgress(cur.scene);
+        updateUi();
+        const act = await ask("next");
+        if (my !== seq)
+          return;
+        if (act === "stop")
+          return stopTour();
+        if (act === "replay") {
+          play(cur.id, cur.scene);
+          return;
+        }
+        if (act === "prev") {
+          play(cur.id, Math.max(0, cur.scene - 1));
+          return;
+        }
+        cur.scene++;
+        cur.step = 0;
+      }
+    if (cur)
+      cur.scene = cur.tour.scenes.length;
+  }
+  function finish() {
+    phase = "done";
+    waitKind = "next";
+    pointSel = null;
+    layout();
+    setText("**導覽結束。** 這些都可以在設置（\uD83D\uDD27）裡隨時改回來；按 \uD83C\uDFAC 可以再看一次。");
+    setNote("");
+    if (cur)
+      saveProgress(cur.tour.scenes.length - 1);
+    const next = el("tourNext");
+    if (next) {
+      next.hidden = false;
+      next.textContent = "再看一次";
+    }
+    show2("tourPrev", false);
+    show2("tourDone", false);
+    show2("tourSkip", false);
+    show2("tourReplay", false);
+    pending = null;
+    updateNudge();
+  }
+  function stopTour() {
+    interrupt();
+    seq++;
+    cur = null;
+    phase = "idle";
+    waitKind = "none";
+    note = "";
+    pointSel = null;
+    showBubble(false);
+  }
+  function renderMenu() {
+    const list = el("tourList");
+    if (!list)
+      return;
+    list.innerHTML = TOUR_INDEX.map((t) => {
+      const done = tourProgress(t.id);
+      const label = done > 0 && done < t.scenes ? `繼續（${done + 1} / ${t.scenes}）` : "開始";
+      return `<div class="tourRow" data-id="${t.id}">` + `<div class="tourName">${t.title}</div>` + `<div class="tourIntro">${t.intro}</div>` + `<div class="tourMeta">${t.scenes} 個場景 · ${t.steps} 步${t.require ? " · 需要 " + t.require : ""}</div>` + `<div class="tourActs"><button type="button" class="primary" data-play="1">${label}</button>` + (done > 0 ? '<button type="button" data-restart="1">從頭</button>' : "") + "</div></div>";
+    }).join("");
+    list.querySelectorAll(".tourRow").forEach((row) => {
+      const id = row.dataset.id ?? "";
+      row.querySelector("[data-play]")?.addEventListener("click", () => {
+        play(id);
+      });
+      row.querySelector("[data-restart]")?.addEventListener("click", () => {
+        play(id, 0);
+      });
+    });
+  }
+  function openTourMenu() {
+    if (cur)
+      stopTour();
+    const box = el("tourBox");
+    const back = el("tourBackdrop");
+    if (box)
+      box.hidden = false;
+    if (back)
+      back.hidden = false;
+    renderMenu();
+  }
+  function closeTourMenu() {
+    const box = el("tourBox");
+    const back = el("tourBackdrop");
+    if (box)
+      box.hidden = true;
+    if (back)
+      back.hidden = true;
+  }
+  function tourMenuOpen() {
+    return el("tourBox")?.hidden === false;
+  }
+  var modalOpen = () => ["settingsBox", "allSearchBox", "aboutBox"].some((id) => el(id)?.hidden === false);
+  function onKey(ev) {
+    if (ev.key === "Escape") {
+      if (modalOpen())
+        return;
+      if (tourMenuOpen()) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        closeTourMenu();
+        return;
+      }
+      if (cur) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        stopTour();
+      }
+      return;
+    }
+    if (!cur)
+      return;
+    if (ev.key === "ArrowRight" || ev.key === " " || ev.key === "Enter") {
+      if (waitKind !== "next")
+        return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (phase === "done")
+        play(cur.id, 0);
+      else
+        pending?.("next");
+      return;
+    }
+    if (ev.key === "ArrowLeft" && cur.scene > 0) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      play(cur.id, Math.max(0, cur.scene - 1));
+    }
+  }
+  function anyProgress() {
+    return TOUR_INDEX.some((t) => {
+      try {
+        return localStorage.getItem(PKEY(t.id)) !== null;
+      } catch {
+        return true;
+      }
+    });
+  }
+  function updateNudge() {
+    const btn = el("tourBtn");
+    if (!btn)
+      return;
+    if (anyProgress())
+      btn.classList.remove("nudge");
+    else
+      btn.classList.add("nudge");
+  }
+  function initTour(a) {
+    app = a;
+    el("tourBtn")?.addEventListener("click", () => openTourMenu());
+    el("tourClose")?.addEventListener("click", () => closeTourMenu());
+    el("tourBackdrop")?.addEventListener("click", () => closeTourMenu());
+    el("tourX")?.addEventListener("click", () => stopTour());
+    el("tourNext")?.addEventListener("click", () => {
+      if (phase === "done" && cur) {
+        play(cur.id, 0);
+        return;
+      }
+      pending?.("next");
+    });
+    el("tourPrev")?.addEventListener("click", () => {
+      if (cur)
+        play(cur.id, Math.max(0, cur.scene - 1));
+    });
+    el("tourReplay")?.addEventListener("click", () => {
+      if (cur)
+        play(cur.id, cur.scene);
+    });
+    el("tourDone")?.addEventListener("click", () => {
+      userDone = true;
+    });
+    el("tourSkip")?.addEventListener("click", () => {
+      if (waitKind === "pause") {
+        pending?.("next");
+        return;
+      }
+      skipReq = true;
+    });
+    window.addEventListener("keydown", onKey, true);
+    renderMenu();
+    updateNudge();
+  }
+  function tourState() {
+    const bubble = el("tourBubble");
+    const spot = el("tourSpot");
+    const target = pointSel ? q(pointSel) : null;
+    const br = bubble ? bubble.getBoundingClientRect() : null;
+    const sr = spot && !spot.hidden ? spot.getBoundingClientRect() : null;
+    const tr = target ? target.getBoundingClientRect() : null;
+    return {
+      id: cur?.id ?? null,
+      scene: cur?.scene ?? -1,
+      scenes: cur?.tour.scenes.length ?? 0,
+      step: cur?.step ?? -1,
+      steps: cur ? cur.tour.scenes[cur.scene]?.steps.length ?? 0 : 0,
+      phase,
+      waitKind,
+      note,
+      point: pointSel,
+      failed: failed.slice(),
+      progress: cur ? tourProgress(cur.id) : 0,
+      bubble: {
+        visible: !!bubble && !bubble.hidden,
+        rect: br && br.width ? { x: Math.round(br.x), y: Math.round(br.y), w: Math.round(br.width), h: Math.round(br.height) } : null,
+        text: el("tourText")?.textContent?.slice(0, 120) ?? "",
+        where: el("tourWhere")?.textContent ?? "",
+        buttons: ["tourNext", "tourPrev", "tourReplay", "tourDone", "tourSkip"].filter((id) => el(id)?.hidden === false)
+      },
+      spot: {
+        visible: !!sr,
+        rect: sr ? { x: Math.round(sr.x), y: Math.round(sr.y), w: Math.round(sr.width), h: Math.round(sr.height) } : null,
+        target: tr ? { x: Math.round(tr.x), y: Math.round(tr.y), w: Math.round(tr.width), h: Math.round(tr.height) } : null,
+        overlapTarget: !!sr && !!tr && !(sr.right < tr.left || sr.left > tr.right || sr.bottom < tr.top || sr.top > tr.bottom)
+      },
+      tours: TOUR_INDEX.map((t) => ({ id: t.id, title: t.title, scenes: t.scenes, steps: t.steps }))
+    };
+  }
+
   // src/accelon26/text-pane.ts
   var textTabs = [];
   var textActive = 0;
-  var seq = 0;
-  var cache = null;
+  var seq2 = 0;
+  var cache2 = null;
   var lastText = null;
   var realmKey = (r) => r.from + ":" + r.to;
   var EMPTY = '<p class="dim">在目錄樹 Ctrl+點節點，或在下方本文分頁 Ctrl+點（複製）／Shift+點（搬到這裡），就會把那段文字放到這裡比對。<br>這一欄純參考：不會連動左邊的樹。</p>';
@@ -6695,15 +7599,15 @@ designed by C.S.Yap`;
     if (!strip)
       return;
     strip.innerHTML = textTabs.map((t, i) => '<span class="docTab' + (i === textActive ? " active" : "") + '" data-i="' + i + '" title="' + escapeHtml(t.label) + '">' + '<span class="docTabName">' + escapeHtml(shorten(t.label)) + "</span>" + '<span class="docTabClose" data-close="' + i + '" title="關閉">✕</span></span>').join("");
-    strip.querySelectorAll(".docTab").forEach((el) => {
-      el.onclick = (ev) => {
+    strip.querySelectorAll(".docTab").forEach((el2) => {
+      el2.onclick = (ev) => {
         const close = ev.target?.closest(".docTabClose");
         if (close) {
           ev.stopPropagation();
           closeTextTab(Number(close.dataset.close));
           return;
         }
-        const i = Number(el.dataset.i);
+        const i = Number(el2.dataset.i);
         if (i !== textActive) {
           textActive = i;
           renderTextPane();
@@ -6718,7 +7622,7 @@ designed by C.S.Yap`;
     if (at >= 0)
       textActive = at;
     else {
-      textTabs.push({ id: ++seq, label, realm, page: 0 });
+      textTabs.push({ id: ++seq2, label, realm, page: 0 });
       textActive = textTabs.length - 1;
     }
     syncTextTab();
@@ -6735,7 +7639,7 @@ designed by C.S.Yap`;
     textTabs.splice(i, 1);
     if (!textTabs.length) {
       textActive = 0;
-      cache = null;
+      cache2 = null;
       const body = $("#textBody");
       if (body)
         body.innerHTML = EMPTY;
@@ -6766,10 +7670,10 @@ designed by C.S.Yap`;
     const vaEnd = (v[pb.last] ?? reader.header.maxBlockOffset) + 1;
     const key = realmKey(t.realm) + ":" + pb.first + "-" + pb.last;
     const t0 = performance.now();
-    if (!cache || cache.key !== key) {
-      cache = { key, dt: await mapper.docText(vaStart, vaEnd, pb.last - pb.first + 1, undefined, { first: pb.first, last: pb.last }) };
+    if (!cache2 || cache2.key !== key) {
+      cache2 = { key, dt: await mapper.docText(vaStart, vaEnd, pb.last - pb.first + 1, undefined, { first: pb.first, last: pb.last }) };
     }
-    const dt = cache.dt;
+    const dt = cache2.dt;
     lastText = { ms: performance.now() - t0, rows: dt.lines.length, lines: b.total, blockFirst: dt.blockFirst, blockLast: dt.blockLast };
     const nums = dt.lineNumbers;
     const head = isDictDb(mapper) ? "" : '<div class="docHead">' + escapeHtml(displayName(t.label)) + '<span class="dim">第 ' + fmtInt(t.page + 1) + " / " + fmtInt(pb.pages) + " 頁" + " · 行 " + fmtInt(nums[0] ?? 0) + "–" + fmtInt(nums[nums.length - 1] ?? 0) + " / 此節點共 " + fmtInt(b.total) + " 行" + " · " + fmtInt(dt.text.length) + " 字</span></div>";
@@ -6816,7 +7720,7 @@ designed by C.S.Yap`;
   function resetTextPane() {
     textTabs = [];
     textActive = 0;
-    cache = null;
+    cache2 = null;
     lastText = null;
     const body = $("#textBody");
     if (body)
@@ -6827,13 +7731,13 @@ designed by C.S.Yap`;
     syncTextTab();
   }
   function snapshotTextPane() {
-    return { textTabs, textActive, seq };
+    return { textTabs, textActive, seq: seq2 };
   }
   function restoreTextPane(s) {
     textTabs = s?.textTabs ?? [];
     textActive = s?.textActive ?? 0;
-    seq = s?.seq ?? 0;
-    cache = null;
+    seq2 = s?.seq ?? 0;
+    cache2 = null;
     lastText = null;
   }
   function initTextPane() {
@@ -6858,10 +7762,10 @@ designed by C.S.Yap`;
         return;
       if (ev.target?.closest(".docTabClose"))
         return;
-      const el = ev.target?.closest(".docTab");
-      if (!el)
+      const el2 = ev.target?.closest(".docTab");
+      if (!el2)
         return;
-      const i = Number(el.dataset.i);
+      const i = Number(el2.dataset.i);
       const tab = docTabs[i];
       if (!tab)
         return;
@@ -6990,10 +7894,10 @@ designed by C.S.Yap`;
     }
     return call;
   }
-  var fromBase64 = Uint8Array.fromBase64;
+  var fromBase642 = Uint8Array.fromBase64;
   function decodeBase64(b64) {
-    if (fromBase64)
-      return fromBase64.call(Uint8Array, b64);
+    if (fromBase642)
+      return fromBase642.call(Uint8Array, b64);
     const bin = atob(b64);
     const out = new Uint8Array(bin.length);
     for (let i = 0;i < bin.length; i++)
@@ -7119,42 +8023,42 @@ designed by C.S.Yap`;
   function aboutState() {
     return { ...state };
   }
-  var el = (id) => document.getElementById(id);
+  var el2 = (id) => document.getElementById(id);
   function localBuild() {
     const b = window.__ACCELON_BUILD__;
     return { buildTime: b?.buildTime ?? "", buildTimeText: b?.buildTimeText ?? "" };
   }
-  function show2(open2) {
-    const box = el("aboutBox");
-    const back = el("aboutBackdrop");
+  function show3(open2) {
+    const box = el2("aboutBox");
+    const back = el2("aboutBackdrop");
     if (!box || !back)
       return;
     box.hidden = !open2;
     back.hidden = !open2;
     state.open = open2;
     if (open2) {
-      const logo = el("aboutLogo");
+      const logo = el2("aboutLogo");
       const icon = document.querySelector('link[rel="icon"]');
       if (logo && icon?.href) {
         logo.src = icon.href;
         logo.hidden = false;
       }
-      el("aboutClose")?.focus();
+      el2("aboutClose")?.focus();
     }
   }
   function closeAbout() {
-    show2(false);
+    show3(false);
   }
-  function setUpdate(phase, message2, canInstall = false) {
-    state.phase = phase;
+  function setUpdate(phase2, message2, canInstall = false) {
+    state.phase = phase2;
     state.message = message2;
     state.canInstall = canInstall;
-    const msg = el("aboutUpdateMsg");
+    const msg = el2("aboutUpdateMsg");
     if (msg)
       msg.textContent = message2;
     const row = msg?.parentElement ?? null;
-    row?.classList.toggle("found", phase === "found");
-    const btn = el("aboutInstall");
+    row?.classList.toggle("found", phase2 === "found");
+    const btn = el2("aboutInstall");
     if (btn)
       btn.hidden = !canInstall;
   }
@@ -7162,13 +8066,13 @@ designed by C.S.Yap`;
     state.mode = mode;
     state.buildText = buildText;
     state.exe = exe;
-    const b = el("aboutBuild");
+    const b = el2("aboutBuild");
     if (b)
       b.textContent = buildText || "未標記建置時間";
-    const m = el("aboutMode");
+    const m = el2("aboutMode");
     if (m)
       m.textContent = mode;
-    const x = el("aboutExe");
+    const x = el2("aboutExe");
     if (x)
       x.textContent = exe || "（單檔 HTML，沒有程式檔）";
   }
@@ -7197,7 +8101,7 @@ designed by C.S.Yap`;
     setUpdate("latest", "網頁版沒有自動更新：重新載入頁面即可取得最新版（自動更新隨桌面版提供）");
   }
   async function openAbout() {
-    show2(true);
+    show3(true);
     if (checking)
       return;
     checking = true;
@@ -7235,12 +8139,12 @@ designed by C.S.Yap`;
     window.open(ABOUT_SITE, "_blank", "noopener");
   }
   function initAbout() {
-    el("brand")?.addEventListener("click", () => {
+    el2("brand")?.addEventListener("click", () => {
       openAbout();
     });
-    el("aboutClose")?.addEventListener("click", () => closeAbout());
-    el("aboutBackdrop")?.addEventListener("click", () => closeAbout());
-    el("aboutInstall")?.addEventListener("click", () => {
+    el2("aboutClose")?.addEventListener("click", () => closeAbout());
+    el2("aboutBackdrop")?.addEventListener("click", () => closeAbout());
+    el2("aboutInstall")?.addEventListener("click", () => {
       install();
     });
     document.addEventListener("keydown", (ev) => {
@@ -7299,10 +8203,10 @@ designed by C.S.Yap`;
     return document.getElementById("brand");
   }
   function showBrandBuildTime(info) {
-    const el2 = brandEl();
-    if (!el2)
+    const el3 = brandEl();
+    if (!el3)
       return;
-    el2.title = brandTitle(info);
+    el3.title = brandTitle(info);
   }
   function brandTitle(info, update = false) {
     const parts = ["accelon26", `built ${info.buildTimeText}`, "F11 全螢幕／Esc 回視窗"];
@@ -7316,11 +8220,11 @@ designed by C.S.Yap`;
     return parts.join(" · ");
   }
   function flashUpdate(info, onStatus) {
-    const el2 = brandEl();
-    if (!el2 || !info.updateAvailable)
+    const el3 = brandEl();
+    if (!el3 || !info.updateAvailable)
       return;
-    el2.classList.add("update");
-    el2.title = brandTitle(info, true);
+    el3.classList.add("update");
+    el3.title = brandTitle(info, true);
   }
   async function showReleaseNotes(since) {
     if (!since)
@@ -7495,9 +8399,9 @@ designed by C.S.Yap`;
     localStorage.setItem(COLS_KEY, JSON.stringify({ left: l, right: r, last }));
     applyCols();
   }
-  function setSide(side, visible) {
+  function setSide(side, visible2) {
     const c = readCols();
-    if (visible) {
+    if (visible2) {
       const shown = Math.min(MAX_SIDE, Math.max(MIN_SIDE, c.last[side] || DEFAULT_COLS[side]));
       if (side === "left")
         c.left = shown;
@@ -7520,7 +8424,7 @@ designed by C.S.Yap`;
     const c = readCols();
     setSide(side, (side === "left" ? c.left : c.right) < MIN_SIDE);
   }
-  function attachSplitter(el2, side) {
+  function attachSplitter(el3, side) {
     let dragging = false;
     let startX = 0;
     let startPct = 0;
@@ -7529,17 +8433,17 @@ designed by C.S.Yap`;
       const raw = side === "left" ? startPct + dxPct : startPct - dxPct;
       return Math.max(0, Math.min(MAX_SIDE, raw));
     };
-    el2.addEventListener("pointerdown", (ev) => {
+    el3.addEventListener("pointerdown", (ev) => {
       dragging = true;
       startX = ev.clientX;
       const c = readCols();
       startPct = side === "left" ? c.left : c.right;
-      el2.setPointerCapture(ev.pointerId);
-      el2.classList.add("dragging");
+      el3.setPointerCapture(ev.pointerId);
+      el3.classList.add("dragging");
       document.body.classList.add("colDragging");
       ev.preventDefault();
     });
-    el2.addEventListener("pointermove", (ev) => {
+    el3.addEventListener("pointermove", (ev) => {
       if (!dragging)
         return;
       const pct = pctOfDrag(ev.clientX);
@@ -7550,14 +8454,14 @@ designed by C.S.Yap`;
       else
         layoutCols(c.left, shown);
     });
-    const finish = (ev) => {
+    const finish2 = (ev) => {
       if (!dragging)
         return;
       dragging = false;
-      el2.classList.remove("dragging");
+      el3.classList.remove("dragging");
       document.body.classList.remove("colDragging");
       try {
-        el2.releasePointerCapture(ev.pointerId);
+        el3.releasePointerCapture(ev.pointerId);
       } catch {}
       const pct = pctOfDrag(ev.clientX);
       const value = pct < MIN_SIDE ? 0 : Math.round(pct);
@@ -7565,9 +8469,9 @@ designed by C.S.Yap`;
       const eff = layoutCols(side === "left" ? value : c.left, side === "left" ? c.right : value);
       saveCols(eff.l, eff.r);
     };
-    el2.addEventListener("pointerup", finish);
-    el2.addEventListener("pointercancel", finish);
-    el2.addEventListener("dblclick", () => resetSide(side));
+    el3.addEventListener("pointerup", finish2);
+    el3.addEventListener("pointercancel", finish2);
+    el3.addEventListener("dblclick", () => resetSide(side));
   }
   function showTab(name, col = "left") {
     const root = col === "left" ? $("#colLeft") : $("#colRight");
@@ -7785,6 +8689,83 @@ designed by C.S.Yap`;
     if (!openDbs.length)
       await openPicked([srcs[0]]);
   }
+  var TOUR_APP = {
+    tab: (col, name) => showTab(name, col === "L" ? "left" : "right"),
+    side: (col, on) => setSide(col === "L" ? "left" : "right", on),
+    set: (key, value) => {
+      const on = value === "1" || value === "on" || value === "true" || value === "開";
+      const box = (id, v) => {
+        const e = document.getElementById(id);
+        if (e)
+          e.checked = v;
+      };
+      switch (key) {
+        case "advanced":
+          setAdvanced(on);
+          return true;
+        case "variants":
+          setVariants(on);
+          return true;
+        case "pagemarks":
+          setPageMarks(on);
+          box("setPageMarks", on);
+          rerenderDoc();
+          renderTextPane();
+          return true;
+        case "hardbreaks":
+          setHardBreaks(on);
+          box("showHardBreaks", on);
+          rerenderDoc();
+          renderTextPane();
+          return true;
+        case "raw":
+          setRenderRaw(on);
+          box("showRaw", on);
+          rerenderDoc();
+          renderTextPane();
+          return true;
+        case "simmode":
+          setSimDisplay(Math.max(0, Math.min(2, Number(value) || 0)));
+          return true;
+        default:
+          return false;
+      }
+    },
+    call: async (name, arg) => {
+      switch (name) {
+        case "openSettings":
+          openSettings();
+          return true;
+        case "closeSettings":
+          closeSettings();
+          return true;
+        case "openSearchAll":
+          openSearchAll();
+          return true;
+        case "closeSearchAll":
+          closeSearchAll();
+          return true;
+        case "openAbout":
+          openAbout();
+          return true;
+        case "runSearchAll":
+          await runSearchAll(arg);
+          return true;
+        case "dictLookup":
+          await dictLookupAt(arg);
+          return true;
+        case "search":
+          await runSearch(arg);
+          return true;
+        default:
+          return false;
+      }
+    },
+    state: () => {
+      const api = window.__accelon26;
+      return api?.state?.() ?? {};
+    }
+  };
   function boot() {
     applyCols();
     attachSplitter($("#splitLeft"), "left");
@@ -7799,6 +8780,7 @@ designed by C.S.Yap`;
       setSide("right", true);
       showTab("dict", "right");
     };
+    initTour(TOUR_APP);
     initAbout();
     const treeReveal = $("#treeReveal");
     if (treeReveal)
@@ -7883,11 +8865,11 @@ designed by C.S.Yap`;
       query.focus();
     };
     $("#searchList").addEventListener("scroll", (ev) => {
-      const el2 = ev.target;
+      const el3 = ev.target;
       if (!lastResult)
         return;
       const pool = snippetScope ? lastResult.hits.filter((h) => h.va >= snippetScope.realm.from && h.va < snippetScope.realm.to).length : lastResult.hits.length;
-      if (el2.scrollTop + el2.clientHeight > el2.scrollHeight - 200 && snippetShown < pool)
+      if (el3.scrollTop + el3.clientHeight > el3.scrollHeight - 200 && snippetShown < pool)
         showMoreSnippets();
     });
     const wireOwnSearch = (inputSel, clearSel, run) => {
@@ -7923,17 +8905,17 @@ designed by C.S.Yap`;
     if (termsMode) {
       const CYCLE = ["start", "mid", "end"];
       const LABEL = { start: "開頭", mid: "中間", end: "結尾" };
-      const show3 = () => {
+      const show4 = () => {
         const m = termsMode.dataset.mode ?? "start";
         termsMode.textContent = LABEL[m] ?? "開頭";
         termsMode.title = `比對位置：${LABEL[m]}（按一下切換 開頭 → 中間 → 結尾）`;
       };
-      show3();
+      show4();
       termsMode.onclick = () => {
-        const cur = termsMode.dataset.mode ?? "start";
-        const next = CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length];
+        const cur2 = termsMode.dataset.mode ?? "start";
+        const next = CYCLE[(CYCLE.indexOf(cur2) + 1) % CYCLE.length];
         termsMode.dataset.mode = next;
-        show3();
+        show4();
         renderTerms();
       };
     }
@@ -7954,8 +8936,8 @@ designed by C.S.Yap`;
     showTab("dir", "left");
     showTab("dir", "left");
     $("#tokenRows")?.addEventListener("scroll", (ev) => {
-      const el2 = ev.target;
-      if (el2.scrollTop + el2.clientHeight > el2.scrollHeight - 300 && tokenOffset < tokenList.length)
+      const el3 = ev.target;
+      if (el3.scrollTop + el3.clientHeight > el3.scrollHeight - 300 && tokenOffset < tokenList.length)
         appendTokenRows();
     });
     const drop = document.body;
@@ -8013,6 +8995,10 @@ designed by C.S.Yap`;
       searchAllState,
       dictLookupAt,
       dictPaneState,
+      openTourMenu,
+      playTour: (id, from) => play(id, from),
+      stopTour,
+      tourState,
       openAbout,
       closeAbout,
       aboutState,
@@ -8030,8 +9016,8 @@ designed by C.S.Yap`;
       isAdvanced: () => advanced,
       openBreakdown: () => lastOpen,
       treeDebug: async (va) => {
-        const el2 = await mapper.elementAt(va);
-        return el2 ? { kind: el2.element.kind, text: el2.element.text, tag: el2.element.tag } : null;
+        const el3 = await mapper.elementAt(va);
+        return el3 ? { kind: el3.element.kind, text: el3.element.text, tag: el3.element.tag } : null;
       },
       treeTrace: () => loadTree.trace ?? null,
       fitDebug: fitDebugInfo,
@@ -8156,10 +9142,10 @@ designed by C.S.Yap`;
     syncTreeTabs();
     updateDocLogo();
     renderDirTree();
-    const cur = docSession();
-    renderDocTabs(cur);
-    if (cur)
-      ensurePage(cur);
+    const cur2 = docSession();
+    renderDocTabs(cur2);
+    if (cur2)
+      ensurePage(cur2);
     const lt = $("#colLeft .tabBtn.active")?.getAttribute("data-tab");
     if (lt)
       showTab(lt, "left");
@@ -8188,9 +9174,9 @@ designed by C.S.Yap`;
       "#searchList",
       "#tokenRows"
     ]) {
-      const el2 = $(sel);
-      if (el2)
-        el2.innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
+      const el3 = $(sel);
+      if (el3)
+        el3.innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
     }
     resetTextPane();
     $("#docText").innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
@@ -8221,9 +9207,9 @@ designed by C.S.Yap`;
       const holder = document.createElement("div");
       holder.innerHTML = slice.map((t, k) => host.opts.html(t, from + k)).join("");
       const els = [...holder.children];
-      for (const el2 of els)
-        box.appendChild(el2);
-      els.forEach((el2, k) => host.opts.bind?.(el2, host.items[from + k], from + k));
+      for (const el3 of els)
+        box.appendChild(el3);
+      els.forEach((el3, k) => host.opts.bind?.(el3, host.items[from + k], from + k));
       host.at = to;
       if (to < host.items.length) {
         const p = document.createElement("p");
@@ -8313,17 +9299,17 @@ designed by C.S.Yap`;
     if (!reader)
       return;
     const tTree0 = performance.now();
-    const phase = { trees: 0, load: 0, build: 0, instances: 0 };
-    treePhases = phase;
+    const phase2 = { trees: 0, load: 0, build: 0, instances: 0 };
+    treePhases = phase2;
     const declared = session?.trees?.length ? session.trees : await loadTrees(reader);
     const wanted = declared.filter((t) => /^\*$/.test(t.scope) && t.tiers.length > 0);
     if (!wanted.length) {
       dirTrees = [];
       dirActive = -1;
-      phase.skipped = 1;
+      phase2.skipped = 1;
       syncTreeTabs();
-      phase.trees = performance.now() - tTree0;
-      treePhases = phase;
+      phase2.trees = performance.now() - tTree0;
+      treePhases = phase2;
       return;
     }
     for (const t of wanted) {
@@ -8345,8 +9331,8 @@ designed by C.S.Yap`;
           return labelFor(tag, va, vaEnd);
         }
       });
-      phase.load += performance.now() - tLoad;
-      phase.instances += instances.length;
+      phase2.load += performance.now() - tLoad;
+      phase2.instances += instances.length;
       if (!instances.length)
         continue;
       const tBuild = performance.now();
@@ -8372,7 +9358,7 @@ designed by C.S.Yap`;
       for (const n of iterNodes(roots))
         for (const c of n.children)
           parentOf.set(c.va, n.va);
-      phase.build += performance.now() - tBuild;
+      phase2.build += performance.now() - tBuild;
       dirTrees.push({
         tree: t,
         roots,
@@ -8388,12 +9374,12 @@ designed by C.S.Yap`;
     dirOrder = dirTrees.length ? [...iterNodes(dirTrees[0].roots)] : [];
     syncTreeTabs();
     const tRender = performance.now();
-    phase.rendered = dirPaneShown() ? 1 : 0;
-    if (phase.rendered)
+    phase2.rendered = dirPaneShown() ? 1 : 0;
+    if (phase2.rendered)
       await renderDirTree();
-    phase.render = performance.now() - tRender;
-    phase.trees = performance.now() - tTree0;
-    treePhases = phase;
+    phase2.render = performance.now() - tRender;
+    phase2.trees = performance.now() - tTree0;
+    treePhases = phase2;
   }
   function countNodes(ns) {
     let n = 0;
@@ -8519,7 +9505,7 @@ designed by C.S.Yap`;
       ${badge}
     </div>`;
       },
-      bind: (el2, r) => {
+      bind: (el3, r) => {
         const node = r.node;
         const va = node.va;
         const hasKids = !!node.children.length;
@@ -8539,7 +9525,7 @@ designed by C.S.Yap`;
           d.open.add(va);
           renderDirTree();
         };
-        el2.onclick = (ev) => {
+        el3.onclick = (ev) => {
           const t = ev.target;
           const onCount = !!t?.closest(".tCount");
           const onNode = !!t?.closest(".tTwisty") || !!t?.closest(".tDot") || !!t?.closest(".tName");
@@ -8641,19 +9627,19 @@ designed by C.S.Yap`;
     const d = dirTrees[dirActive];
     if (!d)
       return [];
-    let cur = nodeContainingVa(va);
-    if (!cur)
+    let cur2 = nodeContainingVa(va);
+    if (!cur2)
       return [];
     const out = [];
     for (let guard = 0;guard < 40; guard++) {
-      const parentVa = d.parentOf.get(cur.va);
+      const parentVa = d.parentOf.get(cur2.va);
       if (parentVa === undefined)
         break;
       const p = findNode(d.roots, parentVa);
       if (!p)
         break;
       out.unshift(asTrail(p));
-      cur = p;
+      cur2 = p;
     }
     return out;
   }
@@ -8669,9 +9655,9 @@ designed by C.S.Yap`;
       list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
       return;
     }
-    const seq2 = ++freqSeq;
+    const seq3 = ++freqSeq;
     const segs = await freqSegments();
-    if (seq2 !== freqSeq)
+    if (seq3 !== freqSeq)
       return;
     if (!segs.length) {
       meta.textContent = "";
@@ -8680,15 +9666,15 @@ designed by C.S.Yap`;
     }
     const spec = treeScope(/^\*./).replace(/^\*/, "").trim();
     const segTag = spec && spec.indexOf("=") < 0 ? spec : undefined;
-    const q = $("#freqQuery").value.trim();
+    const q2 = $("#freqQuery").value.trim();
     let rows2 = [];
     let res = null;
-    if (!q) {
+    if (!q2) {
       rows2 = segs.map((s) => ({ ...s, count: 0 }));
       meta.textContent = `${fmtInt(segs.length)} 段：未輸入條件，列出段名（捲動分批載入全部）`;
     } else {
-      res = await searchAutoVia(session, reader?.io ?? null, q);
-      if (seq2 !== freqSeq)
+      res = await searchAutoVia(session, reader?.io ?? null, q2);
+      if (seq3 !== freqSeq)
         return;
       const counts = segs.map((s) => ({ ...s, count: 0, firstHit: -1 }));
       for (const h of res.hits) {
@@ -8710,20 +9696,20 @@ designed by C.S.Yap`;
       const withHits = counts.filter((c) => c.count > 0);
       rows2 = withHits.sort((a, b) => b.count - a.count);
       const total2 = res.hits.length;
-      meta.textContent = `「${q}」${fmtInt(total2)} 筆命中，分布於 ${fmtInt(withHits.length)} / ${fmtInt(segs.length)} 段` + "（依命中數排序，0 不顯示）";
+      meta.textContent = `「${q2}」${fmtInt(total2)} 筆命中，分布於 ${fmtInt(withHits.length)} / ${fmtInt(segs.length)} 段` + "（依命中數排序，0 不顯示）";
     }
     const total = res?.hits.length ?? 0;
     await renderChunked(list, rows2, {
-      prepare: (slice) => seq2 === freqSeq ? nameSegs(slice, segTag) : undefined,
+      prepare: (slice) => seq3 === freqSeq ? nameSegs(slice, segTag) : undefined,
       html: (s) => `<div class="snippet" data-va="${s.from}">
         <div><b>${escapeHtml(displayName(s.name))}</b>${s.count > 0 ? " " + hitBadge(s.count, total) : ""}</div></div>`,
-      bind: (el2, s) => {
+      bind: (el3, s) => {
         const name = () => displayName(s.name) || "段";
-        el2.onclick = (ev) => {
+        el3.onclick = (ev) => {
           const at2 = s.firstHit !== undefined && s.firstHit >= 0 ? s.firstHit : s.from;
           const realm = segTag ? { from: s.from, to: s.to } : undefined;
-          revealHit(at2, q || name(), 1, { ...mods(ev) ?? {}, exact: true, phrase: q || undefined, name: name(), realm });
-          showNodeHits({ from: s.from, to: s.to }, name(), s.count, res, q || undefined);
+          revealHit(at2, q2 || name(), 1, { ...mods(ev) ?? {}, exact: true, phrase: q2 || undefined, name: name(), realm });
+          showNodeHits({ from: s.from, to: s.to }, name(), s.count, res, q2 || undefined);
         };
       }
     });
@@ -8747,11 +9733,11 @@ designed by C.S.Yap`;
       const cp = displayName(t.name).codePointAt(0) ?? 0;
       return cp >= from && cp <= to;
     });
-    const q = $("#latinQuery").value.trim();
+    const q2 = $("#latinQuery").value.trim();
     const mode = $("#latinMode")?.value ?? "any";
-    const hit = q ? inRange.filter((t) => modeMatch(displayName(t.name), q, mode)) : inRange;
+    const hit = q2 ? inRange.filter((t) => modeMatch(displayName(t.name), q2, mode)) : inRange;
     const hex = (n) => "U+" + n.toString(16).toUpperCase().padStart(4, "0");
-    meta.textContent = `${hex(from)}–${hex(to)} 範圍內 ${fmtInt(inRange.length)} 個 token` + (q ? `；「${q}」${MODE_NAMES[mode] ?? "任意"} 符合 ${fmtInt(hit.length)} 個` : "（捲動分批載入全部）");
+    meta.textContent = `${hex(from)}–${hex(to)} 範圍內 ${fmtInt(inRange.length)} 個 token` + (q2 ? `；「${q2}」${MODE_NAMES[mode] ?? "任意"} 符合 ${fmtInt(hit.length)} 個` : "（捲動分批載入全部）");
     if (!hit.length) {
       list.innerHTML = '<p class="dim">沒有符合的 token。</p>';
       return;
@@ -8759,8 +9745,8 @@ designed by C.S.Yap`;
     await renderChunked(list, hit, {
       html: (t) => `<div class="snippet" data-i="${t.i}">
       <div><b>${escapeHtml(displayName(t.name))}</b> <span class="dim">${fmtBytes(t.bytes)}</span></div></div>`,
-      bind: (el2, t) => {
-        el2.onclick = () => void showToken(t);
+      bind: (el3, t) => {
+        el3.onclick = () => void showToken(t);
       }
     });
   }
@@ -8910,11 +9896,11 @@ designed by C.S.Yap`;
     return (session?.trees ?? []).find((t) => re.test(t.scope))?.scope ?? "";
   }
   var MODE_NAMES = { any: "任意", start: "開頭", mid: "中間", end: "結尾" };
-  function modeMatch(name, q, mode) {
-    if (!q || !name.includes(q))
+  function modeMatch(name, q2, mode) {
+    if (!q2 || !name.includes(q2))
       return false;
-    const atStart = name.startsWith(q);
-    const atEnd = name.endsWith(q);
+    const atStart = name.startsWith(q2);
+    const atEnd = name.endsWith(q2);
     if (mode === "start")
       return atStart;
     if (mode === "end")
@@ -8931,10 +9917,10 @@ designed by C.S.Yap`;
       list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
       return;
     }
-    const seq2 = ++termsSeq;
+    const seq3 = ++termsSeq;
     const tag = treeScope(/^\$/).replace(/^\$/, "").trim();
     const segs = tag ? await tagSegments(tag) : [];
-    if (seq2 !== termsSeq)
+    if (seq3 !== termsSeq)
       return;
     if (!segs.length) {
       meta.textContent = "";
@@ -8947,7 +9933,7 @@ designed by C.S.Yap`;
       return;
     }
     const names = await reader.cachedStrings(tag);
-    if (seq2 !== termsSeq)
+    if (seq3 !== termsSeq)
       return;
     const usable = names.length === segs.length;
     const modeEl = $("#termsMode");
@@ -8955,10 +9941,10 @@ designed by C.S.Yap`;
     if (modeEl)
       modeEl.disabled = !usable;
     const modeName = MODE_NAMES[mode] ?? "開頭";
-    const q = $("#termsQuery").value.trim();
+    const q2 = $("#termsQuery").value.trim();
     const countEl = $("#termsCount");
     const advancedOn = document.body.classList.contains("advanced");
-    const parsed = parseQuery(q);
+    const parsed = parseQuery(q2);
     const multiQ = parsed.clauses.length > 1 || parsed.hasOperators;
     const nameOk = (n) => {
       const matchOne = (needle) => {
@@ -8971,9 +9957,9 @@ designed by C.S.Yap`;
         return re ? re.test(n) : n.includes(needle);
       };
       if (!multiQ) {
-        if (!variantSearchOn() && !namePattern(q, mode))
-          return modeMatch(n, q, mode);
-        return matchOne(q);
+        if (!variantSearchOn() && !namePattern(q2, mode))
+          return modeMatch(n, q2, mode);
+        return matchOne(q2);
       }
       const matchMode = (needle) => variantSearchOn() ? matchOne(needle) : modeMatch(n, needle, mode);
       let any = false;
@@ -9024,9 +10010,9 @@ designed by C.S.Yap`;
       }
       return out + escapeHtml(name.slice(from));
     };
-    const markNeedle = multiQ ? parsed.clauses.find((c) => c.role !== "excluded")?.text ?? "" : q;
+    const markNeedle = multiQ ? parsed.clauses.find((c) => c.role !== "excluded")?.text ?? "" : q2;
     const hits2 = [];
-    if (usable && q) {
+    if (usable && q2) {
       for (let i = 0;i < names.length; i++) {
         const n = names[i];
         if (!nameOk(n))
@@ -9048,20 +10034,20 @@ designed by C.S.Yap`;
         meta.hidden = !advancedOn;
       }
     };
-    if (!q) {
+    if (!q2) {
       items = segs.map((s, i) => ({ from: s.from, to: s.to, idx: i, name: "", count: 0 }));
       setMeta(`${fmtInt(segs.length)} 個詞條`, `${fmtInt(segs.length)} 個詞條（<${tag}> 包住的字）：未輸入條件，捲動分批載入全部`);
     } else if (usable) {
       items = hits2;
-      setMeta(`${fmtInt(hits2.length)} 個詞條`, multiQ ? `「${q}」：${fmtInt(hits2.length)} 個詞條符合（共 ${fmtInt(segs.length)} 個；+ 必須、− 排除）` : `「${q}」${modeName}：${fmtInt(hits2.length)} 個詞條符合` + `（共 ${fmtInt(segs.length)} 個；只比對 <${tag}> 包住的字）`);
+      setMeta(`${fmtInt(hits2.length)} 個詞條`, multiQ ? `「${q2}」：${fmtInt(hits2.length)} 個詞條符合（共 ${fmtInt(segs.length)} 個；+ 必須、− 排除）` : `「${q2}」${modeName}：${fmtInt(hits2.length)} 個詞條符合` + `（共 ${fmtInt(segs.length)} 個；只比對 <${tag}> 包住的字）`);
     } else {
-      res = await searchAutoVia(session, reader?.io ?? null, q);
-      if (seq2 !== termsSeq)
+      res = await searchAutoVia(session, reader?.io ?? null, q2);
+      if (seq3 !== termsSeq)
         return;
       const counts = countHitsPerSegment(segs, res.hits);
       const withHits = segs.map((s, i) => ({ ...s, idx: i, name: "", count: counts[i] })).filter((s) => s.count > 0).sort((a, b) => b.count - a.count);
       items = withHits;
-      setMeta(`${fmtInt(withHits.length)} 個詞條`, `「${q}」：${fmtInt(withHits.length)} 個詞條有命中（此庫沒有 <${tag}> 字串表，先用內文搜尋）`);
+      setMeta(`${fmtInt(withHits.length)} 個詞條`, `「${q2}」：${fmtInt(withHits.length)} 個詞條有命中（此庫沒有 <${tag}> 字串表，先用內文搜尋）`);
     }
     if (!items.length) {
       list.innerHTML = '<p class="dim">沒有符合的詞條。</p>';
@@ -9069,7 +10055,7 @@ designed by C.S.Yap`;
     }
     await renderChunked(list, items, {
       prepare: (slice, from, to) => {
-        if (seq2 !== termsSeq)
+        if (seq3 !== termsSeq)
           return;
         if (usable) {
           for (let i = from;i < to; i++) {
@@ -9084,8 +10070,8 @@ designed by C.S.Yap`;
       html: (h) => `<div class="snippet" data-va="${h.from}">
         ${h.count > 0 ? `<div class="snippetHead">${fmtInt(h.count)} 筆</div>` : ""}
         <div><b>${markName(displayName(h.name), markNeedle)}</b></div></div>`,
-      bind: (el2, h) => {
-        el2.onclick = (ev) => void revealHit(h.from, displayName(h.name) || tag, 1, {
+      bind: (el3, h) => {
+        el3.onclick = (ev) => void revealHit(h.from, displayName(h.name) || tag, 1, {
           ...mods(ev) ?? {},
           exact: true,
           realm: { from: h.from, to: h.to }
@@ -9142,23 +10128,23 @@ designed by C.S.Yap`;
       list.innerHTML = '<p class="dim">此庫沒有 <code>&lt;樹 s="標籤.屬性"&gt;</code> 的原書分頁。</p>';
       return;
     }
-    const q = $("#folioQuery").value.trim();
+    const q2 = $("#folioQuery").value.trim();
     let hit = entries;
-    if (q) {
-      const rank = (l) => l === q ? 0 : l.startsWith(q) ? 1 : 2;
-      hit = entries.filter((e) => e.label.includes(q));
+    if (q2) {
+      const rank = (l) => l === q2 ? 0 : l.startsWith(q2) ? 1 : 2;
+      hit = entries.filter((e) => e.label.includes(q2));
       hit.sort((a, b) => rank(a.label) - rank(b.label));
     }
-    meta.textContent = `${fmtInt(entries.length)} 個原書分頁` + (q ? `；「${q}」符合 ${fmtInt(hit.length)} 個` : "（可輸入頁碼；捲動分批載入全部）");
+    meta.textContent = `${fmtInt(entries.length)} 個原書分頁` + (q2 ? `；「${q2}」符合 ${fmtInt(hit.length)} 個` : "（可輸入頁碼；捲動分批載入全部）");
     if (!hit.length) {
       list.innerHTML = '<p class="dim">沒有符合的頁碼。</p>';
       return;
     }
     await renderChunked(list, hit, {
-      html: (e) => `<div class="snippet${q && e.label === q ? " active" : ""}" data-va="${e.va}">
+      html: (e) => `<div class="snippet${q2 && e.label === q2 ? " active" : ""}" data-va="${e.va}">
       <div><b>${escapeHtml(e.label)}</b></div></div>`,
-      bind: (el2, e) => {
-        el2.onclick = (ev) => void revealHit(e.va, e.label, 1, { ...mods(ev) ?? {}, mode: "node", noMark: true });
+      bind: (el3, e) => {
+        el3.onclick = (ev) => void revealHit(e.va, e.label, 1, { ...mods(ev) ?? {}, mode: "node", noMark: true });
       }
     });
   }
@@ -9202,7 +10188,7 @@ designed by C.S.Yap`;
   var pinnedHit = null;
   var lastReveal = "";
   function deepestNode(va, roots = dirTrees[dirActive]?.roots ?? []) {
-    let cur = null;
+    let cur2 = null;
     let list = roots;
     for (let guard = 0;guard < 32 && list.length; guard++) {
       let lo = 0, hi = list.length - 1, at2 = -1;
@@ -9219,10 +10205,10 @@ designed by C.S.Yap`;
       const n = list[at2];
       if (va >= n.vaEnd)
         break;
-      cur = n;
+      cur2 = n;
       list = n.children;
     }
-    return cur;
+    return cur2;
   }
   function nodeLabelOf(node) {
     const d = dirTrees[dirActive];
@@ -9235,13 +10221,13 @@ designed by C.S.Yap`;
   async function linkTo(va, token, units, opts = {}) {
     if (!mapper)
       return;
-    const el2 = opts.realm && opts.exact ? null : await mapper.elementAt(va);
+    const el3 = opts.realm && opts.exact ? null : await mapper.elementAt(va);
     const node = nodeContaining(va);
-    if (!el2 && !node && !opts.realm) {
+    if (!el3 && !node && !opts.realm) {
       setStatus("VA " + fmtInt(va) + "：找不到對應位置", "err");
       return;
     }
-    const u = Math.max(1, units ?? el2?.element.vaUnits ?? 1);
+    const u = Math.max(1, units ?? el3?.element.vaUnits ?? 1);
     const doc = docOfVa(va);
     const useNode = !!node && (opts.mode === "node" || !docTabs.length);
     const whole = docs.length ? { from: doc.vaStart, to: doc.vaEnd } : wholeRealm();
@@ -9254,16 +10240,16 @@ designed by C.S.Yap`;
       realm.from = whole.from;
       realm.to = whole.to;
     }
-    const name = opts.name || token || (useNode ? node.name : el2?.element.text || doc.name || reader?.header.dbname || "");
-    const cur = docSession();
+    const name = opts.name || token || (useNode ? node.name : el3?.element.text || doc.name || reader?.header.dbname || "");
+    const cur2 = docSession();
     const existing = sessionForRealm(realm);
     let s;
     if (opts.newTab) {
       s = sessionFor(realm, name, true);
     } else if (existing) {
       s = existing;
-    } else if (cur) {
-      s = cur;
+    } else if (cur2) {
+      s = cur2;
       s.realm = realm;
       s.page = 0;
       s.cache = null;
@@ -9281,7 +10267,7 @@ designed by C.S.Yap`;
       line = rb.first;
     s.pinned = {
       va,
-      text: el2?.element.text ?? "",
+      text: el3?.element.text ?? "",
       token,
       units: u,
       line,
@@ -9290,7 +10276,7 @@ designed by C.S.Yap`;
       noMark: !!opts.noMark
     };
     pinnedHit = s.pinned;
-    lastReveal = `va=${va} units=${u} element=${el2 ? el2.element.va + "/" + el2.element.vaUnits : "node"}`;
+    lastReveal = `va=${va} units=${u} element=${el3 ? el3.element.va + "/" + el3.element.vaUnits : "node"}`;
     setDocActive(docTabs.indexOf(s));
     const tLink = performance.now();
     const auto = (await ensurePage(s, line)).auto;
@@ -9301,7 +10287,7 @@ designed by C.S.Yap`;
     setLastLink({ va, ensureMs: Math.round(ensureMs), totalMs: Math.round(totalMs), rows: s.cache?.dt?.lines.length ?? 0 });
     noteLink({ ms: totalMs, ensureMs, rows: s.cache?.dt?.lines.length ?? 0, va });
     setDocFontSized(true);
-    const what = s.name || token || el2?.element.text || "";
+    const what = s.name || token || el3?.element.text || "";
     const totalRows = boundsOfRealm(s.realm).total;
     const pageInfo = s.cache ? "（共 " + fmtInt(totalRows) + " 行，第 " + fmtInt(s.page + 1) + " / " + fmtInt(pageBounds(s.realm, s.page).pages) + " 頁" + (auto ? "，自動跟隨命中" : "") + "）" : "";
     setStatus(displayName(what) + "：第 " + fmtInt(line) + " 行" + pageInfo, "info");
@@ -9313,7 +10299,7 @@ designed by C.S.Yap`;
     if (!mapper || !reader)
       return;
     const d = docOfVa(va);
-    $("#docs").querySelectorAll(".docItem").forEach((el2) => el2.classList.toggle("active", Number(el2.dataset.i) === d.i));
+    $("#docs").querySelectorAll(".docItem").forEach((el3) => el3.classList.toggle("active", Number(el3.dataset.i) === d.i));
     const s = sessionFor({ from: d.vaStart, to: d.vaEnd }, d.name, false);
     s.doc = d;
     s.pinned = { va, text: "", token: d.name, units: Math.max(1, units ?? 1), line };
@@ -9336,11 +10322,11 @@ designed by C.S.Yap`;
           break;
       }
     }
-    box.querySelectorAll(".tRow").forEach((el2) => {
-      const va = Number(el2.dataset.va);
+    box.querySelectorAll(".tRow").forEach((el3) => {
+      const va = Number(el3.dataset.va);
       const isCursor = !!cursorNode && va === cursorNode.va;
-      el2.classList.toggle("current", isCursor);
-      el2.classList.toggle("ancestor", !isCursor && path.has(va));
+      el3.classList.toggle("current", isCursor);
+      el3.classList.toggle("ancestor", !isCursor && path.has(va));
     });
   }
   function syncCursorFromScroll() {
@@ -9450,8 +10436,8 @@ designed by C.S.Yap`;
         out.push(n);
         return;
       }
-      const el2 = n;
-      if (el2.classList?.contains("pageBreak") || el2.classList?.contains("paraIndent"))
+      const el3 = n;
+      if (el3.classList?.contains("pageBreak") || el3.classList?.contains("paraIndent"))
         return;
       for (const c of [...n.childNodes])
         walk(c);
@@ -9523,7 +10509,7 @@ designed by C.S.Yap`;
     const rows2 = [...document.querySelectorAll("#docText .docLine")];
     if (!rows2.length)
       return false;
-    const lineOf = (el2) => Number((el2.id || "").replace(/^L/, ""));
+    const lineOf = (el3) => Number((el3.id || "").replace(/^L/, ""));
     const start = Math.max(0, rows2.findIndex((r) => lineOf(r) === fromLine));
     for (let i = start;i < rows2.length; i++)
       if (markPhraseInLine(lineOf(rows2[i]), phrase, va, hue))
@@ -9584,11 +10570,11 @@ designed by C.S.Yap`;
           const range = document.createRange();
           range.setStart(node, sp.start);
           range.setEnd(node, sp.end);
-          const el2 = document.createElement("mark");
-          el2.className = "kw";
-          el2.style.setProperty("--hue", String(sp.hue));
+          const el3 = document.createElement("mark");
+          el3.className = "kw";
+          el3.style.setProperty("--hue", String(sp.hue));
           try {
-            range.surroundContents(el2);
+            range.surroundContents(el3);
           } catch {}
         }
       }
@@ -9610,8 +10596,8 @@ designed by C.S.Yap`;
     }
     let spans = units && units > 1 ? await mapper.phraseSpans(va, units) : await mapper.lineSpans(va);
     if (!spans.length) {
-      const el2 = await mapper.elementAt(va);
-      if (el2?.element.line !== undefined)
+      const el3 = await mapper.elementAt(va);
+      if (el3?.element.line !== undefined)
         scrollToVa(va);
       paintKeywordMarks();
       return;
@@ -10025,15 +11011,15 @@ designed by C.S.Yap`;
       return;
     bar.hidden = docTabs.length < 1;
     strip.innerHTML = docTabs.map((t, i) => '<span class="docTab' + (i === docActive ? " active" : "") + '" data-i="' + i + '" title="' + escapeHtml(t.name) + '">' + '<span class="docTabName">' + escapeHtml(shortLabel(t.name, 8)) + "</span>" + '<span class="docTabClose" data-close="' + i + '" title="關閉分頁">✕</span></span>').join("");
-    strip.querySelectorAll(".docTab").forEach((el2) => {
-      el2.onclick = (ev) => {
+    strip.querySelectorAll(".docTab").forEach((el3) => {
+      el3.onclick = (ev) => {
         const close = ev.target?.closest(".docTabClose");
         if (close) {
           ev.stopPropagation();
           closeDocTab(Number(close.dataset.close));
           return;
         }
-        const i = Number(el2.dataset.i);
+        const i = Number(el3.dataset.i);
         if (i !== docActive && docTabs[i])
           switchDocTab(i);
       };
@@ -10092,12 +11078,12 @@ designed by C.S.Yap`;
     const prev = $("#pagePrev");
     const next = $("#pageNext");
     const step = (delta, ev) => {
-      const cur = docSession();
-      if (!cur)
+      const cur2 = docSession();
+      if (!cur2)
         return;
-      const pb = pageBounds(cur.realm, cur.page);
-      const to = cur.page + delta;
-      pagerLog.push("step " + delta + " tab=" + docTabs.indexOf(cur) + " page=" + cur.page + "/" + pb.pages + " to=" + to);
+      const pb = pageBounds(cur2.realm, cur2.page);
+      const to = cur2.page + delta;
+      pagerLog.push("step " + delta + " tab=" + docTabs.indexOf(cur2) + " page=" + cur2.page + "/" + pb.pages + " to=" + to);
       if (pagerLog.length > 10)
         pagerLog.shift();
       if (to < 0) {
@@ -10108,7 +11094,7 @@ designed by C.S.Yap`;
         stepRealm(1);
         return;
       }
-      goPage(cur, to, !ev.shiftKey);
+      goPage(cur2, to, !ev.shiftKey);
     };
     if (prev) {
       prev.setAttribute("aria-disabled", s.page <= 0 && !neighborPrev ? "true" : "false");
@@ -10145,9 +11131,9 @@ designed by C.S.Yap`;
     const size = Math.max(DOCFS_MIN, Math.min(DOCFS_MAX, Math.round(px)));
     document.documentElement.style.setProperty("--fsdoc", size + "px");
     localStorage.setItem(DOCFS_KEY, String(size));
-    const el2 = document.getElementById("fsValue");
-    if (el2)
-      el2.textContent = String(size);
+    const el3 = document.getElementById("fsValue");
+    if (el3)
+      el3.textContent = String(size);
     syncFontButtons();
     return size;
   }
@@ -10175,8 +11161,8 @@ designed by C.S.Yap`;
   var FONT_MIN = 12;
   var FONT_MAX = 32;
   function stepFontSize(kind, down) {
-    const cur = kind === "body" ? readDocFont() : readSideFont2(kind);
-    const next = down ? Math.max(FONT_MIN, cur - FONT_STEP) : cur + FONT_STEP > FONT_MAX ? FONT_MIN : cur + FONT_STEP;
+    const cur2 = kind === "body" ? readDocFont() : readSideFont2(kind);
+    const next = down ? Math.max(FONT_MIN, cur2 - FONT_STEP) : cur2 + FONT_STEP > FONT_MAX ? FONT_MIN : cur2 + FONT_STEP;
     const applied = kind === "body" ? setDocFont(next) : setSideFont2(kind, next);
     syncFontButtons();
     return applied;
@@ -10319,7 +11305,7 @@ designed by C.S.Yap`;
   var useSeq = 0;
   var dbLog = [];
   var activeId = 0;
-  var seq2 = 0;
+  var seq3 = 0;
   var loadedId = 0;
   var hooks = { refresh: () => {}, clear: () => {} };
   function setDbHooks(h) {
@@ -10331,9 +11317,9 @@ designed by C.S.Yap`;
     loadedId = 0;
   }
   function saveLoaded() {
-    const cur = loadedSlot();
-    if (cur)
-      saveInto(cur);
+    const cur2 = loadedSlot();
+    if (cur2)
+      saveInto(cur2);
   }
   function alreadyOpen(file, name) {
     return openDbs.find((d) => d.name === name && d.file.name === file.name && d.file.size === file.size && d.file.lastModified === file.lastModified) ?? null;
@@ -10422,8 +11408,8 @@ designed by C.S.Yap`;
         const cls = "dbPickItem" + (s && s === active2 ? " active" : "");
         return `<button type="button" class="${cls}" data-key="${escapeHtml(e.key)}"` + ` title="${escapeHtml(e.file.name)}${s ? "" : "（尚未載入，選了才讀）"}">` + escapeHtml(label) + "</button>";
       }).join("") : needsAddItem() ? "" : '<div class="dbPickEmpty">（這個資料夾沒有 .adb）</div>');
-      menu.querySelectorAll(".dbPickItem[data-add]").forEach((el2) => {
-        el2.onclick = (ev) => {
+      menu.querySelectorAll(".dbPickItem[data-add]").forEach((el3) => {
+        el3.onclick = (ev) => {
           ev.stopPropagation();
           setDbPickOpen(false);
           const input = $("#file");
@@ -10433,11 +11419,11 @@ designed by C.S.Yap`;
           input.click();
         };
       });
-      menu.querySelectorAll(".dbPickItem[data-key]").forEach((el2) => {
-        el2.onclick = (ev) => {
+      menu.querySelectorAll(".dbPickItem[data-key]").forEach((el3) => {
+        el3.onclick = (ev) => {
           ev.stopPropagation();
           setDbPickOpen(false);
-          const e = catalog.find((x) => x.key === el2.dataset.key);
+          const e = catalog.find((x) => x.key === el3.dataset.key);
           if (e)
             openCatalogEntry(e);
         };
@@ -10488,7 +11474,7 @@ designed by C.S.Yap`;
   var catalogState = () => catalog.map((e) => ({ name: e.name, file: e.file.name, open: !!slotOf(e) }));
   function registerOpenDb(file, name) {
     const same = openDbs.findIndex((d) => d.name === name);
-    const slot = { id: ++seq2, name, file, usedAt: ++useSeq, core: null, docPane: null, scopes: null, summary: null, link: null, panes: null, text: null };
+    const slot = { id: ++seq3, name, file, usedAt: ++useSeq, core: null, docPane: null, scopes: null, summary: null, link: null, panes: null, text: null };
     saveInto(slot);
     if (same >= 0)
       openDbs[same] = slot;
@@ -10516,23 +11502,23 @@ designed by C.S.Yap`;
       const on = d === active2;
       return '<span class="dbChip' + (on ? " active" : "") + '" data-id="' + d.id + '" title="' + escapeHtml(d.name) + '">' + escapeHtml(d.name) + '<span class="dbChipClose" data-close="' + d.id + '" title="關閉（含它的所有本文分頁）">✕</span>' + "</span>";
     }).join("");
-    box.querySelectorAll(".dbChip").forEach((el2) => {
-      el2.onclick = (ev) => {
+    box.querySelectorAll(".dbChip").forEach((el3) => {
+      el3.onclick = (ev) => {
         const closeId = Number(ev.target?.closest(".dbChipClose")?.getAttribute("data-close") ?? 0);
         if (closeId) {
           closeDb(closeId);
           return;
         }
-        const id = Number(el2.dataset.id);
-        const cur = activeSlot();
-        if (!cur || cur.id !== id)
+        const id = Number(el3.dataset.id);
+        const cur2 = activeSlot();
+        if (!cur2 || cur2.id !== id)
           switchTo(id);
       };
     });
   }
   function switchTo(id, front = false) {
     const target = openDbs.find((d) => d.id === id);
-    const cur = activeSlot();
+    const cur2 = activeSlot();
     if (!target)
       return;
     target.usedAt = ++useSeq;
@@ -10543,13 +11529,13 @@ designed by C.S.Yap`;
         openDbs.unshift(target);
       }
     }
-    if (target === cur) {
+    if (target === cur2) {
       renderDbTabs();
       renderDbPick();
       return;
     }
-    if (cur)
-      saveInto(cur);
+    if (cur2)
+      saveInto(cur2);
     loadFrom(target);
     hooks.refresh();
     renderDbTabs();
@@ -10608,18 +11594,18 @@ designed by C.S.Yap`;
   var lastStatus = "";
   function setStatus(msg, kind = "info") {
     lastStatus = msg;
-    const el2 = $("#status");
-    if (!el2)
+    const el3 = $("#status");
+    if (!el3)
       return;
     if (kind === "info") {
-      el2.hidden = true;
-      el2.textContent = "";
-      el2.className = "status";
+      el3.hidden = true;
+      el3.textContent = "";
+      el3.className = "status";
       return;
     }
-    el2.hidden = false;
-    el2.textContent = msg;
-    el2.className = "status " + kind;
+    el3.hidden = false;
+    el3.textContent = msg;
+    el3.className = "status " + kind;
   }
   var statusText = () => lastStatus;
   var lastOpen = null;

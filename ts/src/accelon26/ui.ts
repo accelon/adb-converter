@@ -18,6 +18,7 @@ import { isDictDb } from './db-kind';
 import { closeSearchAll, initSearchAll, openSearchAll, runSearchAll, searchAllState } from './allsearch';
 import { dictLookupAt, dictPaneState, initDictPane } from './dict-pane';
 import { setDictHooks } from './dict-hooks';
+import { initTour, openTourMenu, play as playTour, stopTour, tourState } from './tour';
 
 // -------------------------------------------------------------------- wiring
 /**
@@ -457,6 +458,52 @@ async function bootDesktop(): Promise<void> {
   if (!openDbs.length) await openPicked([srcs[0]]);
 }
 
+/**
+ * 「操作導覽」可以做的事（作者 2026-10）。
+ *
+ * 播放器（tour.ts）**刻意不 import 這一支**：它只認得這個介面，所以不會有
+ * ui → tour → ui 的循環，也不會為了加一個導覽動作就要改播放器。劇本裡能用的
+ * 動作就是在這裡註冊的這些（`tools/build-tours.ts` 也照同一份名字做靜態檢查）。
+ */
+const TOUR_APP = {
+  tab: (col: 'L' | 'R', name: string) => showTab(name, col === 'L' ? 'left' : 'right'),
+  side: (col: 'L' | 'R', on: boolean) => setSide(col === 'L' ? 'left' : 'right', on),
+  set: (key: string, value: string): boolean => {
+    const on = value === '1' || value === 'on' || value === 'true' || value === '開';
+    const box = (id: string, v: boolean) => {
+      const e = document.getElementById(id) as HTMLInputElement | null;
+      if (e) e.checked = v;
+    };
+    switch (key) {
+      case 'advanced': setAdvanced(on); return true;
+      case 'variants': setVariants(on); return true;
+      case 'pagemarks': setPageMarks(on); box('setPageMarks', on); rerenderDoc(); void renderTextPane(); return true;
+      case 'hardbreaks': setHardBreaks(on); box('showHardBreaks', on); rerenderDoc(); void renderTextPane(); return true;
+      case 'raw': setRenderRaw(on); box('showRaw', on); rerenderDoc(); void renderTextPane(); return true;
+      case 'simmode': setSimDisplay(Math.max(0, Math.min(2, Number(value) || 0)) as 0 | 1 | 2); return true;
+      default: return false;
+    }
+  },
+  call: async (name: string, arg: string): Promise<unknown> => {
+    switch (name) {
+      case 'openSettings': openSettings(); return true;
+      case 'closeSettings': closeSettings(); return true;
+      case 'openSearchAll': openSearchAll(); return true;
+      case 'closeSearchAll': closeSearchAll(); return true;
+      case 'openAbout': void openAbout(); return true;
+      case 'runSearchAll': await runSearchAll(arg); return true;
+      case 'dictLookup': await dictLookupAt(arg); return true;
+      case 'search': await runSearch(arg); return true;
+      default: return false;
+    }
+  },
+  // `api:` 條件讀 state()；這是測試／診斷用的同一份快照，不是第二套狀態
+  state: (): Record<string, unknown> => {
+    const api = (window as unknown as { __accelon26?: { state?: () => Record<string, unknown> } }).__accelon26;
+    return api?.state?.() ?? {};
+  },
+};
+
 function boot() {
   applyCols();
   attachSplitter($('#splitLeft'), 'left');
@@ -471,6 +518,8 @@ function boot() {
   // 右欄「詞典」分頁：點本文就查詞條（作者 2026-10）
   initDictPane();
   setDictHooks.current = () => { setSide('right', true); showTab('dict', 'right'); };
+  // 操作導覽（🎬）：劇本 → 宏 → 播放器，見 tour.ts 與 ts/tour/*.tour
+  initTour(TOUR_APP);
   // 軟件說明（About）：點左上角 accelon26 開啟，順便檢查更新
   initAbout();
   // 🪾 left of the 文件內容 title: only on demand does the tree open up to the node
@@ -672,6 +721,8 @@ export function installDebugApi(): void {
   openSearchAll, closeSearchAll, runSearchAll, searchAllState,
   /** 詞典分頁 */
   dictLookupAt, dictPaneState,
+  /** 操作導覽（🎬）：劇本 → 宏 → 播放器 */
+  openTourMenu, playTour: (id: string, from?: number) => playTour(id, from), stopTour, tourState,
   /** 軟件說明（About） */
   openAbout, closeAbout, aboutState,
   cols: () => ({ ...readCols(), css: {

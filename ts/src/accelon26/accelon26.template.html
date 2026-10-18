@@ -642,6 +642,71 @@
 .dbPickMenu .dbPickEmpty { color: var(--dim); font-size: 12px; padding: 4px 8px; }
 .dbPickMenu .dbPickAdd { color: #ffd479; }
 .dbPickMenu .dbPickSep { height: 1px; background: var(--line); margin: 4px 2px; }
+/* ---- 操作導覽（作者 2026-10）：聚光燈 ＋ 說明氣泡 ----
+   聚光燈是「一個貼在目標上的空 div ＋ 9999px 的 box-shadow」：四周壓暗、目標亮著。
+   它一律 pointer-events:none —— 整個導覽從頭到尾都不擋操作（「你來」那幾步更是必須
+   如此），也就不會有「遮罩吃掉點擊」這種事。z-index 高於所有彈窗（80–85）。 */
+#tourSpot {
+  position: fixed; z-index: 89; pointer-events: none;
+  border-radius: 8px; border: 2px solid #ffd479;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,.55), 0 0 22px rgba(255,212,121,.45);
+}
+#tourSpot[hidden] { display: none; }
+#tourBubble {
+  position: fixed; z-index: 90; left: 50%; transform: translateX(-50%);
+  width: min(760px, 92vw); max-height: 46vh; overflow: auto;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--accent);
+  border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.7); padding: 12px 16px 10px;
+}
+#tourBubble[hidden] { display: none; }
+#tourBubble.paused { border-color: var(--warn); }
+.tourHead { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tourWhere { flex: 1 1 auto; font-size: 12px; color: var(--dim); letter-spacing: .02em; }
+#tourText { font-size: 15px; line-height: 1.75; }
+#tourText p { margin: 0 0 8px; }
+#tourText p:last-child { margin-bottom: 0; }
+#tourText b { color: #ffd479; }
+#tourText code { background: #1b1b1b; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 13px; }
+#tourNote { font-size: 12.5px; color: var(--warn); margin: 6px 0 0; }
+#tourNote[hidden] { display: none; }
+.tourBtns { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.tourProg { flex: 1 1 auto; font-size: 12px; color: var(--dim); text-align: right; }
+#tourBubble button {
+  background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 7px; font: inherit; font-size: 13px; padding: 4px 12px; cursor: pointer;
+}
+#tourBubble button:hover { border-color: var(--accent); }
+#tourBubble button.primary { background: var(--accent); color: #08243f; border-color: transparent; font-weight: 700; }
+#tourBubble button[hidden] { display: none; }
+/* 導覽選單（🎬）：一份劇本一列 */
+/* 一次都沒看過導覽時，🎬 輕輕呼吸一下（作者 2026-10）：小白不會知道一個沒看過的
+   圖示是做什麼用的。播過一次就永遠不再提示（進度存在 localStorage）。 */
+#tourBtn.nudge { color: #ffd479; border-color: #ffd479; animation: tourNudge 1.8s ease-in-out infinite; }
+@keyframes tourNudge {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,212,121,0); }
+  50% { box-shadow: 0 0 0 4px rgba(255,212,121,.16); }
+}
+@media (prefers-reduced-motion: reduce) { #tourBtn.nudge { animation: none; } }
+#tourBackdrop { position: fixed; inset: 0; z-index: 86; background: rgba(0,0,0,.55); }
+#tourBackdrop[hidden], #tourBox[hidden] { display: none; }
+#tourBox {
+  position: fixed; z-index: 87; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  width: min(620px, 92vw); max-height: 82vh; overflow: auto;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.65); padding: 16px 20px 14px;
+}
+.tourList { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.tourRow { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel2); }
+.tourName { font-size: 16px; font-weight: 700; color: #7cc0ff; }
+.tourIntro { font-size: 13px; margin: 4px 0; line-height: 1.65; }
+.tourMeta { font-size: 12px; color: var(--dim); }
+.tourActs { display: flex; gap: 8px; margin-top: 8px; }
+.tourActs button {
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 7px; font: inherit; font-size: 13px; padding: 4px 14px; cursor: pointer;
+}
+.tourActs button:hover { border-color: var(--accent); }
+.tourActs button.primary { background: var(--accent); color: #08243f; border-color: transparent; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -660,6 +725,8 @@
   <span class="dbHint" id="dbHint">← 開啟資料庫</span>
   <span class="dbTabs" id="dbTabs"></span>
   <span class="status" id="status"></span>
+  <!-- 操作導覽（作者 2026-10）：跟著做一次的入場券 -->
+  <button class="sideToggle" id="tourBtn" title="操作導覽：跟著做一次（開庫、查詞、看本文）">🎬</button>
   <!-- 設置（齒輪）在最右邊：作者 2026-10 把它移到原本資料夾按鈕的位置 -->
   <button class="sideToggle" id="settingsBtn" title="設置（進階模式、繁簡通檢、文字顯示）">🔧</button>
 </header>
@@ -907,6 +974,37 @@
     <button id="aboutInstall" hidden>下載更新</button>
   </div>
   <p class="aboutFoot">原始碼與操作說明見官網；有問題請在官網回報。</p>
+</div>
+
+<!-- 操作導覽（作者 2026-10）：🎬 選一份劇本，播放器一步一步做給你看。
+     聚光燈與氣泡的內容全部由 tour.ts 產生；這裡只放殼。 -->
+<div id="tourSpot" hidden></div>
+<div id="tourBubble" role="dialog" aria-live="polite" hidden>
+  <div class="tourHead">
+    <span class="tourWhere" id="tourWhere"></span>
+    <button type="button" class="aboutClose" id="tourX" title="結束導覽（Esc）">✕</button>
+  </div>
+  <div id="tourText"></div>
+  <div id="tourNote" hidden></div>
+  <div class="tourBtns">
+    <button type="button" id="tourPrev" title="上一個場景（←）" hidden>← 上一場景</button>
+    <button type="button" id="tourReplay" title="重播本場景" hidden>重播</button>
+    <span class="tourProg" id="tourProg"></span>
+    <button type="button" id="tourDone" hidden>我做好了</button>
+    <button type="button" id="tourSkip" hidden>略過這步</button>
+    <button type="button" id="tourNext" class="primary" hidden>下一個場景 →</button>
+  </div>
+</div>
+
+<!-- 導覽選單：🎬 -->
+<div id="tourBackdrop" hidden></div>
+<div id="tourBox" role="dialog" aria-modal="true" aria-labelledby="tourTitle" hidden>
+  <div class="setHead">
+    <h2 id="tourTitle">操作導覽</h2>
+    <button id="tourClose" class="aboutClose" title="關閉（Esc）">✕</button>
+  </div>
+  <p class="setHint">跟著做一次就會用。每個場景做完會停住，由你決定要不要往下。</p>
+  <div id="tourList" class="tourList"></div>
 </div>
 
 <!--__BUILD_TIME__-->

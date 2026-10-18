@@ -163,6 +163,11 @@ bun run cases                                 # 重產 test/shared/search-cases.
 bun run test:backend                          # TS 側跑共用測試集 ＋ 後端分界映射
 bun run test:go                               # Go 側跑同一份測試集（= cd ../wails && go test ./...）
 bun run test/backend-layout.test.ts           # 架構守門：後端不可 import UI
+
+# 操作導覽（作者 2026-10）：劇本 ts/tour/*.tour → 宏 tour-data.ts → 內建的播放器
+bun run build:tours                           # 編譯劇本（錯誤帶檔名與行號）；--check 只驗證有沒有過期
+bun run test:tour                             # 劇本⇄宏 的編解碼與剖析器（30）
+bun run test:tour-ui                          # 真瀏覽器從頭播到尾（24）；--adb 換庫，13j／yinshun／fgdict 各跑一次
 ```
 
 **每次跑瀏覽器測試前必須清場**，否則 CDP websocket 會 `ws error`：
@@ -977,9 +982,11 @@ DOM 列數也固定。
 | `test/backend-cases.test.ts`（共用測試集，TS 側；含 18 個通檢案例） | **180/180** |
 | `test/backend-layout.test.ts`（後端／前端分界） | **11/11** |
 | `wails/query_cases_test.go`（共用測試集，Go 側；含 `TestSearchQueryVariants`） | `go test ./...` 全綠 |
-| `tools/desktop-test.ts --gui --quick`（桌面） | **36/36** |
+| `tools/desktop-test.ts --gui --quick`（桌面） | **37/37** |
 | `test/render.test.ts`（內文渲染） | **19/19** |
 | `test/accelon26.test.ts` / `test/vapa.test.ts` | 22/22、13/13 |
+| `test/tour.test.ts`（劇本⇄宏、剖析器、同步檢查） | **30/30** |
+| `tools/tour-test.ts`（操作導覽全播；13j／yinshun／fgdict） | **24/24** 各一次 |
 
 新增／改寫的斷言（都在 `file-protocol-test.ts`）：
 * 輸入只更新摘要、本文不隨輸入移動（比對釘住的 VA）
@@ -1458,4 +1465,104 @@ Go 單元測試（`wails/update_test.go`）：目錄可寫／不可寫、遠端�
 | `wails/assets/index.html` | 內嵌的 accelon26（由 `ts/tools/build-desktop.ts` 產生） |
 | `ts/src/accelon26/host.ts` | 唯一知道宿主存在的地方（動態 import runtime → `AdbSource`） |
 | `ts/tools/build-desktop.ts` | 把同一份單檔 HTML 寫進 `wails/assets/` |
+
+---
+
+## 11. 操作導覽（作者 2026-10）
+
+目的：**取代人類手把手教新手**。劇本是資料（人可讀可編），宏是產物（人不可讀），
+播放器內建在 HTML 裡，一場景一停，由使用者決定要不要往下。
+
+```
+ts/tour/*.tour  ──build-tours.ts──▶  src/accelon26/tour-data.ts  ──build-viewer──▶  accelon26.html
+   (Markdown 方言)                     (base64 二進位宏，進版控)                     (宏 ＋ 播放器)
+```
+
+### 11.1 為什麼這樣分三層
+
+| 層 | 理由 |
+|---|---|
+| 劇本用 Markdown 方言，不用 JSON | 要「可編」：能寫段落、加註解、diff 看得懂。JSON 的標點門檻會讓人寫第二份時就放棄 |
+| 宏用二進位 ＋ base64 | 單檔 HTML 在 file:// 讀不到旁邊的檔案（§4.1），所以**只能內嵌**；同時讓「改 DSL」不必動播放器，也讓手滑編輯不會弄壞產品（這是妨碍順手改，不是加密） |
+| 播放器只認 opcode | 它不 import 任何面板模組（`initTour(app)` 注入動作），所以不會有 ui → tour → ui 的循環 |
+
+### 11.2 三個不能忘的約束
+
+1. **等待一律條件式**（`等頁面 count:#searchList .snippet >= 1`）。開庫、目錄樹、清單分批掛載
+   全是非同步的；固定 `等 1500` 在慢機器上就是隨機失敗。播放器輪詢 100 ms，逾時就**停在原地**
+   並顯示「等不到 X」，不會靜默往下走。
+2. **聚光燈不擋操作**：`#tourSpot` 是 `pointer-events:none` 的 `box-shadow: 0 0 0 9999px`，
+   所以整場導覽期間頁面都還能用（「你來」那幾步更是必須如此）。
+3. **檔案對話框不能自動化**：開檔那一步永遠是 `你來`（等 `api:db` 成立就自動過關，
+   所以桌面版已經開好庫時這一步是零秒）。
+
+### 11.3 格式（`tour-format.ts`，改編碼就要 `TOUR_FMT+1`）
+
+```
+"AC26T" u8 fmt u8 flags u32 crc32(payload)
+str id | str title | str intro | str require | u16 場景數
+  場景：str title | str 說明(Markdown) | u16 步驟數
+    步驟：u8 opcode | u8 參數個數 | 參數 × str(u16 長度 + UTF-8)
+```
+
+`str` 一律 u16 長度；數字當字串存（`"400"`），少一種型別就少一處錯。
+CRC 壞掉、magic 不對、版本不合都給人話訊息（不是播到一半亂掉）。
+
+### 11.4 播放器的狀態機
+
+```
+play(id) → running ──step ok──▶ running
+              │                  │ 場景最後一步
+              │                  ▼
+              │              waiting（說明文字 ＋「下一個場景 →」）
+              │                  │
+              └─ 失敗／需要 ──▶ paused（「略過這步」「重播」「結束」）
+```
+
+* 換場景／重播／上一場景都是「重新開一場」（`seq++` 讓舊的迴圈自然結束），不維護半途堆疊。
+* 進度存在 `accelon26.tour.<id>`，選單的按鈕會變成「繼續（3 / 10）」。
+* 鍵盤：`→`／空白 下一場景、`←` 上一場景、`Esc` 結束 —— 掛在 **window capture**（比 document 的
+  capture 先收到），但**有彈窗時讓彈窗先處理 Esc**。
+* 入口：頂欄 🔧 左邊的 🎬（`#tourBtn` → `#tourBox` 列出劇本）。`__accelon26.playTour/stopTour/tourState` 供測試。
+
+### 11.5 寫一份新劇本
+
+看 `ts/tour/README.md`（語法、指令表、條件語法、六個常見錯誤）。摘要：
+
+```markdown
+### 查一個詞
+左上「目錄」分頁的輸入框就是搜尋框：**邊打邊查**。
+
+> 指向 #query
+> 輸入 #query => 之
+> 等頁面 count:#searchList .snippet >= 1 20000
+> 說 每一筆是一句上下文，命中的字有顏色。
+```
+
+然後 `bun run build:tours`（編譯＋靜態檢查）→ `bun run tools/build-viewer.ts` → `bun run test:tour-ui`。
+
+編譯器會擋：不認得的指令、參數個數不對、`#id` 不在 template、`data-tab` 打錯、
+`api:` 路徑不在白名單、`@id` 與檔名不一致。**打錯的選擇器是導覽最常見的死法**——
+它不會讓程式壞掉，只會讓導覽默默指著空氣。
+
+### 11.6 這一輪抓到的兩個真問題（測試的價值）
+
+1. `指向 #setVariants` 之後直接 `點 #settingsClose`：彈窗一關，聚光燈就照在空氣上，
+   氣泡還顯示「⚠ 找不到」。修法：**關彈窗前先 `不指向`**（`#allSearchList` 同理）。
+2. 「查一個詞」場景原本沒有 `若非` 守衛，在 fgdict（沒有「目錄」分頁）上整場指著
+   0×0 的 `#query` 跑完，卻一步都沒報錯 —— 現在每個依賴 `s="*"` 的場景都第一行守衛。
+
+### 11.7 檔案
+
+| 檔案 | 角色 |
+|---|---|
+| `ts/tour/*.tour` | 劇本（人寫的） |
+| `ts/tour/README.md` | 劇本語法與指令表 |
+| `ts/tools/build-tours.ts` | 編譯器：剖析、靜態檢查、產生 `tour-data.ts`（`--check`） |
+| `ts/src/accelon26/tour-format.ts` | opcode 表、編解碼、CRC32、base64 |
+| `ts/src/accelon26/tour.ts` | 播放器：聚光燈、氣泡、條件、狀態機、鍵盤 |
+| `ts/src/accelon26/tour-data.ts` | 產物（不要手改） |
+| `ts/test/tour.test.ts` | 編解碼／剖析器／同步（30） |
+| `ts/tools/tour-test.ts` | 真瀏覽器全播（24／庫） |
+
 | `ts/tools/desktop-test.ts` | 桌面版回歸（headless `-selftest` ＋ `--gui` 的 WebView2/CDP 檢查） |

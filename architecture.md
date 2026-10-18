@@ -158,6 +158,7 @@ wails/*.go                    ← 宿主：ListAdbs / ReadBase64 / Postings / De
 | `summary.ts` / `paint.ts` / `link.ts` | 摘要卡片、塗紅、跳頁 |
 | `dict-lookup.ts` / `dict-pane.ts` | 詞典索引與右欄詞典分頁 |
 | `allsearch.ts` | 搜尋所有 adb |
+| `tour-format.ts` / `tour.ts` / `tour-data.ts` | 操作導覽：宏的編解碼、播放器、內嵌的宏（由 `tools/build-tours.ts` 產生） |
 | `render_accelon3.ts` | 標籤→HTML（標題／色彩／硬換行） |
 | `panes.ts` / `lazy-list.ts` | 分頁切換；分批掛載 DOM |
 | `viewer.ts` | 全域 `reader/mapper/session`、`openFile`、狀態列、設定遷移 |
@@ -169,7 +170,42 @@ wails/*.go                    ← 宿主：ListAdbs / ReadBase64 / Postings / De
 | 指令 | 範圍 |
 |---|---|
 | `bun run tools/file-protocol-test.ts --adb <db>` | file:// 全 UI（13j 153／yinshun 166／fgdict 167） |
+| `bun run tools/tour-test.ts --adb <db>` | 操作導覽全播（24 項；13j／yinshun／fgdict 各跑一次） |
+| `bun run test/tour.test.ts` | 劇本→宏→劇本的編解碼與剖析器（30） |
 | `bun run test/backend-cases.test.ts` | TS 引擎 vs 共用測試集（180） |
 | `bun run test/go`（`cd wails && go test ./...`） | Go 引擎 vs 同一份測試集 |
 | `bun run tools/desktop-test.ts --gui --quick` | Wails3 GUI（37） |
-| `bun run tools/check-map-ids.ts` | `accelon26-map.html` 與 build 的 id 集合一致（119） |
+| `bun run tools/check-map-ids.ts` | `accelon26-map.html` 與 build 的 id 集合一致（137／138） |
+
+---
+
+## 9. 操作導覽（劇本 → 宏 → 播放器）
+
+目的：**取代人類手把手教新手**。劇本是資料，不是程式；播放器只認得 opcode。
+
+```
+ts/tour/*.tour           人寫的（Markdown 方言：### 場景、> 指令、其餘是說明）
+      │  bun run tools/build-tours.ts     ← 編譯器：剖析 + 靜態檢查 + 打包
+      ▼
+tour-data.ts             base64 二進位宏（人不可讀，進版控）＋ TOUR_INDEX
+      │  bun run tools/build-viewer.ts    ← 既有建置，自動 bundle
+      ▼
+build/accelon26.html     tour.ts 播放器 ＋ 宏
+```
+
+| 檔案 | 責任 |
+|---|---|
+| `ts/src/accelon26/tour-format.ts` | opcode 表、二進位編解碼、CRC32、base64（瀏覽器與 Bun 共用） |
+| `ts/tools/build-tours.ts` | 劇本剖析、`#id`／`data-tab`／`api:` 靜態檢查、產生 `tour-data.ts`（`--check` 驗同步） |
+| `ts/src/accelon26/tour.ts` | 播放器：聚光燈、氣泡、條件式等待（`sel`／`count`／`api`／`text`）、場景閘門、鍵盤 |
+| `ts/src/accelon26/tour-data.ts` | 產物（不要手改） |
+| `ts/tools/tour-test.ts` | 真瀏覽器全播：每一份劇本從頭播到尾並斷言 |
+
+三條設計約束（改動前先讀）：
+
+1. **宏必須內嵌**：file:// 讀不到旁邊的檔案（同 §4.1），所以不能在執行時載入 `.tour`。
+2. **等待一律條件式**：開庫、目錄樹、清單掛載都是非同步的；固定 `sleep` 在慢機器上就是隨機失敗。
+3. **不擋操作**：聚光燈是 `pointer-events:none` 的 box-shadow，氣泡只有按鈕可點 —— 使用者中途亂點不會被導覽卡住。
+
+`api:` 條件讀的是 `__accelon26.state()`（與測試、診斷同一份快照），不是第二套狀態。
+

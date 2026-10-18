@@ -13,6 +13,9 @@
     "test:small": "bun run tools/make-small.ts D:\\accelon3\\yinshun\\yinshun.adb --docs 10",
     "test:backend": "bun run test/backend-cases.test.ts",
     "test:go": "cd ../wails && go test ./...",
+    "test:tour": "bun run test/tour.test.ts",
+    "test:tour-ui": "bun run tools/tour-test.ts",
+    "build:tours": "bun run tools/build-tours.ts",
     "cases": "bun run tools/make-search-cases.ts"
   },
   "engines": { "bun": ">=1.1" },
