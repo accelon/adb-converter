@@ -13,6 +13,7 @@
  * with the TypeScript vendor bzip2 on real source blocks.
  */
 import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { AdbReader, SyncIO, blockRange } from '../src/accelon26/adb';
 import { SearchSession, queryTokens } from '../src/accelon26/search';
@@ -200,7 +201,8 @@ const st = await evalIn<string>(`(async () => {
   const closedAtStart = menu.hidden;
   btn.click();
   await sleep(250);
-  const options = [...menu.querySelectorAll('.dbPickItem')].map((i) => i.textContent);
+  const options = [...menu.querySelectorAll('.dbPickItem[data-key]')]
+    .map((i) => i.querySelector('.dbPickName')?.textContent ?? '');
   const openAfterClick = !menu.hidden;
   btn.click();   // 收起，後面的步驟自己會再開
   await sleep(150);
@@ -241,13 +243,11 @@ const second = await evalIn<string>(`(async () => {
   // 右上黃色資料夾 → 清單（作者 2026-10）
   document.getElementById('dbPickBtn').click();
   await sleep(250);
-  const items = [...document.querySelectorAll('#dbPickMenu .dbPickItem')];
+  const items = [...document.querySelectorAll('#dbPickMenu .dbPickItem[data-key]')];
   const cur = items.findIndex((i) => i.classList.contains('active'));
-  // 尚未載入的項目，標籤後面帶（未載入）
-  const name = (t) => t.replace('（未載入）', '');
   const item = items.find((i, k) => k !== cur);
   if (!item) return JSON.stringify({ skipped: true });
-  const want = name(item.textContent);
+  const want = item.querySelector('.dbPickName')?.textContent ?? '';
   const before = window.__accelon26.state().db;
   const t0 = performance.now();
   item.click();
@@ -550,26 +550,68 @@ mkdirSync(updDir, { recursive: true });
 const oldExe = resolve(updDir, 'accelon26.exe');
 copyFileSync(EXE, oldExe);
 
+// 「線上新版」＝現在這顆 exe，但把烙進去的建置時間改成明天：同長度的純文字替換，
+// PE 不受影響。這樣更新流程的每一環都是真的（versions.json 的 buildTime 比較新、
+// 下載後的 sha256／size 對得上、-version 也真的回報比較新的時間）。
 const serveDir = resolve(ROOT, 'build/tmp-update-serve');
 rmSync(serveDir, { recursive: true, force: true });
 mkdirSync(serveDir, { recursive: true });
 const servedExe = resolve(serveDir, 'accelon26.exe');
-copyFileSync(EXE, servedExe);
+
+function makeNewerExe(): { bytes: Buffer; buildTime: string } {
+  const raw = readFileSync(EXE);
+  const ver = new TextDecoder().decode(Bun.spawnSync({ cmd: [EXE, '-version'], stdout: 'pipe', stderr: 'pipe' }).stdout);
+  const localMinute = /build time:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/.exec(ver)?.[1] ?? '';
+  if (!localMinute) throw new Error('讀不到 -version 的建置時間');
+  const utcMinute = new Date(localMinute.replace(' ', 'T')).toISOString().slice(0, 16); // 2026-10-18T02:43
+  let oldStamp = '';
+  for (let s = 0; s < 60; s++) {
+    const cand = `${utcMinute}:${String(s).padStart(2, '0')}Z`;
+    if (raw.includes(Buffer.from(cand))) { oldStamp = cand; break; }
+  }
+  if (!oldStamp) throw new Error('exe 裡找不到建置時間字串（' + utcMinute + '）');
+  const next = new Date(Date.parse(oldStamp) + 24 * 3600 * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  if (next.length !== oldStamp.length) throw new Error('新時間長度不同，會弄壞 exe');
+  const out = Buffer.from(raw);
+  let n = 0;
+  for (let i = out.indexOf(Buffer.from(oldStamp)); i >= 0; i = out.indexOf(Buffer.from(oldStamp), i + 1)) {
+    out.write(next, i, 'latin1');
+    n++;
+  }
+  console.log('      （線上新版：建置時間 ' + oldStamp + ' → ' + next + '，共 ' + n + ' 處）');
+  return { bytes: out, buildTime: next };
+}
+
+const newer = makeNewerExe();
+writeFileSync(servedExe, newer.bytes);
+const serveSha = createHash('sha256').update(newer.bytes).digest('hex');
 const futureLM = new Date(Date.now() + 24 * 3600 * 1000).toUTCString();
+const manifestObj: Record<string, unknown> = {
+  app: 'accelon26', channel: 'stable', buildTime: newer.buildTime,
+  url: '', size: newer.bytes.length, sha256: serveSha,
+};
+let serverBase = '';
 const server = Bun.serve({
   port: 0,
   fetch(req) {
-    if (req.method === 'HEAD') return new Response(null, { status: 200, headers: { 'Last-Modified': futureLM } });
-    return new Response(Bun.file(servedExe), { status: 200, headers: { 'Last-Modified': futureLM } });
+    const path = new URL(req.url).pathname;
+    const headers = { 'Last-Modified': futureLM };
+    if (path === '/versions.json') {
+      manifestObj.url = serverBase + '/accelon26.exe';
+      return new Response(JSON.stringify(manifestObj), { status: 200, headers: { ...headers, 'Content-Type': 'application/json' } });
+    }
+    if (req.method === 'HEAD') return new Response(null, { status: 200, headers });
+    return new Response(Bun.file(servedExe), { status: 200, headers });
   },
 });
-const fakeUpdateURL = `http://127.0.0.1:${server.port}/accelon26.exe`;
+serverBase = `http://127.0.0.1:${server.port}`;
+const fakeUpdateURL = serverBase + '/accelon26.exe';
 const before = statSync(oldExe).mtimeMs;
 
 const gui5 = await startGui(updDir, { exe: oldExe, env: { ACCELON26_UPDATE_URL: fakeUpdateURL } });
 let app5: any = null;
 for (let i = 0; i < 40; i++) { app5 = await gui5.call('main.AdbHost.AppInfo'); if (app5?.updateAvailable) break; await Bun.sleep(300); }
-ok('檢查到線上版本比較新（Last-Modified）', app5?.updateAvailable === true,
+ok('檢查到線上版本比較新（versions.json）', app5?.updateAvailable === true && app5?.checkOK === true,
   `本地 ${app5?.buildTimeText} vs 線上 ${(app5?.remoteBuildTime ?? '').slice(0, 16)}｜${app5?.note}`);
 ok('目錄可寫 → 允許更新；線上網址就是設定的那個', app5?.dirWritable === true && app5?.canUpdate === true && app5?.updateURL === fakeUpdateURL,
   `dirWritable=${app5?.dirWritable} canUpdate=${app5?.canUpdate}`);
@@ -578,14 +620,24 @@ const brand = JSON.parse(brandRaw) as { cls: string; title: string };
 ok('左上角 hover hint 顯示建置時間', /built\s+\d{4}-\d{2}-\d{2}/.test(brand.title), brand.title);
 ok('左上角閃動並提示有新版本', brand.cls.includes('update') && /有新版本/.test(brand.title), `${brand.cls}｜${brand.title}`);
 
-// 點下左上角 → confirm（測試改成自動確定）→ Go 層下載、換檔、帶 -updated-from 重啟
-const tClick = Date.now();
+// 使用者路徑（2026-10-18 起）＝點左上角**開「關於」**，再按裡面的「下載更新」。
+// 先等按鈕出現（About 開啟時會再檢查一次更新），再按它 → confirm 自動確定 →
+// Go 層下載、換檔、帶 -updated-from 重啟。
 await gui5.evalIn(`(() => { window.confirm = () => true; document.getElementById('brand').click(); return 1; })()`).catch(() => undefined);
+let installReady = false;
+for (let i = 0; i < 40 && !installReady; i++) {
+  installReady = await gui5.evalIn<boolean>(`(() => { const b = document.getElementById('aboutInstall'); return !!b && !b.hidden; })()`).catch(() => false);
+  if (!installReady) await Bun.sleep(250);
+}
+ok('「關於」裡出現「下載更新」按鈕', installReady);
+const tClick = Date.now();
+await gui5.evalIn(`(() => { window.confirm = () => true; document.getElementById('aboutInstall').click(); return 1; })()`).catch(() => undefined);
 for (let i = 0; i < 120 && gui5.proc.exitCode === null; i++) await Bun.sleep(250);
 ok('更新後舊行程結束（交給新版）', gui5.proc.exitCode !== null, `exit ${gui5.proc.exitCode}（${Math.round((Date.now() - tClick) / 1000)} s）`);
 ok('執行檔已被新版取代（mtime 變新）', statSync(oldExe).mtimeMs > before,
   `${new Date(before).toISOString()} → ${new Date(statSync(oldExe).mtimeMs).toISOString()}`);
-ok('留下 .old（下次啟動自動清掉）', existsSync(oldExe + '.old'), oldExe + '.old');
+const prevExe = resolve(updDir, 'accelon26-prev.exe');
+ok('留下上一版 accelon26-prev.exe（新版起不來時可以雙擊它）', existsSync(prevExe), prevExe);
 
 // 更新程式用 ＋1 的除錯埠啟動新版；埠有起來就順便驗一次「新版真的在跑」
 let gui6: Gui | null = null;
@@ -594,6 +646,7 @@ if (gui6) {
   const app6 = await gui6.call('main.AdbHost.AppInfo');
   ok('新版帶著 -updated-from 啟動', !!app6?.updatedFrom, `updatedFrom=${app6?.updatedFrom}`);
   await gui6.close();
+  ok('新版正常關閉時把上一版（accelon26-prev.exe）刪掉', !existsSync(prevExe), prevExe);
 } else {
   console.log('      （新行程的 DevTools 埠沒起來，改用在下面手動帶 -updated-from 驗改版說明）');
 }
@@ -618,7 +671,6 @@ for (let i = 0; i < 30; i++) {
   await Bun.sleep(300);
 }
 ok('更新後顯示改版說明（notesBox）', notesVisible, notesText);
-ok('新版啟動時把上次留下的 .old 清掉', !existsSync(oldExe + '.old'), oldExe + '.old');
 
 // 真正的改版說明（release_notes.json 內容）：假裝從很久以前那一版更新上來，應該列出這一版的每一項
 await waitPortFree(PORT + 3);

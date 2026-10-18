@@ -64,6 +64,8 @@ export interface ByteSource {
 export interface AdbSource extends ByteSource {
   readonly name: string;
   readonly lastModified: number;
+  /** 桌面宿主給的絕對路徑（file:// 版沒有；字數統計要靠它走 Go 的批次解壓） */
+  readonly path?: string;
 }
 
 /** One `read` primitive is the whole transport contract. */

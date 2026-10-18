@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -149,6 +152,104 @@ func TestDownloadFileAndExeCheck(t *testing.T) {
 	}
 	if err := looksLikeWindowsExe(p2); err != nil {
 		t.Errorf("MZ 開頭的檔案應該通過：%v", err)
+	}
+}
+
+// manifestServer 模擬「有 versions.json 的新主機」：/versions.json 給版本資訊，
+// /accelon26.exe 給二元檔。更新網址設成後者，manifestURL 就會推出前者。
+func manifestServer(t *testing.T, buildTime string, body []byte) *httptest.Server {
+	t.Helper()
+	sum := sha256.Sum256(body)
+	m := map[string]any{
+		"app":       "accelon26",
+		"channel":   "stable",
+		"buildTime": buildTime,
+		"url":       "",
+		"size":      len(body),
+		"sha256":    hex.EncodeToString(sum[:]),
+	}
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/versions.json" {
+			m["url"] = srv.URL + "/accelon26.exe"
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(m)
+			return
+		}
+		// 故意**不給** Last-Modified：證明判斷真的走 versions.json
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestCheckViaManifest：有 versions.json 時以 buildTime 為準，而且要把 sha256／size
+// 帶回給 InstallUpdate 驗下載（回應完全不給 Last-Modified，證明不是靠它）。
+func TestCheckViaManifest(t *testing.T) {
+	if !dirWritable(exeDir()) {
+		t.Skipf("測試執行檔所在目錄不可寫（%s），檢查會被跳過", exeDir())
+	}
+	local := exeBuildTime()
+	if local.IsZero() {
+		t.Skip("拿不到測試執行檔的建置時間")
+	}
+
+	t.Run("較新 → 提示並帶回 sha256", func(t *testing.T) {
+		body := bytes.Repeat([]byte("MZ"), 1<<19)
+		newer := local.Add(48 * time.Hour).UTC().Format(time.RFC3339)
+		srv := manifestServer(t, newer, body)
+		t.Setenv("ACCELON26_UPDATE_URL", srv.URL+"/accelon26.exe")
+		h := &AdbHost{}
+		st := h.checkUpdateNow()
+		if !st.OK || !st.Available {
+			t.Fatalf("應該從 versions.json 判斷有新版本：%+v", st)
+		}
+		want := sha256.Sum256(body)
+		if st.SHA256 != hex.EncodeToString(want[:]) || st.Size != int64(len(body)) {
+			t.Errorf("sha256／size 要跟 versions.json 一致：%+v", st)
+		}
+		if !strings.HasSuffix(st.DownloadURL, "/accelon26.exe") {
+			t.Errorf("下載位置要來自 versions.json：%q", st.DownloadURL)
+		}
+	})
+
+	t.Run("較舊 → 已是最新，但 OK=true", func(t *testing.T) {
+		older := local.Add(-48 * time.Hour).UTC().Format(time.RFC3339)
+		srv := manifestServer(t, older, bytes.Repeat([]byte("MZ"), 1<<19))
+		t.Setenv("ACCELON26_UPDATE_URL", srv.URL+"/accelon26.exe")
+		h := &AdbHost{}
+		st := h.checkUpdateNow()
+		if st.Available {
+			t.Errorf("不該提示更新：%+v", st)
+		}
+		if !st.OK {
+			t.Errorf("有拿到版本就該 OK=true（UI 才敢說『已是最新』）：%+v", st)
+		}
+	})
+}
+
+// TestParseBuildTimeLine：換檔前驗證靠的就是這一行輸出。
+func TestParseBuildTimeLine(t *testing.T) {
+	out := "accelon26\nbuild time: 2026-10-18 10:13 (from ldflags)\nrelease notes: 1 entries\n"
+	got, err := parseBuildTimeLine(out)
+	if err != nil {
+		t.Fatalf("應該解析得出來：%v", err)
+	}
+	want := time.Date(2026, 10, 18, 10, 13, 0, 0, time.Local)
+	if !got.Equal(want) {
+		t.Errorf("解析到 %v，want %v", got, want)
+	}
+	if _, err := parseBuildTimeLine("accelon26\n"); err == nil {
+		t.Error("沒有建置時間時要報錯")
+	}
+	// 不是執行檔的檔案一定驗不過（換檔前就不會動到使用者手上那一顆）。
+	bad := filepath.Join(t.TempDir(), "bad.exe")
+	if err := os.WriteFile(bad, []byte("not an exe"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyNewExe(bad, time.Time{}); err == nil {
+		t.Error("不是 exe 的檔案應該驗不過")
 	}
 }
 

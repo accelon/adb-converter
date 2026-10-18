@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -135,10 +136,28 @@ type AdbHost struct {
 	updateSt    UpdateStatus
 	updatedFrom string
 	quit        func()
+	// installMu 讓「下載＋換檔＋重啟」一次只有一個人在做（連點兩次、兩個視窗都按更新）。
+	installMu sync.Mutex
 }
 
 // SetWindowInfo 注入視窗診斷（main 在建立視窗前後設定）。
 func (h *AdbHost) SetWindowInfo(f func() map[string]any) { h.winInfo = f }
+
+// OpenExternal 用系統的預設瀏覽器開一個網址（「留言給作者」這類外部連結）。
+// WebView2 的 target=_blank 只會開一個內嵌的新視窗，那不是使用者要的：
+// 「關於」裡的「留言給作者」走這條，才會真的開 Chrome／Edge。
+func (h *AdbHost) OpenExternal(rawurl string) bool {
+	if !strings.HasPrefix(rawurl, "https://") && !strings.HasPrefix(rawurl, "http://") {
+		return false
+	}
+	cmd := exec.Command("rundll32", "url.dll,FileProtocolHandler", rawurl)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	if err := cmd.Start(); err != nil {
+		return false
+	}
+	go func() { _ = cmd.Wait() }()
+	return true
+}
 
 // SetToggleFullscreen 注入「切換全螢幕」（main 在建立視窗後設定）。
 func (h *AdbHost) SetToggleFullscreen(f func()) {

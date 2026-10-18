@@ -53,6 +53,9 @@
   header {
     display: flex; align-items: center; gap: 10px; padding: 8px 14px;
     background: var(--panel); border-bottom: 1px solid var(--line);
+    /* adb 清單要對齊**視窗右緣**（作者 2026-10-18）：把 header 當定位容器，
+       清單用 right:12px 貼右邊，才不會因為按鈕在左半邊而讓選單溢出畫面左邊。 */
+    position: relative; z-index: 40;
   }
   header h1 {
     font-size: 20px; margin: 0; font-weight: 700; letter-spacing: .01em;
@@ -232,6 +235,13 @@
   .aboutMeta > div { display: flex; gap: 12px; padding: 2px 0; }
   .aboutMeta span { width: 5.5em; flex: 0 0 auto; color: var(--dim); }
   .aboutMeta b { font-weight: 500; word-break: break-all; }
+  /* 「留言給作者」（作者 2026-10-18）：在微信旁邊，開系統瀏覽器到官網的留言頁 */
+  .aboutMsg {
+    margin-left: 10px; font-size: 12px; font-weight: 600; color: #0a2338;
+    background: var(--accent); border-radius: 6px; padding: 2px 9px;
+    text-decoration: none; white-space: nowrap;
+  }
+  .aboutMsg:hover { filter: brightness(1.08); text-decoration: none; }
   .aboutUpdate {
     display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--dim);
     border-top: 1px solid var(--line); padding-top: 10px;
@@ -647,7 +657,7 @@
 .dbTabs .dbChipClose:hover { opacity: 1; color: #ff6b6b; }
 /* adb 選單（作者 2026-10）：資料夾按鈕移到原本 ＋ 的位置；「加入 adb」是下拉第一項。
    margin-left:auto 不再需要（`.status` 自己會把後面的東西推到右邊）。 */
-.dbPickWrap { position: relative; display: inline-flex; }
+.dbPickWrap { display: inline-flex; }
 .dbPickBtn {
   background: transparent; border: 1px solid var(--line); border-radius: 6px;
   color: #ffd479; font-size: 15px; line-height: 1; padding: 2px 7px 3px; cursor: pointer;
@@ -655,20 +665,33 @@
 .dbPickBtn:hover { border-color: var(--accent); background: var(--panel2); }
 .dbPickBtn.on { border-color: var(--accent); background: #2b3b4d; box-shadow: inset 0 0 0 1px var(--accent); }
 .dbPickMenu {
-  position: absolute; z-index: 60; top: 100%; right: 0; margin-top: 4px; min-width: 12em; max-width: 40em;
-  max-height: 60vh; overflow: auto; background: var(--panel); border: 1px solid var(--accent);
+  position: absolute; z-index: 60; top: calc(100% + 4px); right: 12px;
+  max-width: min(54em, calc(100vw - 24px)); max-height: 60vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--accent);
   border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.6); padding: 4px;
 }
-.dbPickMenu .dbPickItem {
-  display: block; width: 100%; text-align: left; background: transparent; border: 0; border-radius: 5px;
-  font: inherit; font-size: 13px; padding: 4px 8px; cursor: pointer; color: var(--fg);
-  white-space: nowrap; overflow: visible; text-overflow: clip;
+/* adb 清單是表格（作者 2026-10-18）：檔名／庫名／字數／建置日期。
+   往右靠（right:0）、長名字省略，才不會超出畫面左邊。 */
+.dbPickMenu .dbPickTable { border-collapse: collapse; width: 100%; font-size: 13px; }
+.dbPickMenu .dbPickTable th {
+  text-align: left; font-weight: 600; color: var(--dim); font-size: 11.5px;
+  padding: 3px 8px; border-bottom: 1px solid var(--line); white-space: nowrap;
 }
-.dbPickMenu .dbPickItem:hover { background: var(--panel2); }
-.dbPickMenu .dbPickItem.active { background: #2b3b4d; font-weight: 700; box-shadow: inset 2px 0 0 var(--accent); }
+.dbPickMenu .dbPickTable td {
+  padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 20em;
+}
+.dbPickMenu .dbPickItem { cursor: pointer; }
+.dbPickMenu .dbPickItem:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dbPickMenu .dbPickItem:hover td { background: var(--panel2); }
+.dbPickMenu .dbPickItem.active td { background: #2b3b4d; }
+.dbPickMenu .dbPickItem.active td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+.dbPickMenu .dbPickFile { color: var(--dim); font-family: ui-monospace, Consolas, monospace; max-width: 14em; }
+.dbPickMenu .dbPickName { font-weight: 600; }
+.dbPickMenu .dbPickItem.active .dbPickName { font-weight: 700; }
+.dbPickMenu .dbPickChars { text-align: right; font-variant-numeric: tabular-nums; }
+.dbPickMenu .dbPickDate { color: var(--dim); font-variant-numeric: tabular-nums; }
+.dbPickMenu .dbPickAdd td { color: #ffd479; }
 .dbPickMenu .dbPickEmpty { color: var(--dim); font-size: 12px; padding: 4px 8px; }
-.dbPickMenu .dbPickAdd { color: #ffd479; }
-.dbPickMenu .dbPickSep { height: 1px; background: var(--line); margin: 4px 2px; }
 /* ---- 操作導覽（作者 2026-10）：聚光燈 ＋ 說明氣泡 ----
    聚光燈是「一個貼在目標上的空 div ＋ 9999px 的 box-shadow」：四周壓暗、目標亮著。
    它一律 pointer-events:none —— 整個導覽從頭到尾都不擋操作（「你來」那幾步更是必須
@@ -990,8 +1013,9 @@
     <div><span>版本</span><b id="aboutBuild">—</b></div>
     <div><span>執行環境</span><b id="aboutMode">—</b></div>
     <div><span>程式檔</span><b id="aboutExe">—</b></div>
-    <!-- 開發者聯絡（作者 2026-10-18）：官網與這一頁都放 -->
-    <div><span>開發者</span><b id="aboutWechat">微信 Sukhanika</b></div>
+    <!-- 開發者聯絡（作者 2026-10-18）：官網與這一頁都放；「留言給作者」開系統瀏覽器
+         到官網的留言頁（about.ts 攔下來走宿主，WebView2 的 target=_blank 不行）。 -->
+    <div><span>開發者</span><b id="aboutWechat">微信 Sukhanika</b><a id="aboutMessage" class="aboutMsg" href="https://shutonggui.cn/accelon26/message.html" target="_blank" rel="noopener noreferrer">留言給作者</a></div>
   </div>
   <div class="aboutUpdate">
     <span id="aboutUpdateMsg">檢查更新中…</span>
@@ -1040,7 +1064,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T02:45:49.841Z","buildTimeText":"2026-10-18 10:45"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T04:15:16.535Z","buildTimeText":"2026-10-18 12:15"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -8035,10 +8059,32 @@ designed by C.S.Yap`;
       return false;
     return !!await c.ByName("main.AdbHost.ToggleFullscreen");
   }
+  async function desktopOpenExternal(url2) {
+    const c = await hostCall();
+    if (!c)
+      return false;
+    try {
+      return await c.ByName("main.AdbHost.OpenExternal", url2) === true;
+    } catch {
+      return false;
+    }
+  }
+  async function desktopCharCount(path) {
+    const c = await hostCall();
+    if (!c)
+      return null;
+    try {
+      const n = await c.ByName("main.AdbHost.SourceCharCount", path);
+      return typeof n === "number" ? n : null;
+    } catch {
+      return null;
+    }
+  }
   function hostSource(e) {
     const name = e.name || e.dbcname || e.dbname || e.path;
     return {
       name,
+      path: e.path,
       size: e.size,
       lastModified: e.modified,
       slice(start, end) {
@@ -8073,6 +8119,7 @@ designed by C.S.Yap`;
 
   // src/accelon26/about.ts
   var ABOUT_SITE = "https://shutonggui.cn/accelon26/";
+  var MESSAGE_URL = ABOUT_SITE + "message.html";
   var STARTUP_KEY = "accelon26.about.startup";
   function aboutStartupOn() {
     try {
@@ -8227,6 +8274,12 @@ designed by C.S.Yap`;
     }
     window.open(ABOUT_SITE, "_blank", "noopener");
   }
+  async function openInBrowser(url2) {
+    const handled = await desktopOpenExternal(url2);
+    if (handled)
+      return;
+    window.open(url2, "_blank", "noopener");
+  }
   function initAbout() {
     el2("brand")?.addEventListener("click", () => {
       openAbout();
@@ -8235,6 +8288,10 @@ designed by C.S.Yap`;
     el2("aboutBackdrop")?.addEventListener("click", () => closeAbout());
     el2("aboutInstall")?.addEventListener("click", () => {
       install();
+    });
+    el2("aboutMessage")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      openInBrowser(MESSAGE_URL);
     });
     el2("aboutStartup")?.addEventListener("change", (ev) => {
       const on = ev.target.checked;
@@ -11496,6 +11553,62 @@ designed by C.S.Yap`;
       return "";
     return catalog.find((x) => slotOf(x) === s)?.key ?? "";
   }
+  var charCache = new Map;
+  var charQueue = [];
+  var charBusy = false;
+  function queueChars(e) {
+    if (charCache.has(e.key) || charQueue.some((q2) => q2.key === e.key))
+      return;
+    charQueue.push(e);
+    if (!charBusy)
+      drainChars();
+  }
+  async function drainChars() {
+    charBusy = true;
+    try {
+      while (charQueue.length) {
+        const e = charQueue.shift();
+        if (charCache.has(e.key))
+          continue;
+        const n = e.file.path ? await desktopCharCount(e.file.path) : null;
+        const chars = n ?? await charsFromSource(e.file);
+        if (chars !== null && chars > 0) {
+          charCache.set(e.key, chars);
+          paintChars(e.key);
+        }
+      }
+    } finally {
+      charBusy = false;
+    }
+  }
+  async function charsFromSource(file) {
+    try {
+      const r = await AdbReader.open(new BlobIO(file));
+      const c = r.containers.get("source");
+      if (!c)
+        return null;
+      let n = 0;
+      for (let i = 0;i < c.count; i++)
+        n += (await r.sourceText(i)).length;
+      return n;
+    } catch {
+      return null;
+    }
+  }
+  function paintChars(key) {
+    const n = charCache.get(key);
+    if (n === undefined)
+      return;
+    const cell = document.querySelector(`#dbPickMenu .dbPickChars[data-key="${CSS.escape(key)}"]`);
+    if (cell)
+      cell.textContent = fmtInt(n);
+  }
+  function fmtDate(ms) {
+    const d = new Date(ms);
+    if (!Number.isFinite(d.getTime()))
+      return "—";
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
   function renderDbPick() {
     const menu = $("#dbPickMenu");
     const btn = $("#dbPickBtn");
@@ -11506,17 +11619,17 @@ designed by C.S.Yap`;
         return bo - ao;
       return b.usedAt - a.usedAt;
     });
-    const dup = new Map;
-    for (const e of catalog)
-      dup.set(e.name, (dup.get(e.name) ?? 0) + 1);
     if (menu) {
-      const addItem = needsAddItem() ? '<button type="button" class="dbPickItem dbPickAdd" data-add="1" title="開啟 .adb（最多同時 5 個）">＋ 加入 adb</button>' + (shown.length ? '<div class="dbPickSep"></div>' : "") : "";
-      menu.innerHTML = addItem + (shown.length ? shown.map((e) => {
+      const addItem = needsAddItem() ? '<tr class="dbPickItem dbPickAdd" data-add="1" tabindex="0" title="開啟 .adb（最多同時 5 個）"><td colspan="4">＋ 加入 adb</td></tr>' : "";
+      const rows2 = shown.map((e) => {
         const s = slotOf(e);
-        const label = e.name + ((dup.get(e.name) ?? 0) > 1 ? "｜" + e.file.name : "") + (s ? "" : "（未載入）");
+        const fname = e.file.path ? e.file.path.split(/[\\/]/).pop() ?? e.file.name : e.file.name;
+        const base2 = fname.replace(/\.adb$/i, "");
+        const chars = charCache.get(e.key);
         const cls = "dbPickItem" + (s && s === active2 ? " active" : "");
-        return `<button type="button" class="${cls}" data-key="${escapeHtml(e.key)}"` + ` title="${escapeHtml(e.file.name)}${s ? "" : "（尚未載入，選了才讀）"}">` + escapeHtml(label) + "</button>";
-      }).join("") : needsAddItem() ? "" : '<div class="dbPickEmpty">（這個資料夾沒有 .adb）</div>');
+        return `<tr class="${cls}" data-key="${escapeHtml(e.key)}" data-name="${escapeHtml(e.name)}" tabindex="0"` + ` title="${escapeHtml(e.file.name)}${s ? "" : "（尚未載入，選了才讀）"}">` + `<td class="dbPickFile">${escapeHtml(base2)}</td>` + `<td class="dbPickName">${escapeHtml(e.name)}</td>` + `<td class="dbPickChars" data-key="${escapeHtml(e.key)}">${chars === undefined ? "…" : fmtInt(chars)}</td>` + `<td class="dbPickDate">${fmtDate(e.file.lastModified)}</td></tr>`;
+      }).join("");
+      menu.innerHTML = shown.length ? '<table class="dbPickTable"><thead><tr><th>檔名</th><th>庫名</th><th>字數</th><th>建置日期</th></tr></thead>' + "<tbody>" + addItem + rows2 + "</tbody></table>" : addItem ? '<table class="dbPickTable"><tbody>' + addItem + "</tbody></table>" : '<div class="dbPickEmpty">（這個資料夾沒有 .adb）</div>';
       menu.querySelectorAll(".dbPickItem[data-add]").forEach((el3) => {
         el3.onclick = (ev) => {
           ev.stopPropagation();
@@ -11529,15 +11642,25 @@ designed by C.S.Yap`;
         };
       });
       menu.querySelectorAll(".dbPickItem[data-key]").forEach((el3) => {
-        el3.onclick = (ev) => {
+        const open2 = (ev) => {
           ev.stopPropagation();
           setDbPickOpen(false);
           const e = catalog.find((x) => x.key === el3.dataset.key);
           if (e)
             openCatalogEntry(e);
         };
+        el3.onclick = open2;
+        el3.onkeydown = (ev) => {
+          if (ev.key === "Enter" || ev.key === " ") {
+            ev.preventDefault();
+            open2(ev);
+          }
+        };
       });
       menu.hidden = !pickOpen;
+      if (pickOpen)
+        for (const e of shown)
+          queueChars(e);
     }
     if (btn) {
       btn.classList.toggle("on", pickOpen);

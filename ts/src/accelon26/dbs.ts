@@ -11,7 +11,7 @@
  * desktop build lists the working folder at startup). Click a chip to switch to
  * it; the ACTIVE chip carries the ✕ that closes it (and every tab that used it).
  */
-import { $, escapeHtml, openFile, restoreCore, snapshotCore } from './viewer';
+import { $, escapeHtml, fmtInt, openFile, restoreCore, snapshotCore } from './viewer';
 import { AdbReader, BlobIO, type AdbSource } from './adb';
 import { restoreDocPane, snapshotDocPane } from './doc-pane';
 import { restorePanes, snapshotPanes } from './panes';
@@ -20,7 +20,7 @@ import { restoreSummary, snapshotSummary } from './summary';
 import { restoreLink, snapshotLink } from './link';
 import { restoreTextPane, snapshotTextPane } from './text-pane';
 import { backendKind } from './backend';
-import { hostState } from './host';
+import { desktopCharCount, hostState } from './host';
 
 export const MAX_DBS = 5;
 
@@ -171,6 +171,68 @@ export function activeCatalogKey(): string {
   return catalog.find((x) => slotOf(x) === s)?.key ?? '';
 }
 
+// ---- adb 選單的「字數」（作者 2026-10-18）--------------------------------------
+// 字數不在檔頭裡：source 容器是一堆獨立 bzip2 block，要解壓才知道有多少字
+// （corpus-scan 的 chars 欄）。所以**在背景算一次再快取**：桌面版走 Go 的
+// SourceCharCount（一次呼叫掃完，不必每個 block 走一趟 IPC），file:// 版走 TS bzip2。
+// 只有選單打開時才排隊，一次算一個，算好直接把那一格填上（不重畫整個選單）。
+const charCache = new Map<string, number>();
+const charQueue: CatalogEntry[] = [];
+let charBusy = false;
+
+function queueChars(e: CatalogEntry): void {
+  if (charCache.has(e.key) || charQueue.some((q) => q.key === e.key)) return;
+  charQueue.push(e);
+  if (!charBusy) void drainChars();
+}
+
+async function drainChars(): Promise<void> {
+  charBusy = true;
+  try {
+    while (charQueue.length) {
+      const e = charQueue.shift()!;
+      if (charCache.has(e.key)) continue;
+      const n = e.file.path ? await desktopCharCount(e.file.path) : null;
+      const chars = n ?? (await charsFromSource(e.file));
+      if (chars !== null && chars > 0) {
+        charCache.set(e.key, chars);
+        paintChars(e.key);
+      }
+    }
+  } finally {
+    charBusy = false;
+  }
+}
+
+/** file:// 版：開一個臨時 reader，把 source 每個 block 解壓、數 code unit。 */
+async function charsFromSource(file: AdbSource): Promise<number | null> {
+  try {
+    const r = await AdbReader.open(new BlobIO(file));
+    const c = r.containers.get('source');
+    if (!c) return null;
+    let n = 0;
+    for (let i = 0; i < c.count; i++) n += (await r.sourceText(i)).length;
+    return n;
+  } catch {
+    return null;
+  }
+}
+
+/** 只改那一格的字（選單不重畫，捲動位置才不會跳掉）。 */
+function paintChars(key: string): void {
+  const n = charCache.get(key);
+  if (n === undefined) return;
+  const cell = document.querySelector<HTMLElement>(`#dbPickMenu .dbPickChars[data-key="${CSS.escape(key)}"]`);
+  if (cell) cell.textContent = fmtInt(n);
+}
+
+/** 檔案時間 → 2026-10-18（建置日期；選單只有日期，時分不重要）。 */
+function fmtDate(ms: number): string {
+  const d = new Date(ms);
+  if (!Number.isFinite(d.getTime())) return '—';
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 export function renderDbPick(): void {
   const menu = $('#dbPickMenu');
   const btn = $('#dbPickBtn');
@@ -180,27 +242,34 @@ export function renderDbPick(): void {
     if (ao !== bo) return bo - ao;
     return b.usedAt - a.usedAt;
   });
-  // two different files can carry the same 庫名 (13j.adb and 1839.adb are both 十三經):
-  // show the file name so the reader can tell them apart
-  const dup = new Map<string, number>();
-  for (const e of catalog) dup.set(e.name, (dup.get(e.name) ?? 0) + 1);
+  // 同一個庫名可能有兩個檔案（13j.adb 與 1839.adb 都叫十三經）：表格第一欄就是檔名，
+  // 不必再在標籤後面接檔名（作者 2026-10-18 改成表格）。
   if (menu) {
     // 第一項「加入 adb」＝原本 header 的 ＋（作者 2026-10）。只有 file:// 版需要：
     // 桌面版（Wails）啟動時就把工作目錄裡的 adb 全列出來了。
     const addItem = needsAddItem()
-      ? '<button type="button" class="dbPickItem dbPickAdd" data-add="1" title="開啟 .adb（最多同時 5 個）">＋ 加入 adb</button>'
-        + (shown.length ? '<div class="dbPickSep"></div>' : '')
+      ? '<tr class="dbPickItem dbPickAdd" data-add="1" tabindex="0" title="開啟 .adb（最多同時 5 個）"><td colspan="4">＋ 加入 adb</td></tr>'
       : '';
-    menu.innerHTML = addItem + (shown.length
-      ? shown.map((e) => {
-        const s = slotOf(e);
-        const label = e.name + ((dup.get(e.name) ?? 0) > 1 ? '｜' + e.file.name : '') + (s ? '' : '（未載入）');
-        const cls = 'dbPickItem' + (s && s === active ? ' active' : '');
-        return `<button type="button" class="${cls}" data-key="${escapeHtml(e.key)}"`
-          + ` title="${escapeHtml(e.file.name)}${s ? '' : '（尚未載入，選了才讀）'}">`
-          + escapeHtml(label) + '</button>';
-      }).join('')
-      : (needsAddItem() ? '' : '<div class="dbPickEmpty">（這個資料夾沒有 .adb）</div>'));
+    const rows = shown.map((e) => {
+      const s = slotOf(e);
+      // 「adb 名」＝檔名去掉 .adb。桌面宿主的 AdbSource.name 是庫名，真正的檔名在 path。
+      const fname = e.file.path ? (e.file.path.split(/[\\/]/).pop() ?? e.file.name) : e.file.name;
+      const base = fname.replace(/\.adb$/i, '');
+      const chars = charCache.get(e.key);
+      const cls = 'dbPickItem' + (s && s === active ? ' active' : '');
+      return `<tr class="${cls}" data-key="${escapeHtml(e.key)}" data-name="${escapeHtml(e.name)}" tabindex="0"`
+        + ` title="${escapeHtml(e.file.name)}${s ? '' : '（尚未載入，選了才讀）'}">`
+        + `<td class="dbPickFile">${escapeHtml(base)}</td>`
+        + `<td class="dbPickName">${escapeHtml(e.name)}</td>`
+        + `<td class="dbPickChars" data-key="${escapeHtml(e.key)}">${chars === undefined ? '…' : fmtInt(chars)}</td>`
+        + `<td class="dbPickDate">${fmtDate(e.file.lastModified)}</td></tr>`;
+    }).join('');
+    menu.innerHTML = shown.length
+      ? '<table class="dbPickTable"><thead><tr><th>檔名</th><th>庫名</th><th>字數</th><th>建置日期</th></tr></thead>'
+        + '<tbody>' + addItem + rows + '</tbody></table>'
+      : (addItem
+        ? '<table class="dbPickTable"><tbody>' + addItem + '</tbody></table>'
+        : '<div class="dbPickEmpty">（這個資料夾沒有 .adb）</div>');
     menu.querySelectorAll<HTMLElement>('.dbPickItem[data-add]').forEach((el) => {
       el.onclick = (ev) => {
         ev.stopPropagation();
@@ -212,14 +281,20 @@ export function renderDbPick(): void {
       };
     });
     menu.querySelectorAll<HTMLElement>('.dbPickItem[data-key]').forEach((el) => {
-      el.onclick = (ev) => {
+      const open = (ev: Event) => {
         ev.stopPropagation();
         setDbPickOpen(false);
         const e = catalog.find((x) => x.key === el.dataset.key);
         if (e) void openCatalogEntry(e);
       };
+      el.onclick = open;
+      el.onkeydown = (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(ev); }
+      };
     });
     menu.hidden = !pickOpen;
+    // 打開選單才開始算字數（背景、一次一個）；算好會自己填進那一格。
+    if (pickOpen) for (const e of shown) queueChars(e);
   }
   if (btn) {
     btn.classList.toggle('on', pickOpen);

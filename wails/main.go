@@ -5,6 +5,7 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -29,18 +30,45 @@ func main() {
 	updatedFrom := flag.String("updated-from", "", "internal: build time of the exe this one replaced (shows the release notes)")
 	debugPortFlag := flag.String("debug-port", "", "internal: WebView2 remote debugging port (overrides ACCELON26_DEBUG_PORT)")
 	showVersion := flag.Bool("version", false, "print the build time, the release notes count and the update URL, then exit")
+	checkUpdate := flag.Bool("check-update", false, "check the update URL now, print the status as JSON and exit")
+	// 更新流程的「重新啟動器」：由舊版副本（accelon26-prev.exe）執行，等舊行程結束後才開新版。
+	relaunchPid := flag.Int("relaunch-pid", 0, "internal: pid of the process this one must wait for")
+	relaunchExe := flag.String("relaunch-exe", "", "internal: exe to start after that process exits")
+	relaunchFrom := flag.String("relaunch-from", "", "internal: -updated-from for the new exe")
+	relaunchPort := flag.String("relaunch-port", "", "internal: -debug-port for the new exe")
 	flag.Parse()
+	if *relaunchPid > 0 && *relaunchExe != "" {
+		os.Exit(runRelauncher(*relaunchPid, *relaunchExe, *relaunchFrom, *relaunchPort))
+	}
 	if *selftest {
 		os.Exit(runSelfTest())
 	}
 	if *showVersion {
-		fmt.Printf("accelon26\nbuild time: %s (from %s)\nrelease notes: %d entries\nupdate URL: %s\nexe: %s\n",
-			shortTime(exeBuildTime()), buildSource, len(allReleaseNotes()), updateURL(), exePath())
+		fmt.Printf("accelon26\nbuild time: %s (from %s)\nrelease notes: %d entries\nupdate URL: %s\nversion info: %s\nexe: %s\n",
+			shortTime(exeBuildTime()), buildSource, len(allReleaseNotes()), updateURL(), manifestURL(), exePath())
+		return
+	}
+	// -check-update：發布前驗線上的 versions.json（診斷用；連本地建置的 exe 也真的連網）。
+	if *checkUpdate {
+		forceUpdateCheck = true
+		h := &AdbHost{}
+		h.SetUpdatedFrom(*updatedFrom)
+		info := h.CheckUpdate()
+		b, _ := json.MarshalIndent(info, "", "  ")
+		fmt.Println(string(b))
 		return
 	}
 
 	host := &AdbHost{}
 	host.SetUpdatedFrom(*updatedFrom)
+	// 這次是被更新程式重啟的：等重新啟動器（accelon26-prev.exe）收工後，把上一版刪掉。
+	// 新版要是在這幾秒內崩掉就不刪 —— 那時 prev 正是使用者的退路。
+	if *updatedFrom != "" {
+		go func() {
+			time.Sleep(6 * time.Second)
+			cleanupPrevExe()
+		}()
+	}
 
 	// 只註冊一個 service。前端用 /wails/runtime.js 的 Call.ByName 直接呼叫：
 	//   Call.ByName("main.AdbHost.ListAdbs")
@@ -112,6 +140,13 @@ func main() {
 	}
 	win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) { tracker.save() })
 	app.OnShutdown(tracker.save)
+	// 正常結束時刪掉「上一版」（accelon26-prev.exe）。反過來說：更新交接後自己結束的
+	// 那一支**不刪** —— 那正是新版起不來時使用者的退路。
+	app.OnShutdown(func() {
+		if !handedOffToNewVersion() {
+			cleanupPrevExe()
+		}
+	})
 	host.SetWindowInfo(tracker.info) // 測試／排錯用（UI 不需要知道）
 	host.SetQuit(func() { app.Quit() })
 	host.SetToggleFullscreen(win.ToggleFullscreen) // Esc／F11 切換全螢幕

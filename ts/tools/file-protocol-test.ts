@@ -496,8 +496,8 @@ try {
       return {
         fileHidden: getComputedStyle(f).display === 'none',
         addVisible: !!add && getComputedStyle(add).display !== 'none',
-        addIsButton: add?.tagName === 'BUTTON',
-        addFirst: menu ? menu.firstElementChild === add : false,
+        addIsButton: add?.tagName === 'TR',
+        addFirst: menu?.querySelector('.dbPickTable tbody')?.firstElementChild === add,
         pickVisible: !!pick && getComputedStyle(pick).display !== 'none',
         chips: chips.length,
         activeChips: active.length,
@@ -538,10 +538,11 @@ try {
       const openedHidden = menu.hidden;
       const items = [...menu.querySelectorAll('.dbPickItem')];
       const addItem = items.filter((i) => i.hasAttribute('data-add'));
-      const options = items.filter((i) => !i.hasAttribute('data-add')).map((i) => i.textContent);
-      const selected = menu.querySelector('.dbPickItem.active')?.textContent ?? '';
+      const options = items.filter((i) => !i.hasAttribute('data-add'))
+        .map((i) => i.querySelector('.dbPickName')?.textContent ?? '');
+      const selected = menu.querySelector('.dbPickItem.active .dbPickName')?.textContent ?? '';
       // 要在同一輪裡比較：後面再按一下／Esc 會重畫選單，節點就換人了
-      const addFirst = menu.firstElementChild === addItem[0];
+      const addFirst = menu.querySelector('.dbPickTable tbody')?.firstElementChild === addItem[0];
       btn.click();
       await sleep(200);
       const closedHidden = menu.hidden;
@@ -722,6 +723,8 @@ try {
         logoW: document.querySelector('#aboutLogo').getBoundingClientRect().width,
         centred: Math.abs((r.left + r.width / 2) - window.innerWidth / 2) < 8,
         wechat: document.querySelector('#aboutWechat')?.textContent?.trim() ?? '',
+        message: document.querySelector('#aboutMessage')?.getAttribute('href') ?? '',
+        messageText: document.querySelector('#aboutMessage')?.textContent?.trim() ?? '',
       };
       await wait(() => window.__accelon26.aboutState().phase !== 'checking');
       const settled = {
@@ -749,6 +752,10 @@ try {
   ok('About：有開發者聯絡（微信 Sukhanika）',
     String(about.opened.wechat).includes('Sukhanika') && String(about.opened.wechat).includes('微信'),
     `「${about.opened.wechat}」`);
+  ok('About：微信旁邊有「留言給作者」（開官網留言頁）',
+    about.opened.message === 'https://shutonggui.cn/accelon26/message.html'
+    && /留言給作者/.test(about.opened.messageText ?? ''),
+    `href=${about.opened.message}`);
   ok('About 開啟時檢查更新：顯示「已是最新」或「無法檢查」',
     about.settled.phase !== 'checking' && about.settled.message.length > 0
     && (about.settled.phase === 'latest' || (about.settled.phase === 'unknown' && !about.settled.canInstall)),
@@ -3001,10 +3008,10 @@ try {
     document.getElementById('dbPickBtn').click();
     await sleep(250);
     const item = [...document.querySelectorAll('#dbPickMenu .dbPickItem[data-key]')]
-      .find((i) => !i.textContent.includes('複本測試'));
+      .find((i) => !(i.querySelector('.dbPickName')?.textContent ?? '').includes('複本測試'));
     item.click();
     await sleep(200);
-    return item.textContent.replace('（未載入）', '');
+    return item.querySelector('.dbPickName')?.textContent ?? '';
   })()`);
   await Bun.sleep(1500);
   const promoted = await cdp.eval<string>(`[...document.querySelectorAll('#dbTabs .dbChip')].map((c) => c.textContent.replace('✕', '') + (c.classList.contains('active') ? '*' : '')).join(' | ')`);

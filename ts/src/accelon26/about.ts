@@ -16,11 +16,14 @@
  *
  * 這一支只碰 DOM 與 host.ts，不 import viewer（避免 viewer → ui → about 的循環）。
  */
-import { desktopAppInfo, desktopCheckUpdate, desktopInstallUpdate } from './host';
+import { desktopAppInfo, desktopCheckUpdate, desktopInstallUpdate, desktopOpenExternal } from './host';
 import type { DesktopAppInfo } from './host';
 import { startTour } from './tour';
 
 export const ABOUT_SITE = 'https://shutonggui.cn/accelon26/';
+
+/** 「留言給作者」的頁面（作者 2026-10-18）：官網上的表單，留言直接寄到作者信箱。 */
+export const MESSAGE_URL = ABOUT_SITE + 'message.html';
 
 /**
  * 「啟動時顯示本頁面」（作者 2026-10-18）：預設**開**。
@@ -150,10 +153,15 @@ async function checkDesktop(info: DesktopAppInfo): Promise<void> {
   state.remote = fresh.remoteBuildTime;
   if (fresh.updateAvailable) {
     setUpdate('found', `發現新版本（${fresh.remoteBuildTime.slice(0, 16).replace('T', ' ')}），目前是 ${fresh.buildTimeText}。`, true);
-  } else if (fresh.lastCheck || fresh.remoteBuildTime) {
+  } else if (fresh.checkOK) {
     setUpdate('latest', `已是最新版本（build ${fresh.buildTimeText}）`);
+  } else if (fresh.devBuild) {
+    setUpdate('unknown', fresh.note || '這是開發者本機建置的 exe，不檢查更新');
+  } else if (!fresh.dirWritable) {
+    setUpdate('unknown', fresh.note || '程式所在資料夾不可寫，無法自動更新');
   } else {
-    setUpdate('unknown', '無法檢查更新（連不上更新伺服器）');
+    // 檢查失敗（404、斷網、伺服器沒給版本資訊）：**不可以**說「已是最新」（作者 2026-10）。
+    setUpdate('unknown', `無法檢查更新：${fresh.note || '連不上更新伺服器'}`);
   }
 }
 
@@ -203,12 +211,27 @@ async function install(): Promise<void> {
   window.open(ABOUT_SITE, '_blank', 'noopener');
 }
 
+/**
+ * 用系統預設瀏覽器開外部網址（作者 2026-10-18）。桌面版交給宿主（WebView2 的
+ * target=_blank 只會開一個內嵌視窗，不是使用者要的）；網頁版就一般的新視窗。
+ */
+async function openInBrowser(url: string): Promise<void> {
+  const handled = await desktopOpenExternal(url);
+  if (handled) return;
+  window.open(url, '_blank', 'noopener');
+}
+
 /** 接上事件（boot 時呼叫一次） */
 export function initAbout(): void {
   el<HTMLElement>('brand')?.addEventListener('click', () => { void openAbout(); });
   el<HTMLElement>('aboutClose')?.addEventListener('click', () => closeAbout());
   el<HTMLElement>('aboutBackdrop')?.addEventListener('click', () => closeAbout());
   el<HTMLElement>('aboutInstall')?.addEventListener('click', () => { void install(); });
+  // 「留言給作者」：在微信旁邊，開官網的留言頁（新視窗／系統瀏覽器）
+  el<HTMLElement>('aboutMessage')?.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    void openInBrowser(MESSAGE_URL);
+  });
   // 「啟動時顯示本頁面」：勾選狀態立即生效並存起來
   el<HTMLInputElement>('aboutStartup')?.addEventListener('change', (ev) => {
     const on = (ev.target as HTMLInputElement).checked;

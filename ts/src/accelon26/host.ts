@@ -133,6 +133,8 @@ export interface DesktopAppInfo {
   updateAvailable: boolean;
   remoteBuildTime: string;
   lastCheck: string;
+  /** 真的拿到線上的版本時間；false 時要看 note（檢查失敗，不可以說「已是最新」） */
+  checkOK: boolean;
   note: string;
   /** 非空＝這次是被更新後重啟的，值是舊版的建置時間（用來顯示改版說明） */
   updatedFrom: string;
@@ -184,11 +186,38 @@ export async function desktopToggleFullscreen(): Promise<boolean> {
   return !!(await c.ByName('main.AdbHost.ToggleFullscreen'));
 }
 
+/**
+ * 用系統的預設瀏覽器開網址（作者 2026-10-18：「留言給作者」）。
+ * 沒有宿主（網頁版）或開啟失敗就回 false，讓 UI 自己退回 window.open。
+ */
+export async function desktopOpenExternal(url: string): Promise<boolean> {
+  const c = await hostCall();
+  if (!c) return false;
+  try {
+    return (await c.ByName('main.AdbHost.OpenExternal', url)) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 一則 adb 的「字數」＝ source 容器解壓後的 UTF-16 code unit 總數（桌面版走 Go，一次掃完）。 */
+export async function desktopCharCount(path: string): Promise<number | null> {
+  const c = await hostCall();
+  if (!c) return null;
+  try {
+    const n = await c.ByName('main.AdbHost.SourceCharCount', path);
+    return typeof n === 'number' ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 /** one host file, in the shape the rest of the viewer already understands */
 function hostSource(e: HostAdb): AdbSource {
   const name = e.name || e.dbcname || e.dbname || e.path;
   return {
     name,
+    path: e.path,
     size: e.size,
     lastModified: e.modified,
     slice(start: number, end: number) {
