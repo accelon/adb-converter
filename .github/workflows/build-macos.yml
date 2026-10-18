@@ -127,12 +127,19 @@ jobs:
       - name: 包成 .app ＋ zip
         # Info.plist、icns、ad-hoc 簽章、ditto 壓縮都在 scripts/package-macos.sh 裡
         # （本機編譯也用同一支，所以兩邊的 .app 一模一樣）。
+        # 用 bash -x 跑：失敗時把最後幾行 trace 變成 annotation（公開 repo 讀得到）。
         working-directory: wails
         run: |
-          bash scripts/package-macos.sh arm64
-          if [ -f ../build/macos/x86_64/accelon26 ]; then
-            bash scripts/package-macos.sh x86_64
-          fi
+          set +e
+          for arch in arm64 x86_64; do
+            [ -f "../build/macos/$arch/accelon26" ] || continue
+            out=$(bash -x scripts/package-macos.sh "$arch" 2>&1); st=$?
+            echo "$out"
+            if [ "$st" -ne 0 ]; then
+              echo "$out" | tail -20 | while IFS= read -r l; do echo "::error title=package-$arch::$l"; done
+              exit 1
+            fi
+          done
 
       - uses: actions/upload-artifact@v4
         with:
