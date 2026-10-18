@@ -21,6 +21,9 @@
 # 使用者第一次開啟仍要在 Finder 按右鍵 →「打開」。
 set -euo pipefail
 
+# 失敗時把「哪一行、哪個指令」印出來（CI 會把它變成 annotation，本機也看得懂）。
+trap 'echo "FAILED (line $LINENO): $BASH_COMMAND" >&2' ERR
+
 ARCH="${1:?用法: bash scripts/package-macos.sh <arm64|x86_64> [binary]}"
 case "$ARCH" in
   arm64|x86_64) ;;
