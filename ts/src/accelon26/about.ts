@@ -152,20 +152,19 @@ async function checkDesktop(info: DesktopAppInfo): Promise<void> {
   if (!fresh) { setUpdate('unknown', '無法檢查更新（宿主沒有回應）'); return; }
   desktopInfo = fresh;
   state.remote = fresh.remoteBuildTime;
+  const macTail = fresh.noSelfUpdate ? 'macOS 版請按「下載更新」開官網取得新版。' : '';
   if (fresh.updateAvailable) {
-    setUpdate('found', `發現新版本（${fresh.remoteBuildTime.slice(0, 16).replace('T', ' ')}），目前是 ${fresh.buildTimeText}。`, true);
+    setUpdate('found', `發現新版本（${fresh.remoteBuildTime.slice(0, 16).replace('T', ' ')}），目前是 ${fresh.buildTimeText}。${macTail}`, true);
   } else if (fresh.checkOK) {
     setUpdate('latest', `已是最新版本（build ${fresh.buildTimeText}）`);
-  } else if (fresh.noSelfUpdate) {
-    // macOS：不做自動更新（換的是整個 .app）。這不是「檢查失敗」，按鈕改成開官網。
-    setUpdate('unknown', `${fresh.note || '這個平台不支援自動更新'}（目前 build ${fresh.buildTimeText}）`, true);
   } else if (fresh.devBuild) {
     setUpdate('unknown', fresh.note || '這是開發者本機建置的 exe，不檢查更新');
   } else if (!fresh.dirWritable) {
     setUpdate('unknown', fresh.note || '程式所在資料夾不可寫，無法自動更新');
   } else {
     // 檢查失敗（404、斷網、伺服器沒給版本資訊）：**不可以**說「已是最新」（作者 2026-10）。
-    setUpdate('unknown', `無法檢查更新：${fresh.note || '連不上更新伺服器'}`);
+    const tail = fresh.noSelfUpdate ? '（macOS 版請到官網下載新版）' : '';
+    setUpdate('unknown', `無法檢查更新：${fresh.note || '連不上更新伺服器'}${tail}`);
   }
 }
 
@@ -201,6 +200,7 @@ export async function openAbout(): Promise<void> {
 async function install(): Promise<void> {
   // macOS 版沒有自動更新（換的是整個 .app）：直接開官網，讓使用者自己下載新版。
   if (desktopInfo?.noSelfUpdate) {
+    setUpdate('found', '正在開啟官網：下載新版後，把舊的 accelon26.app 換掉即可。', true);
     await openInBrowser(ABOUT_SITE);
     return;
   }

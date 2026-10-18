@@ -57,8 +57,8 @@ const (
 	manifestName = "versions.json"
 	// 抓版本資訊的逾時（只是一個小 JSON，不該等太久）。
 	manifestTimeout = 8 * time.Second
-	// 這個平台沒有自動更新時給使用者看的話（macOS 第一版）。
-	noSelfUpdateNote = "macOS 版暫不支援自動更新，請到 https://shutonggui.cn/accelon26/ 下載新版"
+	// 這個平台不能自己換檔時給使用者看的話（macOS：換的是整個 .app）。
+	noSelfUpdateNote = "macOS 版不會自己換檔，請到 https://shutonggui.cn/accelon26/ 下載新版"
 )
 
 // versionManifest 是線上的 versions.json（由 ts/tools/release.ts 產生、deploy 一起上傳）。
@@ -262,20 +262,18 @@ func shortTime(t time.Time) string {
 // checkUpdateNow 做一次檢查。順序：
 //  1. versions.json（版本真相：buildTime ＋ sha256）—— 新主機走這條；
 //  2. 沒有 versions.json 就退回 HEAD 的 Last-Modified —— 舊主機仍可更新。
+//
+// 檢查與安裝是兩件事：**檢查每個平台都做**（macOS 也照樣比版本），
+// 只有「換掉自己」這件事 Windows 才有（macOS 請使用者回官網下載）。
 func (h *AdbHost) checkUpdateNow() UpdateStatus {
 	st := UpdateStatus{
 		CheckedAt:   time.Now(),
 		DirWritable: dirWritable(exeDir()),
 	}
-	// 這個平台沒有「下載一顆新的 exe 換掉自己」這種更新方式（macOS 換的是整個
-	// .app，還牽涉簽章與公證）：連都不連，直接告訴使用者去官網下載。
-	if !updatesSupported() {
-		st.Disabled = true
-		st.Note = noSelfUpdateNote
-		return st
-	}
 	local := exeBuildTime()
-	if !st.DirWritable {
+	// Windows：目錄不可寫就換不了檔，乾脆永遠不檢查（免得一直提醒卻做不到）。
+	// macOS：本來就不自己換檔，目錄不可寫（例如放在 /Applications）照樣要檢查。
+	if updatesSupported() && !st.DirWritable {
 		st.Disabled = true
 		st.Note = "exe 所在目錄不可寫 → 永遠不檢查更新"
 		return st
@@ -434,17 +432,8 @@ func (h *AdbHost) CheckUpdate() AppInfo {
 
 // StartUpdateChecker 啟動背景檢查：清掉上次更新留下的 .old，然後先檢查一次，
 // 之後每 updateCheckEvery 檢查一次。**只有真的在跑 GUI 時才呼叫。**
+// macOS 也照樣檢查（只是查到有新版本之後只能請使用者回官網下載）。
 func (h *AdbHost) StartUpdateChecker() {
-	// 沒有自動更新的平台：把狀態設好（About 要看），連背景 goroutine 都不用開。
-	if !updatesSupported() {
-		h.setUpdateStatus(UpdateStatus{
-			CheckedAt:   time.Now(),
-			Disabled:    true,
-			DirWritable: dirWritable(exeDir()),
-			Note:        noSelfUpdateNote,
-		})
-		return
-	}
 	go func() {
 		cleanupOldExe()
 		for {

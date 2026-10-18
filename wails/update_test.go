@@ -49,9 +49,6 @@ func updateTestServer(t *testing.T, modified time.Time, body []byte) *httptest.S
 //
 //	否則測試執行檔的建置時間永遠是剛剛，檢查永遠被跳過。）
 func TestCheckUpdate(t *testing.T) {
-	if !updatesSupported() {
-		t.Skip("這個平台沒有自動更新（macOS 換的是整個 .app）")
-	}
 	if !dirWritable(exeDir()) {
 		t.Skipf("測試執行檔所在目錄不可寫（%s），檢查會被跳過", exeDir())
 	}
@@ -111,9 +108,6 @@ func TestCheckUpdate(t *testing.T) {
 
 // TestDevBuildSkipsCheck：沒設 ACCELON26_UPDATE_URL 且建置時間是剛剛 → 不檢查。
 func TestDevBuildSkipsCheck(t *testing.T) {
-	if !updatesSupported() {
-		t.Skip("這個平台沒有自動更新（macOS 換的是整個 .app）")
-	}
 	if !dirWritable(exeDir()) {
 		t.Skip("目錄不可寫時本來就不檢查")
 	}
@@ -193,9 +187,6 @@ func manifestServer(t *testing.T, buildTime string, body []byte) *httptest.Serve
 // TestCheckViaManifest：有 versions.json 時以 buildTime 為準，而且要把 sha256／size
 // 帶回給 InstallUpdate 驗下載（回應完全不給 Last-Modified，證明不是靠它）。
 func TestCheckViaManifest(t *testing.T) {
-	if !updatesSupported() {
-		t.Skip("這個平台沒有自動更新（macOS 換的是整個 .app）")
-	}
 	if !dirWritable(exeDir()) {
 		t.Skipf("測試執行檔所在目錄不可寫（%s），檢查會被跳過", exeDir())
 	}

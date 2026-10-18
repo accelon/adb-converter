@@ -8,8 +8,9 @@ name: build-macos
 # （未經 Apple 公證，第一次要在 Finder 右鍵 →「打開」）。
 #
 # macOS 版的差異（第一版）：
-#   * 沒有自動更新（Windows 換的是一顆 exe，macOS 換的是整個 .app，牽涉簽章／公證）。
-#     Go 層 updatesSupported() 回 false，About 會顯示「請到官網下載新版」。
+#   * **不會自己換檔**（Windows 換的是一顆 exe，macOS 換的是整個 .app，牽涉簽章／公證）：
+#     版本檢查照做（左上角閃動＋About 顯示「發現新版本」），但「下載更新」按鈕開的是官網，
+#     使用者自己下載新的 .app 換掉舊的。Go 層 updatesSupported() 回 false 只管「安裝」。
 #   * 沒有游標座標 API（不用 cgo）：啟動時放在「視窗所在的那張螢幕」，不是游標那張。
 #   * mmap／開外部連結／訊息框走 sys_darwin.go（syscall.Mmap、open、osascript）。
 

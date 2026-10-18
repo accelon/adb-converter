@@ -26,7 +26,11 @@ function brandTitle(info: DesktopAppInfo, update = false): string {
   const parts = ['accelon26', `built ${info.buildTimeText}`, 'F11 全螢幕／Esc 回視窗'];
   if (info.buildSource === 'file') parts.push('（檔案時間，非發佈建置）');
   if (update) {
-    parts.push(`有新版本：線上 ${info.remoteBuildTime.slice(0, 16).replace('T', ' ')} — 點這裡更新`);
+    const remote = info.remoteBuildTime.slice(0, 16).replace('T', ' ');
+    // macOS 沒有自動更新：只提示有新版本，下載請回官網（作者 2026-10）。
+    parts.push(info.noSelfUpdate
+      ? `有新版本：線上 ${remote} — macOS 版請到官網下載新版`
+      : `有新版本：線上 ${remote} — 點這裡更新`);
   } else if (info.note) {
     parts.push(info.note);
   }

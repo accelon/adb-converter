@@ -12,9 +12,10 @@ package main
 //	waitForProcessExit                      等另一個行程結束
 //	updatesSupported                        這個平台有沒有「換掉自己」的自動更新
 //
-// macOS 版**不做自動更新**（updatesSupported 回 false）：Windows 的更新是下載一顆
-// 新的 exe 換掉自己；macOS 換的是整個 .app（還牽涉簽章與公證），第一版先請使用者
-// 自己到官網下載。AppInfo／About 會用 NoSelfUpdate 告訴使用者這件事。
+// macOS 版**不會自己換檔**（updatesSupported 回 false）：Windows 的更新是下載一顆
+// 新的 exe 換掉自己；macOS 換的是整個 .app（還牽涉簽章與公證），第一版請使用者自己
+// 到官網下載。**版本檢查照做**（checkUpdateNow／StartUpdateChecker 不分平台），
+// 有新版本時左上角會閃、About 會說「發現新版本」，只是「下載更新」按鈕開的是官網。
 
 import (
 	"errors"
@@ -26,7 +27,8 @@ import (
 	"time"
 )
 
-// updatesSupported：macOS 版第一版不支援自動更新（換 .app ＋ 簽章／公證是另一件事）。
+// updatesSupported：macOS 版不自己換檔（換 .app ＋ 簽章／公證是另一件事）。
+// 注意這只影響「安裝」，不影響「檢查」：版本檢查每個平台都做。
 func updatesSupported() bool { return false }
 
 // platformName 給 AppInfo／About 顯示（不直接用 runtime.GOOS，兩邊各說各話比較清楚）。

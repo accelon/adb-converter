@@ -1142,7 +1142,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T05:43:25.047Z","buildTimeText":"2026-10-18 13:43"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T06:02:09.474Z","buildTimeText":"2026-10-18 14:02"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -8362,18 +8362,18 @@ designed by C.S.Yap`;
     }
     desktopInfo = fresh;
     state.remote = fresh.remoteBuildTime;
+    const macTail = fresh.noSelfUpdate ? "macOS 版請按「下載更新」開官網取得新版。" : "";
     if (fresh.updateAvailable) {
-      setUpdate("found", `發現新版本（${fresh.remoteBuildTime.slice(0, 16).replace("T", " ")}），目前是 ${fresh.buildTimeText}。`, true);
+      setUpdate("found", `發現新版本（${fresh.remoteBuildTime.slice(0, 16).replace("T", " ")}），目前是 ${fresh.buildTimeText}。${macTail}`, true);
     } else if (fresh.checkOK) {
       setUpdate("latest", `已是最新版本（build ${fresh.buildTimeText}）`);
-    } else if (fresh.noSelfUpdate) {
-      setUpdate("unknown", `${fresh.note || "這個平台不支援自動更新"}（目前 build ${fresh.buildTimeText}）`, true);
     } else if (fresh.devBuild) {
       setUpdate("unknown", fresh.note || "這是開發者本機建置的 exe，不檢查更新");
     } else if (!fresh.dirWritable) {
       setUpdate("unknown", fresh.note || "程式所在資料夾不可寫，無法自動更新");
     } else {
-      setUpdate("unknown", `無法檢查更新：${fresh.note || "連不上更新伺服器"}`);
+      const tail = fresh.noSelfUpdate ? "（macOS 版請到官網下載新版）" : "";
+      setUpdate("unknown", `無法檢查更新：${fresh.note || "連不上更新伺服器"}${tail}`);
     }
   }
   async function checkWeb() {
@@ -8402,6 +8402,7 @@ designed by C.S.Yap`;
   }
   async function install() {
     if (desktopInfo?.noSelfUpdate) {
+      setUpdate("found", "正在開啟官網：下載新版後，把舊的 accelon26.app 換掉即可。", true);
       await openInBrowser(ABOUT_SITE);
       return;
     }
@@ -8583,7 +8584,8 @@ designed by C.S.Yap`;
     if (info.buildSource === "file")
       parts.push("（檔案時間，非發佈建置）");
     if (update) {
-      parts.push(`有新版本：線上 ${info.remoteBuildTime.slice(0, 16).replace("T", " ")} — 點這裡更新`);
+      const remote = info.remoteBuildTime.slice(0, 16).replace("T", " ");
+      parts.push(info.noSelfUpdate ? `有新版本：線上 ${remote} — macOS 版請到官網下載新版` : `有新版本：線上 ${remote} — 點這裡更新`);
     } else if (info.note) {
       parts.push(info.note);
     }

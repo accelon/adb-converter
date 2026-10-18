@@ -23,15 +23,18 @@ macOS 用 `syscall.Mmap`／`open`／`osascript`／Wails 的 NSScreen 表）。
 * macOS 11 以上、Apple Silicon（arm64）。
 * 介面與 Windows 版完全相同（單檔 HTML，`wails/assets/index.html`）。
 * mmap 讀 `.adb`（`syscall.Mmap`）、Go 的查詢後端、bzip2 解壓（與 TS 逐字相同，測試會驗）。
+* **新版本提示**：照樣去讀 `versions.json`，線上比你的 `.app` 新就讓左上角閃、About 顯示
+  「發現新版本」；只是下載要自己來（見下）。
 * 視窗位置／大小／全螢幕狀態會記住：`~/Library/Application Support/accelon26/window.json`。
 * 「留言給作者」等外部連結用 `open` 開系統瀏覽器。
 * 「＋ 加入 adb」用 WKWebView 的 NSOpenPanel（Wails v3 有實作），拖放檔案也可以。
 
 沒有（第一版刻意不做，或平台限制）：
 
-* **自動更新**：Windows 換的是一顆 `accelon26.exe`；macOS 要換整個 `.app`，還牽涉簽章與
-  公證。Go 層 `updatesSupported()` 在 darwin 回 `false`，完全**不連網**，About 會顯示
-  「macOS 版暫不支援自動更新，請到官網下載新版」，按鈕改成開官網。
+* **不會自己換檔**：Windows 換的是一顆 `accelon26.exe`；macOS 要換整個 `.app`，還牽涉簽章
+  與公證。所以 `updatesSupported()` 在 darwin 回 `false` —— 它只管「安裝」，不管「檢查」：
+  版本檢查每個平台都做，`InstallUpdate` 則直接拒絕並回一句「請到官網下載」。
+  About 的「下載更新」按鈕在 macOS 上就是開官網，使用者自己下載新的 `.app` 換掉舊的。
 * **用游標決定啟動螢幕**：取滑鼠座標要碰 `NSEvent`／`CGEvent`（cgo）。改成問「視窗自己
   落在哪張螢幕」——macOS 開新視窗時會放在使用者正在用的那張，這其實也夠準。
 * `-screens` 沒有 Win32 的樣式欄位（macOS 沒有 `GWL_STYLE`），只印 Wails 的螢幕表。
