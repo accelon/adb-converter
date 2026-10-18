@@ -52,13 +52,27 @@ jobs:
 
       # 先跑一次測試：這裡同時驗證了 mmap（syscall.Mmap）、檔案白名單、搜尋解析
       # 這些在 macOS 上真的會執行的程式碼（Windows runner 驗不到這些）。
+      # 失敗時把關鍵幾行印成 annotation —— 公開 repo 不登入也讀得到：
+      #   https://api.github.com/repos/<owner>/<repo>/check-runs/<id>/annotations
       - name: 測試（go vet ＋ go test）
         working-directory: wails
         env:
           CGO_ENABLED: '1'
         run: |
-          go vet ./...
-          go test ./...
+          set +e
+          go vet ./... > vet.log 2>&1; VET=$?
+          go test ./... > test.log 2>&1; TEST=$?
+          echo "go vet exit=$VET ; go test exit=$TEST"
+          if [ "$TEST" -ne 0 ]; then
+            grep -E '^(--- FAIL|FAIL|panic:)|_test\.go:[0-9]+:' test.log | head -8 |
+              while IFS= read -r l; do echo "::error title=go test::$l"; done
+            tail -30 test.log
+          fi
+          if [ "$VET" -ne 0 ]; then
+            head -20 vet.log | while IFS= read -r l; do echo "::error title=go vet::$l"; done
+            head -20 vet.log
+          fi
+          [ "$VET" -eq 0 ] && [ "$TEST" -eq 0 ]
 
       - name: 編譯（arm64）
         working-directory: wails

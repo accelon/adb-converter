@@ -131,10 +131,13 @@
   .hero h1 em { font-style: normal; color: var(--gold); }
   .lead { font-size: 17px; color: var(--muted); margin: 0 0 30px; max-width: 42em; }
   .btn {
-    display: inline-block; background: var(--accent); color: var(--btn-fg);
-    font-weight: 700; font-size: 17px; padding: 13px 30px; border-radius: 10px;
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: var(--btn-fg);
+    font-weight: 700; font-size: 15.5px; padding: 10px 22px; border-radius: 9px;
     box-shadow: var(--btn-shadow);
   }
+  /* 按鈕上的 OS 標誌（2026-10-18）：跟著字色，大小固定，不要被壓縮。 */
+  .btn svg { width: 16px; height: 16px; fill: currentColor; flex: none; opacity: .95; }
   .btn:hover { text-decoration: none; filter: brightness(1.08); }
   /* 兩個下載按鈕並排（macOS 版 2026-10-18）；窄螢幕自動換行。 */
   .btnRow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
@@ -289,8 +292,14 @@
           全文檢索、詞典查詢、目錄樹、原書分頁與繁簡通檢，都在同一個視窗裡完成。
         </p>
         <div class="btnRow">
-          <a class="btn" href="accelon26.7z" download>↓ 下載 Windows 版</a>
-          <a class="btn alt" href="accelon26-macos-arm64.zip" download>↓ 下載 macOS 版</a>
+          <a class="btn" href="accelon26.7z" download>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M0 3.449 9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+            下載 Windows 版
+          </a>
+          <a class="btn alt" href="accelon26-macos-arm64.zip" download>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
+            下載 macOS 版
+          </a>
         </div>
         <p class="fine">
           Windows 10／11 · 64 位元 · 單一執行檔、免安裝 · <span id="meta">7-Zip 壓縮檔，約 7 MB</span><br>

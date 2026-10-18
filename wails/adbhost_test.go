@@ -13,9 +13,10 @@ import (
 )
 
 // realAdb 是倉庫根目錄裡的真實樣本；缺少時測試改用合成檔案。
+// 作者這台在 D:\...；CI（macOS／Linux runner）是從倉庫根目錄讀同一顆檔。
 const realAdb = "D:\\2026\\adb-converter\\13j.adb"
 
-// newTestHost 建一個臨時目錄，把 13j.adb（或一個 300 位元組的合成檔案）放進去，
+// newTestHost 建一個臨時目錄，把 13j.adb（或一個合成檔案）放進去，
 // 然後 chdir 進這個目錄。回傳的 host 由呼叫方 defer CloseAll()（必須在
 // TempDir 清理之前解除映射，否則 Windows 刪不掉被映射的檔案）。
 func newTestHost(t *testing.T) (host *AdbHost, dst string, real bool) {
@@ -24,9 +25,17 @@ func newTestHost(t *testing.T) (host *AdbHost, dst string, real bool) {
 	dst = filepath.Join(dir, "13j.adb")
 
 	raw, err := os.ReadFile(realAdb)
+	if err != nil {
+		// CI 上沒有 D:\...：改讀倉庫根目錄那一顆（go test 的 cwd 是 wails/）。
+		if b, err2 := os.ReadFile(filepath.Join("..", "13j.adb")); err2 == nil {
+			raw, err = b, nil
+		}
+	}
 	real = err == nil
 	if !real {
-		raw = syntheticAdb(300)
+		// 合成檔要夠大：TestMmapReadTiming 會讀 128 KiB，太小的話會變成「越界」而失敗
+		//（macOS runner 就是這樣踩到的）。來源只有 13j.adb，通常不會走到這裡。
+		raw = syntheticAdb(300 * 1024)
 	}
 	if err := os.WriteFile(dst, raw, 0o644); err != nil {
 		t.Fatalf("write %s: %v", dst, err)
