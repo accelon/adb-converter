@@ -721,6 +721,7 @@ try {
         logo: (document.querySelector('#aboutLogo').getAttribute('src') ?? '').startsWith('data:image/png'),
         logoW: document.querySelector('#aboutLogo').getBoundingClientRect().width,
         centred: Math.abs((r.left + r.width / 2) - window.innerWidth / 2) < 8,
+        wechat: document.querySelector('#aboutWechat')?.textContent?.trim() ?? '',
       };
       await wait(() => window.__accelon26.aboutState().phase !== 'checking');
       const settled = {
@@ -745,6 +746,9 @@ try {
   ok('About：官網與版本（建置時間）',
     about.opened.site === 'https://shutonggui.cn/accelon26/' && about.settled.build.length > 4,
     `官網 ${about.opened.site}｜版本 ${about.settled.build}｜${about.settled.mode}`);
+  ok('About：有開發者聯絡（微信 Sukhanika）',
+    String(about.opened.wechat).includes('Sukhanika') && String(about.opened.wechat).includes('微信'),
+    `「${about.opened.wechat}」`);
   ok('About 開啟時檢查更新：顯示「已是最新」或「無法檢查」',
     about.settled.phase !== 'checking' && about.settled.message.length > 0
     && (about.settled.phase === 'latest' || (about.settled.phase === 'unknown' && !about.settled.canInstall)),

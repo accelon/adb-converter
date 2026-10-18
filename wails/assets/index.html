@@ -990,6 +990,8 @@
     <div><span>版本</span><b id="aboutBuild">—</b></div>
     <div><span>執行環境</span><b id="aboutMode">—</b></div>
     <div><span>程式檔</span><b id="aboutExe">—</b></div>
+    <!-- 開發者聯絡（作者 2026-10-18）：官網與這一頁都放 -->
+    <div><span>開發者</span><b id="aboutWechat">微信 Sukhanika</b></div>
   </div>
   <div class="aboutUpdate">
     <span id="aboutUpdateMsg">檢查更新中…</span>
@@ -1038,7 +1040,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T02:13:30.260Z","buildTimeText":"2026-10-18 10:13"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T02:45:49.841Z","buildTimeText":"2026-10-18 10:45"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -8171,10 +8173,14 @@ designed by C.S.Yap`;
     state.remote = fresh.remoteBuildTime;
     if (fresh.updateAvailable) {
       setUpdate("found", `發現新版本（${fresh.remoteBuildTime.slice(0, 16).replace("T", " ")}），目前是 ${fresh.buildTimeText}。`, true);
-    } else if (fresh.lastCheck || fresh.remoteBuildTime) {
+    } else if (fresh.checkOK) {
       setUpdate("latest", `已是最新版本（build ${fresh.buildTimeText}）`);
+    } else if (fresh.devBuild) {
+      setUpdate("unknown", fresh.note || "這是開發者本機建置的 exe，不檢查更新");
+    } else if (!fresh.dirWritable) {
+      setUpdate("unknown", fresh.note || "程式所在資料夾不可寫，無法自動更新");
     } else {
-      setUpdate("unknown", "無法檢查更新（連不上更新伺服器）");
+      setUpdate("unknown", `無法檢查更新：${fresh.note || "連不上更新伺服器"}`);
     }
   }
   async function checkWeb() {

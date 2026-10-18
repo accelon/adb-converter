@@ -169,13 +169,13 @@ wails/*.go                    ← 宿主：ListAdbs / ReadBase64 / Postings / De
 
 | 指令 | 範圍 |
 |---|---|
-| `bun run tools/file-protocol-test.ts --adb <db>` | file:// 全 UI（13j 157／yinshun 170／fgdict 171） |
+| `bun run tools/file-protocol-test.ts --adb <db>` | file:// 全 UI（13j 158／yinshun 170／fgdict 171） |
 | `bun run tools/tour-test.ts --adb <db>` | 操作導覽全播（29 項；13j／yinshun／fgdict 各跑一次） |
 | `bun run test/tour.test.ts` | 劇本→宏→劇本的編解碼與剖析器（31） |
 | `bun run test/backend-cases.test.ts` | TS 引擎 vs 共用測試集（180） |
 | `bun run test/go`（`cd wails && go test ./...`） | Go 引擎 vs 同一份測試集 |
 | `bun run tools/desktop-test.ts --gui --quick` | Wails3 GUI（37） |
-| `bun run tools/check-map-ids.ts` | `accelon26-map.html` 與 build 的 id 集合一致（137／138） |
+| `bun run tools/check-map-ids.ts` | `accelon26-map.html` 與 build 的 id 集合一致（140／141） |
 
 ---
 
@@ -211,4 +211,25 @@ build/accelon26.html     tour.ts 播放器 ＋ 宏
 3. **不擋操作**：聚光燈是 `pointer-events:none` 的 box-shadow，氣泡只有按鈕可點 —— 使用者中途亂點不會被導覽卡住。
 
 `api:` 條件讀的是 `__accelon26.state()`（與測試、診斷同一份快照），不是第二套狀態。
+
+---
+
+## 10. 官網（`www/`）
+
+一頁的靜態網站，**不屬於 app 的執行路徑**：它只是「下載頁＋說明書」，所以刻意
+沒有任何第三方依賴（無 CDN、無字型檔、無框架），一張 HTML ＋ 四張 JPEG。
+
+| 產物 | 誰產生 | 進版控 |
+|---|---|---|
+| `www/index.html` | 手寫 | 是 |
+| `www/img/*.jpg`（4 張 gallery） | `bun run tools/site-shots.ts`（真瀏覽器截圖） | 是 |
+| `www/accelon26.7z` | `bun run tools/release.ts`（建好 exe 之後打包） | **否**（`www/*.7z` 在 .gitignore） |
+
+- 官網假設 **`www/` 整個目錄**被部署到 `https://shutonggui.cn/accelon26/`（與 About 的官網連結同一個位置）。
+- 下載檔是 7z 而不是 exe：Windows 的瀏覽器與郵件對 `.exe` 愈來愈不友善，壓縮檔也小一半（17 MB → 7.1 MB）。
+- 頁面上的安裝說明：解開 7z → `accelon26.exe` 放到 **accelon3.exe 同一個資料夾** → 雙擊。
+  7-Zip 打不開時給 https://sparanoid.com/lab/7z/（Windows x64）。
+- 「更新於 …」是頁面上唯一的 JS：對 `accelon26.7z` 做 HEAD 讀 `Last-Modified`／`Content-Length`；
+  拿不到就保持預設文字（file:// 開啟時就是這樣）。
+
 

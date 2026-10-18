@@ -1373,8 +1373,13 @@ UI，兩個宿主共用；桌面版內嵌的那一份仍叫 `wails/assets/index.
 
 **建置時間**（`wails/update.go`）：發佈時用 `-ldflags "-X main.buildTime=<RFC3339>"` 注入；
 沒注入就退回執行檔的修改時間（`buildSource=file`，hover hint 會註明「檔案時間，非發佈建置」）。
-遠端的建置時間用 **HTTP `Last-Modified`**（靜態主機上傳時就有）；沒有這個標頭就不猜、不提示。
-遠端要比本地新至少 1 分鐘才算「有新版本」（容忍時鐘誤差）。
+線上的版本資訊**優先看 `versions.json`**（2026-10-18 加上，主機已放好）：
+
+1. `GET https://shutonggui.cn/accelon26/versions.json` → `{ buildTime, url, size, sha256 }`；
+   用 `buildTime` 比新舊（遠端要新至少 1 分鐘），`sha256`／`size` 拿來驗下載的內容。
+2. 沒有 versions.json（舊主機）才退回 `HEAD accelon26.exe` 的 `Last-Modified`。
+   這是 **fallback**：`Last-Modified` 是**上傳時間**，跟 exe 裡的建置時間不一定一致
+   （2026-10-18 實測差 11 秒；上傳慢一點就會「更新完又說有新版」），所以不要靠它。
 
 **不檢查更新的兩種情況**（都不打擾使用者）：
 1. **exe 所在目錄不可寫**（真的寫一個暫存檔測試）→ 永遠不檢查；
@@ -1388,11 +1393,17 @@ UI，兩個宿主共用；桌面版內嵌的那一份仍叫 `wails/assets/index.
 * 更新後第一次啟動（帶 `-updated-from`）→ 顯示**改版說明**（`#notesBox`），內容來自
   `wails/release_notes.json`，只顯示比舊版新的那幾筆。
 
-**更新流程**（`InstallUpdate`）：下載到 `<dir>/accelon26.exe.new`（先 `.part` 再改名）→ 檢查檔頭
-是 `MZ` 且 > 1 MiB（避免把錯誤頁當成 exe）→ 把**執行中的** exe 改名成 `.old`（Windows 允許改
-執行中映像的名字，但不能覆蓋）→ `.new` 改名成正式名字 → 啟動新 exe（帶 `-updated-from` 與
-**＋1 的除錯埠** `-debug-port`，避免兩個行程搶同一個埠）→ 0.7 秒後自己結束。`.old` 在新版
-啟動時自動清掉。
+**更新流程**（`InstallUpdate`）：下載到 `<dir>/accelon26.exe.new`（先 `.part` 再改名）→
+**五道關卡**，任何一道不過都丟掉下載檔、不動使用者手上那一顆：
+`size` ＝ versions.json → `sha256` ＝ versions.json → 檔頭 `MZ` 且 ≥ 1 MiB →
+跑一次 `new.exe -version` 解得建置時間 → 那個時間比目前新 → 把**執行中的** exe 改名成
+`.old`（Windows 允許改執行中映像的名字，但不能覆蓋）→ `.new` 改名成正式名字 → 啟動新 exe
+（帶 `-updated-from` 與 **＋1 的除錯埠** `-debug-port`，避免兩個行程搶同一個埠）→
+**觀察 2 秒**：新版若馬上結束就把 `.old` 換回去（回報「新版啟動後馬上結束，已還原舊版」）；
+還活著就 0.7 秒後自己結束。`.old` 在新版啟動時自動清掉。
+觀察窗刻意短：新舊兩個行程同時活著時共用 WebView2 的資料目錄，重疊越短越安全
+（代價是「起來後三秒才崩」抓不到，目前接受）。
+`InstallUpdate` 有鎖（`installMu.TryLock`），連點兩次只會有一次真的動手。
 
 **exe 放哪裡／怎麼建**（作者 2026-10）：exe **一律放到 `D:\accelon26\`**，用 **GUI 子系統**
 （`-ldflags "-H windowsgui"`）建置 —— 這樣 **Explorer 雙擊不會跳出命令列視窗**。
@@ -1464,6 +1475,7 @@ Go 單元測試（`wails/update_test.go`）：目錄可寫／不可寫、遠端�
 | `wails/adbhost_test.go` | Go 測試：檔頭解析、與 `os.ReadFile` 逐位元組相同、越界報錯、讀取計時 |
 | `wails/assets/index.html` | 內嵌的 accelon26（由 `ts/tools/build-desktop.ts` 產生） |
 | `ts/src/accelon26/host.ts` | 唯一知道宿主存在的地方（動態 import runtime → `AdbSource`） |
+| `ts/tools/desktop-test.ts` | 桌面版回歸（headless `-selftest` ＋ `--gui` 的 WebView2/CDP 檢查） |
 | `ts/tools/build-desktop.ts` | 把同一份單檔 HTML 寫進 `wails/assets/` |
 
 ---
@@ -1583,5 +1595,39 @@ play(id) → running ──step ok──▶ running
 | `#freqClear` 不需要 | 移除（`wireOwnSearch` 傳 null 元素本來就安全） |
 | `#termsCount` 移進 `termsMode` | 按鈕改成 `開頭 <span id="termsCount">5</span>`；只放**數字**（不再寫「個詞條」），一般與進階模式都顯示 |
 
+---
 
-| `ts/tools/desktop-test.ts` | 桌面版回歸（headless `-selftest` ＋ `--gui` 的 WebView2/CDP 檢查） |
+## 12. 官網（www/，作者 2026-10-18）
+
+一頁、無第三方依賴：沒有 CDN、沒有字型檔、沒有框架。`index.html` 內嵌 CSS 與十幾行 JS，
+圖片是四張 gallery 用的 JPEG。
+
+```
+www/
+  index.html        一頁官網：特色 → 畫面 → 下載與安裝 → 聯絡
+  img/search.jpg    全文搜尋（13j，君子 1,137 筆）
+  img/dict.jpg      詞典（fgdict，般若）
+  img/allsearch.jpg 一次搜尋所有資料庫
+  img/tour.jpg      操作導覽（聚光燈＋氣泡）
+  img/appicon.png   favicon（與 exe 圖示同一份來源）
+  accelon26.7z      下載檔（**不進 git**，由 release.ts 產生）
+```
+
+| 事項 | 指令／做法 |
+|---|---|
+| 重拍截圖 | `bun run tools/site-shots.ts`（1600×1000 ×1.5 → 2400×1500 JPEG q88）。UI 改了就跑一次，官網的圖才不會過時 |
+| 產生下載檔 | `bun run tools/release.ts`：建好 exe 之後順便打包 `www/accelon26.7z`（7-Zip ultra，17 MB → 7.1 MB）。找不到 7-Zip 就跳過並提示 |
+| 部署 | 把 `www/` 整個目錄上傳（含 7z）。伺服器要送 `Last-Modified`：頁面上的「更新於 …」與程式自己的更新檢查都靠它 |
+| 頁面上的安裝說明 | 解開 7z → 把 `accelon26.exe` 放到 **accelon3.exe 同一個資料夾** → 雙擊。打不開 7z 就到 https://sparanoid.com/lab/7z/ 下載 Windows x64 版 |
+| 開發者聯絡 | 微信 **Sukhanika**（官網頁尾與「關於」都有；`#aboutWechat` 有測試顧） |
+
+設計上的取捨：整頁只有一個大按鈕（下載），其餘都是「為什麼要用它」。圖片用
+`loading="lazy"` ＋ 固定寬高，所以就算圖還沒載入版面也不會跳。
+
+### 12.1 截圖時發現的一件事（待查，非官網問題）
+
+換資料庫時，**前一個庫的本文分頁與內文可能還留在中間**（`#docTabs` 沒有被清掉）。
+在 `openFile` 換庫後一兩秒內還看得到；`openFile` 的 `finally` 只清 DOM 的 strip、
+不動 `docTabs` 狀態。懷疑是「點擊後的非同步載入在換庫之後才落地」的競態
+（`ensurePage` 完成時沒有再檢查自己還屬於哪個庫）。
+官網截圖工具因此每個資料庫都 `Page.reload` 一次，拍到的畫面才乾淨。

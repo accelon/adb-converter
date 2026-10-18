@@ -9,6 +9,14 @@ accelon3/
 *.log
 *.tmp
 *.zip
+*.7z
+
+# 官網（www/）：index.html 與 img/ 進版控；下載檔是發佈產物，由
+# `bun run tools/release.ts` 從 build 出來的 exe 重新打包，不進 git（一個 7 MB）
+www/*.7z
+
+# 部署憑證（帳密）：只留在本機，絕不進版控
+.local/
 
 # Delphi 參考原始碼（非本次產出，保留在本機）
 sourcecode/

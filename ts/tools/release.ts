@@ -7,16 +7,19 @@
  * ⚠ Windows 的 PowerShell 會把中文命令列參數弄成亂碼（實際踩過：release_notes.json 變成
  *   亂碼並被 commit）。所以中文一律用 --items-file，檔案由編輯器／工具以 UTF-8 寫入。
  *
- * 做四件事：
+ * 做六件事：
  *   1. 把這一版的改版說明 append 到 wails/release_notes.json（更新後顯示給使用者的就是它）
  *   2. 先建 HTML（build-desktop.ts）、再用 -ldflags 把建置時間烙進 exe（順序不能顛倒！）
  *   3. 用 -version 驗一次 exe 裡的建置時間
- *   4. 印出上傳指示，並（給了 --url 的話）HEAD 一次確認線上的 Last-Modified
+ *   4. 產生 versions.json（版本真相：buildTime ＋ sha256；更新器先讀它，讀不到才退回 Last-Modified）
+ *   5. 把 exe 打包成 www/accelon26.7z（官網的下載檔；7z 不進 git）
+ *   6. 印出上傳指示，並確認線上的版本資訊
  *
  * 建置時間一定要用 -ldflags 注入：沒注入的 exe 只能退回「檔案修改時間」，
  * 而檔案時間會被複製／解壓改變，發佈版就無法判斷新舊了。
  */
 import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 
 const args = process.argv.slice(2);
@@ -112,18 +115,64 @@ if (!verText.includes('from ldflags')) {
   process.exit(1);
 }
 
-// 4) 上傳指示 + 線上檢查
-console.log('\n把這個檔案上傳到：');
-console.log('  ' + URL);
-console.log('（伺服器要送出 Last-Modified，程式就是靠它判斷線上版本比執行中的新）');
+// 3.5) versions.json：版本真相。更新器先讀它（buildTime 比大小、sha256 驗下載），
+//      讀不到才退回 Last-Modified。**一定要跟 exe 同一批上傳**（先 exe、後它）。
+const sha256 = createHash('sha256').update(readFileSync(EXE)).digest('hex');
+const MANIFEST_URL = URL.replace(/[^/]*$/, 'versions.json');
+const manifest = {
+  app: 'accelon26',
+  channel: 'stable',
+  buildTime,
+  url: URL,
+  size,
+  sha256,
+  releasedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+};
+const manifestPath = resolve(OUT_DIR, 'versions.json');
+writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+console.log(`\nversions.json → ${manifestPath}`);
+console.log(`  buildTime ${buildTime}`);
+console.log(`  sha256    ${sha256}`);
+console.log(`  size      ${size}`);
+
+// 4) 官網下載檔：www/accelon26.7z（作者 2026-10-18）
+//    官網 index.html 直接連到這個檔；7z 是發佈產物，不進 git（.gitignore 有 www/*.7z）。
+const SEVEN_ZIP = 'C:\\Program Files\\7-Zip\\7z.exe';
+const WWW = resolve(ROOT, 'www');
+let sevenZipOut = '';
+if (existsSync(SEVEN_ZIP)) {
+  mkdirSync(WWW, { recursive: true });
+  const archive = resolve(WWW, 'accelon26.7z');
+  rmSync(archive, { force: true });
+  console.log('\n[4/4] 打包官網下載檔 www/accelon26.7z');
+  run([SEVEN_ZIP, 'a', '-t7z', '-mx=9', '-m0=lzma2', '-md=64m', '-mfb=64', '-y', archive, EXE], ROOT, '7z');
+  sevenZipOut = archive;
+  console.log(`  ${archive}（${(statSync(archive).size / 1048576).toFixed(1)} MiB）`);
+} else {
+  console.log('\n（沒找到 7-Zip，略過 www/accelon26.7z：' + SEVEN_ZIP + '）');
+}
+
+// 5) 上傳指示 + 線上檢查（線上已有 versions.json 就以它為準）
+console.log('\n上傳到 ' + URL.replace(/[^/]*$/, '') + '（順序不要顛倒：先 exe，後 versions.json）');
+console.log('  1) ' + URL);
+console.log('  2) ' + MANIFEST_URL);
+if (sevenZipOut) console.log('  3) 官網首頁與下載檔：www/index.html、www/img/、www/accelon26.7z');
 try {
-  const head = await fetch(URL, { method: 'HEAD' });
-  const lm = head.headers.get('last-modified');
-  console.log('\n線上的 Last-Modified：' + (lm ?? '（沒有！這樣程式不會提示更新）'));
-  if (lm) {
-    const online = new Date(lm).getTime();
-    const mine = new Date(buildTime).getTime();
-    console.log(online > mine ? '  線上比這一版新（使用者會被提示更新）' : '  線上還是舊的（還沒上傳吧）');
+  const mres = await fetch(MANIFEST_URL, { headers: { 'cache-control': 'no-cache' } });
+  if (mres.ok) {
+    const online = await mres.json() as { buildTime?: string; sha256?: string };
+    console.log(`\n線上的 versions.json：buildTime ${online.buildTime}／sha256 ${String(online.sha256 ?? '').slice(0, 12)}…`);
+    if (String(online.sha256 ?? '').toLowerCase() === sha256) {
+      console.log('  線上就是這一版（sha256 相同）');
+    } else if ((online.buildTime ?? '') > buildTime) {
+      console.log('  線上比這一版新（使用者會被提示更新）');
+    } else {
+      console.log('  線上還是舊的（還沒上傳吧）');
+    }
+  } else {
+    console.log(`\n線上還沒有 versions.json（HTTP ${mres.status}）→ 舊版程式會退回看 Last-Modified`);
+    const head = await fetch(URL, { method: 'HEAD' });
+    console.log('  線上的 Last-Modified：' + (head.headers.get('last-modified') ?? '（沒有！這樣程式不會提示更新）'));
   }
 } catch (e) {
   console.log('\n（線上檢查失敗：' + String(e) + '）');
