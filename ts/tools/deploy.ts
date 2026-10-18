@@ -155,6 +155,16 @@ if (!CHECK_ONLY) {
         sh([PSCP, '-batch', '-r', '-P', PORT, '-hostkey', fingerprint, '-pwfile', pwFile, img, USER + '@' + HOST + ':' + DOCROOT + '/'],
           '上傳 www/img/');
       }
+      // www/adb/：公開數據庫的清單與頁面（.adb 本體本來就在伺服器上，不上傳）
+      const adbDir = resolve(ROOT, 'www', 'adb');
+      if (existsSync(adbDir)) {
+        remote(`cd '${DOCROOT}' && mkdir -p adb`, '建立 adb/ 目錄');
+        const adbNames = readdirSync(adbDir).filter((n) => n.endsWith('.html') || n.endsWith('.txt')).sort();
+        for (const name of adbNames) {
+          upload(resolve(adbDir, name), DOCROOT + '/adb/' + name + '.tmp');
+          remote(`cd '${DOCROOT}/adb' && chmod 644 '${name}.tmp' && mv -f '${name}.tmp' '${name}'`, '換上 adb/' + name);
+        }
+      }
     }
   } finally {
     rmSync(pwFile, { force: true });
@@ -168,10 +178,18 @@ if (SITE_ONLY) {
   try {
     const siteDir = resolve(ROOT, 'www');
     const names = readdirSync(siteDir).filter((n) => n.endsWith('.html') || n.endsWith('.7z')).sort();
-    for (const name of names) {
-      const r = await fetch(BASE + name, { method: 'HEAD', headers: { 'cache-control': 'no-cache' } });
-      if (!r.ok) die(BASE + name + ' 讀不到（HTTP ' + r.status + '）');
-      console.log('✓ ' + BASE + name + '（' + (r.headers.get('content-length') ?? '?') + ' bytes）');
+    const targets = names.map((n) => ({ local: resolve(siteDir, n), url: n }));
+    // 子目錄：公開數據庫的頁面（adb/ 底下的 .html 與 .txt）
+    const adbDir = resolve(ROOT, 'www', 'adb');
+    if (existsSync(adbDir)) {
+      for (const n of readdirSync(adbDir).filter((x) => x.endsWith('.html') || x.endsWith('.txt')).sort()) {
+        targets.push({ local: resolve(adbDir, n), url: 'adb/' + n });
+      }
+    }
+    for (const t of targets) {
+      const r = await fetch(BASE + t.url, { method: 'HEAD', headers: { 'cache-control': 'no-cache' } });
+      if (!r.ok) die(BASE + t.url + ' 讀不到（HTTP ' + r.status + '）');
+      console.log('✓ ' + BASE + t.url + '（' + (r.headers.get('content-length') ?? '?') + ' bytes）');
     }
     console.log(CHECK_ONLY
       ? '\n線上官網都在（--check：沒有上傳任何東西）。'

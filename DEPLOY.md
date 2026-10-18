@@ -206,7 +206,31 @@ cd ts && bun run tools/install-message-backend.ts --uninstall
 > 授權碼是 QQ 信箱「設定 → 帳號 → POP3/SMTP 服務」產生的 16 位字串，**不是登入密碼**。
 > 沒有後端時（例如新機器還沒裝），表單一樣可用：會用使用者自己的郵件程式寄到同一個信箱。
 
-## 7. 還沒做的（刻意留著）
+## 7. 公開數據庫頁面（2026-10-18）
+
+官網最下面（nav 最後一項與頁尾）連到 <https://shutonggui.cn/accelon26/adb/index.html>。
+
+清單的真相在伺服器 `${DOCROOT}/adb/index.txt`：一行一個 `.adb` 檔名，`#` 開頭是註解；
+**同一個目錄**就是公開的 `.adb` 本體（作者自己放上去的）。作者要加新資料庫時只改
+`index.txt`，然後說一聲，我重跑一次產生器就好。
+
+```powershell
+cd ts && bun run tools/make-adb-index.ts        # 讀 index.txt → 寫 www/adb/index.txt ＋ index.html
+cd ts && bun run tools/deploy.ts --site-only    # 連 www/adb/ 一起上傳，並從線上 HEAD 驗一次
+```
+
+產生器做的事（[ts/tools/make-adb-index.ts](ts/tools/make-adb-index.ts)）：
+
+* 讀清單（預設抓線上 `index.txt`，也可 `--index <檔案>`）。
+* **不上傳、不下載 adb**：到本機 `D:\accelon3` 找同名檔（`--adb-dir` 可改），同名取最淺層那份。
+* 取四樣：中文名（檔頭 `dbcname`）、字數（解壓 source 區塊的字元數，跟程式裡「字數」同一算法）、
+  建置日期（檔案時間 —— adb 檔頭沒有日期欄位）、檔案大小。
+* 產出 `www/adb/index.html`（版面直接沿用 `www/index.html` 的 `<style>` 與頁首頁尾，官網改樣式
+  時這頁會跟著改）與 `index.txt`（清單存檔）。
+
+`deploy.ts --site`／`--site-only` 會把 `www/adb/*.html`、`*.txt` 一起傳上去（不會傳 `.adb`）。
+
+## 8. 還沒做的（刻意留著）
 
 - **Authenticode 簽章**：現在只驗 sha256，擋得住截斷／錯檔／中間被換，擋不住「主機被
   入侵」。要擋那個得買憑證並在 `release.ts` 裡簽名。
