@@ -5,7 +5,10 @@ accelon26 官網「留言給作者」的後端（Apache CGI，Python 3 標準庫
 
   POST /accelon26/message.cgi   Content-Type: application/json
   { "type": "回報錯誤", "name": "", "email": "", "wechat": "", "start": "2010",
-    "message": "…", "website": "" }        # website 是 honeypot，必須是空的
+    "message": "…", "website": "",
+    "build": "2026-10-18T05:13:28Z", "buildText": "2026-10-18 13:13", "from": "desktop" }
+    # build／buildText 是留言者的軟件版本（作者 2026-10-18，桌面版「留言給作者」會帶），
+    # from 是 desktop 或 web；website 是 honeypot，必須是空的。
 
 回 {"ok": true}；失敗回 {"ok": false, "error": "…"}（4xx 是資料問題，5xx 是寄信問題）。
 
@@ -105,7 +108,16 @@ def send_mail(conf, rec):
     subject = "[accelon26] " + (rec["type"] or "留言")
     if rec["name"]:
         subject += " — " + rec["name"]
+    if rec["buildText"]:
+        subject += "（" + rec["buildText"] + "）"
     lines = []
+    if rec["buildText"] or rec["build"]:
+        ver = rec["buildText"] or rec["build"]
+        if rec["build"] and rec["buildText"] and rec["build"] != rec["buildText"]:
+            ver += "（" + rec["build"] + "）"
+        if rec["from"] == "desktop":
+            ver += "　桌面版"
+        lines.append("版本：" + ver)
     if rec["type"]:
         lines.append("類型：" + rec["type"])
     if rec["name"]:
@@ -179,6 +191,9 @@ def main():
         "wechat": field(data, "wechat", 60),
         "start": field(data, "start", 20),
         "message": field(data, "message", MAX_MESSAGE),
+        "build": field(data, "build", 40),
+        "buildText": field(data, "buildText", 40),
+        "from": field(data, "from", 12),
         "ip": client_ip(),
         "ua": os.environ.get("HTTP_USER_AGENT", "")[:300],
         "at": time.strftime("%Y-%m-%d %H:%M:%S %z"),

@@ -221,16 +221,32 @@ async function openInBrowser(url: string): Promise<void> {
   window.open(url, '_blank', 'noopener');
 }
 
+/**
+ * 留言頁的網址：帶上**這一版的版本號**（作者 2026-10-18），方便作者追查問題。
+ * 桌面版帶 build（RFC3339）＋ buildText（給人看的）；網頁版只帶 from=web。
+ */
+async function messagePageURL(): Promise<string> {
+  const info = desktopInfo ?? (await desktopAppInfo().catch(() => null));
+  const local = localBuild();
+  const build = info?.buildTime ?? local.buildTime ?? '';
+  const text = info?.buildTimeText ?? local.buildTimeText ?? '';
+  const u = new URL(MESSAGE_URL);
+  u.searchParams.set('from', info ? 'desktop' : 'web');
+  if (build) u.searchParams.set('build', build);
+  if (text) u.searchParams.set('buildText', text);
+  return u.toString();
+}
+
 /** 接上事件（boot 時呼叫一次） */
 export function initAbout(): void {
   el<HTMLElement>('brand')?.addEventListener('click', () => { void openAbout(); });
   el<HTMLElement>('aboutClose')?.addEventListener('click', () => closeAbout());
   el<HTMLElement>('aboutBackdrop')?.addEventListener('click', () => closeAbout());
   el<HTMLElement>('aboutInstall')?.addEventListener('click', () => { void install(); });
-  // 「留言給作者」：在微信旁邊，開官網的留言頁（新視窗／系統瀏覽器）
+  // 「留言給作者」：在微信旁邊，開官網的留言頁（新視窗／系統瀏覽器），順便帶上版本號
   el<HTMLElement>('aboutMessage')?.addEventListener('click', (ev) => {
     ev.preventDefault();
-    void openInBrowser(MESSAGE_URL);
+    void messagePageURL().then((url) => openInBrowser(url));
   });
   // 「啟動時顯示本頁面」：勾選狀態立即生效並存起來
   el<HTMLInputElement>('aboutStartup')?.addEventListener('change', (ev) => {

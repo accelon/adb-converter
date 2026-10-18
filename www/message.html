@@ -202,6 +202,12 @@
       <p class="hint">再點一次可以取消。</p>
     </div>
 
+    <!-- 軟件版本（作者 2026-10-18）：從桌面版「關於」連過來時自動帶上，方便作者追查 -->
+    <div class="row">
+      <span class="lbl">軟件版本 <span class="opt">自動附上</span></span>
+      <p class="hint" id="ver" style="margin:4px 0 0">（網頁版，沒有帶版本號）</p>
+    </div>
+
     <div class="row two">
       <div>
         <label class="lbl" for="name">稱呼 <span class="opt">選填</span></label>
@@ -299,6 +305,20 @@
 
   function val(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; }
   function showErr(msg) { errEl.textContent = msg || ''; if (msg) errEl.scrollIntoView({ block: 'nearest' }); }
+
+  // 版本號（作者 2026-10-18）：桌面版的「留言給作者」會帶 build/buildText 過來。
+  var q = new URLSearchParams(location.search);
+  var V = {
+    from: (q.get('from') || '').slice(0, 12),
+    build: (q.get('build') || '').slice(0, 40),
+    text: (q.get('buildText') || q.get('v') || '').slice(0, 40)
+  };
+  var verText = V.text || V.build
+    ? (V.from === 'desktop' ? '桌面版 ' : '') + (V.text || V.build) + (V.text && V.build && V.build !== V.text ? '（' + V.build + '）' : '')
+    : '（網頁版，沒有帶版本號）';
+  var verEl = document.getElementById('ver');
+  if (verEl) verEl.textContent = verText;
+
   function mailBody(d) {
     var lines = [];
     if (d.type) lines.push('類型：' + d.type);
@@ -306,6 +326,7 @@
     if (d.email) lines.push('Email：' + d.email);
     if (d.wechat) lines.push('微信：' + d.wechat);
     if (d.start) lines.push('開始使用 accelon3：' + d.start);
+    if (d.buildText || d.build) lines.push('版本：' + (d.buildText || d.build) + (d.from === 'desktop' ? '（桌面版）' : ''));
     lines.push('');
     lines.push(d.message);
     lines.push('');
@@ -317,7 +338,8 @@
     e.preventDefault();
     var d = {
       type: chosen, name: val('name'), email: val('email'), wechat: val('wechat'),
-      start: val('start'), message: val('message'), website: val('website')
+      start: val('start'), message: val('message'), website: val('website'),
+      build: V.build, buildText: V.text, from: V.from
     };
     if (!d.message) { showErr('請寫下留言內容。'); document.getElementById('message').focus(); return; }
     if (d.message.length < 4) { showErr('留言太短了，再多寫一點？'); return; }

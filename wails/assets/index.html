@@ -1075,7 +1075,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T05:13:29.046Z","buildTimeText":"2026-10-18 13:13"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T05:15:24.929Z","buildTimeText":"2026-10-18 13:15"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -8346,6 +8346,19 @@ designed by C.S.Yap`;
       return;
     window.open(url2, "_blank", "noopener");
   }
+  async function messagePageURL() {
+    const info = desktopInfo ?? await desktopAppInfo().catch(() => null);
+    const local = localBuild();
+    const build = info?.buildTime ?? local.buildTime ?? "";
+    const text = info?.buildTimeText ?? local.buildTimeText ?? "";
+    const u = new URL(MESSAGE_URL);
+    u.searchParams.set("from", info ? "desktop" : "web");
+    if (build)
+      u.searchParams.set("build", build);
+    if (text)
+      u.searchParams.set("buildText", text);
+    return u.toString();
+  }
   function initAbout() {
     el2("brand")?.addEventListener("click", () => {
       openAbout();
@@ -8357,7 +8370,7 @@ designed by C.S.Yap`;
     });
     el2("aboutMessage")?.addEventListener("click", (ev) => {
       ev.preventDefault();
-      openInBrowser(MESSAGE_URL);
+      messagePageURL().then((url2) => openInBrowser(url2));
     });
     el2("aboutStartup")?.addEventListener("change", (ev) => {
       const on = ev.target.checked;

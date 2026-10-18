@@ -1668,7 +1668,7 @@ www/
 | 部署 | `bun run tools/deploy.ts --site`：先 exe、後 versions.json、再首頁與 7z；每一項都先 `.tmp` 再 `mv`，最後從 https 抓回來驗 sha256。主機事實、回滾與更新器的判斷邏輯見 [DEPLOY.md](DEPLOY.md) |
 | 頁面上的安裝說明 | 解開 7z → 把 `accelon26.exe` 放到 **accelon3.exe 同一個資料夾** → 雙擊。打不開 7z 就到 https://sparanoid.com/lab/7z/ 下載 Windows x64 版 |
 | 亮底／暗底 | 右上角切換（`#themeBtn`），**預設亮底**（軟件截圖是暗色的，亮底才有對比）；`localStorage['accelon26.site.theme']`，`<head>` 裡的行內腳本在畫面出現前就套上，不會閃。留言頁共用同一個設定 |
-| 留言頁 | `www/message.html`：類型（回報錯誤／功能要求／改良建議，可取消）＋ 稱呼 ＋ Email ＋ 微信 ＋ 開始使用年份 ＋ 內容。官網「開發者聯絡」與軟件「關於」都有入口（軟件走 `OpenExternal` 開系統瀏覽器）。後端 `www/message.cgi`（Python CGI）用 QQ SMTP 寄到作者信箱；安裝見 `ts/tools/install-message-backend.ts` 與 [DEPLOY.md](DEPLOY.md) §6 |
+| 留言頁 | `www/message.html`：類型（回報錯誤／功能要求／改良建議，可取消）＋ 稱呼 ＋ Email ＋ 微信 ＋ 開始使用年份 ＋ 內容。**軟件版本自動附上**（作者 2026-10-18）：軟件的「關於 → 留言給作者」會把 `?from=desktop&build=<RFC3339>&buildText=<本地時間>` 帶進網址，頁面顯示成「桌面版 2026-10-18 13:15」並隨留言送出；信件與 `messages.jsonl` 都有一行「版本：…」，主旨也帶上版本時間。直接開官網留言頁（或從首頁連過去）就顯示「（網版，沒有帶版本號）」。官網「開發者聯絡」與軟件「關於」都有入口（軟件走 `OpenExternal` 開系統瀏覽器）。後端 `www/message.cgi`（Python CGI）用 QQ SMTP 寄到作者信箱；安裝見 `ts/tools/install-message-backend.ts` 與 [DEPLOY.md](DEPLOY.md) §6 |
 | 開發者聯絡 | 微信 **Sukhanika**（官網頁尾與「關於」都有；`#aboutWechat` 有測試顧） |
 
 設計上的取捨：整頁只有一個大按鈕（下載），其餘都是「為什麼要用它」。圖片用
