@@ -5,19 +5,68 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>accelon26 — 古籍資料庫閱讀器</title>
 <meta name="description" content="accelon26 直接讀 Accelon3 的 .adb 古籍資料庫：毫秒級全文檢索、詞典查詢、目錄與原書分頁。Windows 單一執行檔，免安裝、不連網。">
-<meta name="theme-color" content="#16171a">
+<meta name="theme-color" content="#f7f7f8" id="themeColor">
 <link rel="icon" type="image/png" href="img/appicon.png">
+<script>
+  // 亮底／暗底（作者 2026-10-18）：**預設亮底**（軟件的截圖是暗色的，亮底才有對比）。
+  // 選過的記在 localStorage；在畫面出現前就套上，免得先閃一下另一種底色。
+  (function () {
+    var t = 'light';
+    try { t = localStorage.getItem('accelon26.site.theme') === 'dark' ? 'dark' : 'light'; } catch (e) { /* 無痕模式 */ }
+    document.documentElement.setAttribute('data-theme', t);
+  }());
+</script>
 <style>
+  /* 亮底（預設） */
   :root {
+    color-scheme: light;
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --panel2: #f1f3f6;
+    --line: #e2e5ea;
+    --fg: #17181c;
+    --dim: #6b7280;
+    --muted: #444a54;
+    --muted2: #454b55;
+    --accent: #2f6fd0;
+    --gold: #a9720a;
+    --btn-fg: #ffffff;
+    --btn-shadow: 0 6px 22px rgba(47,111,208,.20);
+    --msg-shadow: 0 4px 14px rgba(47,111,208,.18);
+    --code-bg: #f1f3f6;
+    --screen-bg: #eceef2;
+    --header-bg: rgba(247,247,248,.92);
+    --dot-off: rgba(0,0,0,.22);
+    --dot-off-border: rgba(0,0,0,.32);
+    --dot-hover: rgba(0,0,0,.45);
+    --dot-on: #1a1c20;
+    --dot-ring: rgba(0,0,0,.12);
+    --max: 960px;
+  }
+  /* 暗底 */
+  html[data-theme="dark"] {
+    color-scheme: dark;
     --bg: #16171a;
     --panel: #1e2024;
     --panel2: #24272c;
     --line: #2e3238;
     --fg: #dcdee3;
     --dim: #8f959e;
+    --muted: #c3c7ce;
+    --muted2: #b9bec6;
     --accent: #6cb0ff;
     --gold: #ffd479;
-    --max: 960px;
+    --btn-fg: #0a2338;
+    --btn-shadow: 0 6px 22px rgba(108,176,255,.22);
+    --msg-shadow: 0 4px 14px rgba(108,176,255,.18);
+    --code-bg: #26292f;
+    --screen-bg: #101113;
+    --header-bg: rgba(22,23,26,.92);
+    --dot-off: rgba(255,255,255,.28);
+    --dot-off-border: rgba(255,255,255,.40);
+    --dot-hover: rgba(255,255,255,.55);
+    --dot-on: #ffffff;
+    --dot-ring: rgba(255,255,255,.14);
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
@@ -31,14 +80,14 @@
   .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
   code {
     font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
-    font-size: .9em; background: #26292f; border: 1px solid var(--line);
+    font-size: .9em; background: var(--code-bg); border: 1px solid var(--line);
     border-radius: 4px; padding: 1px 5px;
   }
 
   /* ---------------------------------------------------------------- 頂端 */
   header.top {
     border-bottom: 1px solid var(--line);
-    background: rgba(22,23,26,.92);
+    background: var(--header-bg);
     position: sticky; top: 0; z-index: 10;
     backdrop-filter: blur(6px);
   }
@@ -48,11 +97,23 @@
   .brand { font-size: 20px; font-weight: 700; letter-spacing: .01em; color: var(--fg); }
   .brand b { color: var(--gold); font-weight: 700; }
   .brand span { color: var(--dim); font-weight: 400; font-size: 14px; margin-left: 10px; }
-  nav { margin-left: auto; display: flex; gap: 18px; font-size: 14px; }
+  nav { margin-left: auto; display: flex; gap: 18px; font-size: 14px; align-items: center; }
   nav a { color: var(--dim); }
   nav a:hover { color: var(--fg); text-decoration: none; }
+  /* 亮底／暗底切換（作者 2026-10-18）：右上角，圖示＋tooltip */
+  .themeBtn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+    border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px;
+    cursor: pointer; line-height: 1.2;
+  }
+  .themeBtn:hover { color: var(--fg); border-color: var(--dim); }
+  .themeBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .themeBtn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 
   /* ---------------------------------------------------------------- 主視覺 */
+  /* 錨點捲動時不要被上面那條 sticky 標頭蓋住（作者 2026-10-18）。 */
+  section, #shots { scroll-margin-top: 78px; }
   /* 注意：section 的 .hero 會蓋掉 .wrap 的左右 padding（同優先度、後者勝），
      所以這裡要把 24px 寫回來，不然大字會貼著左邊緣（作者 2026-10-18 截圖抓到）。 */
   .hero { padding: 76px 24px 64px; }
@@ -61,11 +122,11 @@
     font-weight: 700; letter-spacing: .01em;
   }
   .hero h1 em { font-style: normal; color: var(--gold); }
-  .lead { font-size: 17px; color: #c3c7ce; margin: 0 0 30px; max-width: 42em; }
+  .lead { font-size: 17px; color: var(--muted); margin: 0 0 30px; max-width: 42em; }
   .btn {
-    display: inline-block; background: var(--accent); color: #0a2338;
+    display: inline-block; background: var(--accent); color: var(--btn-fg);
     font-weight: 700; font-size: 17px; padding: 13px 30px; border-radius: 10px;
-    box-shadow: 0 6px 22px rgba(108,176,255,.22);
+    box-shadow: var(--btn-shadow);
   }
   .btn:hover { text-decoration: none; filter: brightness(1.08); }
   .fine { margin: 14px 0 0; color: var(--dim); font-size: 13px; }
@@ -81,18 +142,45 @@
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px 22px 20px; }
   .card svg { width: 26px; height: 26px; stroke: var(--gold); fill: none; stroke-width: 1.6; }
   .card h3 { font-size: 17px; margin: 12px 0 8px; font-weight: 700; }
-  .card p { margin: 0; color: #b9bec6; font-size: 14.5px; line-height: 1.7; }
+  .card p { margin: 0; color: var(--muted2); font-size: 14.5px; line-height: 1.7; }
   .card p b { color: var(--fg); font-weight: 600; }
 
-  /* ---------------------------------------------------------------- 截圖 */
-  figure { margin: 0 0 26px; }
-  figure:last-child { margin-bottom: 0; }
-  figure img {
-    width: 100%; height: auto; display: block; border-radius: 10px;
-    border: 1px solid var(--line); background: #101113;
+  /* ---------------------------------------------------------------- 截圖（圖庫） */
+  /* 四張畫面輪播：3 秒換一張，小白點可切換（作者 2026-10-18：首頁太長）。 */
+  /* 說明在圖**上方**（作者 2026-10-18），字比圖說大一點。 */
+  .split { display: grid; grid-template-columns: 2fr 3fr; gap: 46px; align-items: center; }
+  .split > * { min-width: 0; }
+  .splitLeft h2 { margin-bottom: 18px; }
+  .gallery { position: relative; }
+  .slides {
+    position: relative; aspect-ratio: 16 / 9;
+    background: var(--screen-bg); border: 1px solid var(--line); border-radius: 10px;
+    overflow: hidden;
   }
-  figcaption { color: var(--dim); font-size: 13.5px; margin-top: 10px; }
-  figcaption b { color: var(--fg); font-weight: 600; }
+  .slide { position: absolute; inset: 0; margin: 0; opacity: 0; transition: opacity .55s ease; }
+  .slide.on { opacity: 1; }
+  .slide img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .gcap {
+    color: var(--muted); font-size: 15px; line-height: 1.7;
+    margin: 0 0 14px; min-height: 3.5em;
+  }
+  .gcap p { margin: 0; display: none; }
+  .gcap p.on { display: block; }
+  .gcap b { color: var(--fg); font-weight: 700; }
+  .dots { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
+  .dots button {
+    width: 10px; height: 10px; padding: 0; border-radius: 50%; cursor: pointer;
+    background: var(--dot-off); border: 1px solid var(--dot-off-border);
+    transition: background .2s ease, box-shadow .2s ease;
+  }
+  .dots button:hover { background: var(--dot-hover); }
+  .dots button[aria-selected="true"] {
+    background: var(--dot-on); border-color: var(--dot-on); box-shadow: 0 0 0 3px var(--dot-ring);
+  }
+  .dots button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) {
+    .slide { transition: none; }
+  }
 
   /* ---------------------------------------------------------------- 安裝 */
   ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: step; }
@@ -108,11 +196,11 @@
     font-size: 14px; font-weight: 700; display: grid; place-items: center;
   }
   ol.steps h3 { margin: 0 0 4px; font-size: 16px; }
-  ol.steps p { margin: 0; color: #b9bec6; font-size: 14.5px; }
+  ol.steps p { margin: 0; color: var(--muted2); font-size: 14.5px; }
 
   .note {
     background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--gold);
-    border-radius: 8px; padding: 14px 18px; color: #b9bec6; font-size: 14.5px; margin-top: 26px;
+    border-radius: 8px; padding: 14px 18px; color: var(--muted2); font-size: 14.5px; margin-top: 26px;
   }
   .note b { color: var(--fg); }
 
@@ -125,6 +213,13 @@
     border-radius: 7px; padding: 5px 14px; user-select: all;
   }
   .contact small { color: var(--dim); font-size: 13px; }
+  /* 留言給作者（作者 2026-10-18）：開新視窗到 message.html */
+  .msgBtn {
+    display: inline-block; font-size: 14px; font-weight: 700; color: var(--btn-fg);
+    background: var(--accent); border-radius: 8px; padding: 6px 14px;
+    box-shadow: var(--msg-shadow);
+  }
+  .msgBtn:hover { text-decoration: none; filter: brightness(1.08); }
 
   footer {
     border-top: 1px solid var(--line); padding: 30px 0 46px;
@@ -136,6 +231,8 @@
   @media (max-width: 780px) {
     .hero { padding: 52px 24px 44px; }
     .cards { grid-template-columns: 1fr; }
+    .split { grid-template-columns: 1fr; gap: 34px; }
+    .gcap { min-height: 0; }
     header.top .wrap { height: 54px; gap: 10px; }
     nav { gap: 10px; font-size: 12.5px; white-space: nowrap; }
     .brand { font-size: 18px; }
@@ -155,6 +252,10 @@
       <a href="#shots">畫面</a>
       <a href="#install">下載與安裝</a>
       <a href="#contact">聯絡</a>
+      <button type="button" class="themeBtn" id="themeBtn" aria-label="切換亮底／暗底" title="切換亮底／暗底">
+        <svg viewBox="0 0 24 24" aria-hidden="true" id="themeIcon"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
+        <span id="themeLabel">亮底</span>
+      </button>
     </nav>
   </div>
 </header>
@@ -169,6 +270,70 @@
     </p>
     <a class="btn" href="accelon26.7z" download>↓ 下載 Windows 版</a>
     <p class="fine">Windows 10／11 · 64 位元 · 單一執行檔、免安裝 · <span id="meta">7-Zip 壓縮檔，約 7 MB</span></p>
+  </section>
+
+  <!-- ------------------------------------------------------------ 下載與安裝（左）＋ 軟件畫面（右，約 60%） -->
+  <!-- 作者 2026-10-18：安裝說明移到下載按鈕下方；截圖改右側輪播（3 秒，小白點可切），
+       說明文字在圖的上方。 -->
+  <section id="install" class="wrap">
+    <div class="split">
+      <div class="splitLeft">
+        <h2>下載與安裝</h2>
+        <ol class="steps">
+          <li>
+            <h3>下載並解壓縮</h3>
+            <p>下載 <a href="accelon26.7z" download>accelon26.7z</a>，用 7-Zip 解開，裡面只有一個
+              <code>accelon26.exe</code>，加兩份說明（<code>README.txt</code> 簡體、<code>README-tc.txt</code> 繁體）。</p>
+          </li>
+          <li>
+            <h3>放到 accelon3.exe 旁邊</h3>
+            <p>把 <code>accelon26.exe</code> 放進 <b>accelon3.exe 同一個資料夾</b>（也就是
+              <code>.adb</code> 檔所在的地方）。不需要安裝，也不需要管理員權限。</p>
+          </li>
+          <li>
+            <h3>雙擊執行</h3>
+            <p>開啟後會自動列出同一個資料夾裡的資料庫。也可以用 <code>📁</code> 或直接把
+              <code>.adb</code> 拖進視窗。</p>
+          </li>
+        </ol>
+        <div class="note">
+          <b>打不開 7z 檔？</b> 7-Zip 是免費的解壓縮工具，到
+          <a href="https://sparanoid.com/lab/7z/" target="_blank" rel="noopener noreferrer">https://sparanoid.com/lab/7z/</a>
+          下載 <b>Windows x64</b> 版即可（免安裝版解開就能用）。
+        </div>
+      </div>
+
+      <div id="shots" class="splitRight">
+        <div class="gallery" id="gallery" role="region" aria-roledescription="圖庫" aria-label="軟件畫面">
+          <div class="gcap">
+            <p class="on"><b>全文搜尋</b>：邊打邊查，右欄是每筆命中的上下文，點一筆本文就跳到那裡，命中的字塗紅。</p>
+            <p><b>詞典</b>：詞典型資料庫（例如佛光大辭典）左邊查詞條、中間讀釋文，右欄還列出開頭相近的詞條。</p>
+            <p><b>一次搜尋所有資料庫</b>：先看哪一本書有命中，再決定要開哪一本，不必逐本開來試。</p>
+            <p><b>操作導覽</b>：第一次用可以跟著走一遍——聚光燈指著該按的地方，一個場景一停，由你決定要不要往下。</p>
+          </div>
+          <div class="slides">
+            <figure class="slide on">
+              <img src="img/search.jpg" alt="accelon26 全文搜尋：左欄目錄、中間本文、右欄摘要" width="1280" height="720" decoding="async">
+            </figure>
+            <figure class="slide">
+              <img src="img/dict.jpg" alt="accelon26 詞典分頁：詞條清單與釋文" width="1280" height="720" decoding="async">
+            </figure>
+            <figure class="slide">
+              <img src="img/allsearch.jpg" alt="accelon26 一次搜尋所有資料庫" width="1280" height="720" loading="lazy" decoding="async">
+            </figure>
+            <figure class="slide">
+              <img src="img/tour.jpg" alt="accelon26 操作導覽：聚光燈與說明氣泡" width="1280" height="720" loading="lazy" decoding="async">
+            </figure>
+          </div>
+          <div class="dots" role="tablist" aria-label="切換畫面">
+            <button type="button" role="tab" aria-selected="true" aria-label="第 1 張：全文搜尋"></button>
+            <button type="button" role="tab" aria-selected="false" aria-label="第 2 張：詞典"></button>
+            <button type="button" role="tab" aria-selected="false" aria-label="第 3 張：一次搜尋所有資料庫"></button>
+            <button type="button" role="tab" aria-selected="false" aria-label="第 4 張：操作導覽"></button>
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- ------------------------------------------------------------ 特色 -->
@@ -196,60 +361,13 @@
     </div>
   </section>
 
-  <!-- ------------------------------------------------------------ 畫面 -->
-  <section id="shots" class="wrap">
-    <h2>軟件畫面</h2>
-    <figure>
-      <img src="img/search.jpg" alt="accelon26 全文搜尋：左欄目錄、中間本文、右欄摘要" loading="lazy" width="2400" height="1500">
-      <figcaption><b>全文搜尋</b>：邊打邊查，右欄是每筆命中的上下文，點一筆本文就跳到那裡，命中的字塗紅。</figcaption>
-    </figure>
-    <figure>
-      <img src="img/dict.jpg" alt="accelon26 詞典分頁：詞條清單與釋文" loading="lazy" width="2400" height="1500">
-      <figcaption><b>詞典</b>：詞典型資料庫（例如佛光大辭典）左邊查詞條、中間讀釋文，右欄還列出開頭相近的詞條。</figcaption>
-    </figure>
-    <figure>
-      <img src="img/allsearch.jpg" alt="accelon26 一次搜尋所有資料庫" loading="lazy" width="2400" height="1500">
-      <figcaption><b>一次搜尋所有資料庫</b>：先看哪一本書有命中，再決定要開哪一本，不必逐本開來試。</figcaption>
-    </figure>
-    <figure>
-      <img src="img/tour.jpg" alt="accelon26 操作導覽：聚光燈與說明氣泡" loading="lazy" width="2400" height="1500">
-      <figcaption><b>操作導覽</b>：第一次用可以跟著走一遍——聚光燈指著該按的地方，一個場景一停，由你決定要不要往下。</figcaption>
-    </figure>
-  </section>
-
-  <!-- ------------------------------------------------------------ 安裝 -->
-  <section id="install" class="wrap">
-    <h2>下載與安裝</h2>
-    <ol class="steps">
-      <li>
-        <h3>下載並解壓縮</h3>
-        <p>下載 <a href="accelon26.7z" download>accelon26.7z</a>，用 7-Zip 解開，裡面就只有一個
-          <code>accelon26.exe</code>。</p>
-      </li>
-      <li>
-        <h3>放到 accelon3.exe 旁邊</h3>
-        <p>把 <code>accelon26.exe</code> 放進 <b>accelon3.exe 同一個資料夾</b>（也就是
-          <code>.adb</code> 檔所在的地方）。不需要安裝，也不需要管理員權限。</p>
-      </li>
-      <li>
-        <h3>雙擊執行</h3>
-        <p>開啟後會自動列出同一個資料夾裡的資料庫。也可以用 <code>📁</code> 或直接把
-          <code>.adb</code> 拖進視窗。</p>
-      </li>
-    </ol>
-    <div class="note">
-      <b>打不開 7z 檔？</b> 7-Zip 是免費的解壓縮工具，到
-      <a href="https://sparanoid.com/lab/7z/" target="_blank" rel="noopener noreferrer">https://sparanoid.com/lab/7z/</a>
-      下載 <b>Windows x64</b> 版即可（免安裝版解開就能用）。
-    </div>
-  </section>
-
   <!-- ------------------------------------------------------------ 聯絡 -->
   <section id="contact" class="wrap">
     <h2>開發者聯絡</h2>
     <div class="contact">
       <span class="k">微信 WeChat</span>
       <span class="v">Sukhanika</span>
+      <a class="msgBtn" href="message.html" target="_blank" rel="noopener noreferrer">留言給作者</a>
       <small>使用問題、資料庫格式、想加的功能，都歡迎直接找我。</small>
     </div>
   </section>
@@ -283,6 +401,71 @@
       }
       if (bits.length) out.textContent = bits.join(' · ');
     }).catch(function () { /* file:// 或沒有 CORS：保持預設 */ });
+  }());
+
+  // 軟件畫面圖庫（作者 2026-10-18）：3 秒換一張，小白點可點；
+  // 滑鼠移入、鍵盤聚焦、切到別的頁籤時暫停；系統要求減少動態時不自動換。
+  (function () {
+    var box = document.getElementById('gallery');
+    if (!box) return;
+    var slides = [].slice.call(box.querySelectorAll('.slide'));
+    var caps = [].slice.call(box.querySelectorAll('.gcap p'));
+    var dots = [].slice.call(box.querySelectorAll('.dots button'));
+    var n = slides.length;
+    if (n < 2) return;
+    var at = 0, timer = 0;
+    var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function show(k) {
+      at = (k % n + n) % n;
+      slides.forEach(function (el, j) { el.classList.toggle('on', j === at); });
+      caps.forEach(function (el, j) { el.classList.toggle('on', j === at); });
+      dots.forEach(function (el, j) { el.setAttribute('aria-selected', j === at ? 'true' : 'false'); });
+    }
+    function stop() { if (timer) { clearInterval(timer); timer = 0; } }
+    function start() {
+      stop();
+      if (calm) return;
+      timer = setInterval(function () { if (!document.hidden) show(at + 1); }, 3000);
+    }
+
+    dots.forEach(function (el, j) {
+      el.addEventListener('click', function () { show(j); start(); });
+    });
+    box.addEventListener('mouseenter', stop);
+    box.addEventListener('mouseleave', start);
+    box.addEventListener('focusin', stop);
+    box.addEventListener('focusout', start);
+    document.addEventListener('visibilitychange', function () { if (document.hidden) stop(); else start(); });
+
+    show(0);
+    start();
+  }());
+  // 亮底／暗底（作者 2026-10-18）：預設亮底，選過的記在 localStorage；標題列配色也一起換。
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('themeBtn');
+    var label = document.getElementById('themeLabel');
+    var icon = document.getElementById('themeIcon');
+    var meta = document.getElementById('themeColor');
+    var KEY = 'accelon26.site.theme';
+    var SUN = '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/>';
+    var MOON = '<path d="M20 14.6A8.6 8.6 0 1 1 9.4 4a6.9 6.9 0 0 0 10.6 10.6z"/>';
+    function paint(t) {
+      root.setAttribute('data-theme', t);
+      if (label) label.textContent = t === 'dark' ? '暗底' : '亮底';
+      if (btn) btn.setAttribute('aria-pressed', t === 'dark' ? 'true' : 'false');
+      if (icon) icon.innerHTML = t === 'dark' ? MOON : SUN;
+      if (meta) meta.setAttribute('content', t === 'dark' ? '#16171a' : '#f7f7f8');
+    }
+    paint(root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+    if (btn) {
+      btn.addEventListener('click', function () {
+        var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        paint(next);
+        try { localStorage.setItem(KEY, next); } catch (e) { /* 無痕模式 */ }
+      });
+    }
   }());
 </script>
 </body>

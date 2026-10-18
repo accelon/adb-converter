@@ -18,9 +18,10 @@
  * 建置時間一定要用 -ldflags 注入：沒注入的 exe 只能退回「檔案修改時間」，
  * 而檔案時間會被複製／解壓改變，發佈版就無法判斷新舊了。
  */
-import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, statSync, copyFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
+import { README_SIMPLIFIED, README_TRADITIONAL, writeTextFileBom } from './readme-text';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d = '') => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : d; };
@@ -135,17 +136,37 @@ console.log(`  buildTime ${buildTime}`);
 console.log(`  sha256    ${sha256}`);
 console.log(`  size      ${size}`);
 
+// ---- 壓縮檔裡的使用說明（作者 2026-10-18）--------------------------------------
+// 文字在 tools/readme-text.ts（一份簡體、一份繁體，UTF-8 帶 BOM ＋ CRLF）；
+// tools/pack-7z.ts 也共用同一份，只改說明時不必重建 exe。
+
 // 4) 官網下載檔：www/accelon26.7z（作者 2026-10-18）
 //    官網 index.html 直接連到這個檔；7z 是發佈產物，不進 git（.gitignore 有 www/*.7z）。
+//    壓縮檔裡除了 exe，還附兩份說明（作者 2026-10-18）：README.txt（簡體）、
+//    README-tc.txt（繁體），都是 **UTF-8 帶 BOM ＋ CRLF**（Windows 記事本才不會亂碼）。
 const SEVEN_ZIP = 'C:\\Program Files\\7-Zip\\7z.exe';
 const WWW = resolve(ROOT, 'www');
+const PKG_FILES = ['accelon26.exe', 'README.txt', 'README-tc.txt'];
 let sevenZipOut = '';
 if (existsSync(SEVEN_ZIP)) {
+  // 先準備一個乾淨的資料夾，壓縮檔裡的東西才不會帶到奇怪的路徑。
+  const pkg = resolve(ROOT, 'build/pkg');
+  rmSync(pkg, { recursive: true, force: true });
+  mkdirSync(pkg, { recursive: true });
+  copyFileSync(EXE, resolve(pkg, 'accelon26.exe'));
+  writeTextFileBom(resolve(pkg, 'README.txt'), README_SIMPLIFIED);
+  writeTextFileBom(resolve(pkg, 'README-tc.txt'), README_TRADITIONAL);
+
   mkdirSync(WWW, { recursive: true });
   const archive = resolve(WWW, 'accelon26.7z');
-  rmSync(archive, { force: true });
-  console.log('\n[4/4] 打包官網下載檔 www/accelon26.7z');
-  run([SEVEN_ZIP, 'a', '-t7z', '-mx=9', '-m0=lzma2', '-md=64m', '-mfb=64', '-y', archive, EXE], ROOT, '7z');
+  try {
+    rmSync(archive, { force: true });
+  } catch {
+    console.error('✗ 無法覆蓋 ' + archive + '：可能被 7-Zip／檔案總管開著，請關掉那個視窗');
+    process.exit(1);
+  }
+  console.log('\n[4/4] 打包官網下載檔 www/accelon26.7z（exe ＋ 兩份 README）');
+  run([SEVEN_ZIP, 'a', '-t7z', '-mx=9', '-m0=lzma2', '-md=64m', '-mfb=64', '-y', archive, ...PKG_FILES], pkg, '7z');
   sevenZipOut = archive;
   console.log(`  ${archive}（${(statSync(archive).size / 1048576).toFixed(1)} MiB）`);
 } else {

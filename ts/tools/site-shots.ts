@@ -25,10 +25,11 @@ const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return
 const ROOT = resolve(import.meta.dir, '../..');
 const HTML = resolve(opt('html', resolve(ROOT, 'build/accelon26.html')));
 const OUT = resolve(opt('out', resolve(ROOT, 'www/img')));
-const W = 1600;
-const H = 1000;
-const SCALE = 1.5;
-const QUALITY = 88;
+const W = 1280;
+const H = 720;
+// 720p（作者 2026-10-18）：視窗小、字就相對大；1x 輸出，官網上縮到 60% 寬時字還看得清。
+const SCALE = 1;
+const QUALITY = 90;
 
 const BROWSERS = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
