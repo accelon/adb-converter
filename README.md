@@ -38,7 +38,10 @@ bun run test/index-match.ts # 反向索引認證
 
 ## 文件
 
-* **[HANDOVER.md](HANDOVER.md) — 技術交件（先看這份）**：管線、工具、驗證結果、規則摘要、限制
+* **[ACCELON26-HANDOVER.md](ACCELON26-HANDOVER.md) — accelon26 應用（桌面版＋官網）的交接文件（先看開頭的「現況」，本輪細節在 §13）**
+* [HANDOVER.md](HANDOVER.md) — 轉換管線的技術交件：工具、驗證結果、規則摘要、限制
+* [DEPLOY.md](DEPLOY.md) — 主機、部署、更新器、回滾，以及 `bun run clean`
+* [MACOS.md](MACOS.md) — macOS 版怎麼建、怎麼簽、怎麼上傳
 * [SPEC.md](SPEC.md) — `.adb` 協定規格（§15 索引複刻、§17 管線與驗證狀態）
 * [accelon-vs-tei.md](accelon-vs-tei.md) — Accelon 風格 XML（H1–H6 擴充）與 TEI 巢式結構對照：轉換處方與實測陷阱
 * [PASCAL-NOTES.md](PASCAL-NOTES.md) — Delphi 原始碼逐單元筆記

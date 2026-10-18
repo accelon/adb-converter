@@ -1,4 +1,23 @@
-# accelon26 交接文件（2026-02，給下一個對話）
+# accelon26 交接文件（2026-02 起，逐輪累積）
+
+> ## 現況（2026-10-18 收工，**先讀這一塊**）
+>
+> * **線上版本**：`2026-10-18 21:57`（`buildTime 2026-10-18T13:57:44Z`、
+>   exe `sha256 844b23fd233e…`、17,216,512 bytes）。官網 <https://shutonggui.cn/accelon26/>。
+>   macOS 兩份 zip 是同一天 CI（tag `mac-2026-10-18-2215`）的產物。
+> * **本輪（今天）做了什麼**：見 §13。摘要 ——
+>   資料庫清單字數改讀檔頭 max VA（15 庫 58 ms）、jc 目錄樹修復、
+>   進階多了「檔頭」分頁、進階 → 容量多了「導出文字與圖片」（一篇一個 xml、保留硬換行）、
+>   官網多了「公開數據庫」頁、`build/` 清掉 5 GB、發佈新版（Windows ＋ macOS）。
+> * **repo**：`b56dfaa`（`git status` 乾淨、`ahead 0`）。單檔 HTML＝`build/accelon26.html`；
+>   桌面 exe＝`accelon3/accelon26.exe`（同一次 release 建置）。
+> * **發佈節奏（作者 2026-10 的規矩）**：平常改 UI 只跑 `bun run tools/build-viewer.ts`；
+>   改動一句一句寫進 `wails/release_notes.draft.txt`；**等作者說「發佈新版」**才跑
+>   `release.ts` ＋ `deploy.ts`（見 §13.6）。不要自己發佈。
+> * **測試現況**：`go test ./...` 全綠、`tools/desktop-test.ts --gui --quick` **38/38**、
+>   `test/render.test.ts` **22**、`test/tree.test.ts` **40**、`test/search.test.ts` **38**。
+> * **下次開工建議**：§13.8 的清單（換庫時分頁殘留、導出要不要去掉 `<檔>` 外框、
+>   `build/macos` 的 zip 要重下）。
 
 > **先讀 [`architecture.md`](architecture.md)**：那裡有一頁式的分層圖，以及
 > 「哪個 UI 動作觸發哪些非同步資料抓取」的對照表（file:// 與 Wails3 兩種模式）。
@@ -1015,8 +1034,9 @@ DOM 列數也固定。
 | `test/backend-cases.test.ts`（共用測試集，TS 側；含 18 個通檢案例） | **180/180** |
 | `test/backend-layout.test.ts`（後端／前端分界） | **11/11** |
 | `wails/query_cases_test.go`（共用測試集，Go 側；含 `TestSearchQueryVariants`） | `go test ./...` 全綠 |
-| `tools/desktop-test.ts --gui --quick`（桌面） | **37/37** |
-| `test/render.test.ts`（內文渲染） | **19/19** |
+| `tools/desktop-test.ts --gui --quick`（桌面） | **38/38**（2026-10-18 重跑） |
+| `test/render.test.ts`（內文渲染） | **22/22** |
+| `wails/export_test.go`（導出：`safeZipName`／`isImageName`／真的寫一個 zip） | `go test ./...` 全綠 |
 | `test/accelon26.test.ts` / `test/vapa.test.ts` | 22/22、13/13 |
 | `test/tour.test.ts`（劇本⇄宏、剖析器、同步檢查） | **31/31** |
 | `tools/tour-test.ts`（操作導覽全播；13j／yinshun／fgdict） | **29/29** 各一次 |
@@ -1060,6 +1080,9 @@ DOM 列數也固定。
   已展開的分支 0
 
 ## 7. 待辦事項
+
+> **2026-10-18 的最新清單在 §13.8**（換庫時分頁殘留、導出要不要去掉 `<檔>` 外框、
+> 導出平行解壓、`build/macos` 的 zip 要重下）。下面這幾條是更早的，沒有標記「已解決」的仍然有效。
 
 ### P0 — 已解決
 
@@ -1676,6 +1699,7 @@ www/
 | 畫面區 | 四張截圖是**輪播**（`#gallery`，2026-10-18：作者說首頁太長）：3 秒換一張、小白點可點、滑鼠移入／鍵盤聚焦／切到別的頁籤時暫停、系統要求減少動態時不自動換 |
 | 重拍截圖 | `bun run tools/site-shots.ts`（1600×1000 ×1.5 → 2400×1500 JPEG q88）。UI 改了就跑一次，官網的圖才不會過時 |
 | 產生下載檔 | `bun run tools/release.ts`：建好 exe 之後順便打包 `www/accelon26.7z`（7-Zip ultra，17 MB → 7.1 MB）。壓縮檔裡有 `accelon26.exe` ＋ `README.txt`（簡體）＋ `README-tc.txt`（繁體），兩份說明是 **UTF-8 帶 BOM ＋ CRLF**（文字在 `ts/tools/readme-text.ts`）。只改說明時跑 `bun run tools/pack-7z.ts`，不會動 exe、也不會讓使用者跳更新 |
+| 公開數據庫頁 | `www/adb/index.html`（作者 2026-10-18）：`index.txt` 是清單來源，`bun run tools/make-adb-index.ts` 讀本地 `accelon3/` 的 adb **檔頭**（`maxblockoffset`＝字數（約）、`dbcname`、檔案時間、大小）產生頁面；adb 有增補就重跑一次再 `bun run tools/deploy.ts --site-only`。首頁 nav／頁尾都有入口 |
 | 部署 | `bun run tools/deploy.ts --site`：先 exe、後 versions.json、再首頁與 7z；每一項都先 `.tmp` 再 `mv`，最後從 https 抓回來驗 sha256。主機事實、回滾與更新器的判斷邏輯見 [DEPLOY.md](DEPLOY.md) |
 | 頁面上的安裝說明 | 解開 7z → 把 `accelon26.exe` 放到 **accelon3.exe 同一個資料夾** → 雙擊。打不開 7z 就到 https://sparanoid.com/lab/7z/ 下載 Windows x64 版 |
 | 亮底／暗底 | 右上角切換（`#themeBtn`），**預設亮底**（軟件截圖是暗色的，亮底才有對比）；`localStorage['accelon26.site.theme']`，`<head>` 裡的行內腳本在畫面出現前就套上，不會閃。留言頁共用同一個設定 |
@@ -1692,3 +1716,188 @@ www/
 不動 `docTabs` 狀態。懷疑是「點擊後的非同步載入在換庫之後才落地」的競態
 （`ensurePage` 完成時沒有再檢查自己還屬於哪個庫）。
 官網截圖工具因此每個資料庫都 `Page.reload` 一次，拍到的畫面才乾淨。
+
+---
+
+## 13. 2026-10-18 收工交接（本輪）
+
+一天之內把 accelon26 從「能用」推到「已發佈」：macOS 版上線、官網多了兩個新頁面、
+四個 UI 新功能（含一個新的 Go 端功能「導出」）、一次正式發佈、`build/` 清掉 5 GB。
+下面按「作者要求 → 做法 → 驗證」記，細節留給下一個人接手時查。
+
+### 13.1 本輪改動一覽
+
+| # | 作者要求 | 做法 | 主要檔案 |
+|---|---|---|---|
+| 1 | macOS 版要能下載，但**只提示更新、不自動安裝** | `updatesSupported()` 在 darwin 回 false；CI（`.github/workflows/build-macos.yml`）用 `macos-14` 建 arm64＋x86_64；`wails/scripts/package-macos.sh` 統一打包；官網兩顆按鈕加 OS 標誌 | `wails/*darwin*`、`www/index.html`、`MACOS.md` |
+| 2 | 字級按鈕在亮色／護眼主題下是「一塊黑」 | 新增 `--chip-bg`／`--chip-fg`（暗／亮／護眼三套） | `accelon26.template.html` |
+| 3 | 官網要有「公開數據庫」頁 | `ts/tools/make-adb-index.ts` 讀 **本地** `accelon3/` 的 adb 檔頭（`maxblockoffset`＝字數、`dbcname`＝中文名、檔案時間、大小）→ `www/adb/index.txt` ＋ `index.html`；`deploy.ts --site-only` 一起上傳 | `ts/tools/make-adb-index.ts`、`www/adb/` |
+| 4 | 字數不要抓本文算（太慢），用 max VA | 官網頁一開始就用 `maxblockoffset`；**資料庫清單**（📁）原本還會呼叫 Go 的 `SourceCharCount` 解壓整本（jc 15,838 塊）→ 改成 `maxVaOf()` 只讀檔頭 offset 96 的 4 個位元組 | `ts/src/accelon26/dbs.ts` |
+| 5 | jc 一打開看到的是書的內目，應該先是第一層的書 | `loadTree()` 補 fallback：層級只宣告在 `<樹>` 上（jc 是 `t="書名,章,節,項,目,條"`）時，用宣告鏈當父子關係 | `ts/src/accelon26/search.ts` |
+| 6 | 進階要一個「檔頭」分頁，顯示開頭第一個 block，沒有圖片／文件就不必顯示 | `renderHeader()` ＋ `headerExcerpt()`／`bodyTagsOf()`（規則見 §13.3） | `panes.ts`、`accelon26.template.html` |
+| 7 | META 的「容器」與「容量」重複，刪掉 | 移除 `<h2>容器</h2><ul id="containers">` 與 `renderContainers()`／`containerSummary()` | `panes.ts`、`template`、`viewer.ts`、`ui.ts` |
+| 8 | 進階 → 容量要能「導出文字與圖片」成 zip 存到「下載」（file:// 不需要） | 新增 Go 的 `ExportTextImages`（細節見 §13.2）；UI 只在 `desktopHost()` 為真時顯示按鈕 | `wails/export.go`、`host.ts`、`panes.ts`、`adb.ts` |
+| 9 | 匯出的 txt 要保留硬換行 | 依 `tables/lines.physical` 在串流上插 CRLF（行尾可能跨區塊） | `wails/export.go` |
+| 10 | 有 `<檔>` 的庫不要合成一個大 txt，要按文件 block 分成 `y01.xml` 等 | 第一篇 `<檔 n="…">` 一出現就開新 entry；檔名取 `n="…"` | `wails/export.go` |
+| 11 | `build/` 佔太大空間，清一清 | 保留產物／截圖／`pas/`，其餘全刪（5,121 → 56.5 MB）；新增 `bun run clean` | `ts/tools/clean.ts`、`DEPLOY.md` |
+| 12 | 可以發佈新版 | `release.ts --items-file` → `deploy.ts --site` → mac CI → `deploy-macos.ts`（§13.6） | — |
+
+### 13.2 導出（`wails/export.go`）—— 本輪最複雜的一塊
+
+**做什麼**：把 adb 的**文字**與**圖片**打包成 zip，存到使用者的「下載」資料夾；
+**刻意不導出** `tokens`／`postings`／`tags`／`tables`／`attributes`／`caches`（即時建置的索引，
+換一台機器或換一個閱讀器都能重建，體積卻很大）。
+
+**兩種形態**（用「第一個 source 區塊是否以 `<檔` 開頭」判斷）：
+
+| 庫 | 形態 |
+|---|---|
+| yinshun、taixu…（有 `<檔>`） | **一篇一個檔**：`yinshun.xml`（設定檔）、`y01.xml`…、`yinshunfoundation.xml`；內容含 `<檔 …>` 包起來的原樣標記 |
+| 13j、jc、kangxi…（沒有 `<檔>`） | 全部串成 `<db>.txt` |
+
+**硬換行**：`tables/lines.physical` 是每一行的**結束位置**（原始單位是 UTF-16LE 位元組，
+`>>1` 就是 code unit 索引）。一行可能跨區塊（13j：42,173 個行尾只有 13 個落在區塊邊界），
+所以要在**整個串流**上一邊寫一邊切，行尾插 `\r\n`。換行是「插進去」不是「取代」。
+
+**為什麼在 Go 做**：350 MB 的 adb 走 base64 過 Wails 的 JSON 橋會是 GB 級流量；
+Go 直接從 mmap 串流寫 `archive/zip`。
+
+**存放位置**：`~/Downloads` → `<exe 旁>/export` → `%TEMP%/accelon26-export`。
+退到後面時回一個 `note` 說明原因（作者環境曾經出現 `Access is denied`）。
+
+**其他入口**：
+* `accelon3\accelon26.exe -export <adb>`：不開 GUI 跑同一條路、印 JSON（診斷／自動化用，已寫進 DEPLOY.md）。
+* 導出後 UI 有「在資料夾中顯示」（`RevealInFolder`，Windows `explorer /select`、macOS `open -R`）。
+
+**實測**（真的 adb）：
+
+| 庫 | 文字 | 行數 | 檔案數 | 圖片 | zip | 時間 |
+|---|---|---|---|---|---|---|
+| 13j | 831,156 字（102 塊） | 42,173 | 1（`13j.txt`） | 0 | 0.99 MB | 0.2 s |
+| 康熙 | 5,173,338 字 | 144,301 | 1 | 1 | 4.5 MB | 1.4 s |
+| 印順 | 8,847,831 字 | 266,916 | **45**（`yinshun.xml`＋`y01..y43`＋`yinshunfoundation.xml`） | 456 | 11.4 MB | 1.8 s |
+| 太虛 | 6,554,326 字 | — | **33** | — | 10.4 MB | ~2 s |
+| 中醫笈成 | 129,740,847 字（15,838 塊） | — | 1 | 1 | **147.6 MB** | **36 s** |
+
+**兩個踩到的坑（都已修，值得記住）**：
+
+1. **比對 `<檔` 時用了 Go 字串的位元組**。「檔」在 UTF-8 是 3 個位元組，
+   拿 `uint16(s[j])` 去比 UTF-16 code unit 永遠不相等 → 整篇文字沒被導出（第一次匯出只有圖片）。
+   正確做法：比對樣式用 `[]uint16`（`docOpen`／`docClose`／`gtOnly`）。
+2. `*li++` 不是合法 Go，要寫 `(*li)++`。
+
+**測試**（`wails/export_test.go`）：
+* `safeZipName`（不准帶 `../`、空字串給 fallback）、`isImageName`（哪些用 `zip.Store`）。
+* `TestExportZip`：13j 的文字 831,156 字、換行 42,173（＝檔頭 linecount）、
+  txt 裡的 CRLF 數＝`res.Lines`、去掉換行後＝`res.Chars`、zip 裡**不可以**出現索引容器名稱。
+* **CI 教訓**：`newTestHost(t)` 在沒有真 `13j.adb` 時會造一個合成檔（隨機位元組），
+  source 解不開 → 導出必然失敗 → macOS CI 紅燈。現在 `!real` 就 `t.Skip`（跟 `TestSourceCharCount` 一樣）。
+
+### 13.3 檔頭分頁的規則（`panes.ts`）
+
+顯示的是**正文之前**那一段（`<集>`、`<樹>`、`<英文名>`、`<檔 n="…">`），停止條件三個，
+取最早出現的那一個：
+
+1. **樹宣告裡指名的層級標籤**：從 `<樹 …>` 收集
+   `s="$X"`、`s="*X"`、`s="*u=X"`（`$`／`*` 後面那個名字）與 `t="A,B."`（去掉結尾句點）。
+   例：13j 的 `<書>`、yinshun 的 `<文>`、jc 的 `<書名>`、kangxi 的 `<字>`、taixu 的 `<編>`。
+2. **開頭是 `<檔 n="….xml">`**：收在它的 `</檔>`（只顯示設定檔本身）。
+3. **後面還有另一個 `<檔>`**（下一篇文件）也停。
+
+比對要檢查邊界（`<書` 後面必須是空白／`>`／`/`），否則 `<書` 會誤中 `<書名`。
+
+分頁顯示條件：**有 `<檔>` 或 有 resources（圖片）**；兩者都沒有（13j）就不顯示 ——
+那種庫的第一塊就是正文開頭。實測：13j 隱藏／yinshun 280 字元／jc 118／kangxi 110。
+
+### 13.4 資料庫清單的字數（`dbs.ts`）
+
+```ts
+async function maxVaOf(file: AdbSource): Promise<number | null> {
+  const hdr = new Uint8Array(await file.slice(0, 256).arrayBuffer());
+  return new DataView(...).getInt32(96, true);   // maxblockoffset
+}
+```
+
+* 只讀 4 個位元組 → **15 個庫整份清單 58 ms** 填好（原本 jc 要解 15,838 個 bzip2 塊）。
+* 是**近似值**（與精確字數差幾個百分點，jc 的 max VA 反而比解壓後的字元數多 0.3%）→
+  表頭有 tooltip 說明。
+* Go 的 `SourceCharCount` 留著當診斷（`TestSourceCharCount` 仍守著 13j 的 831,156）。
+
+### 13.5 公開數據庫頁（`www/adb/`）
+
+* 清單在 `www/adb/index.txt`（**不要刪**，是來源），`make-adb-index.ts` 讀它 ＋ 本地 `accelon3/`
+  的 adb 檔頭產生 `index.html`（字數（約）、建置日期、檔案大小、下載連結）。
+* 更新時機：adb 有增補 → `cd ts && bun run tools/make-adb-index.ts` →
+  `bun run tools/deploy.ts --site-only`（只動官網，不動 exe／versions.json）。
+* 頁面的亮／暗切換與首頁同一套（標籤顯示**目前**主題）。
+
+### 13.6 發佈流程（今天實際跑過的順序）
+
+```powershell
+# 1) 把 wails/release_notes.draft.txt 寫成「使用者感覺得到」的句子（一行一條）
+cd ts
+bun run tools/release.ts --items-file ../wails/release_notes.draft.txt   # 建 HTML → exe → 說明 → 7z → versions.json
+bun run tools/deploy.ts --site                                          # exe → versions.json → 官網（每項 .tmp→mv，抓回來驗 sha256）
+
+# 2) 驗證
+cd ../accelon3; .\accelon26.exe -version; .\accelon26.exe -check-update  # 應為「已是最新（線上 …）」
+#   線上：https://shutonggui.cn/accelon26/versions.json
+
+# 3) macOS（CI 產 artifact ＋ Release asset）
+git tag mac-2026-10-18-2215; git push origin mac-2026-10-18-2215
+#   等 CI 綠 → 從 Release 下載兩份 zip（**先刪舊檔再用 curl**，PowerShell 的 Invoke-WebRequest 會失敗
+#   或留下大小相同的舊檔 → 假成功）→ 用 .sha256 核對 → 
+bun run tools/deploy-macos.ts
+
+# 4) 收尾：清空 release_notes.draft.txt、commit wails/{assets/index.html,release_notes.json,draft}
+```
+
+今天的結果：`buildTime 2026-10-18T13:57:44Z`（台北 21:57）、exe `sha256 844b23fd233e…`、
+7z 7,492,744 bytes；macOS `arm64 37834e86…`（8,710,706 bytes）／`x86_64 db6f080f…`（9,479,294 bytes）。
+
+**CI 紅燈怎麼查**：`ci-log` 分支的 `RESULT.txt` 只有 metadata（`build/*.log` 才會有內容），
+真正要知道哪一步失敗要打 `…/actions/runs/<id>/jobs`（一次呼叫就好，免得撞 60 次/小時的限制）。
+
+### 13.7 清 `build/`（5,121 MB → 56.5 MB）
+
+刪掉的幾乎都是：Chrome／Edge 探針 profile（近百個）、一次性的比較輸出（`cmp-*`／`out-*`／
+`model-*.xml`／`textcmp/`／`oracle*`）、`bench/`（1.26 GB 的合成語料）與 `xstress/`、
+舊 adb 複本、`tmp-*-state`、幾百個 `probe-*.ts`／`diag-*.ts`／`commit*.txt`。
+
+**留著**：`accelon26.html`（產物）、`macos/`（deploy 要用的 zip）、`site-shots/`（今天的驗證截圖）、
+`pas/`（舊 Delphi 轉換器的參照原始碼，**別處沒有**）、`tmp-*.ts`（探針腳本）。
+
+工具：`ts/tools/clean.ts`（`bun run clean`／`--all`／`--dry-run`）。
+小心：第一版把 `ROOT` 算成 `ts/`，誤刪了 `ts/build/`（37 MB、gitignore 的暫存 `_check*.js`，
+沒有版控檔案）—— 已修；寫這類工具時**先印路徑再刪**。
+
+`accelon3/` 13.3 GB 是資料庫本體（jc 338 MB、skqs 三份 600 MB 級、`lawtw` 589 MB、
+`中醫.zip` 830 MB…），**不是建置產物**，作者沒點頭不要動。
+
+### 13.8 下次開工建議
+
+| 優先 | 事項 |
+|---|---|
+| P1 | **換庫時前一個庫的本文分頁還在**（§12.1，未修）：`openFile` 的 `finally` 只清 DOM 的 strip，不動 `docTabs`；懷疑是 `ensurePage` 完成時沒有再檢查自己還屬不屬於當前庫 |
+| P1 | **導出的 xml 要不要去掉 `<檔 …>` 外框**（純內容）——目前保留，等作者一句話，改一行 |
+| P2 | 導出可平行解壓（jc 36 s → 6–10 s）：Go 端可以用 worker pool 解 bzip2、再依序寫入 |
+| P2 | `build/macos/*.zip` 只在下載後才存在（發佈 mac 版前要重新從 Release 抓，並用 `.sha256` 核對） |
+| P2 | `versions.json` 的 buildTime（21:57）比 mac build（22:20）舊：mac 使用者不會被誤提示；但若之後只發 Windows，mac 使用者會看到「有新版」而下載到同一份 zip（既有設計，mac 不自動更新） |
+| P2 | 官網截圖（`www/img/*.jpg`）是 UI 改動前拍的；`tools/site-shots.ts` 重跑一次即可（今天沒重拍） |
+
+### 13.9 本輪新增／大改的檔案
+
+| 檔案 | 角色 |
+|---|---|
+| `wails/export.go`／`export_test.go` | 導出（兩種形態、硬換行、圖片、退路、`-export`） |
+| `wails/adbhost.go` | `exportMu`（同時只允許一個導出）、`RevealInFolder` |
+| `wails/sys_windows.go`／`sys_darwin.go` | `revealCommand`（檔案總管／Finder） |
+| `wails/main.go` | `-export <adb>` 指令 |
+| `ts/src/accelon26/panes.ts` | 檔頭分頁（`headerExcerpt`／`bodyTagsOf`）、導出按鈕、META 去容器 |
+| `ts/src/accelon26/dbs.ts` | 字數改 `maxVaOf()` |
+| `ts/src/accelon26/adb.ts` | `AdbIO.path`（桌面版才有絕對路徑，導出要用） |
+| `ts/src/accelon26/host.ts` | `desktopExportTextImages`、`desktopRevealInFolder` |
+| `ts/src/accelon26/search.ts` | `loadTree()` 的層級 fallback（jc） |
+| `ts/tools/clean.ts` | 清 `build/` |
+| `ts/tools/make-adb-index.ts` | 公開數據庫頁 |
+| `wails/release_notes.draft.txt` | 下一版要告訴使用者的句子（發佈時 append 進 `release_notes.json`） |
