@@ -766,10 +766,18 @@ UI（作者 2026-10 的頂欄順序）：`#brand` → `#toggleLeft`／`#toggleRi
 
 **最右上的 adb 清單**（作者 2026-10 第二版：**黃色資料夾按鈕**，不再是 `<select>`）：
 `#dbPickBtn`（📁，`color: #ffd479`）按一下才展開 `#dbPickMenu`（預設 `hidden`；再按一下、
-點空白處或 Esc 收起）。清單列出**這次工作階段選過／拖過的每一個 adb**，
-只讀 header（`catalogAddFile()` → `AdbReader.open(new BlobIO(file))`，幾 KiB）所以**未載入的庫也在清單裡**，字尾標「（未載入）」；
-同名不同檔（13j.adb 與 1839.adb 都是十三經）會補上檔名 `十三經｜1839.adb`；目前這一個標 `.active`。
-選一個就加入 `dbTabs`：已載入的直接切換，未載入的當場載入。**沒有「拒絕」了**：`MAX_DBS = 5`
+點空白處或 Esc 收起）。清單列出**這次工作階段選過／拖過的每一個 adb**，只讀 header
+（`catalogAddFile()` → `AdbReader.open(new BlobIO(file))`，幾 KiB）所以**未載入的庫也在清單裡**
+（作者 2026-10-18：不再標「（未載入）」，改用表格分辨）。目前這一個的列標 `.active`。
+
+**清單是表格（作者 2026-10-18）**：`檔名`（不帶 `.adb`）／`庫名`／`字數`／`建置日期`（檔案時間
+`YYYY-MM-DD`）。整張表**貼齊視窗右緣**（`header` 當定位容器、`right: 12px`）——以前貼著按鈕，
+庫名一長就從畫面左邊溢出去。`字數` 不在檔頭裡（要解壓 source 容器才知道），所以**選單打開才
+在背景算一次**：桌面版走 Go 的 `SourceCharCount`（一次呼叫掃完，13j 831,156／佛光大辭典
+6,619,481／印順 8,847,831，約 0.1 秒），file:// 版走 TS bzip2；算好只更新那一格，結果快取在
+`charCache`（key 是檔名＋大小＋mtime）。
+
+選一個（或 Enter／空白鍵）就加入 `dbTabs`：已載入的直接切換，未載入的當場載入。**沒有「拒絕」了**：`MAX_DBS = 5`
 滿了就讓**最久沒用**的那個 slot 讓位（它的本文分頁跟著消失，跟按 ✕ 同義）。
 瀏覽器版不能列資料夾，所以來源只有使用者自己選的檔；桌面版會自動列出與執行檔同資料夾的 adb（同一份清單模型）。
 `state().dbPick` 是目前 active 的 catalog key，`state().dbPickOpen` 是清單開著沒有。
@@ -1397,12 +1405,15 @@ UI，兩個宿主共用；桌面版內嵌的那一份仍叫 `wails/assets/index.
 **五道關卡**，任何一道不過都丟掉下載檔、不動使用者手上那一顆：
 `size` ＝ versions.json → `sha256` ＝ versions.json → 檔頭 `MZ` 且 ≥ 1 MiB →
 跑一次 `new.exe -version` 解得建置時間 → 那個時間比目前新 → 把**執行中的** exe 改名成
-`.old`（Windows 允許改執行中映像的名字，但不能覆蓋）→ `.new` 改名成正式名字 → 啟動新 exe
-（帶 `-updated-from` 與 **＋1 的除錯埠** `-debug-port`，避免兩個行程搶同一個埠）→
-**觀察 2 秒**：新版若馬上結束就把 `.old` 換回去（回報「新版啟動後馬上結束，已還原舊版」）；
-還活著就 0.7 秒後自己結束。`.old` 在新版啟動時自動清掉。
-觀察窗刻意短：新舊兩個行程同時活著時共用 WebView2 的資料目錄，重疊越短越安全
-（代價是「起來後三秒才崩」抓不到，目前接受）。
+`accelon26-prev.exe`（可以直接雙擊）→ `.new` 改名成正式名字 → 啟動 prev 這支**重新啟動器**
+（`-relaunch-pid/-relaunch-exe/-relaunch-from/-relaunch-port`）→ 0.7 秒後舊行程結束。
+
+**為什麼要重新啟動器**（2026-10-18 實測）：新舊兩個行程不能同時用同一個 WebView2 使用者
+資料目錄 —— 第二個行程拿到 `8007139f` 直接開不起來（連 2 秒的重疊都會失敗）。所以舊行程
+立刻讓位，由 prev 等它完全結束（＋0.4 秒）才開新版；這支不開視窗、不碰 WebView2。
+重新啟動器再觀察新版 4 秒：新版若馬上結束（非 0）就把 prev 改名回 `accelon26.exe`、
+跳訊息框、把上一版開起來。新版跑得起來時 prev 會在 6 秒後與正常關閉時刪掉
+（`handedOff` 區分「交棒後結束」與「正常關閉」，交棒的那一支不刪）。
 `InstallUpdate` 有鎖（`installMu.TryLock`），連點兩次只會有一次真的動手。
 
 **exe 放哪裡／怎麼建**（作者 2026-10）：exe **一律放到 `D:\accelon26\`**，用 **GUI 子系統**
@@ -1416,9 +1427,15 @@ cd ts; bun run tools/desktop-test.ts --gui                    # 發布前跑一�
 cd ts; bun run tools/release.ts --items-file notes.txt        # 一行一項（UTF-8，中文請用這個）
 # 或 bun run tools/release.ts --items "ascii-only;…" [--title "…"]
 #  1) append 到 wails/release_notes.json  2) 先建 HTML 再 go build（-ldflags 注入建置時間）
-#  3) 用 -version 驗 exe 裡真的是 ldflags 的時間  4) 印上傳指示並 HEAD 一次線上的 Last-Modified
-# 然後把 build/desktop/accelon26.exe 上傳到 https://shutonggui.cn/accelon26/accelon26.exe
+#  3) 用 -version 驗 exe 裡真的是 ldflags 的時間  4) 產生 versions.json（buildTime＋sha256＋size）
+#  5) 打包 www/accelon26.7z  6) 印出上傳指示並確認線上的 versions.json
+cd ts; bun run tools/deploy.ts [--site]                       # 上傳 exe → versions.json，再從 https 驗 sha256
 ```
+
+`deploy.ts` 用 `.local/server.env` 的帳密（`.local/` 在 `.gitignore`，內容不進版控也不印出來），
+主機金鑰指紋釘在 `.local/hostkey.txt`。**順序固定：先 exe、後 versions.json**，兩者都先寫 `.tmp`
+再 `mv`（原子替換），並把上一版留成 `accelon26.exe.prev`／`versions.json.prev` 以便回滾。
+主機事實、回滾步驟、五道關卡全部在 [DEPLOY.md](DEPLOY.md)。
 
 **圖示**（作者 2026-10：「用 logo128.png 做成 exe 和網頁版的 icon」）：
 
@@ -1432,26 +1449,36 @@ cd ts; bun run tools/release.ts --items-file notes.txt        # 一行一項（U
 * 驗證：`ExtractAssociatedIcon` 從 exe 取出 32×32 圖示（與來源相同）；網頁版在瀏覽器測試裡斷言
   `link[rel=icon]` 是 PNG data URI 且頁面標題是 accelon26。
 
-**診斷**（`D:\accelon26\accelon26.exe -version`）（建置時間／說明筆數／更新網址）、`main.AdbHost.AppInfo()`、
-`CheckUpdate()`（立刻檢查一次）、`InstallUpdate()`、`ReleaseNotes(since)`。
+**診斷**：`D:\accelon26\accelon26.exe -version`（建置時間／說明筆數／更新網址／versions.json
+網址）、`-check-update`（真的連一次網，印出 `AppInfo` 的 JSON：`updateAvailable`、`checkOK`、
+`note`）、`main.AdbHost.AppInfo()`、`CheckUpdate()`（立刻檢查一次；90 秒內剛檢查過就回快取）、
+`InstallUpdate()`、`ReleaseNotes(since)`。
 
-**驗證**（發布時才跑）：`tools/desktop-test.ts --gui` 42 項全過，其中更新相關：
+**驗證**（發布時才跑）：`tools/desktop-test.ts --gui` **49 項全過**（2026-10-18 實跑），其中更新相關：
 
 ```
-ok 檢查到線上版本比較新（Last-Modified）      本地 2026-10-16 22:00 vs 線上 2026-10-17T14:00
+ok 檢查到線上版本比較新（versions.json）     本地 2026-10-18 11:04 vs 線上 2026-10-19T03:04
 ok 目錄可寫 → 允許更新；線上網址就是設定的那個   dirWritable=true canUpdate=true
-ok 左上角 hover hint 顯示建置時間             accelon26 · built 2026-10-16 22:00 · …
-ok 左上角閃動並提示有新版本                    update｜… 有新版本：線上 2026-10-17 14:00 — 點這裡更新
+ok 左上角 hover hint 顯示建置時間             accelon26 · built 2026-10-18 11:04 · …
+ok 左上角閃動並提示有新版本                    update｜… 有新版本：線上 2026-10-19 03:04 — 點這裡更新
+ok 「關於」裡出現「下載更新」按鈕               （使用者路徑＝點左上角開「關於」→ 按這裡）
 ok 更新後舊行程結束（交給新版）                exit 1（2 s）
 ok 執行檔已被新版取代（mtime 變新）
-ok 留下 .old（下次啟動自動清掉）＋ 新版啟動時把它清掉
+ok 留下上一版 accelon26-prev.exe（新版起不來時可以雙擊它）
+ok 新版帶著 -updated-from 啟動                updatedFrom=2026-10-18T03:04:47Z
+ok 新版正常關閉時把上一版（accelon26-prev.exe）刪掉
 ok 更新後顯示改版說明（notesBox）
 ```
 
+測試的「線上新版」是真的：它把 exe 裡烙進去的建置時間改成明天（同長度純文字替換，PE 不受
+影響），再餵一份 `versions.json`（buildTime ＋ sha256 ＋ size 都對得上），所以下載、五道關卡、
+換檔、重新啟動器、回滾、改版說明全部走真的程式碼。
+
 Go 單元測試（`wails/update_test.go`）：目錄可寫／不可寫、遠端較新／較舊／沒有 Last-Modified／
-連不上、開發者本地 exe 跳過檢查、下載＋PE 檔頭檢查、改版說明過濾與 fallback。
-測試用**本地 HTTP 伺服器**當「已發佈的新版」（`ACCELON26_UPDATE_URL`），被更新的 exe 是
-`build/tmp-upd` 的副本，所以不連外網、也不會動到正式的 exe。
+連不上、開發者本地 exe 跳過檢查、下載＋PE 檔頭檢查、versions.json 判斷與 sha256／size 帶回、
+`-version` 輸出解析、改版說明過濾與 fallback。
+測試用**本地 HTTP 伺服器**當「已發佈的新版」（`ACCELON26_UPDATE_URL` 或
+`ACCELON26_VERSION_URL`），被更新的 exe 是 `build/tmp-upd` 的副本，不連外網、也不碰正式 exe。
 
 ### 10.6 檔案
 
@@ -1463,14 +1490,16 @@ Go 單元測試（`wails/update_test.go`）：目錄可寫／不可寫、遠端�
 | `wails/decompress.go` | bzip2（`DecompressText`）：解壓＋UTF-16 解碼一次做完 |
 | `wails/search.go` | 索引查詢：容器表解析、packed posting 解壓、`phraseMatch`（plAnd）、`groupHits`（分群，可平行） |
 | `wails/window.go` | 視窗與螢幕：狀態檔、啟動螢幕選擇、夾進工作區、事件驅動的追蹤器、`-screens` 診斷 |
-| `wails/update.go` | 建置時間、目錄可寫偵測、線上檢查（Last-Modified）、自我更新、改版說明 |
+| `wails/update.go` | 建置時間、目錄可寫偵測、線上檢查（優先 versions.json，fallback Last-Modified）、五道關卡＋換檔＋失敗回滾、改版說明 |
 | `wails/release_notes.json` | 各版改版說明（發佈時用 `tools/release.ts` 追加） |
 | `ts/src/accelon26/update-ui.ts` | 左上角提示／閃動／確認／改版說明（UI 端唯一碰更新的一支） |
 | `ts/src/accelon26/appicon.png` | 應用圖示（唯一來源）：exe 圖示與網頁 favicon 都用它 |
 | `ts/src/accelon26/window-keys.ts` | F11／Esc 全螢幕切換與全螢幕提示 |
 | `ts/tools/page-build.ts` | 單檔 HTML 的組裝（bundle ＋ favicon data URI），兩個建置腳本共用 |
 | `wails/windows.manifest` | Windows manifest（DPI／longPath／Common-Controls），給 generate syso 用 |
-| `ts/tools/release.ts` | 發佈：追加說明 → 先 HTML 再 exe（注入建置時間）→ 驗證 → 上傳指示 |
+| `ts/tools/release.ts` | 發佈：追加說明 → 先 HTML 再 exe（注入建置時間）→ 驗證 → 產生 versions.json → 打包 www/accelon26.7z → 上傳指示與線上檢查 |
+| `ts/tools/deploy.ts` | 部署：讀 `.local/server.env`，pscp 上傳 `.tmp` → 遠端原子 `mv`（exe 先、versions.json 後）→ 從 https 抓回來驗 sha256 |
+| `DEPLOY.md` | 主機事實、部署步驟、五道關卡、回滾與緊急處置（本文件 §10.9 的細節版） |
 | `wails/adbhost_test.go`／`decompress_test.go`／`search_test.go`／`window_test.go`／`bzip2_bench_test.go` | Go 測試與量測 |
 | `wails/adbhost_test.go` | Go 測試：檔頭解析、與 `os.ReadFile` 逐位元組相同、越界報錯、讀取計時 |
 | `wails/assets/index.html` | 內嵌的 accelon26（由 `ts/tools/build-desktop.ts` 產生） |
@@ -1615,10 +1644,13 @@ www/
 
 | 事項 | 指令／做法 |
 |---|---|
+| 畫面區 | 四張截圖是**輪播**（`#gallery`，2026-10-18：作者說首頁太長）：3 秒換一張、小白點可點、滑鼠移入／鍵盤聚焦／切到別的頁籤時暫停、系統要求減少動態時不自動換 |
 | 重拍截圖 | `bun run tools/site-shots.ts`（1600×1000 ×1.5 → 2400×1500 JPEG q88）。UI 改了就跑一次，官網的圖才不會過時 |
-| 產生下載檔 | `bun run tools/release.ts`：建好 exe 之後順便打包 `www/accelon26.7z`（7-Zip ultra，17 MB → 7.1 MB）。找不到 7-Zip 就跳過並提示 |
-| 部署 | 把 `www/` 整個目錄上傳（含 7z）。伺服器要送 `Last-Modified`：頁面上的「更新於 …」與程式自己的更新檢查都靠它 |
+| 產生下載檔 | `bun run tools/release.ts`：建好 exe 之後順便打包 `www/accelon26.7z`（7-Zip ultra，17 MB → 7.1 MB）。壓縮檔裡有 `accelon26.exe` ＋ `README.txt`（簡體）＋ `README-tc.txt`（繁體），兩份說明是 **UTF-8 帶 BOM ＋ CRLF**（文字在 `ts/tools/readme-text.ts`）。只改說明時跑 `bun run tools/pack-7z.ts`，不會動 exe、也不會讓使用者跳更新 |
+| 部署 | `bun run tools/deploy.ts --site`：先 exe、後 versions.json、再首頁與 7z；每一項都先 `.tmp` 再 `mv`，最後從 https 抓回來驗 sha256。主機事實、回滾與更新器的判斷邏輯見 [DEPLOY.md](DEPLOY.md) |
 | 頁面上的安裝說明 | 解開 7z → 把 `accelon26.exe` 放到 **accelon3.exe 同一個資料夾** → 雙擊。打不開 7z 就到 https://sparanoid.com/lab/7z/ 下載 Windows x64 版 |
+| 亮底／暗底 | 右上角切換（`#themeBtn`），**預設亮底**（軟件截圖是暗色的，亮底才有對比）；`localStorage['accelon26.site.theme']`，`<head>` 裡的行內腳本在畫面出現前就套上，不會閃。留言頁共用同一個設定 |
+| 留言頁 | `www/message.html`：類型（回報錯誤／功能要求／改良建議，可取消）＋ 稱呼 ＋ Email ＋ 微信 ＋ 開始使用年份 ＋ 內容。官網「開發者聯絡」與軟件「關於」都有入口（軟件走 `OpenExternal` 開系統瀏覽器）。後端 `www/message.cgi`（Python CGI）用 QQ SMTP 寄到作者信箱；安裝見 `ts/tools/install-message-backend.ts` 與 [DEPLOY.md](DEPLOY.md) §6 |
 | 開發者聯絡 | 微信 **Sukhanika**（官網頁尾與「關於」都有；`#aboutWechat` 有測試顧） |
 
 設計上的取捨：整頁只有一個大按鈕（下載），其餘都是「為什麼要用它」。圖片用
