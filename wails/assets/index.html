@@ -3,12 +3,25 @@
 <head>
 <meta charset="utf-8">
 <title>accelon26</title>
+<!-- 主題（作者 2026-10-18）：先套再畫，避免載入時閃一下暗底。預設暗色（不設 data-theme）。 -->
+<script>try{var t=localStorage.getItem('accelon26.theme');if(t==='light'||t==='eye')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <!-- 圖示：建置時內嵌 appicon.png 的 data URI（單檔 HTML 不能依賴旁邊的檔案） -->
 <link rel="icon" type="image/png" href="data:image/png;base64,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">
 <style>
   :root {
     --bg: #1e1e1e; --panel: #252526; --panel2: #2d2d30; --line: #3c3c3c;
     --fg: #d8d8d8; --dim: #909090; --accent: #5aa9ff; --warn: #e0a54a; --err: #e06c75;
+  /* 主題色（作者 2026-10-18）：下列變數原本寫死在規則裡，改成變數才能換主題。
+     暗色系是預設（:root），亮色系／護眼見下面的 html[data-theme]。 */
+  --gold: #ffd479; --gold-2: #fff3c4;
+  --hl-bg: #2b3b4d; --row-hover: #262626;
+  --ink-on-accent: #08243f; --link: #7cc0ff;
+  --mark-fg: #fff3d6; --hint-blue: #9fb6cd;
+  --popup-bg: #31353f; --popup-fg: #f2f2f2;
+  --border-soft: #2a2a2a; --code-bg: #1b1b1b;
+  --hit-1: #ff8a80; --hit-2: #ff6b6b; --hit-3: #ff3b30; --hit-4: #ff1744;
+  --ok: #9fe08a;
+  color-scheme: dark;
     --fs: 15px;               /* base font size */
     --left: 25fr;             /* column widths, draggable; 0fr = hidden */
     --center: 50fr;
@@ -35,6 +48,48 @@
     --tag-text-6: hsl(330 60% 74%);
     --tag-text-7: hsl(25 80% 68%);
   }
+
+  /* ---- 主題（作者 2026-10-18）---------------------------------------------
+     預設＝暗色系（:root）；設定頁可切亮色系／護眼，存在 localStorage('accelon26.theme')。
+     只換變數，不動版面：換主題不用重繪。 */
+  html[data-theme="light"] {
+    --bg: #ffffff; --panel: #f5f6f8; --panel2: #eceef1; --line: #d6d9de;
+    --fg: #1f2328; --dim: #6a7280; --accent: #1f6feb; --warn: #b45309; --err: #c0392b;
+    --gold: #8a5a00; --gold-2: #7a4a00;
+    --hl-bg: #dbe9ff; --row-hover: #eef1f5;
+    --ink-on-accent: #ffffff; --link: #1f6feb;
+    --mark-fg: #fff3d6; --hint-blue: #5b6b80;
+    --popup-bg: #ffffff; --popup-fg: #1f2328;
+    --border-soft: #e5e7eb; --code-bg: #f2f3f5;
+    --hit-1: #d9534f; --hit-2: #cc3b36; --hit-3: #b52a20; --hit-4: #9c1a12;
+    --ok: #2e7d32;
+    color-scheme: light;
+    --tag-0: hsl(0 55% 42%); --tag-1: hsl(48 70% 34%); --tag-2: hsl(110 50% 34%);
+    --tag-3: hsl(165 55% 30%); --tag-4: hsl(220 60% 46%); --tag-5: hsl(275 50% 44%);
+    --tag-6: hsl(330 55% 44%); --tag-7: hsl(25 70% 40%);
+    --tag-text-0: hsl(0 60% 40%); --tag-text-1: hsl(48 75% 30%); --tag-text-2: hsl(110 50% 30%);
+    --tag-text-3: hsl(165 60% 26%); --tag-text-4: hsl(220 65% 40%); --tag-text-5: hsl(275 55% 38%);
+    --tag-text-6: hsl(330 60% 38%); --tag-text-7: hsl(25 75% 34%);
+  }
+  html[data-theme="eye"] {
+    --bg: #eaf1e2; --panel: #e2ecd8; --panel2: #d8e5cc; --line: #c3d3b6;
+    --fg: #2c3a2a; --dim: #5d6c55; --accent: #3f7d4e; --warn: #8a6d1f; --err: #b0413e;
+    --gold: #6d5a12; --gold-2: #5c4a0c;
+    --hl-bg: #cfe3c2; --row-hover: #dfe9d5;
+    --ink-on-accent: #ffffff; --link: #2f6b3e;
+    --mark-fg: #fff8e6; --hint-blue: #64745c;
+    --popup-bg: #f4f8ef; --popup-fg: #2c3a2a;
+    --border-soft: #d5e0c9; --code-bg: #eef4e8;
+    --hit-1: #a8433f; --hit-2: #96322e; --hit-3: #7f2622; --hit-4: #6b1c18;
+    --ok: #3f7d4e;
+    color-scheme: light;
+    --tag-0: hsl(0 45% 38%); --tag-1: hsl(48 60% 30%); --tag-2: hsl(110 40% 30%);
+    --tag-3: hsl(165 45% 27%); --tag-4: hsl(220 45% 40%); --tag-5: hsl(275 40% 38%);
+    --tag-6: hsl(330 45% 38%); --tag-7: hsl(25 55% 34%);
+    --tag-text-0: hsl(0 50% 34%); --tag-text-1: hsl(48 65% 26%); --tag-text-2: hsl(110 40% 26%);
+    --tag-text-3: hsl(165 50% 23%); --tag-text-4: hsl(220 50% 34%); --tag-text-5: hsl(275 45% 32%);
+    --tag-text-6: hsl(330 50% 32%); --tag-text-7: hsl(25 60% 28%);
+  }
   * { box-sizing: border-box; }
   /* The page itself never scrolls: header + main fill the viewport exactly, and
      only the panes that need it (document text, search results, token list)
@@ -57,15 +112,15 @@
   header h1 {
     font-size: 20px; margin: 0; font-weight: 700; letter-spacing: .01em;
     /* 作者 2026-10：標題改亮灰（原本的藍色只在「有新版本」時閃動） */
-    color: #d9d9d9; text-shadow: none;
+    color: var(--fg); text-shadow: none;
   }
-  header h1 .accent { color: #ffd479; text-shadow: 0 0 14px rgba(255,212,121,.35); }
+  header h1 .accent { color: var(--gold); text-shadow: 0 0 14px rgba(255,212,121,.35); }
   /* 左上角有新版可更新時：閃動 ＋ 可點擊（桌面版才會出現；網頁版沒有宿主，永遠不會） */
   #brand.update { cursor: pointer; animation: brandFlash 1.1s ease-in-out infinite; }
   #brand.update:hover { filter: brightness(1.35); }
   @keyframes brandFlash {
-    0%, 100% { color: #d9d9d9; text-shadow: none; }
-    50% { color: #ffd479; text-shadow: 0 0 22px rgba(255,212,121,.85); }
+    0%, 100% { color: var(--fg); text-shadow: none; }
+    50% { color: var(--gold); text-shadow: 0 0 22px rgba(255,212,121,.85); }
   }
   /* 全螢幕提示（第一次啟動是全螢幕、沒有標題列，要告訴使用者怎麼回視窗） */
   .fsHint {
@@ -87,12 +142,12 @@
     background: var(--panel); color: var(--fg); border: 1px solid var(--accent);
     border-radius: 10px; box-shadow: 0 12px 48px rgba(0,0,0,.6);
   }
-  #notesBox h2 { margin: 0 0 6px; font-size: 17px; color: #7cc0ff; }
+  #notesBox h2 { margin: 0 0 6px; font-size: 17px; color: var(--link); }
   #notesBox .ver { font-size: 13px; color: var(--dim); margin-bottom: 10px; }
   #notesBox ul { margin: 0 0 12px; padding-left: 20px; }
   #notesBox li { margin: 4px 0; }
   #notesBox button {
-    background: var(--accent); color: #08243f; border: 0; border-radius: 6px;
+    background: var(--accent); color: var(--ink-on-accent); border: 0; border-radius: 6px;
     font: inherit; padding: 6px 18px; cursor: pointer;
   }
   /* ---- 設置（齒輪） ---- */
@@ -105,7 +160,7 @@
     border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.65); padding: 16px 20px 12px;
   }
   .setHead { display: flex; align-items: center; margin-bottom: 8px; }
-  .setHead h2 { margin: 0; font-size: 20px; color: #7cc0ff; flex: 1 1 auto; }
+  .setHead h2 { margin: 0; font-size: 20px; color: var(--link); flex: 1 1 auto; }
   /* 右欄「詞典」分頁（作者 2026-10）：上半詞條清單 / 下半詞條正文
      **不要在這裡寫 display**：這條的優先度 (0,2,0) 會蓋掉 `.tabPane { display:none }`，
      於是詞典分頁在別的分頁 active 時也畫在下面（作者 2026-10-18 從截圖抓到）。
@@ -120,10 +175,10 @@
     font: inherit; font-size: 1.077em; padding: 3px 6px; cursor: pointer;
   }
   .dictItem:hover { background: var(--panel2); }
-  .dictItem.active { background: #2b3b4d; border-color: var(--accent); }
+  .dictItem.active { background: var(--hl-bg); border-color: var(--accent); }
   .dictItem .lbl { flex: 1 1 auto; font-weight: 600; }
   .dictItem .db { color: var(--dim); font-size: .857em; }
-  .dictItem .len { color: #ffd479; font-size: .857em; font-variant-numeric: tabular-nums; }
+  .dictItem .len { color: var(--gold); font-size: .857em; font-variant-numeric: tabular-nums; }
   .dictBody { flex: 1 1 auto; min-height: 0; }
   .dictHead { font-weight: 700; font-size: 1.23em; margin: 2px 0 6px; }
   .dictHead .db { color: var(--dim); font-weight: 400; font-size: .75em; margin-left: 6px; }
@@ -136,7 +191,7 @@
     font: inherit; font-size: 12px; padding: 2px 10px; cursor: pointer;
   }
   .dictMoreTab:hover { border-color: var(--accent); color: var(--fg); }
-  .dictMoreTab.active { background: var(--accent); color: #08243f; font-weight: 700; border-color: var(--accent); }
+  .dictMoreTab.active { background: var(--accent); color: var(--ink-on-accent); font-weight: 700; border-color: var(--accent); }
   .dictMoreList { display: flex; flex-wrap: wrap; gap: 4px; }
   .dictRel {
     display: inline-flex; align-items: baseline; gap: 6px; background: transparent; color: var(--fg);
@@ -160,7 +215,7 @@
     border-radius: 6px; font: inherit; font-size: 14px; padding: 6px 10px;
   }
   .allSearchBar button {
-    background: var(--accent); color: #08243f; border: 0; border-radius: 6px;
+    background: var(--accent); color: var(--ink-on-accent); border: 0; border-radius: 6px;
     font: inherit; font-weight: 700; padding: 6px 16px; cursor: pointer;
   }
   .allSearchBar button:disabled { opacity: .5; cursor: default; }
@@ -172,7 +227,7 @@
   }
   .allSearchRow:hover { border-color: var(--accent); background: var(--panel2); }
   .allSearchRow .n { flex: 1 1 auto; }
-  .allSearchRow .c { color: #ffd479; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .allSearchRow .c { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
   .allSearchRow .c.zero { color: var(--dim); font-weight: 400; }
   .allSearchRow .t { color: var(--dim); font-size: 12px; }
   .allSearchRow.done { border-color: transparent; background: transparent; }
@@ -188,21 +243,21 @@
   }
   .seg button:last-child { border-right: 0; }
   .seg button:hover { background: var(--panel2); }
-  .seg button.active { background: var(--accent); color: #08243f; font-weight: 600; }
+  .seg button.active { background: var(--accent); color: var(--ink-on-accent); font-weight: 600; }
   /* 文字顯示的範例（三列並排比較，隨設定突顯目前那一列） */
   .simDemo {
     margin: 6px 0 4px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
-    background: #1a1a1a; font-size: 13px;
+    background: var(--panel2); font-size: 13px;
   }
   .simDemo .simRow { display: flex; gap: 8px; align-items: baseline; padding: 2px 4px; border-radius: 4px; }
-  .simDemo .simRow.active { background: #2b3b4d; box-shadow: inset 2px 0 0 var(--accent); }
+  .simDemo .simRow.active { background: var(--hl-bg); box-shadow: inset 2px 0 0 var(--accent); }
   .simDemo .simLabel { flex: 0 0 5.5em; color: var(--dim); font-size: 12px; }
   .simDemo .simRow.active .simLabel { color: var(--fg); }
   .simDemo .simText { letter-spacing: .02em; }
-  .simDemo .simText em { font-style: normal; color: #ffd479; text-decoration: underline dotted; }
+  .simDemo .simText em { font-style: normal; color: var(--gold); text-decoration: underline dotted; }
   .setFoot { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line); padding-top: 10px; }  .setFoot .setHint { margin: 0; flex: 1 1 auto; }
   #settingsDone {
-    background: var(--accent); color: #08243f; border: 0; border-radius: 6px;
+    background: var(--accent); color: var(--ink-on-accent); border: 0; border-radius: 6px;
     font: inherit; font-size: 13px; padding: 5px 16px; cursor: pointer;
   }
   /* ---- About（軟件說明；點左上角 accelon26 開啟） ---- */
@@ -218,7 +273,7 @@
   /* 大一點的 accelon logo 放在左上角 */
   #aboutLogo { width: 88px; height: 88px; flex: 0 0 auto; border-radius: 14px; image-rendering: auto; }
   .aboutTitles { min-width: 0; flex: 1 1 auto; padding-top: 2px; }
-  #aboutTitle { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: .01em; color: #7cc0ff; }
+  #aboutTitle { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: .01em; color: var(--link); }
   .aboutSub { margin: 4px 0 8px; font-size: 14px; color: var(--fg); opacity: .85; }
   .aboutSite { margin: 0; font-size: 13px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
   .aboutSite a { color: var(--accent); text-decoration: none; }
@@ -234,7 +289,7 @@
   .aboutMeta b { font-weight: 500; word-break: break-all; }
   /* 「留言給作者」（作者 2026-10-18）：在微信旁邊，開系統瀏覽器到官網的留言頁 */
   .aboutMsg {
-    margin-left: 10px; font-size: 12px; font-weight: 600; color: #0a2338;
+    margin-left: 10px; font-size: 12px; font-weight: 600; color: var(--ink-on-accent);
     background: var(--accent); border-radius: 6px; padding: 2px 9px;
     text-decoration: none; white-space: nowrap;
   }
@@ -243,9 +298,9 @@
     display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--dim);
     border-top: 1px solid var(--line); padding-top: 10px;
   }
-  .aboutUpdate.found { color: #ffd479; }
+  .aboutUpdate.found { color: var(--gold); }
   #aboutInstall {
-    margin-left: auto; background: var(--accent); color: #08243f; border: 0; border-radius: 6px;
+    margin-left: auto; background: var(--accent); color: var(--ink-on-accent); border: 0; border-radius: 6px;
     font: inherit; font-size: 13px; padding: 4px 14px; cursor: pointer;
   }
   #aboutInstall[hidden] { display: none; }
@@ -255,7 +310,7 @@
     border-top: 1px solid var(--line); margin-top: 10px; padding-top: 12px;
   }
   #aboutTour {
-    background: var(--accent); color: #08243f; border: 0; border-radius: 7px;
+    background: var(--accent); color: var(--ink-on-accent); border: 0; border-radius: 7px;
     font: inherit; font-size: 15px; font-weight: 700; padding: 7px 18px; cursor: pointer;
   }
   #aboutTour:hover { filter: brightness(1.12); }
@@ -270,13 +325,13 @@
   cursor: pointer; font-size: 13px; padding: 1px 7px; line-height: 1.5; }
   /* 沒有資料庫時：＋ 右邊閃爍「按＋開啟資料庫」（body 還沒有 .loaded 就顯示）。
      有庫時整段消失（chips 佔那個位置），關掉最後一個庫又會回來。 */
-  #dbHint { display: none; font-size: 13px; white-space: nowrap; color: #ffd479; }
+  #dbHint { display: none; font-size: 13px; white-space: nowrap; color: var(--gold); }
   body:not(.loaded) #dbHint {
     display: inline-block; animation: dbHintFlash 1.4s ease-in-out infinite;
   }
   @keyframes dbHintFlash {
-    0%, 100% { opacity: .35; color: #ffd479; text-shadow: none; }
-    50% { opacity: 1; color: #fff3c4; text-shadow: 0 0 12px rgba(255,212,121,.8); }
+    0%, 100% { opacity: .35; color: var(--gold); text-shadow: none; }
+    50% { opacity: 1; color: var(--gold-2); text-shadow: 0 0 12px rgba(255,212,121,.8); }
   }
   /* 不喜歡動畫的讀者（系統設定）就只留一行亮字 */
   @media (prefers-reduced-motion: reduce) {
@@ -293,7 +348,7 @@
   .sideToggle:hover { border-color: var(--accent); }
   .sideToggle.off { opacity: .45; }
   /* 設置（齒輪）：有任一設定不是預設值時，亮起來提示（作者 2026-10） */
-  #settingsBtn.on { border-color: var(--accent); background: #2b3b4d; color: #ffd479; box-shadow: 0 0 8px rgba(255,212,121,.35); }
+  #settingsBtn.on { border-color: var(--accent); background: var(--hl-bg); color: var(--gold); box-shadow: 0 0 8px rgba(255,212,121,.35); }
   /* the side toggles show their state by being dimmed when collapsed */
   #toggleLeft.off, #toggleRight.off { opacity: .45; }
   /* advanced-only tabs: token browser (left) and the file/meta panes (right) */
@@ -319,7 +374,7 @@
   .splitter::after {
     content: ''; position: absolute; inset: 45% 1px; background: var(--dim); border-radius: 1px;
   }
-  .splitter:hover::after { background: #fff; }
+  .splitter:hover::after { background: var(--accent); }
   body.colDragging { cursor: col-resize; user-select: none; }
   /* narrow screens: collapse both sides regardless of stored width */
   @media (max-width: 900px) {
@@ -366,7 +421,7 @@
   }
   .docItem { display: block; width: 100%; text-align: left; padding: 6px 10px; margin-bottom: 4px; font-size: 1.154em; }
   .docItem:hover, .clsChip:hover, .vaChip:hover, .hitBar button:hover { background: var(--panel2); border-color: var(--accent); }
-  .docItem.active { border-color: var(--accent); background: #2b3b4d; }
+  .docItem.active { border-color: var(--accent); background: var(--hl-bg); }
   .docName { display: block; font-weight: 600; }
   .kv { display: flex; justify-content: space-between; gap: 8px; font-size: 1.077em; padding: 1px 0; }
   .kv span { color: var(--dim); }
@@ -376,7 +431,7 @@
   #tokenRows { overflow: auto; flex: 1 1 auto; }
   .tokenRow {
     display: flex; align-items: baseline; gap: 10px; padding: 3px 6px;
-    border-bottom: 1px solid #2a2a2a; cursor: pointer; font-size: 1.308em;
+    border-bottom: 1px solid var(--border-soft); cursor: pointer; font-size: 1.308em;
   }
   .tokenRow:hover { background: var(--panel2); }
   .tokName { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -411,7 +466,7 @@
     background: #000; color: #fff; border: 1px solid var(--line); border-radius: 4px;
     padding: 2px 5px 3px; cursor: pointer;
   }
-  .fsPick.iconOnly .fsT b { font-weight: 700; color: #fff; }
+  .fsPick.iconOnly .fsT b { font-weight: 700; color: var(--fg); }
   .fsPick.iconOnly .fsT b:first-child { font-size: 9px; }
   .fsPick.iconOnly .fsT b:last-child { font-size: 15px; }
   .fsPick.iconOnly:hover .fsT { border-color: var(--accent); }
@@ -472,7 +527,7 @@
   .docLogoArea[hidden] { display: none; }
   .docLogoArea img { max-width: 62%; max-height: 52vh; opacity: .92; border-radius: 6px; }
   .docLine { display: flex; gap: 10px; padding: 1px 3px; border-radius: 3px; }
-  .docLine:hover { background: #262626; }
+  .docLine:hover { background: var(--row-hover); }
   /* 目前釘住的那一行：淡淡一層就好，免得標題（現在是彩色字）看起來像有底色 */
   .docLine.hitLine { background: rgba(255, 212, 121, .10); }
   .lineText { white-space: pre; flex: 1 1 auto; min-width: 0; }   /* hard-wrapped lines: never soft wrap by default */
@@ -509,7 +564,7 @@
   }
   .docTrail .trailSib:hover { background: var(--panel2); opacity: 1; }
   .docTrail .trailSib.cur {
-    background: #2b3b4d; box-shadow: inset 2px 0 0 var(--accent);
+    background: var(--hl-bg); box-shadow: inset 2px 0 0 var(--accent);
     color: var(--tagtext, var(--fg)); opacity: 1; font-weight: 600; cursor: default; padding: 0 4px;
   }
   .trailMenu {
@@ -526,7 +581,7 @@
     max-width: none;
   }
   .trailMenu .trailItem:hover { background: var(--panel2); }
-  .trailMenu .trailItem.active { background: #2b3b4d; font-weight: 700; box-shadow: inset 2px 0 0 var(--accent); }
+  .trailMenu .trailItem.active { background: var(--hl-bg); font-weight: 700; box-shadow: inset 2px 0 0 var(--accent); }
   /* 內文渲染（render_accelon3.ts）：標題用**字色**（比 tDot 亮、彩度高），不用底色 ——
      底色在深色主題上不夠明顯（作者 2026-10）。 */
   .lineText .h {
@@ -553,15 +608,15 @@
      單詞組時 --hue 是 0（紅色），與以前的樣式一致。 */
   mark.docHit, mark.kw {
     background: hsl(var(--hue, 32) 90% 38%);
-    color: #fff3d6; border-radius: 2px; padding: 0 2px;
+    color: var(--mark-fg); border-radius: 2px; padding: 0 2px;
   }
   mark.docHit { box-shadow: 0 0 0 1px hsl(var(--hue, 32) 95% 62%); }
   mark.kw { padding: 0 1px; }
-  mark.kw.cur { box-shadow: 0 0 0 1px #fff; }
+  mark.kw.cur { box-shadow: 0 0 0 1px var(--fg); }
   /* 摘要上方的詞組徽章（idf 旁邊那個） */
   .kwTag {
     display: inline-block; padding: 0 5px; border-radius: 4px; font-size: 12px;
-    background: hsl(var(--hue, 32) 80% 30%); color: #fff3d6; border: 1px solid hsl(var(--hue, 32) 80% 45%);
+    background: hsl(var(--hue, 32) 80% 30%); color: var(--mark-fg); border: 1px solid hsl(var(--hue, 32) 80% 45%);
   }
 
   .thumbGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
@@ -594,9 +649,9 @@
     white-space: nowrap;
   }
   .searchBar button.modeBtn:hover { border-color: var(--accent); }
-  .searchBar button.modeBtn[data-mode="start"] { color: #ffd479; }
-  .searchBar button.modeBtn[data-mode="mid"] { color: #8fd3ff; }
-  .searchBar button.modeBtn[data-mode="end"] { color: #9fe08a; }
+  .searchBar button.modeBtn[data-mode="start"] { color: var(--gold); }
+  .searchBar button.modeBtn[data-mode="mid"] { color: var(--link); }
+  .searchBar button.modeBtn[data-mode="end"] { color: var(--ok); }
   #termsMode .modeCount {
     color: var(--fg); opacity: .85; font-size: .95em; margin-left: 5px;
     font-variant-numeric: tabular-nums;
@@ -607,10 +662,10 @@
     border-radius: 5px; padding: 6px 9px; margin-bottom: 6px; cursor: pointer; font-size: 1.154em;
   }
   .snippet:hover { background: var(--panel2); }
-  .snippet.active { border-left-color: var(--accent); background: #2b3b4d; }
+  .snippet.active { border-left-color: var(--accent); background: var(--hl-bg); }
   .snippetHead { font-size: .885em; color: var(--dim); margin-bottom: 2px; }
-  .snippet mark { background: hsl(var(--hue, 32) 90% 38%); color: #fff3d6; border-radius: 2px; padding: 0 2px; }
-  .snippet mark.cur { box-shadow: 0 0 0 1px #fff; }
+  .snippet mark { background: hsl(var(--hue, 32) 90% 38%); color: var(--mark-fg); border-radius: 2px; padding: 0 2px; }
+  .snippet mark.cur { box-shadow: 0 0 0 1px var(--fg); }
   /* search groups (tree tier 1: 書/集…) */
   .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; max-height: 8.6em; overflow: auto; }
   .chips:empty { display: none; }
@@ -619,7 +674,7 @@
     cursor: pointer; font: inherit; font-size: .923em; padding: 1px 7px; white-space: nowrap;
   }
   .chip:hover { border-color: var(--accent); }
-  .chip.active { border-color: var(--accent); background: #2b3b4d; }
+  .chip.active { border-color: var(--accent); background: var(--hl-bg); }
   .chip b { font-variant-numeric: tabular-nums; }
   .chip.zero { opacity: .45; }
 
@@ -628,7 +683,7 @@
     display: flex; align-items: center; gap: 4px; padding: 1px 4px; border-radius: 3px;
     cursor: pointer; font-size: 1em; line-height: 1.5; white-space: nowrap;
   }
-  .tRow:hover { background: #262626; }
+  .tRow:hover { background: var(--row-hover); }
   .tTwisty { width: 12px; text-align: center; color: var(--dim); flex: 0 0 auto; font-size: .846em; }
   .tDot { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
   .tTag { color: var(--dim); font-size: .846em; flex: 0 0 auto; }
@@ -639,16 +694,16 @@
   .tCount { margin-left: auto; color: var(--dim); font-size: .846em; font-variant-numeric: tabular-nums; }
   /* Hit badges are graded by how much of the result sits in that realm: the
      bigger the share, the louder the colour (亮紅 for the heaviest nodes). */
-  .tCount.hit { color: #ff8a80; font-weight: 600; }
-  .tCount.hit.t2 { color: #ff6b6b; }
-  .tCount.hit.t3 { color: #ff3b30; }
-  .tCount.hit.t4 { color: #ff1744; font-weight: 700; font-size: .962em; text-shadow: 0 0 6px rgba(255,23,68,.5); }
+  .tCount.hit { color: var(--hit-1); font-weight: 600; }
+  .tCount.hit.t2 { color: var(--hit-2); }
+  .tCount.hit.t3 { color: var(--hit-3); }
+  .tCount.hit.t4 { color: var(--hit-4); font-weight: 700; font-size: .962em; text-shadow: 0 0 6px rgba(255,23,68,.5); }
   .tCount.hit.big { font-size: 1em; }
   /* the node whose text the middle pane currently shows, and the node the middle
      of the document pane sits on (with its ancestors lit) */
-  .tRow.active { background: #2b3b4d; }
+  .tRow.active { background: var(--hl-bg); }
   .tRow.ancestor { background: rgba(90,169,255,.10); }
-  .tRow.current { background: #2b3b4d; outline: 1px solid var(--accent); border-radius: 3px; }
+  .tRow.current { background: var(--hl-bg); outline: 1px solid var(--accent); border-radius: 3px; }
   #dirTree { padding: 0; }
 /* 作者 2026-10：`.dbTabs` 吃掉剩下的寬度 → 狀態列與齒輪被推到最右邊。
    不能只靠 `.status { margin-left:auto }`：狀態列隱藏時（display:none）那個 auto 就沒了，
@@ -660,19 +715,19 @@
   border-radius: 6px; padding: 1px 6px; font: inherit; font-size: 13px; font-weight: 600;
   line-height: 1.5; cursor: pointer; color: var(--ink); }
 .dbTabs .dbChip:hover { border-color: var(--accent); background: rgba(90,169,255,.08); }
-.dbTabs .dbChip.active { border-color: var(--accent); background: rgba(90,169,255,.14); color: #fff; }
+.dbTabs .dbChip.active { border-color: var(--accent); background: rgba(90,169,255,.14); color: var(--fg); }
 .dbTabs .dbChipClose { opacity: 0; margin-left: 2px; }
 .dbTabs .dbChip.active .dbChipClose { opacity: .6; }
-.dbTabs .dbChipClose:hover { opacity: 1; color: #ff6b6b; }
+.dbTabs .dbChipClose:hover { opacity: 1; color: var(--hit-2); }
 /* adb 選單（作者 2026-10）：資料夾按鈕移到原本 ＋ 的位置；「加入 adb」是下拉第一項。
    margin-left:auto 不再需要（`.status` 自己會把後面的東西推到右邊）。 */
 .dbPickWrap { position: relative; display: inline-flex; }
 .dbPickBtn {
   background: transparent; border: 1px solid var(--line); border-radius: 6px;
-  color: #ffd479; font-size: 15px; line-height: 1; padding: 2px 7px 3px; cursor: pointer;
+  color: var(--gold); font-size: 15px; line-height: 1; padding: 2px 7px 3px; cursor: pointer;
 }
 .dbPickBtn:hover { border-color: var(--accent); background: var(--panel2); }
-.dbPickBtn.on { border-color: var(--accent); background: #2b3b4d; box-shadow: inset 0 0 0 1px var(--accent); }
+.dbPickBtn.on { border-color: var(--accent); background: var(--hl-bg); box-shadow: inset 0 0 0 1px var(--accent); }
 /* 選單貼在 📁 **正下方、向右展開**（作者 2026-10-18）。寬度由 renderDbPick 依
    「按鈕左緣到視窗右緣」算好寫進 max-width，所以不會像以前那樣溢出畫面左邊。 */
 .dbPickMenu {
@@ -694,14 +749,14 @@
 .dbPickMenu .dbPickItem { cursor: pointer; }
 .dbPickMenu .dbPickItem:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .dbPickMenu .dbPickItem:hover td { background: var(--panel2); }
-.dbPickMenu .dbPickItem.active td { background: #2b3b4d; }
+.dbPickMenu .dbPickItem.active td { background: var(--hl-bg); }
 .dbPickMenu .dbPickItem.active td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
 .dbPickMenu .dbPickFile { color: var(--dim); font-family: ui-monospace, Consolas, monospace; max-width: 14em; }
 .dbPickMenu .dbPickName { font-weight: 600; }
 .dbPickMenu .dbPickItem.active .dbPickName { font-weight: 700; }
 .dbPickMenu .dbPickChars { text-align: right; font-variant-numeric: tabular-nums; }
 .dbPickMenu .dbPickDate { color: var(--dim); font-variant-numeric: tabular-nums; }
-.dbPickMenu .dbPickAdd td { color: #ffd479; }
+.dbPickMenu .dbPickAdd td { color: var(--gold); }
 .dbPickMenu .dbPickEmpty { color: var(--dim); font-size: 12px; padding: 4px 8px; }
 /* ---- 操作導覽（作者 2026-10）：聚光燈 ＋ 說明氣泡 ----
    聚光燈是「一個貼在目標上的空 div ＋ 9999px 的 box-shadow」：四周壓暗、目標亮著。
@@ -709,7 +764,7 @@
    如此），也就不會有「遮罩吃掉點擊」這種事。z-index 高於所有彈窗（80–85）。 */
 #tourSpot {
   position: fixed; z-index: 89; pointer-events: none;
-  border-radius: 8px; border: 2px solid #ffd479;
+  border-radius: 8px; border: 2px solid var(--gold);
   /* 作者 2026-10-18：四周壓暗從 .55 降到 .40 —— 之前「＋ 加入 adb」在選單裡幾乎看不見 */
   box-shadow: 0 0 0 9999px rgba(0,0,0,.40), 0 0 22px rgba(255,212,121,.45);
 }
@@ -718,31 +773,31 @@
   position: fixed; z-index: 90; left: 50%; transform: translateX(-50%);
   width: min(780px, 92vw); max-height: 48vh; overflow: auto;
   /* 作者 2026-10-18：底色比面板亮一階、字大一號，讀起來不吃力 */
-  background: #31353f; color: #f2f2f2; border: 1px solid var(--accent);
+  background: var(--popup-bg); color: var(--popup-fg); border: 1px solid var(--accent);
   border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.7); padding: 14px 18px 12px;
 }
 #tourBubble[hidden] { display: none; }
 #tourBubble.paused { border-color: var(--warn); }
 .tourHead { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
-.tourWhere { flex: 1 1 auto; font-size: 12.5px; color: #9fb6cd; letter-spacing: .04em; }
+.tourWhere { flex: 1 1 auto; font-size: 12.5px; color: var(--hint-blue); letter-spacing: .04em; }
 /* 場景主題（作者 2026-10-18）：比說明文字大、比它亮 */
-#tourTitle { font-size: 18px; font-weight: 700; color: #8cc4ff; margin: 0 0 8px; line-height: 1.4; }
+#tourTitle { font-size: 18px; font-weight: 700; color: var(--link); margin: 0 0 8px; line-height: 1.4; }
 #tourText { font-size: 16.5px; line-height: 1.8; }
 #tourText p { margin: 0 0 8px; }
 #tourText p:last-child { margin-bottom: 0; }
-#tourText b { color: #ffd479; }
-#tourText code { background: #1b1b1b; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 14.5px; }
-#tourNote { font-size: 13.5px; color: #ffcf7a; margin: 8px 0 0; }
+#tourText b { color: var(--gold); }
+#tourText code { background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 14.5px; }
+#tourNote { font-size: 13.5px; color: var(--warn); margin: 8px 0 0; }
 #tourNote[hidden] { display: none; }
 .tourBtns { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-.tourProg { flex: 1 1 auto; font-size: 12.5px; color: #9fb6cd; text-align: right; }
+.tourProg { flex: 1 1 auto; font-size: 12.5px; color: var(--hint-blue); text-align: right; }
 #tourBubble button {
-  background: #3a3f4b; color: var(--fg); border: 1px solid var(--line);
+  background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
   border-radius: 7px; font: inherit; font-size: 14px; padding: 6px 14px; cursor: pointer;
 }
 #tourBubble button:hover { border-color: var(--accent); }
 #tourBubble button:disabled { opacity: .4; cursor: default; }
-#tourBubble button.primary { background: var(--accent); color: #08243f; border-color: transparent; font-weight: 700; }
+#tourBubble button.primary { background: var(--accent); color: var(--ink-on-accent); border-color: transparent; font-weight: 700; }
 #tourBubble button[hidden] { display: none; }
 /* 導覽選單：一份劇本一列 */
 #tourBackdrop { position: fixed; inset: 0; z-index: 86; background: rgba(0,0,0,.55); }
@@ -755,7 +810,7 @@
 }
 .tourList { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .tourRow { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel2); }
-.tourName { font-size: 16px; font-weight: 700; color: #7cc0ff; }
+.tourName { font-size: 16px; font-weight: 700; color: var(--link); }
 .tourIntro { font-size: 13px; margin: 4px 0; line-height: 1.65; }
 .tourMeta { font-size: 12px; color: var(--dim); }
 .tourActs { display: flex; gap: 8px; margin-top: 8px; }
@@ -764,7 +819,7 @@
   border-radius: 7px; font: inherit; font-size: 13px; padding: 4px 14px; cursor: pointer;
 }
 .tourActs button:hover { border-color: var(--accent); }
-.tourActs button.primary { background: var(--accent); color: #08243f; border-color: transparent; font-weight: 700; }
+.tourActs button.primary { background: var(--accent); color: var(--ink-on-accent); border-color: transparent; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -966,6 +1021,18 @@
     <button id="settingsClose" class="aboutClose" title="關閉（Esc）">✕</button>
   </div>
   <section class="setSection">
+    <h3>主題</h3>
+    <div class="setRow">
+      <span>配色</span>
+      <span class="seg" id="themeSeg" role="group" aria-label="主題">
+        <button type="button" data-theme="dark">暗色系</button>
+        <button type="button" data-theme="light">亮色系</button>
+        <button type="button" data-theme="eye">護眼</button>
+      </span>
+    </div>
+    <p class="setHint">預設是暗色系。護眼是偏綠的紙色，長時間閱讀比較不刺眼；換主題只換顏色，不用重開。</p>
+  </section>
+  <section class="setSection">
     <h3>介面</h3>
     <label class="setRow" for="setPageMarks">
       <input type="checkbox" id="setPageMarks">
@@ -1075,7 +1142,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T05:17:59.963Z","buildTimeText":"2026-10-18 13:17"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T05:21:24.604Z","buildTimeText":"2026-10-18 13:21"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -8404,6 +8471,53 @@ designed by C.S.Yap`;
     openAbout();
   }
 
+  // src/accelon26/theme.ts
+  var KEY = "accelon26.theme";
+  var THEME_LABEL = { dark: "暗色系", light: "亮色系", eye: "護眼" };
+  function stored() {
+    try {
+      const v = localStorage.getItem(KEY);
+      if (v === "light" || v === "eye" || v === "dark")
+        return v;
+    } catch {}
+    return "dark";
+  }
+  var current2 = stored();
+  function themeOf() {
+    return current2;
+  }
+  function paint() {
+    const root = document.documentElement;
+    if (current2 === "dark")
+      root.removeAttribute("data-theme");
+    else
+      root.setAttribute("data-theme", current2);
+    for (const b of document.querySelectorAll("#themeSeg button")) {
+      const on = b.dataset.theme === current2;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+  function setTheme(name) {
+    current2 = name;
+    try {
+      localStorage.setItem(KEY, name);
+    } catch {}
+    paint();
+  }
+  function initTheme(onPick) {
+    paint();
+    document.querySelectorAll("#themeSeg button").forEach((b) => {
+      b.addEventListener("click", () => {
+        const name = b.dataset.theme;
+        if (name === current2)
+          return;
+        setTheme(name);
+        onPick?.(name);
+      });
+    });
+  }
+
   // src/accelon26/simplified-data.ts
   var SAFE_PAIRS = "傌㐷㑶㐹偑㐽㑳㑇倲㑈㑯㑔儸㑩儁㑺劏㓥㓨刾劚㔉噚㖊喎㖞㘚㘎㜄㚯媰㛀㜏㛣孋㛤寯㝦㠏㟆嵾㟥幓㡎懧㤖㥮㤘憍㤭懤㤽慺㥪掆㧏㩳㧐撝㧑擥㧛擓㧟擽㧰㩜㨫㩵擜棡㭎椲㭏樢㭤樫㭴殰㱩殨㱮瀇㲿濧㳔澾㳠濄㳡潚㴋鸂㶉燶㶶煱㶽獱㺍璯㻅㻽㻪䁻䀥瞜䁖碽䂵磾䃅䃮鿎稏䅉穇䅟筴䇲籔䉤䊷䌶䋙䌺䋚䌻䋹䌿䋻䌾紬䌷縳䌸絅䌹綐䌼綵䌽繿䍀繸䍁䎱䎬膞䏝臇䐪膋䒿薵䓓薳䓕藭䓖罃䓨螮䗖䙡䙌䙰褵譼䛓䜀䜧訢䜣鿁䜤讌䜩貙䝙䝼䞍賰䞐躎䟢䥇䦂䥑鿏䥱䥾釾䥺鏺䥽鐯䦃鐥䦅钁䦆䦛䦶䦟䦷靦䩄䯀䯅騧䯄䰾鲃䱷䲣䱽䲝䲁鳚䲘鳤鮣䲟鰆䲠鰌䲡鰧䲢鿐䲤䴉鹮鳾䴓鵁䴔鴷䴕鶄䴖鶪䴗鸊䴙龑䶮萬万與与醜丑專专業业叢丛東东絲丝丟丢兩两嚴严喪丧個个豐丰臨临為为爲为麗丽舉举義义烏乌樂乐喬乔習习鄉乡書书亂乱爭争虧亏亞亚畝亩親亲褻亵嚲亸億亿僅仅從从侖仑倉仓儀仪們们價价眾众衆众優优夥伙會会傴伛傘伞偉伟傳传俥伡俔伣傷伤倀伥倫伦傖伧佇伫體体傭佣僉佥來来俠侠侶侣僥侥偵侦側侧僑侨儈侩儕侪儂侬俁俣儔俦儼俨倆俩儷俪倈俫儉俭債债傾倾傯偬僂偻僨偾償偿傑杰備备傢家儻傥儐傧儲储儺傩兒儿剋克兌兑兗兖黨党內内關关興兴茲兹養养獸兽囅冁岡冈冊册寫写軍军農农冪幂鼕冬馮冯決决況况凍冻凈净涼凉減减湊凑凜凛鳳凤憑凭凱凯擊击鑿凿芻刍劉刘則则剛刚創创刪删剗刬剄刭颳刮剎刹劊刽劌刿剴剀劑剂剮剐劍剑剝剥劇剧勸劝辦办務务勱劢動动勵励勁劲勞劳勢势勛勋勩勚勝胜勻匀匭匦匱匮區区醫医華华協协單单賣卖盧卢衛卫卻却廠厂廳厅曆历歷历厲厉壓压厭厌厙厍龎厐厠厕廁厕廂厢厴厣廈厦廚厨廄厩廝厮縣县叄叁參参靉叆靆叇雙双變变敘叙疊叠葉叶號号嘆叹嘰叽籲吁衕同吒咤嚇吓呂吕嗎吗唚吣噸吨聽听啓启啟启吳吴吶呐嘸呒囈呓嘔呕嚦呖唄呗員员咼呙嗆呛嗚呜詠咏嚨咙嚀咛噝咝響响啞哑噠哒嘵哓嗶哔噦哕嘩哗噲哙嚌哜噥哝喲哟嘜唛嗊唝嘮唠啢唡嗩唢喚唤問问嘖啧嗇啬囀啭嚙啮嘓啯囉啰嘽啴嘯啸噴喷嘍喽嚳喾囁嗫噯嗳嘗尝噓嘘嚶嘤囑嘱嚕噜囂嚣迴回囪囱園园圍围圇囵國国圖图圓圆聖圣壙圹場场阪坂壞坏塊块堅坚壢坜垻坝壩坝塢坞墳坟墜坠壟垄壠垅壚垆壘垒墾垦堊垩墊垫埡垭墶垯壋垱塏垲堖垴垵埯塒埘塤埙堝埚執执塹堑墮堕堯尧報报壪塆塋茔塵尘墻墙牆墙壯壮聲声殻壳殼壳壺壶壼壸壽寿處处夠够夢梦頭头夾夹奪夺奩奁奐奂奮奋獎奖奧奥姦奸奼姹妝妆婦妇媽妈嫵妩嫗妪媯妫嬀妫姍姗婁娄婭娅嬈娆嬌娇孌娈娛娱媧娲嫻娴嫿婳嬰婴嬋婵嬸婶媼媪嬃媭嬡嫒嬪嫔嬙嫱嬤嬷孫孙學学孿孪寧宁寶宝實实寵宠審审憲宪宮宫寬宽賓宾寢寝對对尋寻導导將将爾尔尷尴屍尸層层屓屃屆届屜屉屬属屢屡屨屦嶼屿歲岁豈岂嶇岖崗岗峴岘嶴岙嵐岚島岛嶺岭崬岽巋岿嶨峃嶧峄峽峡嶢峣嶠峤崢峥巒峦嶗崂崍崃嶮崄嶄崭嶸嵘嶔嵚嶁嵝巔巅鞏巩巰巯幣币帥帅師师幃帏帳帐簾帘幟帜帶带幀帧幫帮幬帱幘帻幗帼廣广莊庄慶庆廬庐廡庑庫库應应廟庙龐庞廢废廎庼廩廪異异棄弃弒弑張张弳弪彎弯強强彈弹歸归録录彞彝彠彟彥彦彲彨徹彻徑径徠徕憶忆懺忏憂忧愾忾懷怀態态慫怂憮怃慪怄悵怅愴怆憐怜總总懟怼懌怿恆恒戀恋恥耻懇恳慟恸懨恹愷恺惻恻惱恼惲恽悅悦悞悮懸悬慳悭憫悯悶闷驚惊懼惧慘惨懲惩憊惫愜惬慚惭憚惮慣惯愛爱慍愠憤愤憒愦慄栗懾慑憖慭慮虑懍懔懣懑懶懒戇戆戔戋戲戏戧戗戩戬戱戯戶户纔才撲扑擴扩捫扪掃扫揚扬擾扰撫抚拋抛摶抟摳抠掄抡搶抢護护擔担擬拟攏拢揀拣擁拥攔拦擰拧撥拨擇择掛挂摯挚攣挛掗挜撾挝撻挞挾挟撓挠擋挡撟挢掙挣擠挤揮挥撏挦挩捝撈捞損损撿捡換换搗捣據据擄掳摑掴擲掷撣掸摻掺摜掼攬揽搵揾撳揿攙搀擱搁摟搂攪搅搖摇攜携攝摄攄摅擯摈攤摊攖撄撐撑攆撵擷撷擼撸攛撺擻擞攢攒敵敌敗败斂敛斆敩數数斃毙齋斋斕斓鬥斗斬斩斷断無无舊旧時时曠旷暘旸曇昙晝昼曨昽顯显晉晋曬晒曉晓曄晔暈晕暉晖暫暂暢畅曖暧朧胧樸朴機机殺杀雜杂權权桿杆條条楊杨榪杩極极構构樅枞樞枢棗枣櫪枥梘枧棖枨槍枪楓枫梟枭櫃柜檸柠柵栅檉柽梔栀標标棧栈櫛栉櫳栊棟栋櫨栌櫟栎欄栏樹树棲栖樣样欒栾椏桠橈桡楨桢檔档榿桤橋桥樺桦檜桧槳桨樁桩樳桪梲棁檮梼棶梾槤梿檢检欞棂槨椁槼椝櫝椟槧椠槶椢欏椤樿椫橢椭槮椮樓楼欖榄榲榅櫬榇櫚榈櫸榉榮荣檟槚檻槛檳槟櫧槠橫横檣樯櫻樱櫫橥櫥橱櫓橹櫞橼檁檩櫱蘖歡欢歟欤歐欧欽钦殲歼歿殁殤殇殘残殞殒殮殓殫殚殯殡毆殴毀毁轂毂畢毕毿毵氂牦氌氇氣气氫氢氬氩氳氲漢汉湯汤洶汹澐沄沒没溝沟灃沣漚沤瀝沥淪沦滄沧渢沨溈沩潙沩滬沪濘泞淚泪澩泶瀧泷瀘泸濼泺瀉泻潑泼澤泽涇泾潔洁灑洒窪洼浹浃淺浅漿浆澆浇湞浈溮浉濁浊測测澮浍濟济瀏浏滻浐渾浑滸浒濃浓潯浔濜浕濤涛澇涝淶涞漣涟潿涠渦涡溳涢渙涣滌涤潤润澗涧漲涨澀涩澱淀淥渌淵渊漬渍瀆渎漸渐澠渑漁渔滲渗溫温灣湾濕湿濚溁潰溃濺溅漵溆漊溇滅灭滎荥潷滗滾滚滯滞灧滟灄滠滿满瀅滢濾滤濫滥灤滦濱滨灘滩澦滪灕漓潁颍瀠潆瀟潇瀲潋濰潍潛潜瀦潴瀂澛瀾澜瀨濑瀕濒灝灏燈灯靈灵竈灶災灾燦灿煬炀爐炉煒炜熗炝點点煉炼熾炽爍烁爛烂烴烃燭烛煙烟煩烦燒烧燁烨燴烩燙烫燼烬熱热煥焕燜焖燾焘煢茕熅煴熒荧熲颎營营爺爷牘牍牽牵犧牺犢犊犖荦狀状獷犷獁犸猶犹狽狈獮狝獰狞獨独狹狭獅狮獪狯猙狰獄狱猻狲獫猃獵猎獼猕玀猡豬猪貓猫蝟猬獻献獺獭璣玑璵玙瑒玚瑪玛瑋玮環环現现瑲玱璽玺琺珐瓏珑璫珰琿珲璡琎璉琏瑣琐瓊琼瑤瑶瑩莹璦瑷璸瑸瓔璎瓚瓒甌瓯電电畫画疇畴癤疖療疗瘧疟癘疠瘍疡癧疬瘲疭瘡疮瘋疯皰疱痾疴癥症癰痈痙痉癢痒瘂痖癆痨瘓痪癇痫癉瘅瘮瘆瘞瘗瘺瘘瘻瘘癟瘪癱瘫癮瘾癭瘿癩癞癬癣癲癫皚皑皺皱皸皲盞盏鹽盐監监蓋盖盜盗盤盘盪荡瞘眍眥眦矓眬著着睜睁睞睐瞼睑瞶瞆瞞瞒矚瞩矯矫磯矶礬矾礦矿碭砀碼码磚砖硨砗硯砚碸砜礪砺礱砻礫砾礎础硜硁碩硕硤硖磽硗磑硙礄硚確确磠硵礙碍磧碛磣碜禮礼禡祃禕祎禰祢禎祯禱祷禍祸祿禄稟禀禪禅離离禿秃稈秆秈籼種种積积稱称穢秽穠秾稅税穭稆穌稣穩稳穎颖穡穑窮穷竊窃竅窍窵窎窯窑竄窜窩窝窺窥竇窦窶窭竪竖豎竖競竞篤笃筍笋筆笔筧笕箋笺籠笼籩笾篳筚篩筛簹筜箏筝籌筹篔筼簡简籙箓簀箦篋箧籜箨籮箩簞箪簫箫節节範范簣篑簍篓籃篮籛篯籬篱籪簖籟籁糴籴類类糶粜糲粝粵粤糞粪糧粮糝糁糹纟糾纠紀纪紂纣約约紅红紆纡紇纥紈纨紉纫紋纹納纳紐纽紓纾純纯紕纰紖纼紗纱紘纮紙纸級级紛纷紜纭紝纴紡纺緊紧細细紱绂紲绁紳绅紵纻紹绍紺绀紼绋紿绐絀绌終终組组絆绊絎绗結结絕绝絝绔絞绞絡络絢绚給给絨绒絰绖統统絳绛絶绝縶絷絹绢綁绑綃绡綆绠綈绨綉绣綌绤綏绥經经綜综綞缍綢绸綣绻綫线綬绶維维綯绹綰绾綱纲網网綳绷綴缀綸纶綹绺綺绮綻绽綽绰綾绫綿绵緄绲緇缁緋绯緒绪緓绬緗缃緘缄緙缂線缐緝缉緞缎締缔緡缗緣缘緦缌編编緩缓緬缅緯纬緱缑緲缈練练緶缏緹缇緻致縈萦縉缙縊缢縋缒縐绉縑缣縗缞縛缚縝缜縞缟縟缛縧绦縫缝縭缡縮缩縱纵縲缧縵缦縷缕縹缥績绩繃绷繅缫繆缪繒缯織织繕缮繚缭繞绕繡绣繢缋繩绳繪绘繭茧繮缰繯缳繰缲繳缴繹绎繼继繽缤繾缱纇颣纈缬纊纩續续纏缠纓缨纘缵纜缆韁缰缽钵罌罂羅罗罰罚罷罢羆罴羈羁羋芈羥羟翹翘翽翙翬翚耮耢耬耧聳耸聶聂聾聋職职聹聍聯联聞闻聵聩聰聪肅肃腸肠膚肤骯肮腎肾腫肿脹胀脅胁膽胆腖胨臚胪脛胫膠胶脈脉膾脍臍脐腦脑膿脓臠脔腳脚脫脱腡脶臉脸臘腊膕腘齶腭膩腻膃腽騰腾臏膑臢臜輿舆艤舣艦舰艙舱艫舻艱艰艷艳藝艺薌芗蕪芜蘆芦蓯苁葦苇藶苈莧苋萇苌蒼苍薴苧莖茎蘢茏蔦茑荊荆薦荐薘荙莢荚蕘荛蓽荜萴荝蕎荞薈荟薺荠蕩荡葷荤蕁荨藎荩蓀荪蔭荫蕒荬葒荭葤荮葯药藥药蒞莅萊莱蓮莲蒔莳萵莴薟莶蕕莸鶯莺蒓莼蓴莼蘀萚蘿萝螢萤蕭萧薩萨蔥葱蕆蒇蕢蒉蔣蒋蔞蒌醟蒏藍蓝薊蓟蘺蓠蕷蓣鎣蓥驀蓦虆蔂衊蔑薔蔷蘞蔹藺蔺藹蔼薀蕰蘄蕲藪薮蘚藓虜虏虛虚蟲虫虯虬蟣虮雖虽蝦虾蠆虿蝕蚀蟻蚁螞蚂蠁蚃蠶蚕蜆蚬蠱蛊蠣蛎蟶蛏蠻蛮蟄蛰蛺蛱蟯蛲螄蛳蠐蛴蛻蜕蝸蜗蠟蜡蠅蝇蟈蝈蟬蝉螻蝼蠑蝾螿螀蟎螨蠨蟏釁衅銜衔補补襯衬袞衮襖袄裊袅褘袆襪袜襲袭襏袯裝装襠裆褌裈褳裢襝裣褲裤襇裥褸褛襌褝襤褴襴襕見见覎觃規规覓觅視视覘觇覡觋覥觍覦觎覬觊覯觏覲觐覷觑覺觉覽览覿觌觀观觴觞觸触觶觯訁讠訂订訃讣計计訊讯訌讧討讨訐讦訒讱訓训訕讪訖讫託讬記记誾訚訛讹訝讶訟讼訣诀訥讷訩讻訪访設设許许訴诉訶诃診诊詁诂詆诋詎讵詐诈詒诒詔诏評评詖诐詗诇詘诎詛诅詞词讋詟詡诩詢询詣诣試试詩诗詫诧詬诟詭诡詮诠詰诘話话該该詳详詵诜詼诙詿诖誄诔誅诛誆诓譽誉謄誊認认誑诳誒诶誕诞誘诱誚诮語语誠诚誡诫誣诬誤误誥诰誦诵誨诲說说説说誰谁課课誶谇誹诽誼谊調调諂谄諄谆談谈諉诿請请諍诤諏诹諑诼諒谅論论諗谂諛谀諜谍諝谞諞谝諢诨諤谔諦谛諧谐諫谏諭谕諮谘諱讳諳谙諶谌諷讽諸诸諺谚諼谖諾诺謀谋謁谒謂谓謅诌謊谎謎谜謐谧謔谑謖谡謗谤謙谦謚谥講讲謝谢謠谣謡谣謨谟謫谪謬谬謳讴謹谨謾谩證证譎谲譏讥譖谮識识譙谯譚谭譜谱譫谵譯译議议譴谴讀读讅谉讎雠讒谗讓让讕谰讖谶讜谠讞谳豶豮貝贝貞贞貟贠負负財财貢贡貧贫貨货販贩貪贪貫贯責责貯贮貰贳貲赀貳贰貴贵貶贬貸贷貺贶費费貼贴貽贻貿贸賀贺賁贲賂赂賃赁賄贿賅赅資资賈贾賊贼賑赈賒赊賕赇賙赒賚赉賜赐賞赏賠赔賡赓賢贤賤贱賦赋賧赕質质賫赍賭赌賴赖賵赗賺赚賻赙購购賽赛賾赜贄贽贅赘贇赟贈赠贊赞贋赝贍赡贏赢贐赆贓赃贔赑贖赎贗赝贛赣贜赃赬赪趙赵趕赶趨趋趲趱躉趸躍跃蹌跄躒跞跡迹踐践躂跶蹺跷蹕跸躚跹躋跻踴踊躊踌躓踬躑踯躡蹑蹣蹒躕蹰躥蹿躪躏躦躜軀躯車车軋轧軌轨軑轪軒轩軔轫軛轭軟软軤轷軫轸軲轱軸轴軹轵軺轺軻轲軼轶軾轼較较輅辂輇辁輈辀載载輊轾輒辄輔辅輕轻輛辆輜辎輝辉輞辋輟辍輥辊輦辇輩辈輪轮輬辌輯辑輳辏輸输輻辐輾辗轄辖轅辕轆辘轉转轍辙轎轿轔辚轟轰轡辔轢轹轤轳辭辞闢辟辯辩辮辫邊边遼辽達达遷迁過过邁迈運运還还這这進进遠远違违連连遲迟邇迩逕迳適适選选遜逊遞递邐逦邏逻遺遗遙遥鄧邓鄺邝鄔邬郵邮鄒邹鄴邺鄰邻郟郏鄶郐鄭郑鄆郓酈郦鄖郧鄲郸酇酂醱酦醬酱釅酽釃酾釀酿釋释釒钅釓钆釔钇釕钌釗钊釘钉釙钋針针釣钓釤钐釧钏釩钒釵钗釷钍釹钕釺钎鈀钯鈁钫鈃钘鈄钭鈈钚鈉钠鈍钝鈎钩鈐钤鈑钣鈒钑鈔钞鈕钮鈞钧鈣钙鈥钬鈦钛鈧钪鈮铌鈰铈鈳钶鈴铃鈷钴鈸钹鈹铍鈺钰鈽钸鈾铀鈿钿鉀钾鉅钜鉈铊鉉铉鉋铇鉍铋鉑铂鉕钷鉗钳鉚铆鉛铅鉞钺鉢钵鉤钩鉦钲鉬钼鉭钽鑒鉴鉶铏鉸铰鉺铒鉻铬鉿铪銀银銃铳銅铜銍铚銑铣銓铨銖铢銘铭銚铫銛铦銠铑銣铷銥铱銦铟銨铵銩铥銪铕銫铯銬铐鑾銮銱铞銳锐銷销銹锈銻锑銼锉鋁铝鋃锒鋅锌鋇钡鋌铤鋏铗鋒锋鋙铻鋝锊鋟锓鋣铘鋤锄鋥锃鋦锔鋨锇鋩铓鋪铺鋭锐鋮铖鋯锆鋰锂鋱铽鋶锍鋸锯鋼钢錁锞錆锖錇锫錈锩錏铔錐锥錒锕錕锟錘锤錙锱錚铮錛锛錟锬錠锭錡锜錢钱錦锦錨锚錩锠錫锡錮锢錯错錳锰錸铼鏨錾鍀锝鍁锨鍃锪鍆钔鍇锴鍈锳鍋锅鍍镀鍔锷鍘铡鍚钖鍛锻鍠锽鍤锸鍥锲鍩锘鍬锹鍰锾鍵键鍶锶鍺锗鎂镁鎄锿鎇镅鎊镑鎔镕鎖锁鎘镉鎛镈鎡镃鎢钨鎦镏鎧铠鎩铩鎪锼鎬镐鎮镇鎰镒鎳镍鎵镓鎶鿔鎿镎鏃镞鏈链鏌镆鏍镙鏐镠鏑镝鏗铿鏘锵鏜镗鏝镘鏞镛鏟铲鏡镜鏢镖鏤镂鏰镚鏵铧鏷镤鏹镪鏽锈鐃铙鐋铴鐐镣鐒铹鐓镦鐔镡鐙镫鐝镢鐠镨鐦锎鐧锏鐨镄鐮镰鐲镯鐳镭鐵铁鐶镮鐸铎鐺铛鐿镱鑄铸鑊镬鑌镔鑔镲鑕锧鑞镴鑠铄鑣镳鑥镥鑭镧鑰钥鑱镵鑲镶鑷镊鑹镩鑼锣鑽钻長长門门閂闩閃闪閆闫閈闬閉闭閌闶閎闳閏闰閑闲間间閔闵閘闸閡阂閣阁閥阀閨闺閩闽閫阃閬阆閭闾閶阊閹阉閻阎閼阏閽阍閾阈閿阌闃阒闈闱闊阔闋阕闌阑闍阇闐阗闒阘闓闿闔阖闕阙闖闯闞阚闠阓闡阐闤阛闥闼鬧闹鬮阄鬩阋隊队陽阳陰阴陣阵階阶際际陸陆隴陇陳陈陘陉陝陕隯陦隉陧隕陨險险隨随隱隐隸隶雋隽難难雛雏雞鸡靂雳霧雾霽霁霢霡靄霭靚靓靜静靨靥韃鞑鞽鞒韉鞯韋韦韌韧韍韨韓韩韙韪韜韬韞韫韻韵頁页頂顶頃顷項项順顺頇顸頊顼頌颂頎颀頏颃預预頑顽頒颁頓顿頗颇領领頜颌頡颉頤颐頦颏頮颒頰颊頲颋頴颕頷颔頸颈頻频顆颗題题額额顎颚顒颙顓颛顙颡顛颠顢颟顥颢顧顾顫颤顬颥顰颦顱颅顳颞顴颧風风颭飐颮飑颯飒颶飓颸飔颺飏颻飖颼飕飀飗飄飘飆飙飈飚飛飞飠饣飢饥飣饤飥饦饗飨飩饨飪饪飫饫飭饬飯饭飲饮飴饴飼饲飽饱飾饰飿饳餃饺餄饸餅饼餉饷餌饵饜餍餎饹餏饻餑饽餒馁餓饿餕馂餖饾餛馄餜馃餞饯餡馅館馆餳饧餶馉餷馇餺馎餼饩餾馏餿馊饁馌饃馍饅馒饈馐饉馑饊馓饋馈饌馔饑饥饒饶饞馋饢馕馬马馭驭馱驮馳驰馴驯馹驲駁驳駐驻駑驽駒驹駔驵駕驾駘骀駙驸駛驶駝驼駟驷駢骈駭骇駰骃駱骆駸骎駿骏騁骋騂骍騅骓騌骔騍骒騎骑騏骐騖骛騙骗騤骙騫骞騭骘騮骝騶驺騷骚騸骟騾骡驁骜驂骖驃骠驄骢驅驱驊骅驌骕驍骁驏骣驕骄驗验驛驿驟骤驢驴驤骧驥骥驦骦驪骊驫骉髏髅髖髋髕髌鬢鬓鬹鬶魘魇魎魉魚鱼魛鱽魢鱾魨鲀魯鲁魴鲂魷鱿魺鲄鮁鲅鮃鲆鮊鲌鮋鲉鮍鲏鮎鲇鮐鲐鮑鲍鮒鲋鮓鲊鮗鿴鮚鲒鮜鲘鮝鲞鮞鲕鮦鲖鮪鲔鮫鲛鮭鲑鮮鲜鮳鲓鮶鲪鮺鲝鯀鲧鯁鲠鯇鲩鯉鲤鯊鲨鯒鲬鯔鲻鯕鲯鯖鲭鯗鲞鯛鲷鯝鲴鯡鲱鯢鲵鯤鲲鯧鲳鯨鲸鯪鲮鯫鲰鯰鲶鯴鲺鯷鳀鯽鲫鯿鳊鰁鳈鰂鲗鰃鳂鰈鲽鰉鳇鰍鳅鰏鲾鰐鳄鰒鳆鰓鳃鰜鳒鰟鳑鰠鳋鰣鲥鰥鳏鰨鳎鰩鳐鰭鳍鰱鲢鰲鳌鰳鳓鰵鳘鰷鲦鰹鲣鰺鲹鰻鳗鰼鳛鰾鳔鱂鳉鱅鳙鱈鳕鱉鳖鱒鳟鱔鳝鱖鳜鱗鳞鱘鲟鱝鲼鱟鲎鱠鲙鱣鳣鱤鳡鱧鳢鱨鲿鱭鲚鱯鳠鱷鳄鱸鲈鱺鲡鳥鸟鳩鸠鳲鸤鳴鸣鳶鸢鴆鸩鴇鸨鴉鸦鴒鸰鴕鸵鴛鸳鴝鸲鴞鸮鴟鸱鴣鸪鴦鸯鴨鸭鴯鸸鴰鸹鴴鸻鴻鸿鴿鸽鵂鸺鵃鸼鵐鹀鵑鹃鵒鹆鵓鹁鵜鹈鵝鹅鵠鹄鵡鹉鵪鹌鵬鹏鵮鹐鵯鹎鵲鹊鵷鹓鵾鹍鶇鸫鶉鹑鶊鹒鶓鹋鶖鹙鶘鹕鶚鹗鶡鹖鶥鹛鶩鹜鶬鸧鶲鹟鶴鹤鶹鹠鶺鹡鶻鹘鶼鹣鷀鹚鷁鹢鷂鹞鷄鸡鷊鹝鷓鹧鷖鹥鷗鸥鷙鸷鷚鹨鷥鸶鷦鹪鷫鹔鷯鹩鷲鹫鷳鹇鷸鹬鷹鹰鷺鹭鷽鸴鸇鹯鸌鹱鸏鹲鸕鸬鸘鹴鸚鹦鸛鹳鸝鹂鸞鸾鹺鹾麥麦麩麸麴麹黃黄黌黉黶黡黷黩黲黪黽黾黿鼋鼂鼌鼉鼍鼴鼹齊齐齏齑齒齿齔龀齕龁齗龂齙龅齜龇齟龃齠龆齡龄齦龈齪龊齬龉齲龋齷龌龍龙龔龚龕龛龜龟鿓鿒鿠鿟鿳鿸";
   var FORCE_PAIRS = "傌㐷㑶㐹偑㐽㑳㑇倲㑈㑯㑔儸㑩儁㑺劏㓥㓨刾劚㔉噚㖊喎㖞㘚㘎㜄㚯媰㛀㜏㛣孋㛤寯㝦㠏㟆嵾㟥幓㡎懧㤖㥮㤘憍㤭懤㤽慺㥪掆㧏㩳㧐撝㧑擥㧛擓㧟擽㧰㩜㨫㩵擜棡㭎椲㭏樢㭤樫㭴殰㱩殨㱮瀇㲿濧㳔灡㳕澾㳠濄㳡瀰㳽潚㴋鸂㶉燶㶶煱㶽獱㺍璯㻅㻽㻪䁻䀥瞜䁖碽䂵磾䃅䃮鿎稏䅉穇䅟筴䇲籔䉤䊷䌶䋙䌺䋚䌻䋹䌿䋻䌾紬䌷縳䌸絅䌹綐䌼綵䌽繿䍀繸䍁䎱䎬膞䏝臇䐪膋䒿薵䓓薳䓕藭䓖罃䓨螮䗖䙡䙌襬䙓䙰褵譼䛓䜀䜧訢䜣鿁䜤讌䜩貙䝙䝼䞍賰䞐躎䟢䥇䦂䥑鿏䥱䥾釾䥺鏺䥽鐯䦃鐥䦅钁䦆䦛䦶䦟䦷靦䩄䯀䯅騧䯄䰾鲃䱷䲣䱽䲝䲁鳚䲘鳤鮣䲟鰆䲠鰌䲡鰧䲢鿐䲤䴉鹮鳾䴓鵁䴔鴷䴕鶄䴖鶪䴗鷈䴘鷉䴘鸊䴙龑䶮萬万與与醜丑專专業业叢丛東东絲丝丟丢兩两嚴严並并喪丧個个豐丰臨临為为爲为麗丽舉举幺么麼么麽么義义烏乌樂乐喬乔習习鄉乡書书買买亂乱乾干瞭了爭争於于虧亏雲云亞亚產产産产畝亩親亲褻亵嚲亸億亿僅仅僕仆從从侖仑倉仓儀仪們们價价眾众衆众優优夥伙會会傴伛傘伞偉伟傳传俥伡俔伣傷伤倀伥倫伦傖伧偽伪僞伪佇伫體体餘余傭佣僉佥併并來来俠侠侶侣僥侥偵侦側侧僑侨儈侩儕侪儂侬俁俣係系儔俦儼俨倆俩儷俪倈俫儉俭藉借債债傾倾傯偬僂偻僨偾償偿傑杰備备傢家儻傥儐傧儲储儺傩儘尽兒儿剋克兌兑兗兖黨党內内蘭兰關关興兴茲兹養养獸兽囅冁岡冈冊册寫写軍军農农冪幂鼕冬馮冯沖冲衝冲決决況况凍冻凈净準准涼凉減减湊凑凜凛幾几鳳凤鳧凫鳬凫憑凭凱凯齣出擊击鑿凿芻刍劃划劉刘則则剛刚創创刪删別别彆别剗刬剄刭颳刮製制剎刹劊刽劌刿剴剀劑剂剮剐劍剑剝剥劇剧勸劝辦办務务勱劢動动勵励勁劲勞劳勢势勛勋勩勚勝胜勻匀匭匦匱匮匯汇區区醫医韆千華华協协單单賣卖蔔卜盧卢滷卤鹵卤衛卫卻却捲卷廠厂廳厅曆历歷历厲厉壓压厭厌厙厍龎厐厠厕廁厕釐厘廂厢厴厣廈厦廚厨廄厩廝厮縣县叄叁參参靉叆靆叇雙双發发髮发變变敘叙疊叠戠只衹只隻只檯台臺台颱台葉叶號号嘆叹嘰叽籲吁閤合衕同後后嚮向曏向吒咤嚇吓呂吕嗎吗唚吣噸吨聽听啓启啟启吳吴吶呐嘸呒囈呓嘔呕嚦呖唄呗員员咼呙嗆呛嗚呜詠咏嚨咙嚀咛噝咝鹹咸響响啞哑噠哒嘵哓嗶哔噦哕嘩哗噲哙嚌哜噥哝喲哟嘜唛嗊唝嘮唠啢唡嗩唢喚唤問问嘖啧嗇啬囀啭嚙啮嘓啯囉啰嘽啴嘯啸噴喷嘍喽嚳喾囁嗫噯嗳嘗尝噓嘘嚶嘤囑嘱噁恶嚕噜噹当囂嚣囌苏迴回團团糰团囪囱園园睏困圍围圇囵國国圖图圓圆聖圣壙圹場场阪坂壞坏塊块堅坚壇坛罈坛罎坛壢坜垻坝壩坝塢坞墳坟墜坠壟垄壠垅壚垆壘垒墾垦堊垩墊垫埡垭墶垯壋垱塏垲堖垴垵埯塒埘塤埙堝埚埰采執执塹堑墮堕堯尧報报壪塆塋茔塗涂塵尘墻墙牆墙壯壮聲声殻壳殼壳壺壶壼壸壽寿處处復复複复覆复夠够夢梦頭头誇夸夾夹奪夺奩奁奐奂奮奋奬奖獎奖奧奥姦奸奼姹妝妆婦妇媽妈嫵妩嫗妪媯妫嬀妫姍姗薑姜婁娄婭娅嬈娆嬌娇孌娈娛娱媧娲嫻娴嫿婳嬰婴嬋婵嬸婶媼媪嬃媭嬡嫒嬪嫔嬙嫱嬤嬷孫孙學学孿孪寧宁寶宝實实寵宠審审憲宪宮宫寬宽賓宾寢寝對对尋寻導导將将爾尔尷尴屍尸盡尽層层屓屃屆届屜屉屬属屢屡屨屦嶼屿歲岁豈岂嶇岖崗岗峴岘嶴岙嵐岚島岛嶺岭崬岽巋岿嶨峃嶧峄峽峡嶢峣嶠峤崢峥巒峦嶗崂崍崃嶮崄嶄崭嶸嵘嶔嵚嶁嵝巔巅鞏巩巰巯幣币帥帅師师幃帏帳帐簾帘幟帜帶带幀帧幫帮幬帱幘帻幗帼幹干廣广莊庄慶庆廬庐廡庑庫库應应廟庙龐庞廢废廎庼廩廪開开異异棄弃弒弑張张彌弥弳弪彎弯強强彈弹歸归當当録录彙汇彞彝彠彟彥彦彲彨徹彻徵征徑径徠徕禦御憶忆懺忏誌志憂忧愾忾懷怀態态慫怂憮怃慪怄悵怅愴怆憐怜總总懟怼懌怿恆恒戀恋恥耻懇恳惡恶慟恸懨恹愷恺惻恻惱恼惲恽悅悦悞悮愨悫慤悫懸悬慳悭憫悯悶闷驚惊懼惧慘惨懲惩憊惫愜惬慚惭憚惮慣惯愛爱慍愠憤愤憒愦願愿慄栗懾慑憖慭慮虑懍懔懣懑懶懒懞蒙戇戆戔戋戲戏戧戗戰战戩戬戱戯戶户纔才撲扑擴扩捫扪掃扫揚扬擾扰摺折撫抚拋抛摶抟摳抠掄抡搶抢護护擔担擬拟攏拢揀拣擁拥攔拦擰拧撥拨擇择掛挂摯挚攣挛掗挜撾挝撻挞挾挟撓挠擋挡撟挢掙挣擠挤揮挥撏挦挩捝輓挽撈捞損损撿捡換换搗捣捨舍據据採采擄掳摑掴擲掷撣掸摻掺摜掼攬揽搵揾撳揿攙搀擱搁摟搂攪搅搖摇攜携攝摄攄摅擺摆擯摈攤摊攖撄撐撑攆撵擷撷擼撸攛撺擻擞攢攒敵敌敗败斂敛斆敩數数斃毙齋斋斕斓鬥斗斬斩斷断鏇旋無无舊旧時时曠旷暘旸曇昙晝昼曨昽顯显晉晋曬晒曉晓曄晔暈晕暉晖暫暂暢畅曖暧麯曲朧胧術术硃朱樸朴機机殺杀雜杂權权桿杆條条楊杨榪杩鬆松闆板極极構构樅枞樞枢棗枣櫪枥梘枧棖枨槍枪楓枫梟枭櫃柜檸柠柵栅檉柽梔栀標标棧栈櫛栉櫳栊棟栋櫨栌櫟栎欄栏樹树棲栖樣样欒栾椏桠橈桡楨桢檔档榿桤橋桥樺桦檜桧槳桨樁桩樳桪梲棁檮梼棶梾槤梿檢检欞棂槨椁槼椝櫝椟槧椠槶椢欏椤樿椫橢椭槮椮樓楼欖榄榲榅櫬榇櫚榈櫸榉榮荣檟槚檻槛檳槟櫧槠橫横檣樯櫻樱櫫橥櫥橱櫓橹櫞橼檁檩櫱蘖歡欢歟欤歐欧欽钦殲歼歿殁殤殇殘残殞殒殮殓殫殚殯殡毆殴毀毁轂毂畢毕氈毡毿毵氂牦氌氇氣气氫氢氬氩氳氲漢汉湯汤洶汹澐沄瀋沈沒没溝沟灃沣漚沤瀝沥淪沦滄沧渢沨溈沩潙沩滬沪濘泞註注淚泪澩泶瀧泷瀘泸濼泺瀉泻潑泼澤泽涇泾潔洁灑洒窪洼浹浃淺浅漿浆澆浇湞浈溮浉濁浊測测澮浍濟济瀏浏滻浐渾浑滸浒濃浓潯浔濜浕濤涛澇涝淶涞漣涟潿涠渦涡溳涢渙涣滌涤潤润澗涧漲涨澀涩澱淀淥渌淵渊漬渍瀆渎漸渐澠渑漁渔滲渗溫温灣湾濕湿濚溁潰溃濺溅漵溆漊溇滅灭滎荥潷滗滾滚滯滞灧滟灄滠滿满瀅滢濾滤濫滥灤滦濱滨灘滩澦滪灕漓潁颍瀠潆瀟潇瀲潋濰潍潛潜瀦潴瀂澛瀾澜瀨濑瀕濒濛蒙灝灏燈灯靈灵竈灶災灾燦灿煬炀爐炉煒炜熗炝點点煉炼熾炽爍烁爛烂烴烃燭烛煙烟煩烦燒烧燁烨燴烩燙烫燼烬熱热煥焕燜焖燾焘煢茕熅煴熒荧熲颎營营爺爷牘牍牽牵犧牺犢犊犖荦狀状獷犷獁犸猶犹狽狈獮狝獰狞獨独狹狭獅狮獪狯猙狰獄狱猻狲獫猃獵猎獼猕玀猡豬猪貓猫蝟猬獻献獺獭獲获璣玑璵玙瑒玚瑪玛瑋玮環环現现瑲玱璽玺琺珐瓏珑璫珰琿珲璡琎璉琏瑣琐瓊琼瑤瑶瑩莹璦瑷璸瑸瓔璎瓚瓒甌瓯電电畫画疇畴癤疖療疗瘧疟癘疠瘍疡癧疬瘲疭瘡疮瘋疯皰疱痾疴癥症癰痈痙痉癢痒瘂痖癆痨瘓痪癇痫癉瘅瘮瘆瘞瘗瘺瘘瘻瘘癟瘪癱瘫癮瘾癭瘿癩癞癬癣癲癫皚皑皺皱皸皲盞盏鹽盐監监蓋盖盜盗盤盘盪荡瞘眍眥眦矓眬著着睜睁睞睐瞼睑瞶瞆瞞瞒矚瞩矇蒙矯矫磯矶礬矾礦矿碭砀碼码磚砖硨砗硯砚碸砜礪砺礱砻礫砾礎础硜硁碩硕硤硖磽硗磑硙礄硚確确磠硵礆硷鹼硷礙碍磧碛磣碜禮礼禡祃禕祎禰祢禎祯禱祷禍祸祿禄稟禀禪禅離离禿秃稈秆秈籼鞦秋種种積积稱称穢秽穠秾稅税穭稆穌稣穩稳穀谷穎颖穡穑穫获窮穷竊窃竅窍窵窎窯窑竄窜窩窝窺窥竇窦窶窭竪竖豎竖競竞篤笃筍笋筆笔筧笕箋笺籠笼籩笾築筑篳筚篩筛簹筜箏筝籌筹篔筼簽签籤签簡简籙箓簀箦篋箧籜箨籮箩簞箪簫箫節节範范簣篑簍篓籃篮籛篯籬篱籪簖籟籁糴籴類类糶粜糲粝粵粤糞粪糧粮糝糁餱糇糹纟繫系糾纠紀纪紂纣約约紅红紆纡紇纥紈纨紉纫紋纹納纳紐纽紓纾純纯紕纰紖纼紗纱紘纮紙纸級级紛纷紜纭紝纴紡纺緊紧纍累細细紱绂紲绁紳绅紵纻紹绍紺绀紼绋紿绐絀绌終终組组絆绊絎绗結结絕绝絝绔絞绞絡络絢绚給给絨绒絰绖統统絳绛絶绝縶絷絹绢綁绑綃绡綆绠綈绨綉绣綌绤綏绥經经綜综綞缍綠绿綢绸綣绻綫线綬绶維维綯绹綰绾綱纲網网綳绷綴缀綸纶綹绺綺绮綻绽綽绰綾绫綿绵緄绲緇缁緋绯緑绿緒绪緓绬緔绱緗缃緘缄緙缂線缐緝缉緞缎締缔緡缗緣缘緦缌編编緩缓緬缅緯纬緱缑緲缈練练緶缏緹缇緻致緼缊縈萦縉缙縊缢縋缒縐绉縑缣縕缊縗缞縛缚縝缜縞缟縟缛縧绦縫缝縭缡縮缩縱纵縲缧縴纤縵缦縷缕縹缥績绩繃绷繅缫繆缪繒缯織织繕缮繚缭繞绕繡绣繢缋繩绳繪绘繭茧繮缰繯缳繰缲繳缴繹绎繼继繽缤繾缱纇颣纈缬纊纩續续纏缠纓缨纖纤纘缵纜缆鞝绱韁缰缽钵罌罂羅罗罰罚罷罢羆罴罵骂羈羁羋芈羥羟翹翘翽翙翬翚耮耢耬耧聳耸聶聂聾聋職职聹聍聯联聞闻聵聩聰聪肅肃腸肠膚肤骯肮餚肴腎肾腫肿脹胀脅胁膽胆衚胡鬍胡腖胨臚胪脛胫膠胶脈脉膾脍臟脏髒脏臍脐腦脑膿脓臠脔腳脚脫脱腡脶臉脸臘腊膕腘齶腭膩腻膃腽騰腾臏膑臢臜輿舆艤舣艦舰艙舱艫舻艱艰艷艳藝艺薌芗蕪芜蘆芦蕓芸蓯苁葦苇藶苈莧苋萇苌蒼苍蘇苏薴苧蘋苹莖茎蘢茏蔦茑荊荆薦荐薘荙莢荚蕘荛蓽荜萴荝蕎荞薈荟薺荠蕩荡葷荤蕁荨藎荩蓀荪蔭荫蕒荬葒荭葤荮葯药藥药蒞莅萊莱蓮莲蒔莳萵莴薟莶蕕莸鶯莺蒓莼蓴莼蘀萚蘿萝螢萤蕭萧薩萨蔥葱蕆蒇蕢蒉蔣蒋蔞蒌醟蒏藍蓝薊蓟蘺蓠蕷蓣鎣蓥驀蓦虆蔂衊蔑薔蔷蘞蔹藺蔺藹蔼薀蕰蘄蕲藴蕴蘊蕴藪薮蘚藓虜虏虛虚蟲虫虯虬蟣虮雖虽蝦虾蠆虿蝕蚀蟻蚁螞蚂蠁蚃蠶蚕蜆蚬蠱蛊蠣蛎蟶蛏蠻蛮蟄蛰蛺蛱蟯蛲螄蛳蠐蛴蛻蜕蝸蜗蠟蜡蠅蝇蟈蝈蟬蝉螻蝼蠑蝾螿螀蟎螨蠨蟏釁衅銜衔補补錶表襯衬袞衮襖袄裊袅褘袆襪袜襲袭襏袯裝装襠裆褌裈裏里裡里褳裢襝裣褲裤襇裥褸褛襌褝襤褴襴襕見见覎觃規规覓觅視视覘觇覡觋覥觍覦觎覬觊覯觏覲觐覷觑覺觉覽览覿觌觀观觴觞觸触觶觯訁讠訂订訃讣計计訊讯訌讧討讨訐讦訒讱訓训訕讪訖讫託讬記记誾訚訛讹訝讶訟讼訣诀訥讷訩讻訪访設设許许訴诉訶诃診诊詁诂詆诋詎讵詐诈詒诒詔诏評评詖诐詗诇詘诎詛诅詞词讋詟詡诩詢询詣诣試试詩诗詫诧詬诟詭诡詮诠詰诘話话該该詳详詵诜詼诙詿诖誄诔誅诛誆诓譽誉謄誊認认誑诳誒诶誕诞誘诱誚诮語语誠诚誡诫誣诬誤误誥诰誦诵誨诲說说説说誰谁課课誶谇誹诽誼谊調调諂谄諄谆談谈諉诿請请諍诤諏诹諑诼諒谅論论諗谂諛谀諜谍諝谞諞谝諢诨諤谔諦谛諧谐諫谏諭谕諮谘諱讳諳谙諶谌諷讽諸诸諺谚諼谖諾诺謀谋謁谒謂谓謅诌謊谎謎谜謐谧謔谑謖谡謗谤謙谦謚谥講讲謝谢謠谣謡谣謨谟謫谪謬谬謭谫謳讴謹谨謾谩證证譎谲譏讥譖谮識识譙谯譚谭譜谱譫谵譯译議议譴谴譸诪譾谫讀读讅谉讎雠讒谗讓让讕谰讖谶讜谠讞谳豶豮貝贝貞贞貟贠負负財财貢贡貧贫貨货販贩貪贪貫贯責责貯贮貰贳貲赀貳贰貴贵貶贬貸贷貺贶費费貼贴貽贻貿贸賀贺賁贲賂赂賃赁賄贿賅赅資资賈贾賊贼賑赈賒赊賕赇賙赒賚赉賜赐賞赏賠赔賡赓賢贤賤贱賦赋賧赕質质賫赍賬账賭赌賴赖賵赗賺赚賻赙購购賽赛賾赜贄贽贅赘贇赟贈赠贊赞贋赝贍赡贏赢贐赆贓赃贔赑贖赎贗赝贛赣贜赃赬赪趙赵趕赶趨趋趲趱躉趸躍跃蹌跄躒跞跡迹踐践躂跶蹺跷蹕跸躚跹躋跻踴踊躊踌蹤踪躓踬躑踯躡蹑蹣蹒躕蹰躥蹿躪躏躦躜軀躯車车軋轧軌轨軑轪軒轩軔轫軛轭軟软軤轷軫轸軲轱軸轴軹轵軺轺軻轲軼轶軾轼較较輅辂輇辁輈辀載载輊轾輒辄輔辅輕轻輛辆輜辎輝辉輞辋輟辍輥辊輦辇輩辈輪轮輬辌輯辑輳辏輸输輻辐輼辒輾辗轀辒轄辖轅辕轆辘轉转轍辙轎轿轔辚轟轰轡辔轢轹轤轳辭辞闢辟辯辩辮辫邊边遼辽達达遷迁過过邁迈運运還还這这進进遠远違违連连遲迟邇迩逕迳適适選选遜逊遞递邐逦邏逻遺遗遙遥鄧邓鄺邝鄔邬郵邮鄒邹鄴邺鄰邻鬱郁郟郏鄶郐鄭郑鄆郓酈郦鄖郧鄲郸酇酂醖酝醞酝醱酦醬酱釅酽釃酾釀酿釋释釒钅釓钆釔钇釕钌釗钊釘钉釙钋針针釣钓釤钐釧钏釩钒釵钗釷钍釹钕釺钎鈀钯鈁钫鈃钘鈄钭鈈钚鈉钠鈍钝鈎钩鈐钤鈑钣鈒钑鈔钞鈕钮鈞钧鈣钙鈥钬鈦钛鈧钪鈮铌鈰铈鈳钶鈴铃鈷钴鈸钹鈹铍鈺钰鈽钸鈾铀鈿钿鉀钾鉅钜鉈铊鉉铉鉋铇鉍铋鉑铂鉕钷鉗钳鉚铆鉛铅鉞钺鉢钵鉤钩鉦钲鉨鿭鉬钼鉭钽鑒鉴鉶铏鉸铰鉺铒鉻铬鉿铪銀银銃铳銅铜銍铚銑铣銓铨銖铢銘铭銚铫銛铦銠铑銣铷銥铱銦铟銨铵銩铥銪铕銫铯銬铐鑾銮銱铞銳锐銷销銹锈銻锑銼锉鋁铝鋃锒鋅锌鋇钡鋌铤鋏铗鋒锋鋙铻鋝锊鋟锓鋣铘鋤锄鋥锃鋦锔鋨锇鋩铓鋪铺鋭锐鋮铖鋯锆鋰锂鋱铽鋶锍鋸锯鋼钢錁锞錆锖錇锫錈锩錏铔錐锥錒锕錕锟錘锤錙锱錚铮錛锛錟锬錠锭錡锜錢钱錦锦錨锚錩锠錫锡錮锢錯错錳锰錸铼鏨錾鍀锝鍁锨鍃锪鍆钔鍇锴鍈锳鍋锅鍍镀鍔锷鍘铡鍚钖鍛锻鍠锽鍤锸鍥锲鍩锘鍬锹鍰锾鍵键鍶锶鍺锗鍾钟鎂镁鎄锿鎇镅鎊镑鎔镕鎖锁鎘镉鎛镈鎡镃鎢钨鎦镏鎧铠鎩铩鎪锼鎬镐鎮镇鎰镒鎲镋鎳镍鎵镓鎶鿔鎸镌鎿镎鏃镞鏈链鏌镆鏍镙鏐镠鏑镝鏗铿鏘锵鏜镗鏝镘鏞镛鏟铲鏡镜鏢镖鏤镂鏰镚鏵铧鏷镤鏹镪鏽锈鐃铙鐋铴鐐镣鐒铹鐓镦鐔镡鐘钟鐙镫鐝镢鐠镨鐦锎鐧锏鐨镄鐫镌鐮镰鐲镯鐳镭鐵铁鐶镮鐸铎鐺铛鐿镱鑄铸鑈鿭鑊镬鑌镔鑔镲鑕锧鑞镴鑠铄鑣镳鑥镥鑭镧鑰钥鑱镵鑲镶鑷镊鑹镩鑼锣鑽钻钂镋長长門门閂闩閃闪閆闫閈闬閉闭閌闶閎闳閏闰閑闲間间閔闵閘闸閡阂閣阁閥阀閨闺閩闽閫阃閬阆閭闾閱阅閲阅閶阊閹阉閻阎閼阏閽阍閾阈閿阌闃阒闈闱闊阔闋阕闌阑闍阇闐阗闒阘闓闿闔阖闕阙闖闯闞阚闠阓闡阐闤阛闥闼鬧闹鬮阄鬩阋隊队陽阳陰阴陣阵階阶際际陸陆隴陇陳陈陘陉陝陕隯陦隉陧隕陨險险隨随隱隐隸隶雋隽難难雛雏雞鸡靂雳霧雾霽霁黴霉霢霡靄霭靚靓靜静麵面靨靥韃鞑鞽鞒韉鞯韋韦韌韧韍韨韓韩韙韪韜韬韞韫韻韵頁页頂顶頃顷項项順顺頇顸須须頊顼頌颂頎颀頏颃預预頑顽頒颁頓顿頗颇領领頜颌頡颉頤颐頦颏頮颒頰颊頲颋頴颕頷颔頸颈頹颓頻频頽颓顆颗題题額额顎颚顏颜顒颙顓颛顔颜顙颡顛颠顢颟顥颢顧顾顫颤顬颥顰颦顱颅顳颞顴颧鬚须風风颭飐颮飑颯飒颶飓颸飔颺飏颻飖颼飕飀飗飄飘飆飙飈飚飛飞飠饣飢饥飣饤飥饦饗飨飩饨飪饪飫饫飭饬飯饭飲饮飴饴飼饲飽饱飾饰飿饳餃饺餄饸餅饼餉饷餌饵饜餍餎饹餏饻餑饽餒馁餓饿餕馂餖饾餛馄餜馃餞饯餡馅館馆餳饧餶馉餷馇餺馎餼饩餾馏餿馊饁馌饃馍饅馒饈馐饉馑饊馓饋馈饌馔饑饥饒饶饞馋饢馕馬马馭驭馱驮馳驰馴驯馹驲駁驳駐驻駑驽駒驹駔驵駕驾駘骀駙驸駛驶駝驼駟驷駡骂駢骈駭骇駰骃駱骆駸骎駿骏騁骋騂骍騅骓騌骔騍骒騎骑騏骐騖骛騙骗騤骙騫骞騭骘騮骝騶驺騷骚騸骟騾骡驁骜驂骖驃骠驄骢驅驱驊骅驌骕驍骁驏骣驕骄驗验驛驿驟骤驢驴驤骧驥骥驦骦驪骊驫骉髏髅髖髋髕髌鬢鬓鬹鬶魘魇魎魉魚鱼魛鱽魢鱾魨鲀魯鲁魴鲂魷鱿魺鲄鮁鲅鮃鲆鮊鲌鮋鲉鮍鲏鮎鲇鮐鲐鮑鲍鮒鲋鮓鲊鮗鿴鮚鲒鮜鲘鮝鲞鮞鲕鮦鲖鮪鲔鮫鲛鮭鲑鮮鲜鮳鲓鮶鲪鮺鲝鯀鲧鯁鲠鯇鲩鯉鲤鯊鲨鯒鲬鯔鲻鯕鲯鯖鲭鯗鲞鯛鲷鯝鲴鯡鲱鯢鲵鯤鲲鯧鲳鯨鲸鯪鲮鯫鲰鯰鲶鯴鲺鯷鳀鯽鲫鯿鳊鰁鳈鰂鲗鰃鳂鰈鲽鰉鳇鰍鳅鰏鲾鰐鳄鰒鳆鰓鳃鰛鳁鰜鳒鰟鳑鰠鳋鰣鲥鰥鳏鰨鳎鰩鳐鰭鳍鰮鳁鰱鲢鰲鳌鰳鳓鰵鳘鰷鲦鰹鲣鰺鲹鰻鳗鰼鳛鰾鳔鱂鳉鱅鳙鱈鳕鱉鳖鱒鳟鱔鳝鱖鳜鱗鳞鱘鲟鱝鲼鱟鲎鱠鲙鱣鳣鱤鳡鱧鳢鱨鲿鱭鲚鱯鳠鱷鳄鱸鲈鱺鲡鳥鸟鳩鸠鳲鸤鳴鸣鳶鸢鴆鸩鴇鸨鴉鸦鴒鸰鴕鸵鴛鸳鴝鸲鴞鸮鴟鸱鴣鸪鴦鸯鴨鸭鴯鸸鴰鸹鴴鸻鴻鸿鴿鸽鵂鸺鵃鸼鵐鹀鵑鹃鵒鹆鵓鹁鵜鹈鵝鹅鵠鹄鵡鹉鵪鹌鵬鹏鵮鹐鵯鹎鵲鹊鵷鹓鵾鹍鶇鸫鶉鹑鶊鹒鶓鹋鶖鹙鶘鹕鶚鹗鶡鹖鶥鹛鶩鹜鶬鸧鶲鹟鶴鹤鶹鹠鶺鹡鶻鹘鶼鹣鷀鹚鷁鹢鷂鹞鷄鸡鷊鹝鷓鹧鷖鹥鷗鸥鷙鸷鷚鹨鷥鸶鷦鹪鷫鹔鷯鹩鷲鹫鷳鹇鷸鹬鷹鹰鷺鹭鷽鸴鸇鹯鸌鹱鸏鹲鸕鸬鸘鹴鸚鹦鸛鹳鸝鹂鸞鸾鹺鹾麥麦麩麸麴麹黃黄黌黉黶黡黷黩黲黪黽黾黿鼋鼂鼌鼉鼍鼴鼹齊齐齏齑齒齿齔龀齕龁齗龂齙龅齜龇齟龃齠龆齡龄齦龈齪龊齬龉齲龋齷龌龍龙龔龚龕龛龜龟鿓鿒鿠鿟鿳鿸";
@@ -9030,6 +9144,7 @@ designed by C.S.Yap`;
     $("#toggleRight").onclick = () => toggleSide("right");
     initVariants();
     initSettings();
+    initTheme((name) => setStatus("主題：" + THEME_LABEL[name], "info"));
     initSearchAll();
     initDictPane();
     setDictHooks.current = () => {
@@ -9302,6 +9417,7 @@ designed by C.S.Yap`;
       },
       state: () => ({
         db: reader?.header.dbname ?? null,
+        theme: themeOf(),
         dbLog,
         dbs: openDbs.map((d) => ({ name: d.name, tabs: d.docPane?.docTabs?.length ?? -1, docs: d.core?.docs?.length ?? -1 })),
         tokens: tokens.length,

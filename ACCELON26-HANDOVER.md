@@ -475,6 +475,12 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   `#settingsBox`。原本的 🧑‍💻（進階模式）與「繁簡」按鈕都收進來，header 只剩三個圖示
   （◧／◨／🔧）。左上角標題是 `Accelon26`（亮灰 `#d9d9d9`，`26` 仍是金色）。
 
+  * **主題**（作者 2026-10-18）：`#themeSeg` 三選一——**暗色系（預設）／亮色系／護眼**。
+    只換 CSS 變數（`html[data-theme="light"]`／`="eye"`，暗色是 `:root` 不設屬性），
+    版面不動、切換不用重繪；選擇存在 `localStorage['accelon26.theme']`，`<head>` 有一小段
+    script 先套再畫（避免先閃暗底）。色票：暗底 `#1e1e1e`、亮底 `#ffffff`、護眼是偏綠紙色
+    `#eaf1e2`。所有原本寫死在規則裡的顏色（金色、選取底色、標題藍、命中紅…）都收成變數，
+    換主題只要換一組值；`theme.ts` 是唯一碰 `data-theme` 的地方。
   * **介面**：`#setPageMarks` 顯示原書頁碼（進階模式已移到最下面，見下）。
   * **進階**（作者 2026-10：搬到設置頁**最下面**一區）：`#setAdvanced` 進階模式
     （token 瀏覽、META／容量／文件／圖片、顯示原始文件）。

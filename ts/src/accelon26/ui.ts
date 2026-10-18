@@ -523,9 +523,11 @@ function boot() {
   attachSplitter($('#splitRight'), 'right');
   $('#toggleLeft').onclick = () => toggleSide('left');
   $('#toggleRight').onclick = () => toggleSide('right');
-  // 設置（齒輪）：進階模式、繁簡通檢、文字顯示
+  // 設置（齒輪）：主題、進階模式、繁簡通檢、文字顯示
   initVariants();
   initSettings();
+  // 主題（作者 2026-10-18）：暗色系／亮色系／護眼，預設暗色系
+  initTheme((name) => setStatus('主題：' + THEME_LABEL[name], 'info'));
   // 搜尋所有 adb（放大鏡，作者 2026-10）
   initSearchAll();
   // 右欄「詞典」分頁：點本文就查詞條（作者 2026-10）
@@ -784,6 +786,7 @@ export function installDebugApi(): void {
   },
   state: () => ({
     db: reader?.header.dbname ?? null,
+    theme: themeOf(),
     dbLog,
     dbs: openDbs.map((d: any) => ({ name: d.name, tabs: d.docPane?.docTabs?.length ?? -1, docs: d.core?.docs?.length ?? -1 })),
     tokens: tokens.length,
@@ -889,6 +892,7 @@ import { hasLogoResource, hideDocLogo, logoState, updateDocLogo } from './logo';
 import { desktopSources, hostState } from './host';
 import { setVariantSearch, variantSearchOn } from './variants';
 import { aboutState, closeAbout, initAbout, openAbout, showAboutOnStartup } from './about';
+import { initTheme, THEME_LABEL, themeOf } from './theme';
 import { simplifiedStats, toSimplified } from './lossless';
 import { initDesktopBrand } from './update-ui';
 import { initDesktopWindowKeys } from './window-keys';
