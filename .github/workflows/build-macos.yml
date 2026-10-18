@@ -136,7 +136,10 @@ jobs:
             out=$(bash -x scripts/package-macos.sh "$arch" 2>&1); st=$?
             echo "$out"
             if [ "$st" -ne 0 ]; then
-              echo "$out" | grep -E 'FAILED|error|Error' | tail -5 | while IFS= read -r l; do echo "::error title=package-$arch::$l"; done
+              # 把 trace 的尾巴濃縮成「一個」annotation（GitHub 的 workflow command
+              # 認不得換行，所以用 ~ 代替），這樣不登入 GitHub 也讀得到真正的原因。
+              msg=$(echo "$out" | tail -c 3000 | tr '\n' '~')
+              echo "::error title=package-$arch(exit $st)::$msg"
               exit 1
             fi
           done
