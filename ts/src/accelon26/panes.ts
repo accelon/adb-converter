@@ -93,8 +93,12 @@ async function setupExport(): Promise<void> {
 }
 
 /**
- * 檔頭分頁（作者 2026-10）：顯示**開頭第一個 source 區塊** —— `<集>`、`<樹>`、
- * `<英文名>`、`<檔>` 這些重要設定都在那裡，平常在本文裡看不到（設定被藏起來）。
+ * 檔頭分頁（作者 2026-10）：顯示**正文之前**那一段 —— `<集>`、`<樹>`、`<英文名>`、
+ * `<檔 n="….xml">` 這些重要設定都在那裡，平常在本文裡看不到（設定被藏在 `<隱>` 裡）。
+ *
+ * **只到正文開始為止**（作者 2026-10）：碰到「樹宣告裡指名的層級標籤」（`s="$書"`／
+ * `s="*u=文"`／`t="書"` 那些，就是正文的第一層，例如 `<書>`、`<文>`、`<字>`、`<書名>`）
+ * 就停；開頭是 `<檔 n="….xml">` 的庫，收在它的 `</檔>`；後面還有 `<檔>` 也停。
  *
  * 沒有 `<檔>` 也沒有圖片（resources）的庫**不顯示這個分頁**：那種庫的第一塊就是
  * 正文的開頭，看本文就好（作者 2026-10：「沒有圖片、文件就不必顯示該分頁」）。
@@ -107,6 +111,69 @@ function highlightTags(text: string): string {
     if (!m) return `<span class="xt">${escapeHtml(seg)}</span>`;
     return `<span class="xt">${escapeHtml('<' + m[1])}</span><span class="xa">${escapeHtml(m[2])}</span><span class="xt">&gt;</span>`;
   }).join('');
+}
+
+/** `<tag` 後面必須是這些字元才算同一個標籤（避免 `<書` 命中 `<書名`）。 */
+const TAG_END = new Set([' ', '\t', '\r', '\n', '/', '>', '=', '']);
+
+/** 找出 `<tag …>` 的起始位置（-1＝沒有）。 */
+function openTagIndex(text: string, tag: string): number {
+  let from = 0;
+  for (;;) {
+    const i = text.indexOf('<' + tag, from);
+    if (i < 0) return -1;
+    const next = text[i + 1 + tag.length] ?? '';
+    if (TAG_END.has(next)) return i;
+    from = i + 1;
+  }
+}
+
+/**
+ * 從 `<樹>` 的宣告收集「正文的層級標籤」：
+ *   `s="$書"`／`s="*書名"`／`s="*u=文"`（`$`、`*` 後面那個名字）
+ *   `t="書名,章,節,項."`（層級鏈，去掉結尾的 `.`）
+ * 這些一出現就代表正文開始了。
+ */
+function bodyTagsOf(text: string): Set<string> {
+  const tags = new Set<string>();
+  for (const m of text.matchAll(/<樹([^>]*)>/g)) {
+    const attrs = m[1];
+    const s = /\bs="([^"]*)"/.exec(attrs)?.[1] ?? '';
+    const t = /\bt="([^"]*)"/.exec(attrs)?.[1] ?? '';
+    const scopeTag = /^[*$](?:u=)?([^\s,;)]+)/.exec(s)?.[1];
+    if (scopeTag) tags.add(scopeTag);
+    for (const tier of t.split(',')) {
+      const name = tier.trim().replace(/\.$/, '');
+      if (name) tags.add(name);
+    }
+  }
+  return tags;
+}
+
+/** 檔頭要到哪裡停：回傳截斷後的字串與「為什麼停」。 */
+function headerExcerpt(text: string): { text: string; cut: string } {
+  let end = text.length;
+  let cut = '';
+  const body = bodyTagsOf(text);
+  for (const tag of body) {
+    const i = openTagIndex(text, tag);
+    if (i >= 0 && i < end) { end = i; cut = `<${tag}>`; }
+  }
+  // 開頭是檔頭檔（<檔 n="….xml">）：收到它的 </檔> 為止
+  const first = text.indexOf('<檔');
+  if (first === 0) {
+    const close = text.indexOf('</檔>', 0);
+    if (close >= 0 && close + '</檔>'.length < end) {
+      end = close + '</檔>'.length;
+      cut = '</檔>';
+    }
+  }
+  // 後面還有另一個 <檔>（下一篇文件）也停
+  if (first >= 0) {
+    const next = text.indexOf('<檔', first + 2);
+    if (next > 0 && next < end) { end = next; cut = '下一個 <檔>'; }
+  }
+  return { text: text.slice(0, end), cut };
 }
 
 async function renderHeader(): Promise<void> {
@@ -131,9 +198,13 @@ async function renderHeader(): Promise<void> {
     return;
   }
   const why = [hasDoc ? '<code>&lt;檔&gt;</code>' : '', images ? `${fmtInt(images)} 個資源` : ''].filter(Boolean).join('、');
-  box.innerHTML = `<p class="note">第一個 source 區塊（${fmtInt(text.length)} 字元；這個庫有 ${why}）——
-    <code>&lt;集&gt;</code>、<code>&lt;樹&gt;</code> 等設定都在這裡。</p>
-    <pre class="rawHead">${highlightTags(text)}</pre>`;
+  const head = headerExcerpt(text);
+  const scope = head.cut
+    ? `只顯示正文之前的 <b>${fmtInt(head.text.length)}</b> 字元（到 ${escapeHtml(head.cut)} 為止）`
+    : `第一個區塊全部（沒有遇到正文標籤）`;
+  box.innerHTML = `<p class="note">第一個 source 區塊共 ${fmtInt(text.length)} 字元；${scope}。
+    這個庫有 ${why} —— <code>&lt;集&gt;</code>、<code>&lt;樹&gt;</code> 等設定都在這裡。</p>
+    <pre class="rawHead">${highlightTags(head.text)}</pre>`;
 }
 
 const THUMB_LIMIT = 48;

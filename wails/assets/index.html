@@ -1177,7 +1177,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T13:18:34.494Z","buildTimeText":"2026-10-18 21:18"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T13:31:18.089Z","buildTimeText":"2026-10-18 21:31"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -5862,6 +5862,65 @@ designed by C.S.Yap`;
       return `<span class="xt">${escapeHtml("<" + m[1])}</span><span class="xa">${escapeHtml(m[2])}</span><span class="xt">&gt;</span>`;
     }).join("");
   }
+  var TAG_END = new Set([" ", "\t", "\r", `
+`, "/", ">", "=", ""]);
+  function openTagIndex(text, tag) {
+    let from = 0;
+    for (;; ) {
+      const i = text.indexOf("<" + tag, from);
+      if (i < 0)
+        return -1;
+      const next = text[i + 1 + tag.length] ?? "";
+      if (TAG_END.has(next))
+        return i;
+      from = i + 1;
+    }
+  }
+  function bodyTagsOf(text) {
+    const tags = new Set;
+    for (const m of text.matchAll(/<樹([^>]*)>/g)) {
+      const attrs = m[1];
+      const s = /\bs="([^"]*)"/.exec(attrs)?.[1] ?? "";
+      const t = /\bt="([^"]*)"/.exec(attrs)?.[1] ?? "";
+      const scopeTag = /^[*$](?:u=)?([^\s,;)]+)/.exec(s)?.[1];
+      if (scopeTag)
+        tags.add(scopeTag);
+      for (const tier of t.split(",")) {
+        const name = tier.trim().replace(/\.$/, "");
+        if (name)
+          tags.add(name);
+      }
+    }
+    return tags;
+  }
+  function headerExcerpt(text) {
+    let end = text.length;
+    let cut = "";
+    const body = bodyTagsOf(text);
+    for (const tag of body) {
+      const i = openTagIndex(text, tag);
+      if (i >= 0 && i < end) {
+        end = i;
+        cut = `<${tag}>`;
+      }
+    }
+    const first = text.indexOf("<檔");
+    if (first === 0) {
+      const close = text.indexOf("</檔>", 0);
+      if (close >= 0 && close + "</檔>".length < end) {
+        end = close + "</檔>".length;
+        cut = "</檔>";
+      }
+    }
+    if (first >= 0) {
+      const next = text.indexOf("<檔", first + 2);
+      if (next > 0 && next < end) {
+        end = next;
+        cut = "下一個 <檔>";
+      }
+    }
+    return { text: text.slice(0, end), cut };
+  }
   async function renderHeader() {
     const btn = document.querySelector('#tabsRight .tabBtn[data-tab="header"]');
     const box = $("#headerText");
@@ -5889,9 +5948,11 @@ designed by C.S.Yap`;
       return;
     }
     const why = [hasDoc ? "<code>&lt;檔&gt;</code>" : "", images ? `${fmtInt(images)} 個資源` : ""].filter(Boolean).join("、");
-    box.innerHTML = `<p class="note">第一個 source 區塊（${fmtInt(text.length)} 字元；這個庫有 ${why}）——
-    <code>&lt;集&gt;</code>、<code>&lt;樹&gt;</code> 等設定都在這裡。</p>
-    <pre class="rawHead">${highlightTags(text)}</pre>`;
+    const head = headerExcerpt(text);
+    const scope = head.cut ? `只顯示正文之前的 <b>${fmtInt(head.text.length)}</b> 字元（到 ${escapeHtml(head.cut)} 為止）` : `第一個區塊全部（沒有遇到正文標籤）`;
+    box.innerHTML = `<p class="note">第一個 source 區塊共 ${fmtInt(text.length)} 字元；${scope}。
+    這個庫有 ${why} —— <code>&lt;集&gt;</code>、<code>&lt;樹&gt;</code> 等設定都在這裡。</p>
+    <pre class="rawHead">${highlightTags(head.text)}</pre>`;
   }
   var THUMB_LIMIT = 48;
   async function renderResources() {
