@@ -1,0 +1,112 @@
+name: build-macos
+
+# 用 GitHub Actions 的 macOS runner 編譯 accelon26（Wails v3 + WKWebView）。
+#
+# 觸發方式：Actions 頁面手動 Run workflow，或推 `mac-*` 標籤。
+#
+# 前置（重要）：Go 層目前有一部分只在 Windows 編得過 ——
+#   wails/adbhost.go   mmap 走 kernel32、OpenExternal 走 rundll32
+#   wails/update.go    golang.org/x/sys/windows（MessageBox、OpenProcess）、SysProcAttr.HideWindow
+#   wails/window.go    pkg/w32（螢幕列舉、FindWindowW、GetCursorPos）
+# 這些要先拆成 *_windows.go／*_darwin.go，這個 workflow 才會綠。
+# 在那之前它會在「編譯（macOS）」那步停在 undefined / build constraints 的錯誤。
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'mac-*'
+
+jobs:
+  build:
+    # macos-14 = Apple Silicon（M1）；要 Intel 版就再加一個 macos-13 job。
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: wails/go.sum
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.11'
+
+      # assets/index.html 是單檔 HTML，由 TypeScript 建置腳本產生（不是 npm）
+      - name: 建置單檔 HTML
+        working-directory: ts
+        run: |
+          bun install --frozen-lockfile
+          bun run tools/build-desktop.ts
+
+      - name: 編譯（macOS arm64）
+        working-directory: wails
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          mkdir -p ../build/macos
+          go build -trimpath \
+            -ldflags "-X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o ../build/macos/accelon26 .
+
+      - name: 包成 .app
+        run: |
+          set -euo pipefail
+          APP="build/macos/accelon26.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp build/macos/accelon26 "$APP/Contents/MacOS/accelon26"
+          chmod +x "$APP/Contents/MacOS/accelon26"
+
+          # 圖示：www/img/appicon.png（512×512）→ icns
+          if [ -f www/img/appicon.png ]; then
+            ICONSET="build/macos/accelon26.iconset"
+            rm -rf "$ICONSET"; mkdir -p "$ICONSET"
+            for s in 16 32 64 128 256 512; do
+              sips -z $s $s www/img/appicon.png --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
+              d=$((s * 2))
+              sips -z $d $d www/img/appicon.png --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
+            done
+            iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/accelon26.icns"
+          fi
+
+          cat > "$APP/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>accelon26</string>
+  <key>CFBundleDisplayName</key><string>accelon26</string>
+  <key>CFBundleIdentifier</key><string>cn.shutonggui.accelon26</string>
+  <key>CFBundleExecutable</key><string>accelon26</string>
+  <key>CFBundleIconFile</key><string>accelon26</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1.0</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSPrincipalClass</key><string>NSApplication</string>
+</dict>
+</plist>
+PLIST
+
+      - name: 臨時簽章（ad-hoc）
+        # 沒有 Apple 開發者憑證也能簽：簽完 Gatekeeper 比較不會說「已損毀」。
+        # 使用者第一次開仍要在 Finder 右鍵 →「打開」。
+        run: |
+          codesign --force --deep --sign - build/macos/accelon26.app
+          codesign --verify --verbose build/macos/accelon26.app || true
+
+      - name: 壓縮（保留 .app 結構與簽章屬性）
+        run: |
+          cd build/macos
+          ditto -c -k --sequesterRsrc --keepParent accelon26.app accelon26-macos-arm64.zip
+          shasum -a 256 accelon26-macos-arm64.zip | tee accelon26-macos-arm64.zip.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: accelon26-macos-arm64
+          path: |
+            build/macos/accelon26-macos-arm64.zip
+            build/macos/accelon26-macos-arm64.zip.sha256
+          if-no-files-found: error
