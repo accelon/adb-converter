@@ -292,6 +292,14 @@ export function renderDbPick(): void {
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(ev); }
       };
     });
+    // 貼在 📁 正下方、**向右展開**（作者 2026-10-18）：寬度最多到視窗右緣（留 12px），
+    // 所以庫名再長也只會在格子裡省略，不會溢出畫面任何一邊。
+    const wrap = menu.parentElement;
+    if (wrap) {
+      const left = wrap.getBoundingClientRect().left;
+      const room = Math.max(260, Math.min(54 * 16, window.innerWidth - left - 12));
+      menu.style.maxWidth = room + 'px';
+    }
     menu.hidden = !pickOpen;
     // 打開選單才開始算字數（背景、一次一個）；算好會自己填進那一格。
     if (pickOpen) for (const e of shown) queueChars(e);
