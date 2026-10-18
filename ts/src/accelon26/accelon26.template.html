@@ -420,6 +420,14 @@
   table.cap td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
   ul { margin: 0; padding-left: 18px; font-size: 1.077em; }
 
+  /* 導出（容量分頁底部）：桌面版才有 */
+  .exportBox {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 10px 10px; border-top: 1px solid var(--border-soft);
+  }
+  .exportBox[hidden] { display: none; }
+  .exportBox .note { margin: 0; }
+
   /* 檔頭（作者 2026-10）：第一個 source 區塊的原始文字，標籤上色好讀 */
   .rawHead {
     margin: 0; padding: 10px 12px; font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
@@ -1010,7 +1018,15 @@
       <div class="tabPane" data-tab="meta">
         <div id="meta" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div>
       </div>
-      <div class="tabPane" data-tab="capacity"><div id="capacity" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div></div>
+      <div class="tabPane" data-tab="capacity">
+        <div id="capacity" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div>
+        <!-- 導出（作者 2026-10）：文字 ＋ 圖片打包成 zip 存到「下載」資料夾。
+             只有桌面版有（file:// 版寫不了本機資料夾），所以預設藏起來由 JS 打開。 -->
+        <div class="exportBox" id="exportBox" hidden>
+          <button type="button" class="mini" id="exportZip" title="把這個庫的文字與圖片打包成 zip，存到「下載」資料夾">導出文字與圖片</button>
+          <span class="note" id="exportMsg"></span>
+        </div>
+      </div>
       <div class="tabPane" data-tab="docs"><div id="docs" class="scrollArea"></div></div>
       <div class="tabPane" data-tab="images"><div id="resources" class="scrollArea"></div></div>
     </div>

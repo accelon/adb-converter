@@ -71,6 +71,11 @@ export interface AdbSource extends ByteSource {
 /** One `read` primitive is the whole transport contract. */
 export interface AdbIO {
   readonly size: number;
+  /**
+   * 桌面版的絕對路徑（`main.AdbHost` 的白名單只認工作目錄裡的 .adb）。
+   * `<input type="file">` 與 file:// 都沒有這個東西 —— 導出功能要靠它。
+   */
+  readonly path?: string;
   read(offset: number, length: number): Promise<Uint8Array>;
   /** native bzip2, when the transport has one (desktop host); absent on file:// */
   decompressText?(offset: number, length: number): Promise<string>;
@@ -84,6 +89,8 @@ const dv = (b: Uint8Array) => new DataView(b.buffer, b.byteOffset, b.byteLength)
 
 export class BlobIO implements AdbIO {
   readonly size: number;
+  /** 桌面版的絕對路徑（file://／<input type=file> 沒有）；導出功能要用 */
+  readonly path?: string;
   /**
    * I/O accounting. `blob.slice().arrayBuffer()` is the only way to read a local
    * file from `file://`, and it is expensive per call, so both the number of
@@ -97,6 +104,9 @@ export class BlobIO implements AdbIO {
   cached = 0;
   constructor(private blob: ByteSource) {
     this.size = blob.size;
+    // 桌面版才有絕對路徑（file:// 與 <input type=file> 的 File 沒有 path）
+    const p = (blob as AdbSource).path;
+    if (p) this.path = p;
     // the host decompresses in Go when it can; file:// has no such capability
     if (blob.decompressText) this.decompressText = blob.decompressText.bind(blob);
     if (blob.postings) this.postings = blob.postings.bind(blob);

@@ -113,6 +113,11 @@ func openURLCommand(rawurl string) *exec.Cmd {
 	return cmd
 }
 
+// revealCommand 回傳「在檔案總管裡選中這個檔案」的指令（導出 zip 之後用）。
+func revealCommand(path string) *exec.Cmd {
+	return exec.Command("explorer", "/select,"+path)
+}
+
 // hideConsoleWindow 讓子行程不要閃出一個主控台視窗
 // （更新流程的重新啟動器是 GUI 程式，不該冒出黑色命令視窗）。
 func hideConsoleWindow(cmd *exec.Cmd) {

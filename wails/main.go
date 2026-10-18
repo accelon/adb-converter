@@ -31,6 +31,9 @@ func main() {
 	debugPortFlag := flag.String("debug-port", "", "internal: WebView2 remote debugging port (overrides ACCELON26_DEBUG_PORT)")
 	showVersion := flag.Bool("version", false, "print the build time, the release notes count and the update URL, then exit")
 	checkUpdate := flag.Bool("check-update", false, "check the update URL now, print the status as JSON and exit")
+	// -export <adb>：不開 GUI，把文字與圖片導出成 zip（進階 → 容量 → 導出 的同一條路），
+	// 印出 ExportResult 的 JSON。診斷用，也方便寫自動化測試。
+	exportAdb := flag.String("export", "", "export the text and images of this .adb to the Downloads folder, print the result as JSON, then exit")
 	// 更新流程的「重新啟動器」：由舊版副本（accelon26-prev.exe）執行，等舊行程結束後才開新版。
 	relaunchPid := flag.Int("relaunch-pid", 0, "internal: pid of the process this one must wait for")
 	relaunchExe := flag.String("relaunch-exe", "", "internal: exe to start after that process exits")
@@ -56,6 +59,18 @@ func main() {
 		info := h.CheckUpdate()
 		b, _ := json.MarshalIndent(info, "", "  ")
 		fmt.Println(string(b))
+		return
+	}
+	// -export：導出文字與圖片（與「進階 → 容量 → 導出」同一條路），印出結果 JSON。
+	if *exportAdb != "" {
+		h := &AdbHost{}
+		defer h.CloseAll()
+		res := h.ExportTextImages(*exportAdb)
+		b, _ := json.MarshalIndent(res, "", "  ")
+		fmt.Println(string(b))
+		if !res.OK {
+			os.Exit(1)
+		}
 		return
 	}
 

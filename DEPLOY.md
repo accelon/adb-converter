@@ -102,6 +102,7 @@ CI 會建 arm64／x86_64 兩個 zip 並附到 Release，之後
 cd accelon3
 .\accelon26.exe -version        # 建置時間、說明筆數、更新網址、versions.json 網址
 .\accelon26.exe -check-update   # 真的連一次網，印出 JSON（updateAvailable／checkOK／note）
+.\accelon26.exe -export 13j.adb # 導出文字與圖片（與「進階 → 容量 → 導出」同一條路），印出 JSON
 ```
 
 ## 3. 使用者的程式怎麼判斷

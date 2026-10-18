@@ -71,6 +71,8 @@ type AdbHost struct {
 	quit        func()
 	// installMu 讓「下載＋換檔＋重啟」一次只有一個人在做（連點兩次、兩個視窗都按更新）。
 	installMu sync.Mutex
+	// exportMu 讓「導出文字與圖片」一次只有一個人在做（export.go）。
+	exportMu sync.Mutex
 }
 
 // SetWindowInfo 注入視窗診斷（main 在建立視窗前後設定）。
@@ -85,6 +87,23 @@ func (h *AdbHost) OpenExternal(rawurl string) bool {
 		return false
 	}
 	cmd := openURLCommand(rawurl)
+	if err := cmd.Start(); err != nil {
+		return false
+	}
+	go func() { _ = cmd.Wait() }()
+	return true
+}
+
+// RevealInFolder 在系統的檔案管理員裡顯示一個檔案（導出 zip 之後那顆按鈕）。
+// 只接受真的存在的檔案；指令本身是平台相依的（revealCommand）。
+func (h *AdbHost) RevealInFolder(p string) bool {
+	if p == "" {
+		return false
+	}
+	if fi, err := os.Stat(p); err != nil || fi.IsDir() {
+		return false
+	}
+	cmd := revealCommand(p)
 	if err := cmd.Start(); err != nil {
 		return false
 	}

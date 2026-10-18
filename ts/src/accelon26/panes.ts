@@ -6,6 +6,7 @@
  * state it declares, and other modules get/set it through that module's exports.
  */
 import { $, displayName, docs, escapeHtml, fmtBytes, fmtInt, mapper, reader, setStatus, tokens } from './viewer';
+import { desktopExportTextImages, desktopHost, desktopRevealInFolder } from './host';
 import { revealHit, showLine } from './link';
 
 let showAllClasses = false;
@@ -37,6 +38,58 @@ function renderMeta(r: AdbReader, openMs: number, tokenMs: number, layoutMs: num
   cap.push(['VA 空間', fmtInt(h.maxBlockOffset), '']);
   $('#capacity').innerHTML = `<table class="cap"><tr><th>容器</th><th>區塊</th><th>大小</th></tr>
     ${cap.map(([a, b, d]) => `<tr><td>${escapeHtml(a)}</td><td>${escapeHtml(b)}</td><td>${escapeHtml(d)}</td></tr>`).join('')}</table>`;
+  void setupExport();
+}
+
+/**
+ * 導出（作者 2026-10）：把文字與圖片打包成 zip，存到使用者的「下載」資料夾。
+ * 只有桌面版有這個能力 —— file:// 版寫不了本機資料夾，按鈕直接藏起來。
+ */
+let exportBound = false;
+async function setupExport(): Promise<void> {
+  const box = $('#exportBox');
+  const btn = $('#exportZip') as HTMLButtonElement | null;
+  if (!box || !btn) return;
+  if (!(await desktopHost())) { box.hidden = true; return; }
+  box.hidden = false;
+  if (exportBound) return;
+  exportBound = true;
+  btn.onclick = async () => {
+    const r = reader;
+    const p = r?.io.path;
+    const msg = $('#exportMsg');
+    if (!r || !p) {
+      if (msg) msg.textContent = '這個庫沒有檔案路徑（不是從資料夾清單開的），無法導出。';
+      return;
+    }
+    btn.disabled = true;
+    if (msg) msg.textContent = '正在導出…（大庫要幾十秒）';
+    setStatus('導出文字與圖片…', 'busy');
+    const t0 = performance.now();
+    const res = await desktopExportTextImages(p);
+    btn.disabled = false;
+    const secs = ((performance.now() - t0) / 1000).toFixed(0);
+    if (!res || !res.ok) {
+      const why = res?.error ?? '宿主沒有回應';
+      if (msg) msg.textContent = `導出失敗：${why}`;
+      setStatus(`導出失敗：${why}`, 'err');
+      return;
+    }
+    const mib = (n?: number) => ((n ?? 0) / 1048576).toFixed(1) + ' MiB';
+    const parts = [`文字 ${fmtInt(res.chars ?? 0)} 字`, `${fmtInt(res.blocks ?? 0)} 個區塊`];
+    if (res.imageCount) parts.push(`圖片 ${fmtInt(res.imageCount)} 張（${mib(res.imageBytes)}）`);
+    if (msg) {
+      msg.textContent = `✓ 已存到 ${res.folder}（${mib(res.zipBytes)}，${secs} 秒）：` +
+        `${parts.join('、')}。` + (res.note ? ` ${res.note}` : '');
+      const again = document.createElement('button');
+      again.className = 'mini';
+      again.textContent = '在資料夾中顯示';
+      again.onclick = () => void desktopRevealInFolder(res.path ?? '');
+      msg.after(again);
+      again.after(document.createElement('br'));
+    }
+    setStatus(`已導出 ${res.path}`, 'info');
+  };
 }
 
 /**

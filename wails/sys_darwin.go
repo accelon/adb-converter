@@ -83,6 +83,11 @@ func openURLCommand(rawurl string) *exec.Cmd {
 	return exec.Command("open", rawurl)
 }
 
+// revealCommand 回傳「在 Finder 裡選中這個檔案」的指令（導出 zip 之後用）。
+func revealCommand(path string) *exec.Cmd {
+	return exec.Command("open", "-R", path)
+}
+
 // hideConsoleWindow 在 macOS 沒有對應的視窗樣式可設：從 Finder／Dock 啟動的
 // .app 本來就不會開終端機，子行程也不會（它是同一個 bundle 裡的程式）。
 func hideConsoleWindow(cmd *exec.Cmd) {}

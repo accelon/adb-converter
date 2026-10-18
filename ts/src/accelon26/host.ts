@@ -219,8 +219,46 @@ export async function desktopCharCount(path: string): Promise<number | null> {
   }
 }
 
-/** one host file, in the shape the rest of the viewer already understands */
-function hostSource(e: HostAdb): AdbSource {
+/** 導出結果（wails/export.go 的 ExportResult）。 */
+export interface DesktopExportResult {
+  ok: boolean;
+  error?: string;
+  path?: string;
+  folder?: string;
+  chars?: number;
+  blocks?: number;
+  imageCount?: number;
+  imageBytes?: number;
+  zipBytes?: number;
+  ms?: number;
+}
+
+/**
+ * 把 adb 的文字與圖片打包成 zip，存到使用者的「下載」資料夾（作者 2026-10）。
+ * 只有桌面版有這個能力：file:// 版寫不了本機的資料夾。實作在 wails/export.go。
+ */
+export async function desktopExportTextImages(path: string): Promise<DesktopExportResult | null> {
+  const c = await hostCall();
+  if (!c) return null;
+  try {
+    return await c.ByName('main.AdbHost.ExportTextImages', path) as DesktopExportResult;
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
+}
+
+/** 在系統的檔案管理員裡顯示剛導出的檔案（導出後那顆「在資料夾中顯示」）。 */
+export async function desktopRevealInFolder(path: string): Promise<boolean> {
+  const c = await hostCall();
+  if (!c) return false;
+  try {
+    return !!(await c.ByName('main.AdbHost.RevealInFolder', path));
+  } catch {
+    return false;
+  }
+}
+
+/** one host file, in the shape the rest of the viewer already understands */function hostSource(e: HostAdb): AdbSource {
   const name = e.name || e.dbcname || e.dbname || e.path;
   return {
     name,
