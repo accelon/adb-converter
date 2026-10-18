@@ -77,6 +77,7 @@ async function setupExport(): Promise<void> {
     }
     const mib = (n?: number) => ((n ?? 0) / 1048576).toFixed(1) + ' MiB';
     const parts = [`文字 ${fmtInt(res.chars ?? 0)} 字`];
+    if (res.files && res.files > 1) parts.push(`${fmtInt(res.files)} 篇（一篇一個檔）`);
     if (res.lines) parts.push(`${fmtInt(res.lines)} 行（保留硬換行）`);
     parts.push(`${fmtInt(res.blocks ?? 0)} 個區塊`);
     if (res.imageCount) parts.push(`圖片 ${fmtInt(res.imageCount)} 張（${mib(res.imageBytes)}）`);

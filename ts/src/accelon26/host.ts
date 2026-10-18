@@ -228,6 +228,8 @@ export interface DesktopExportResult {
   folder?: string;
   chars?: number;
   blocks?: number;
+  /** 文字檔數（有 <檔> 的庫：一篇一個，例如 y01.xml） */
+  files?: number;
   /** 保留的硬換行數（＝行數，來自 tables/lines.physical） */
   lines?: number;
   imageCount?: number;

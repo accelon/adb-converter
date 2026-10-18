@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -34,6 +35,7 @@ type ExportResult struct {
 	Folder     string `json:"folder,omitempty"`
 	Chars      int64  `json:"chars"`      // 文字字元數（UTF-16 code unit，含標記）
 	Blocks     int    `json:"blocks"`     // source 區塊數
+	Files      int    `json:"files"`      // 文字檔數（有 <檔> 的庫：一篇一個）
 	Lines      int64  `json:"lines"`      // 保留的硬換行數（＝行數）
 	ImageCount int    `json:"imageCount"` // 導出的圖片張數
 	ImageBytes int64  `json:"imageBytes"`
@@ -77,8 +79,9 @@ func (f *adbSearchFile) lineEnds() []int64 {
 const exportReadme = `accelon26 導出（文字 ＋ 圖片）
 
 這個壓縮檔只包含資料庫的內容：
-  *.txt          全部文字（source 容器解壓後的原樣標記，XML 形式）
-                 **保留原書的硬換行**（依 tables/lines.physical，行尾是 CRLF）
+  *.xml          有 <檔> 的資料庫：**一篇一個檔案**（名字取 <檔 n="…">），
+                 內容是該篇原樣標記（含 <檔> … </檔> 包起來），保留原書硬換行（CRLF）
+  *.txt          沒有 <檔> 的資料庫：全部文字串成一個檔（同樣保留硬換行）
   images/…       resources 容器裡的每一個資源（圖片等）
 
 不含 tokens／postings／tags／tables／attributes／caches 這些「即時建置」的索引
@@ -197,6 +200,244 @@ func safeZipName(name string, fallback string) string {
 	return n
 }
 
+// ---- 文字：一個檔或一篇一個檔 ----------------------------------------------------
+//
+// 兩種資料庫（作者 2026-10）：
+//   * **有 `<檔>` 的**（yinshun、taixu…）：第一篇是 `<檔 n="yinshun.xml">` 這種設定檔，
+//     之後每一本書一個 `<檔 n="y01.xml">`。作者要的是「按照文件 block 分成 Y01.xml」，
+//     所以一篇一個檔案（名字取 `n="…"`），內容含 `<檔 …>` 包起來的原樣標記。
+//   * **沒有 `<檔>` 的**（13j、jc、kangxi…）：全部串成 `<db>.txt`。
+//
+// 兩種都保留原書的硬換行（tables/lines.physical）：行尾是「所有 source 區塊串起來之後」
+// 的偏移，一行可能跨區塊（13j：42,173 個行尾只有 13 個落在區塊邊界上），所以在整個
+// 串流上一邊切一邊寫。
+
+// sourceUnits 解壓第 i 個 source 區塊，回傳 UTF-16 code unit（已截到第一個 NUL）。
+func (f *adbSearchFile) sourceUnits(src *adbContainer, i int) ([]uint16, error) {
+	r0, r1 := blockRangeOf(src, i)
+	if r0 < 0 || r1 > int64(len(f.view)) || r1 < r0 {
+		return nil, fmt.Errorf("source 區塊 %d 超出檔案範圍", i)
+	}
+	raw, err := bunzip(f.view[r0:r1])
+	if err != nil {
+		return nil, fmt.Errorf("source 區塊 %d：%w", i, err)
+	}
+	if n := firstNulUnit(raw); n >= 0 {
+		raw = raw[:n*2]
+	}
+	units := make([]uint16, len(raw)/2)
+	for j := range units {
+		units[j] = uint16(raw[j*2]) | uint16(raw[j*2+1])<<8
+	}
+	return units, nil
+}
+
+// unitsIndex 在 units[from:] 裡找一段 code unit 樣式（回傳絕對索引，-1＝沒有）。
+// 注意樣式要用 code unit 表示，**不能**直接拿 Go 字串的位元組比對（中文是多位元組）。
+func unitsIndex(units []uint16, from int, pat []uint16) int {
+	n := len(pat)
+	if n == 0 || from < 0 {
+		return -1
+	}
+	for i := from; i+n <= len(units); i++ {
+		ok := true
+		for j := 0; j < n; j++ {
+			if units[i+j] != pat[j] {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return i
+		}
+	}
+	return -1
+}
+
+// `<檔` 與 `</檔>` 的 code unit 形式。
+var (
+	docOpen  = []uint16{'<', '檔'}
+	docClose = []uint16{'<', '/', '檔', '>'}
+	gtOnly   = []uint16{'>'}
+)
+
+// docEntryName 從 `<檔 n="y01.xml">` 這種標籤取出檔名（沒有就用序號）。
+func docEntryName(tag string, seq int) string {
+	name := ""
+	if m := regexpDocName.FindStringSubmatch(tag); m != nil {
+		name = m[1]
+	}
+	return safeZipName(name, fmt.Sprintf("doc-%04d.xml", seq))
+}
+
+var regexpDocName = regexp.MustCompile(`\bn="([^"]*)"`)
+
+// writeText 把 source 的文字寫進 zip（見上面兩種資料庫的說明）。
+func (f *adbSearchFile) writeText(zw *zip.Writer, src *adbContainer, base string, now time.Time, res *ExportResult) error {
+	first, err := f.sourceUnits(src, 0)
+	if err != nil {
+		return err
+	}
+	docMode := strings.HasPrefix(string(utf16.Decode(first[:min(len(first), 2)])), "<檔")
+	if !docMode {
+		return f.writeTextSingle(zw, src, base, now, res)
+	}
+	return f.writeTextDocs(zw, src, base, now, res, first)
+}
+
+// writeTextSingle：沒有 `<檔>` 的庫 —— 全部串成一個 txt。
+func (f *adbSearchFile) writeTextSingle(zw *zip.Writer, src *adbContainer, base string, now time.Time, res *ExportResult) error {
+	w, err := zw.CreateHeader(&zip.FileHeader{Name: base + ".txt", Method: zip.Deflate, Modified: now})
+	if err != nil {
+		return err
+	}
+	lineCU := f.lineEnds()
+	var pos, li int64
+	for i := 0; i < src.count; i++ {
+		units, err := f.sourceUnits(src, i)
+		if err != nil {
+			return err
+		}
+		if err := writeUnits(w, units, pos, lineCU, &li, res); err != nil {
+			return err
+		}
+		pos += int64(len(units))
+		res.Blocks++
+	}
+	res.Files++
+	res.Lines = li
+	return nil
+}
+
+// writeTextDocs：有 `<檔>` 的庫 —— 一篇一個檔案，名字取 `n="…"`。
+// 一篇的內容在記憶體裡累積到 `</檔>` 為止（一本書通常幾十萬字，不會爆記憶體）。
+func (f *adbSearchFile) writeTextDocs(zw *zip.Writer, src *adbContainer, base string, now time.Time, res *ExportResult, first []uint16) error {
+	lineCU := f.lineEnds()
+	var li int64
+	var pend []uint16 // 還沒寫出的文字（含目前這一篇）
+	var pendAt int64  // pend[0] 在整個串流的位置
+	inDoc := false
+	seq := 0
+	seen := map[string]int{}
+
+	flush := func(end int) error {
+		seq++
+		// 名字取自這一篇開頭的 `<檔 … n="…">`
+		entry := docEntryName(string(utf16.Decode(unitsSlice(pend, 0, min(len(pend), 200)))), seq)
+		if n := seen[entry]; n > 0 {
+			seen[entry] = n + 1
+			ext := filepath.Ext(entry)
+			entry = strings.TrimSuffix(entry, ext) + fmt.Sprintf("-%d", n+1) + ext
+		} else {
+			seen[entry] = 1
+		}
+		w, err := zw.CreateHeader(&zip.FileHeader{Name: entry, Method: zip.Deflate, Modified: now})
+		if err != nil {
+			return err
+		}
+		if err := writeUnits(w, unitsSlice(pend, 0, end), pendAt, lineCU, &li, res); err != nil {
+			return err
+		}
+		res.Files++
+		return nil
+	}
+
+	for i := 0; i < src.count; i++ {
+		var units []uint16
+		if i == 0 {
+			units = first
+		} else {
+			u, err := f.sourceUnits(src, i)
+			if err != nil {
+				return err
+			}
+			units = u
+		}
+		pend = append(pend, units...)
+		res.Blocks++
+		for {
+			if !inDoc {
+				j := unitsIndex(pend, 0, docOpen)
+				if j < 0 {
+					break
+				}
+				gt := unitsIndex(pend, j, gtOnly)
+				if gt < 0 {
+					break // 標籤還沒收完（跨區塊），等下一塊
+				}
+				inDoc = true
+				pendAt += int64(j) // 前面的雜訊（正常是空的）不算進這一篇
+				pend = unitsSlice(pend, j, len(pend))
+				continue
+			}
+			k := unitsIndex(pend, 0, docClose)
+			if k < 0 {
+				break
+			}
+			end := k + len(docClose)
+			if err := flush(end); err != nil {
+				return err
+			}
+			pend = unitsSlice(pend, end, len(pend))
+			pendAt += int64(end)
+			inDoc = false
+		}
+	}
+	// 收尾：還有沒關起來的一篇（檔案被截斷）也照樣寫出來
+	if len(pend) > 0 && inDoc {
+		if err := flush(len(pend)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// unitsSlice 是 []uint16 的 s[a:b]（保留原本的底層陣列，方便直接切片）。
+func unitsSlice(units []uint16, a, b int) []uint16 {
+	if a < 0 {
+		a = 0
+	}
+	if b > len(units) {
+		b = len(units)
+	}
+	if a > b {
+		return nil
+	}
+	return units[a:b]
+}
+
+// writeUnits 把一段文字寫進 w，依 lines.physical 插入硬換行；at＝這段在整個串流的位置。
+// li 是行尾表的游標（跨篇、跨區塊單調前進）。
+func writeUnits(w io.Writer, units []uint16, at int64, lineCU []int64, li *int64, res *ExportResult) error {
+	n := int64(len(units))
+	off := int64(0)
+	for *li < int64(len(lineCU)) && lineCU[*li] <= at+n {
+		e := lineCU[*li] - at
+		if e < 0 {
+			(*li)++ // 行尾在這段之前（被跳過的雜訊），跳過
+			continue
+		}
+		if e > off {
+			if _, err := io.WriteString(w, string(utf16.Decode(units[off:e]))); err != nil {
+				return err
+			}
+			off = e
+		}
+		if _, err := io.WriteString(w, hardBreak); err != nil {
+			return err
+		}
+		res.Lines++
+		(*li)++
+	}
+	if off < n {
+		if _, err := io.WriteString(w, string(utf16.Decode(units[off:n]))); err != nil {
+			return err
+		}
+	}
+	res.Chars += n
+	return nil
+}
+
 // writeExportZip 真的寫檔：一個文字檔 ＋ images/ 下的每個資源 ＋ README.txt。
 // 內容全部從 f.view（mmap）直接讀，不複製整份資料。
 func writeExportZip(f *adbSearchFile, base, out string, res *ExportResult) error {
@@ -220,62 +461,10 @@ func writeExportZip(f *adbSearchFile, base, out string, res *ExportResult) error
 		return err
 	}
 
-	// 2) 文字：每個 source 區塊解壓 → 截到第一個 NUL → 依 lines.physical 的「每行結尾」
-	//    插入硬換行（作者 2026-10）。行結尾是「所有 source 區塊串起來之後」的位元組偏移，
-	//    而一行可能跨區塊（13j：42,173 個行尾只有 13 個落在區塊邊界上），所以要在
-	//    整個串流上邊寫邊切。
-	tw, err := zw.CreateHeader(&zip.FileHeader{Name: base + ".txt", Method: zip.Deflate, Modified: now})
-	if err != nil {
+	// 2) 文字
+	if err := f.writeText(zw, src, base, now, res); err != nil {
 		return err
 	}
-	lineCU := f.lineEnds() // 每行結尾（UTF-16 code unit 索引）
-	var pos, li int64
-	for i := 0; i < src.count; i++ {
-		r0, r1 := blockRangeOf(src, i)
-		if r0 < 0 || r1 > int64(len(f.view)) || r1 < r0 {
-			return fmt.Errorf("source 區塊 %d 超出檔案範圍", i)
-		}
-		raw, err := bunzip(f.view[r0:r1])
-		if err != nil {
-			return fmt.Errorf("source 區塊 %d：%w", i, err)
-		}
-		if n := firstNulUnit(raw); n >= 0 {
-			raw = raw[:n*2]
-		}
-		units := make([]uint16, len(raw)/2)
-		for j := range units {
-			units[j] = uint16(raw[j*2]) | uint16(raw[j*2+1])<<8
-		}
-		n := int64(len(units))
-		off := int64(0)
-		// 這一個區塊裡的所有行尾（含剛好落在區塊結尾的那一個）
-		for li < int64(len(lineCU)) && lineCU[li] <= pos+n {
-			e := lineCU[li] - pos
-			if e < 0 {
-				li++ // 理論上不會：行尾在區塊開頭之前（資料壞掉就跳過）
-				continue
-			}
-			if e > off {
-				if _, err := io.WriteString(tw, string(utf16.Decode(units[off:e]))); err != nil {
-					return err
-				}
-				off = e
-			}
-			if _, err := io.WriteString(tw, hardBreak); err != nil {
-				return err
-			}
-			li++
-		}
-		if off < n {
-			if _, err := io.WriteString(tw, string(utf16.Decode(units[off:n]))); err != nil {
-				return err
-			}
-		}
-		pos += n
-		res.Chars += n
-		res.Blocks++
-	}
-	res.Lines = li // 實際插入的換行數（= 行數，資料正常時等於檔頭的 linecount）
 
 	// 3) 圖片：resources 容器（未壓縮，一塊就是一個資源）
 	if rsrc, ok := f.container("resources"); ok && rsrc.count > 0 {

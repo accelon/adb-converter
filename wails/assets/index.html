@@ -1177,7 +1177,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T13:43:10.149Z","buildTimeText":"2026-10-18 21:43"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T13:52:15.735Z","buildTimeText":"2026-10-18 21:52"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -5838,6 +5838,8 @@ designed by C.S.Yap`;
       }
       const mib = (n) => ((n ?? 0) / 1048576).toFixed(1) + " MiB";
       const parts = [`文字 ${fmtInt(res.chars ?? 0)} 字`];
+      if (res.files && res.files > 1)
+        parts.push(`${fmtInt(res.files)} 篇（一篇一個檔）`);
       if (res.lines)
         parts.push(`${fmtInt(res.lines)} 行（保留硬換行）`);
       parts.push(`${fmtInt(res.blocks ?? 0)} 個區塊`);
