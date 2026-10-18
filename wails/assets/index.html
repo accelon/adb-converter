@@ -473,12 +473,15 @@
   .docLine.hitLine { background: rgba(255, 212, 121, .10); }
   .lineText { white-space: pre; flex: 1 1 auto; min-width: 0; }   /* hard-wrapped lines: never soft wrap by default */
   /* 本文上方的 breadcrumb（作者 2026-10）：字級同內文、顏色同標題；
-     點一個節點下拉同層 siblings，並突顯目前這一個 */
+     點一個節點下拉同層 siblings，並突顯目前這一個。
+     作者 2026-10-18：從 .docBody 搬到 head 區（#docText 的直屬子節點）**固定住**，
+     捲動本文時它不會跟著跑掉，讀者隨時能跳去別的 tree node。 */
   .docTrail {
+    flex: 0 0 auto;
     display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px;
     margin: 0 0 6px; padding: 0 0 6px; border-bottom: 1px dashed var(--line);
-    /* 它在 .docBody 裡面（和正文同一個字級來源），這裡只要 1em */
-    font-size: 1em; font-weight: 400; line-height: 1.5;
+    /* 它在 .docBody 外面，所以自己取 --fsdoc（＝中欄正文的字級）才維持「字級同內文」 */
+    font-size: var(--fsdoc, 16px); font-weight: 400; line-height: 1.5;
   }
   .trailWrap { position: relative; display: inline-flex; }
   .docTrail .trail {
@@ -1063,7 +1066,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T04:42:44.592Z","buildTimeText":"2026-10-18 12:42"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T04:44:45.167Z","buildTimeText":"2026-10-18 12:44"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -11165,7 +11168,7 @@ designed by C.S.Yap`;
     const b = pageBounds(s.realm, s.page);
     const nFirst = dt.lineNumbers[0] ?? 0;
     const nLast = dt.lineNumbers[dt.lineNumbers.length - 1] ?? 0;
-    $("#docText").innerHTML = (isDictDb(mapper) ? "" : '<div class="docHead">' + escapeHtml(displayName(s.name)) + '<span class="dim">第 ' + fmtInt(s.page + 1) + " / " + fmtInt(b.pages) + " 頁（每頁 " + fmtInt(PAGE_LINES) + " 行）" + " · 行 " + fmtInt(nFirst) + "–" + fmtInt(nLast) + " / 此節點共 " + fmtInt(b.total) + " 行" + " · source 區塊 " + dt.blockFirst + "–" + dt.blockLast + " · " + fmtInt(dt.text.length) + " 字</span></div>") + '<div class="docBody' + (hardBreaks ? "" : " reflow") + '">' + renderAncestorTrail(s) + rows2 + "</div>";
+    $("#docText").innerHTML = (isDictDb(mapper) ? "" : '<div class="docHead">' + escapeHtml(displayName(s.name)) + '<span class="dim">第 ' + fmtInt(s.page + 1) + " / " + fmtInt(b.pages) + " 頁（每頁 " + fmtInt(PAGE_LINES) + " 行）" + " · 行 " + fmtInt(nFirst) + "–" + fmtInt(nLast) + " / 此節點共 " + fmtInt(b.total) + " 行" + " · source 區塊 " + dt.blockFirst + "–" + dt.blockLast + " · " + fmtInt(dt.text.length) + " 字</span></div>") + renderAncestorTrail(s) + '<div class="docBody' + (hardBreaks ? "" : " reflow") + '">' + rows2 + "</div>";
     renderDocTabs(s);
     renderPager(s, b);
     wireTrail();

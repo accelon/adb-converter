@@ -558,7 +558,9 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
 
   * 本文上方（`#docTrail`）是 **breadcrumb**：把目前本文的**所有祖先節點**由外到內排成一條路，
     後面再接上**目前這一節的 siblings**（作者 2026-10：不用先開選單就能左右換節）。
-    它放在 `.docBody` 裡面、`font-size: 1em`，所以字級**正好等於正文**；顏色用
+    **它不在 `.docBody` 裡**（作者 2026-10-18：從 `.docBody` 搬到 `#docText` 的 head 區，
+    `flex: 0 0 auto`），所以捲動本文時它**固定不動**，讀者隨時能跳去別的 tree node；
+    字級自己取 `var(--fsdoc)`（＝中欄正文的字級），所以仍然**正好等於正文**；顏色用
     標題那組主題變數 `--tag-text-N`。
   * **短標籤**（`doc-pane.ts: trailLabel()`）：標籤裡有分隔符（空白／全形空白／
     `、，。：；·｜／/ - — _`）→ 只取**分隔符之前**那段（「甲二　正宗分」→「甲二」）；
