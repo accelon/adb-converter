@@ -136,6 +136,13 @@
     box-shadow: var(--btn-shadow);
   }
   .btn:hover { text-decoration: none; filter: brightness(1.08); }
+  /* 兩個下載按鈕並排（macOS 版 2026-10-18）；窄螢幕自動換行。 */
+  .btnRow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn.alt {
+    background: transparent; color: var(--fg);
+    border: 1px solid var(--line); box-shadow: none;
+  }
+  .btn.alt:hover { border-color: var(--gold); color: var(--gold); filter: none; }
   .fine { margin: 14px 0 0; color: var(--dim); font-size: 13px; }
   .fine b { color: var(--fg); font-weight: 600; }
 
@@ -281,8 +288,14 @@
           accelon26 是 Accelon3 的跨平台平替：直接讀 <code>.adb</code>，不必轉檔、不必匯入。
           全文檢索、詞典查詢、目錄樹、原書分頁與繁簡通檢，都在同一個視窗裡完成。
         </p>
-        <a class="btn" href="accelon26.7z" download>↓ 下載 Windows 版</a>
-        <p class="fine">Windows 10／11 · 64 位元 · 單一執行檔、免安裝 · <span id="meta">7-Zip 壓縮檔，約 7 MB</span></p>
+        <div class="btnRow">
+          <a class="btn" href="accelon26.7z" download>↓ 下載 Windows 版</a>
+          <a class="btn alt" href="accelon26-macos-arm64.zip" download>↓ 下載 macOS 版</a>
+        </div>
+        <p class="fine">
+          Windows 10／11 · 64 位元 · 單一執行檔、免安裝 · <span id="meta">7-Zip 壓縮檔，約 7 MB</span><br>
+          macOS 11 以上（Apple Silicon／Intel）· <a href="#install">解開 zip、拖進「應用程式」，第一次要右鍵「打開」</a>
+        </p>
       </div>
 
       <div id="shots" class="heroArt">
@@ -343,6 +356,17 @@
         <b>打不開 7z 檔？</b> 7-Zip 是免費的解壓縮工具，到
         <a href="https://sparanoid.com/lab/7z/" target="_blank" rel="noopener noreferrer">https://sparanoid.com/lab/7z/</a>
         下載 <b>Windows x64</b> 版即可（免安裝版解開就能用）。
+      </div>
+
+      <div class="note">
+        <b>macOS 版（Apple Silicon／Intel）</b>
+        下載 <a href="accelon26-macos-arm64.zip" download>Apple Silicon（M 系列）</a> 或
+        <a href="accelon26-macos-x86_64.zip" download>Intel</a> 版，解開後把
+        <code>accelon26.app</code> 拖進「應用程式」資料夾。<br>
+        <b>第一次開啟：</b>在 Finder 上按右鍵 →「打開」→ 再按一次「打開」。這是 macOS 對
+        「未經 Apple 公證」的程式的規定，不是檔案壞掉。<br>
+        macOS 版不會自己換檔：左上角或「關於」提示有新版本時，請下載新的
+        <code>.app</code> 換掉舊的即可（資料庫與設定檔都不受影響）。
       </div>
     </div>
   </section>

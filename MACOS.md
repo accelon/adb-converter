@@ -8,19 +8,23 @@ macOS 用 `syscall.Mmap`／`open`／`osascript`／Wails 的 NSScreen 表）。
 
 ## 怎麼拿到
 
-1. GitHub → Actions → **build-macos** → Run workflow（或推 `mac-*` 標籤）。
-2. 跑完在下載 artifact `accelon26-macos-arm64`（裡面的 zip 已含 ad-hoc 簽章）。
-3. 解開 → `accelon26.app` → 拖進「應用程式」。
-4. **第一次開啟要在 Finder 上按右鍵 →「打開」→ 再按一次「打開」。**
+1. 官網 <https://shutonggui.cn/accelon26/> →「下載 macOS 版」（Apple Silicon）或「下載與安裝」
+   裡的 Intel 版：
+   * `accelon26-macos-arm64.zip`（M 系列）
+   * `accelon26-macos-x86_64.zip`（Intel）
+2. 解開 → `accelon26.app` → 拖進「應用程式」。
+3. **第一次開啟要在 Finder 上按右鍵 →「打開」→ 再按一次「打開」。**
    這是 macOS 對「未經 Apple 公證的程式」的規定，不是檔案壞掉。
 
-產出同時附 `accelon26-macos-arm64.zip.sha256`。
+備用來源：GitHub → Actions → **build-macos** → Run workflow（或推 `mac-*` 標籤），跑完下載
+artifact `accelon26-macos-arm64`／`accelon26-macos-x86_64`。兩邊的檔案是同一個
+`wails/scripts/package-macos.sh` 包出來的，並附 `.sha256` 可以核對。
 
 ## 這一版有／沒有什麼
 
 有：
 
-* macOS 11 以上、Apple Silicon（arm64）。
+* macOS 11 以上、Apple Silicon（arm64）與 Intel（x86_64）。
 * 介面與 Windows 版完全相同（單檔 HTML，`wails/assets/index.html`）。
 * mmap 讀 `.adb`（`syscall.Mmap`）、Go 的查詢後端、bzip2 解壓（與 TS 逐字相同，測試會驗）。
 * **新版本提示**：照樣去讀 `versions.json`，線上比你的 `.app` 新就讓左上角閃、About 顯示
@@ -41,30 +45,52 @@ macOS 用 `syscall.Mmap`／`open`／`osascript`／Wails 的 NSScreen 表）。
 * 「工作目錄裡的 `.adb`」在 macOS 上幾乎永遠是空的：從 Finder 開的 app，工作目錄是 `/`。
   用「＋ 加入 adb」或把檔案拖進視窗就好（這條路走瀏覽器的 File API，不經 Go 的 mmap）。
 
-## 自己建（不用 CI）
+## 自己建（作者平常走這條）
 
-需要 Xcode Command Line Tools（`xcode-select --install`）。
+需要 Xcode Command Line Tools（`xcode-select --install`）。三行：建 HTML、編譯、打包。
 
 ```bash
-cd ts && bun run tools/build-desktop.ts   # 產生 wails/assets/index.html（不需要 npm install）
+cd ts && bun run tools/build-desktop.ts    # 產生 wails/assets/index.html（不需要 npm install）
+
 cd ../wails
-CGO_ENABLED=1 go build -tags production -trimpath -o ../build/macos/accelon26 .
+CGO_ENABLED=1 go build -tags production -trimpath \
+  -ldflags "-X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -o ../build/macos/arm64/accelon26 .
+bash scripts/package-macos.sh arm64          # → build/macos/accelon26-macos-arm64.zip
 ```
 
 `-tags production` 是 Wails 的發佈模式（關掉 DevTools 選單與除錯日誌）；想看 DevTools 就去掉它
-再建一次。`.app` 的外殼（Info.plist、icns、ad-hoc 簽章、ditto 壓縮）看
-`.github/workflows/build-macos.yml` 的後半段，照抄即可。
+再建一次。
+
+`scripts/package-macos.sh` 就是 CI 用的那一支（Info.plist、icns、ad-hoc 簽章、`ditto` 壓縮），
+所以本機編的與 Actions 編的 `.app` 是同一個形狀。第一個參數是架構，第二個（可選）是指定
+執行檔位置，例如 `bash scripts/package-macos.sh arm64 ../build/macos/accelon26`。
+
+## 放上官網
+
+```bash
+cd ts && bun run tools/deploy-macos.ts        # 上傳 build/macos/*.zip，再從線上抓回來比 sha256
+cd ts && bun run tools/deploy-macos.ts --check  # 只驗證，不上傳
+```
+
+Windows 這台要裝 PuTTY（`pscp`／`plink`）而且 `.local/server.env` 有帳密才會動；上傳一律先
+`xxx.tmp` 再原子改名，所以下載的人不會抓到半個檔案。首頁的連結就是
+`https://shutonggui.cn/accelon26/accelon26-macos-arm64.zip` 與 `…-x86_64.zip`
+（`www/index.html` 的主視覺與「下載與安裝」都有）。
 
 ## Intel（x86_64）版
 
-第一版只出 arm64。要 Intel 版，兩個辦法：
+CI 已經順便做了（在 arm64 runner 上交叉編譯，Apple clang 可以產生 x86_64）。本機要自己編：
 
-* 多一個 job：`runs-on: macos-13`（Intel runner）。
-* 或在 arm64 runner 上交叉編譯（Apple clang 可以產生 x86_64）：
+```bash
+cd wails
+GOARCH=amd64 CGO_ENABLED=1 CC="clang -arch x86_64" go build -tags production -trimpath \
+  -ldflags "-X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -o ../build/macos/x86_64/accelon26 .
+bash scripts/package-macos.sh x86_64          # → build/macos/accelon26-macos-x86_64.zip
+```
 
-  ```bash
-  GOARCH=amd64 CGO_ENABLED=1 CC="clang -arch x86_64" go build -o ../build/macos/accelon26-amd64 .
-  ```
+（也可以在 Intel 的 Mac 上直接 `GOARCH=amd64` 不帶 `CC` 編譯。）
 
 ## 以後可以加
 
@@ -72,3 +98,4 @@ CGO_ENABLED=1 go build -tags production -trimpath -o ../build/macos/accelon26 .
 2. 公證（Apple Developer 帳號，每年 US$99）：公證過的 `.app` 第一次開不用右鍵。
 3. 檔案關聯（`CFBundleDocumentTypes`，雙擊 `.adb` 直接開）。
 4. 游標選螢幕（一支 cgo 的 `CGEventGetLocation`，`#cgo LDFLAGS: -framework ApplicationServices`）。
+5. CI 直接把 zip 傳到官網（需要把 HOST／USER／PASS 放進 repo secrets，並在 runner 上裝 `sshpass`）。
