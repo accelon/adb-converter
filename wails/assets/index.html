@@ -21,6 +21,9 @@
   --border-soft: #2a2a2a; --code-bg: #1b1b1b;
   --hit-1: #ff8a80; --hit-2: #ff6b6b; --hit-3: #ff3b30; --hit-4: #ff1744;
   --ok: #9fe08a;
+  /* 字級按鈕那顆「小 T／大 T」的底色與字色（作者 2026-10 回報：亮色系／護眼下
+     還是黑方塊，很突兀）。暗色系維持原本的黑底白字。 */
+  --chip-bg: #000; --chip-fg: #fff;
   color-scheme: dark;
     --fs: 15px;               /* base font size */
     --left: 25fr;             /* column widths, draggable; 0fr = hidden */
@@ -63,6 +66,7 @@
     --border-soft: #e5e7eb; --code-bg: #f2f3f5;
     --hit-1: #d9534f; --hit-2: #cc3b36; --hit-3: #b52a20; --hit-4: #9c1a12;
     --ok: #2e7d32;
+    --chip-bg: #f5f6f8; --chip-fg: #1f2328;
     color-scheme: light;
     --tag-0: hsl(0 55% 42%); --tag-1: hsl(48 70% 34%); --tag-2: hsl(110 50% 34%);
     --tag-3: hsl(165 55% 30%); --tag-4: hsl(220 60% 46%); --tag-5: hsl(275 50% 44%);
@@ -82,6 +86,7 @@
     --border-soft: #d5e0c9; --code-bg: #eef4e8;
     --hit-1: #a8433f; --hit-2: #96322e; --hit-3: #7f2622; --hit-4: #6b1c18;
     --ok: #3f7d4e;
+    --chip-bg: #e6efdc; --chip-fg: #2c3a2a;
     color-scheme: light;
     --tag-0: hsl(0 45% 38%); --tag-1: hsl(48 60% 30%); --tag-2: hsl(110 40% 30%);
     --tag-3: hsl(165 45% 27%); --tag-4: hsl(220 45% 40%); --tag-5: hsl(275 40% 38%);
@@ -458,15 +463,18 @@
     font: inherit; font-size: 12px; padding: 1px 2px; cursor: pointer; max-width: 3.6em;
   }
   .fsPick select:hover { border-color: var(--accent); }
-  /* 字級按鈕：黑底白字、一小一大的 T（CSS 組出來，不用小圖；作者 2026-10）。
+  /* 字級按鈕：一小一大的 T（CSS 組出來，不用小圖；作者 2026-10）。
+     底色／字色吃 --chip-bg／--chip-fg：暗色系是黑底白字，亮色系／護眼是淺底深字
+     （作者 2026-10 回報：換主題後還是黑方塊，很突兀）。
      點一下 +2px、Alt+點 −2px；沒有下拉選單。 */
   .fsPick.iconOnly { position: relative; margin-left: auto; padding-left: 4px; }
   .fsPick.iconOnly .fsT {
     display: inline-flex; align-items: flex-end; gap: 2px; line-height: 1;
-    background: #000; color: #fff; border: 1px solid var(--line); border-radius: 4px;
+    background: var(--chip-bg, #000); color: var(--chip-fg, #fff);
+    border: 1px solid var(--line); border-radius: 4px;
     padding: 2px 5px 3px; cursor: pointer;
   }
-  .fsPick.iconOnly .fsT b { font-weight: 700; color: var(--fg); }
+  .fsPick.iconOnly .fsT b { font-weight: 700; color: inherit; }
   .fsPick.iconOnly .fsT b:first-child { font-size: 9px; }
   .fsPick.iconOnly .fsT b:last-child { font-size: 15px; }
   .fsPick.iconOnly:hover .fsT { border-color: var(--accent); }
@@ -1142,7 +1150,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T06:02:09.474Z","buildTimeText":"2026-10-18 14:02"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T07:42:40.647Z","buildTimeText":"2026-10-18 15:42"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
