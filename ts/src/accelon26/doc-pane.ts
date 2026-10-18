@@ -506,15 +506,17 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   const nLast = dt.lineNumbers[dt.lineNumbers.length - 1] ?? 0;
   // 詞典型 adb 不顯示 docHead（作者 2026-10）：詞條名稱已經在分頁標題上，
   // 而第一個詞條字串通常就是命中、會被塗紅 —— 再放一次就變成同一個詞顯示三次。
-  // breadcrumb 固定在本文上方（作者 2026-10-18）：放在 #docText 的 head 區、
-  // **不進 .docBody**，所以捲動本文時它不會跑掉 —— 讀者隨時可以點祖先或同層節點跳過去。
-  $('#docText').innerHTML = (isDictDb(mapper)
-    ? ''
-    : '<div class="docHead">' + escapeHtml(displayName(s.name))
-      + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁（每頁 ' + fmtInt(PAGE_LINES) + ' 行）'
-      + ' · 行 ' + fmtInt(nFirst) + '–' + fmtInt(nLast) + ' / 此節點共 ' + fmtInt(b.total) + ' 行'
-      + ' · source 區塊 ' + dt.blockFirst + '–' + dt.blockLast + ' · ' + fmtInt(dt.text.length) + ' 字</span></div>')
+  // 標題（.docHead）與 breadcrumb 排在同一行（作者 2026-10-18）：.docTop 是 flex row，
+  // 標題保留原本的語意（h 區的 .docHead），路徑接在它後面、不另起一列。
+  $('#docText').innerHTML = '<div class="docTop">'
+    + (isDictDb(mapper)
+      ? ''
+      : '<div class="docHead">' + escapeHtml(displayName(s.name))
+        + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁（每頁 ' + fmtInt(PAGE_LINES) + ' 行）'
+        + ' · 行 ' + fmtInt(nFirst) + '–' + fmtInt(nLast) + ' / 此節點共 ' + fmtInt(b.total) + ' 行'
+        + ' · source 區塊 ' + dt.blockFirst + '–' + dt.blockLast + ' · ' + fmtInt(dt.text.length) + ' 字</span></div>')
     + renderAncestorTrail(s)
+    + '</div>'
     + '<div class="docBody' + (hardBreaks ? '' : ' reflow') + '">' + rows + '</div>';
   renderDocTabs(s);
   renderPager(s, b);

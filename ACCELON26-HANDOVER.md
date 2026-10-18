@@ -561,7 +561,9 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
     **同層超過 5 個就改成下拉**（作者 2026-10-18：點書名時同層有幾十本書，全部排成晶片會把
     本文整個擠掉）：只顯示「目前這一節 ▾」＋「同層 N」，點一下才列出全部（`.trailMenu`）。
     **它不在 `.docBody` 裡**（作者 2026-10-18：從 `.docBody` 搬到 `#docText` 的 head 區，
-    `flex: 0 0 auto`），所以捲動本文時它**固定不動**，讀者隨時能跳去別的 tree node；
+    `.docTop` 是 flex row，**與標題同一行**——`.docHead` 保留原本語意，路徑接在它後面，
+    中間一條細線隔開；排不下時只讓路徑自己換行，不會把標題擠到另一列。
+    `.docTop` 有 `flex: 0 0 auto`，所以捲動本文時它**固定不動**，讀者隨時能跳去別的 tree node；
     字級自己取 `var(--fsdoc)`（＝中欄正文的字級），所以仍然**正好等於正文**；顏色用
     標題那組主題變數 `--tag-text-N`。
   * **短標籤**（`doc-pane.ts: trailLabel()`）：標籤裡有分隔符（空白／全形空白／

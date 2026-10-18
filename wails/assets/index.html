@@ -387,6 +387,10 @@
   .postingHead { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
   .tokBig { font-size: 1.692em; font-weight: 700; }
   .docHead { font-weight: 600; margin-bottom: 8px; font-size: 1.154em; }
+  /* 標題與 breadcrumb 同一行（作者 2026-10-18）：標題保留 .docHead 語意，
+     路徑接在後面；真的排不下時由路徑自己換行，不會把標題擠到另一列。 */
+  .docTop { display: flex; align-items: baseline; gap: 14px; min-width: 0; margin-bottom: 8px; }
+  .docTop .docHead { flex: 0 1 auto; min-width: 0; margin-bottom: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* 標題後面那串統計（頁數／行號／source 區塊／字數）只在進階模式顯示（作者 2026-10） */
   body:not(.advanced) .docHead .dim { display: none; }
 
@@ -477,12 +481,15 @@
      作者 2026-10-18：從 .docBody 搬到 head 區（#docText 的直屬子節點）**固定住**，
      捲動本文時它不會跟著跑掉，讀者隨時能跳去別的 tree node。 */
   .docTrail {
-    flex: 0 0 auto;
+    /* 在 .docTop 這一列裡（標題後面）：真的排不下時由它自己換行，不把標題擠到另一列 */
+    flex: 1 1 auto; min-width: 0;
     display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px;
-    margin: 0 0 6px; padding: 0 0 6px; border-bottom: 1px dashed var(--line);
+    margin: 0; padding: 0;
     /* 它在 .docBody 外面，所以自己取 --fsdoc（＝中欄正文的字級）才維持「字級同內文」 */
     font-size: var(--fsdoc, 16px); font-weight: 400; line-height: 1.5;
   }
+  /* 標題與路徑之間用一條細線隔開（詞典型 adb 沒有標題，就不加線） */
+  .docHead + .docTrail { padding-left: 14px; border-left: 1px solid var(--line); }
   .trailWrap { position: relative; display: inline-flex; }
   .docTrail .trail {
     background: transparent; border: 0; padding: 0 3px; border-radius: 3px; cursor: pointer;
@@ -1068,7 +1075,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T04:57:52.753Z","buildTimeText":"2026-10-18 12:57"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T04:59:19.076Z","buildTimeText":"2026-10-18 12:59"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -11177,7 +11184,7 @@ designed by C.S.Yap`;
     const b = pageBounds(s.realm, s.page);
     const nFirst = dt.lineNumbers[0] ?? 0;
     const nLast = dt.lineNumbers[dt.lineNumbers.length - 1] ?? 0;
-    $("#docText").innerHTML = (isDictDb(mapper) ? "" : '<div class="docHead">' + escapeHtml(displayName(s.name)) + '<span class="dim">第 ' + fmtInt(s.page + 1) + " / " + fmtInt(b.pages) + " 頁（每頁 " + fmtInt(PAGE_LINES) + " 行）" + " · 行 " + fmtInt(nFirst) + "–" + fmtInt(nLast) + " / 此節點共 " + fmtInt(b.total) + " 行" + " · source 區塊 " + dt.blockFirst + "–" + dt.blockLast + " · " + fmtInt(dt.text.length) + " 字</span></div>") + renderAncestorTrail(s) + '<div class="docBody' + (hardBreaks ? "" : " reflow") + '">' + rows2 + "</div>";
+    $("#docText").innerHTML = '<div class="docTop">' + (isDictDb(mapper) ? "" : '<div class="docHead">' + escapeHtml(displayName(s.name)) + '<span class="dim">第 ' + fmtInt(s.page + 1) + " / " + fmtInt(b.pages) + " 頁（每頁 " + fmtInt(PAGE_LINES) + " 行）" + " · 行 " + fmtInt(nFirst) + "–" + fmtInt(nLast) + " / 此節點共 " + fmtInt(b.total) + " 行" + " · source 區塊 " + dt.blockFirst + "–" + dt.blockLast + " · " + fmtInt(dt.text.length) + " 字</span></div>") + renderAncestorTrail(s) + "</div>" + '<div class="docBody' + (hardBreaks ? "" : " reflow") + '">' + rows2 + "</div>";
     renderDocTabs(s);
     renderPager(s, b);
     wireTrail();
