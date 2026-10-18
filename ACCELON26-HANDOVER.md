@@ -558,6 +558,8 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
 
   * 本文上方（`#docTrail`）是 **breadcrumb**：把目前本文的**所有祖先節點**由外到內排成一條路，
     後面再接上**目前這一節的 siblings**（作者 2026-10：不用先開選單就能左右換節）。
+    **同層超過 5 個就改成下拉**（作者 2026-10-18：點書名時同層有幾十本書，全部排成晶片會把
+    本文整個擠掉）：只顯示「目前這一節 ▾」＋「同層 N」，點一下才列出全部（`.trailMenu`）。
     **它不在 `.docBody` 裡**（作者 2026-10-18：從 `.docBody` 搬到 `#docText` 的 head 區，
     `flex: 0 0 auto`），所以捲動本文時它**固定不動**，讀者隨時能跳去別的 tree node；
     字級自己取 `var(--fsdoc)`（＝中欄正文的字級），所以仍然**正好等於正文**；顏色用

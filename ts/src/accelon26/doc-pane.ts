@@ -339,6 +339,10 @@ function showsLine(s: DocSession | null, line: number): boolean {
  */
 const TRAIL_SEP = /[\s\u3000、，。：；·｜|／/\-—–_~]+/;
 
+/** 同層節點超過這個數量就改成下拉（作者 2026-10-18）：像「書」那一層有上百本，
+ *  全部排成晶片會把本文整個擠掉。 */
+const MAX_INLINE_SIBS = 5;
+
 export function trailLabel(text: string): string {
   const full = (text ?? '').trim();
   if (!full) return '';
@@ -360,20 +364,32 @@ function renderAncestorTrail(s: DocSession): string {
       + ` style="--tagtext:var(--tag-text-${a.depth % 8})">${short}<span class="trailCaret">▾</span></button>`
       + '</span>';
   });
-  // 目前文件內容的 siblings（作者 2026-10）：直接排在路徑後面，短標籤、可點就換節
+  // 目前文件內容的 siblings（作者 2026-10）：直接排在路徑後面，短標籤、可點就換節。
+  // 作者 2026-10-18：同層超過 MAX_INLINE_SIBS 個（例如點書名 → 同層幾百本書）就改成
+  // **一個下拉**，只顯示目前這一節＋「同層 N」，否則整排書名會把本文擠掉。
   const sibs = self ? siblingsOf(self.va) : [];
   let sibHtml = '';
   if (self && sibs.length > 1) {
-    sibHtml = '<span class="trailSibs">' + sibs.map((n) => {
-      const full = escapeHtml(n.label);
-      const short = escapeHtml(trailLabel(n.label));
-      const style = `--tagtext:var(--tag-text-${n.depth % 8})`;
-      if (n.va === self.va) {
-        return `<span class="trailSib cur" data-va="${n.va}" title="「${full}」（目前這一節）" style="${style}">${short}</span>`;
-      }
-      return `<button type="button" class="trailSib" data-va="${n.va}" data-tag="${escapeHtml(n.tag)}"`
-        + ` title="「${full}」：點一下換到這一節" style="${style}">${short}</button>`;
-    }).join('') + '</span>';
+    if (sibs.length > MAX_INLINE_SIBS) {
+      const full = escapeHtml(self.label);
+      const short = escapeHtml(trailLabel(self.label));
+      sibHtml = `<span class="trailSibs"><span class="trailWrap">`
+        + `<button type="button" class="trail trailMore" data-va="${self.va}" data-tag="${escapeHtml(self.tag)}"`
+        + ` title="「${full}」：同層 ${sibs.length} 個節點，點一下選"`
+        + ` style="--tagtext:var(--tag-text-${self.depth % 8})">${short}<span class="trailCaret">▾</span></button>`
+        + `</span><span class="trailCount">同層 ${sibs.length}</span></span>`;
+    } else {
+      sibHtml = '<span class="trailSibs">' + sibs.map((n) => {
+        const full = escapeHtml(n.label);
+        const short = escapeHtml(trailLabel(n.label));
+        const style = `--tagtext:var(--tag-text-${n.depth % 8})`;
+        if (n.va === self.va) {
+          return `<span class="trailSib cur" data-va="${n.va}" title="「${full}」（目前這一節）" style="${style}">${short}</span>`;
+        }
+        return `<button type="button" class="trailSib" data-va="${n.va}" data-tag="${escapeHtml(n.tag)}"`
+          + ` title="「${full}」：點一下換到這一節" style="${style}">${short}</button>`;
+      }).join('') + '</span>';
+    }
   }
   if (!items.length && !sibHtml) return '';
   const sep = items.length && sibHtml ? '<span class="trailSep">｜</span>' : '';

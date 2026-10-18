@@ -494,6 +494,8 @@
   .docTrail .trailSep { color: var(--dim); font-size: .9em; padding: 0 2px; }
   /* 目前這一節的 siblings（作者 2026-10）：直接排在路徑後面，短標籤、可點就換節 */
   .docTrail .trailSibs { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 4px; }
+  /* 同層太多時只放一個下拉（作者 2026-10-18）：目前這一節＋「同層 N」 */
+  .docTrail .trailCount { color: var(--dim); font-size: .8em; margin-left: 4px; }
   .docTrail .trailSib {
     background: transparent; border: 0; border-radius: 3px; padding: 0 3px; cursor: pointer;
     font: inherit; font-size: 1em; color: var(--tagtext, var(--fg)); opacity: .78; line-height: inherit;
@@ -1066,7 +1068,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T04:44:45.167Z","buildTimeText":"2026-10-18 12:44"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T04:57:52.753Z","buildTimeText":"2026-10-18 12:57"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -11039,6 +11041,7 @@ designed by C.S.Yap`;
     return { auto, ms: performance.now() - t0 };
   }
   var TRAIL_SEP = /[\s\u3000、，。：；·｜|／/\-—–_~]+/;
+  var MAX_INLINE_SIBS = 5;
   function trailLabel(text) {
     const full = (text ?? "").trim();
     if (!full)
@@ -11060,15 +11063,21 @@ designed by C.S.Yap`;
     const sibs = self ? siblingsOf(self.va) : [];
     let sibHtml = "";
     if (self && sibs.length > 1) {
-      sibHtml = '<span class="trailSibs">' + sibs.map((n) => {
-        const full = escapeHtml(n.label);
-        const short = escapeHtml(trailLabel(n.label));
-        const style = `--tagtext:var(--tag-text-${n.depth % 8})`;
-        if (n.va === self.va) {
-          return `<span class="trailSib cur" data-va="${n.va}" title="「${full}」（目前這一節）" style="${style}">${short}</span>`;
-        }
-        return `<button type="button" class="trailSib" data-va="${n.va}" data-tag="${escapeHtml(n.tag)}"` + ` title="「${full}」：點一下換到這一節" style="${style}">${short}</button>`;
-      }).join("") + "</span>";
+      if (sibs.length > MAX_INLINE_SIBS) {
+        const full = escapeHtml(self.label);
+        const short = escapeHtml(trailLabel(self.label));
+        sibHtml = `<span class="trailSibs"><span class="trailWrap">` + `<button type="button" class="trail trailMore" data-va="${self.va}" data-tag="${escapeHtml(self.tag)}"` + ` title="「${full}」：同層 ${sibs.length} 個節點，點一下選"` + ` style="--tagtext:var(--tag-text-${self.depth % 8})">${short}<span class="trailCaret">▾</span></button>` + `</span><span class="trailCount">同層 ${sibs.length}</span></span>`;
+      } else {
+        sibHtml = '<span class="trailSibs">' + sibs.map((n) => {
+          const full = escapeHtml(n.label);
+          const short = escapeHtml(trailLabel(n.label));
+          const style = `--tagtext:var(--tag-text-${n.depth % 8})`;
+          if (n.va === self.va) {
+            return `<span class="trailSib cur" data-va="${n.va}" title="「${full}」（目前這一節）" style="${style}">${short}</span>`;
+          }
+          return `<button type="button" class="trailSib" data-va="${n.va}" data-tag="${escapeHtml(n.tag)}"` + ` title="「${full}」：點一下換到這一節" style="${style}">${short}</button>`;
+        }).join("") + "</span>";
+      }
     }
     if (!items.length && !sibHtml)
       return "";

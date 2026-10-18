@@ -494,6 +494,8 @@
   .docTrail .trailSep { color: var(--dim); font-size: .9em; padding: 0 2px; }
   /* 目前這一節的 siblings（作者 2026-10）：直接排在路徑後面，短標籤、可點就換節 */
   .docTrail .trailSibs { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 4px; }
+  /* 同層太多時只放一個下拉（作者 2026-10-18）：目前這一節＋「同層 N」 */
+  .docTrail .trailCount { color: var(--dim); font-size: .8em; margin-left: 4px; }
   .docTrail .trailSib {
     background: transparent; border: 0; border-radius: 3px; padding: 0 3px; cursor: pointer;
     font: inherit; font-size: 1em; color: var(--tagtext, var(--fg)); opacity: .78; line-height: inherit;

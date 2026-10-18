@@ -1194,16 +1194,26 @@ try {
       await sleep(1600);
       const vaAfter = st().pinned?.va;
       const tabAfter = st().docTabs[st().docTab]?.name ?? '';
-      // 同層 siblings 直接排在 breadcrumb 後面（作者 2026-10）
-      const sibChips = [...document.querySelectorAll('#docTrail .trailSib')];
+      // 同層 siblings 直接排在 breadcrumb 後面（作者 2026-10）；超過 5 個改成下拉（2026-10-18）
+      let sibChips = [...document.querySelectorAll('#docTrail .trailSib')];
+      let dropdown = false;
+      if (!sibChips.length && document.querySelector('#docTrail .trailMore')) {
+        document.querySelector('#docTrail .trailMore').click();
+        await sleep(400);
+        const menu = document.getElementById('trailMenu');
+        sibChips = menu ? [...menu.querySelectorAll('.trailItem')] : [];
+        dropdown = true;
+      }
       const sibLabels = sibChips.map((c) => c.textContent.trim());
       const sibCount = sibChips.length;
-      const sibCur = document.querySelector('#docTrail .trailSib.cur')?.textContent.trim() ?? '';
-      const sibFull = document.querySelector('#docTrail .trailSib.cur')?.title ?? '';
-      // 短標籤：不能有空白（有分隔符就只取前面那段）、長度 ≤ 5
-      const shortOk = [...trail0, ...sibLabels].every((t) => !/\s/.test(t) && [...t].length <= 5);
-      // 點沒有 cur 的 sibling → 直接換節
-      const chip = sibChips.find((c) => !c.classList.contains('cur') && c.dataset.tag);
+      const curSel = dropdown ? '#trailMenu .trailItem.active' : '#docTrail .trailSib.cur';
+      const sibCur = document.querySelector(curSel)?.textContent.trim() ?? '';
+      const sibFull = document.querySelector(curSel)?.title ?? '';
+      // 短標籤：不能有空白（有分隔符就只取前面那段）、長度 ≤ 5；下拉裡是完整標籤，不檢查
+      const shortOk = [...trail0, ...(dropdown ? [] : sibLabels)]
+        .every((t) => !/\s/.test(t) && [...t].length <= 5);
+      // 點沒有 cur／active 的 sibling → 直接換節
+      const chip = sibChips.find((c) => !c.classList.contains('cur') && !c.classList.contains('active') && c.dataset.tag);
       const chipLabel = chip?.textContent.trim() ?? '';
       const chipFull = (chip?.title.match(/「(.*)」/) ?? [])[1] ?? '';
       const vaBeforeChip = st().pinned?.va;
