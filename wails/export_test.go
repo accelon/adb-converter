@@ -46,6 +46,10 @@ func TestIsImageName(t *testing.T) {
 func TestExportZip(t *testing.T) {
 	host, dst, real := newTestHost(t)
 	defer host.CloseAll()
+	if !real {
+		// 合成的樣本不是真的容器（source 解不開），導出一定失敗 —— CI 上就是這樣。
+		t.Skip("沒有真實的 13j.adb（合成樣本解不開 source）")
+	}
 	f, err := host.searchFile(dst)
 	if err != nil {
 		t.Fatalf("searchFile: %v", err)
