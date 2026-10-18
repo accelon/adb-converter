@@ -105,6 +105,18 @@ cd accelon3
 .\accelon26.exe -export 13j.adb # 導出文字與圖片（與「進階 → 容量 → 導出」同一條路），印出 JSON
 ```
 
+## 清 build/（會長到幾 GB）
+
+`build/` 是產出物＋探針的暫存：Chrome/Edge 的 profile、一次性的比較輸出、bench 語料、
+adb 複本、`tmp-*-state` …很容易累積到幾個 GB（2026-10-18 清過一次：5,121 MB → 56 MB）。
+
+```powershell
+cd ts
+bun run clean                       # 只留產物（accelon26.html、build/macos）＋截圖、pas/、tmp-*.ts
+bun run clean --all                 # 除了產物全刪（截圖也刪）
+bun run clean --dry-run             # 先看會刪什麼
+```
+
 ## 3. 使用者的程式怎麼判斷
 
 1. 啟動時（以及每 6 小時）背景檢查一次：
