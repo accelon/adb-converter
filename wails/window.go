@@ -212,14 +212,16 @@ func containsInclusive(r application.Rect, x, y int) bool {
 // 游標問不到（被拔掉的外接螢幕座標、拿不到游標、或平台沒有游標 API）就問視窗自己
 // 落在哪張螢幕（macOS：新視窗開在「使用者正在用的那張」），再不行退回主螢幕。
 func launchScreen(app *application.App, win *application.WebviewWindow) *application.Screen {
-	// Wails 的螢幕快取要 Run 之後才會有（-screens 在 Run 之前跑，那邊是空的），
-	// 空的時候不必問，也問不出東西。
+	// Wails 的螢幕快取要 Run 之後才會有（-screens 在 Run 之前跑，那邊是空的）：
+	// 空的時候 ScreenNearestPhysicalRect 一定回 nil，只是不必因此印一行誤導的 log。
 	hasTable := len(app.Screen.GetAll()) > 0
-	if x, y, ok := cursorPos(); ok && hasTable {
+	if x, y, ok := cursorPos(); ok {
 		if s := application.ScreenNearestPhysicalRect(application.Rect{X: x, Y: y, Width: 1, Height: 1}); s != nil {
 			return s
 		}
-		log.Printf("window: 游標 (%d,%d) 不在任何螢幕上，改用視窗所在螢幕", x, y)
+		if hasTable {
+			log.Printf("window: 游標 (%d,%d) 不在任何螢幕上，改用視窗所在螢幕", x, y)
+		}
 	}
 	if s := windowScreenFallback(win); s != nil {
 		return s
