@@ -972,9 +972,9 @@ DOM 列數也固定。
 
 | 測試 | 結果 |
 |---|---|
-| `file-protocol-test.ts`（13j） | **153/153** |
-| `file-protocol-test.ts`（yinshun） | **166/166** |
-| `file-protocol-test.ts`（fgdict） | **167/167** |
+| `file-protocol-test.ts`（13j） | **154/154** |
+| `file-protocol-test.ts`（yinshun） | **167/167** |
+| `file-protocol-test.ts`（fgdict） | **168/168** |
 | `test/tree.test.ts` | 40/40 |
 | `test/search.test.ts`（13j／yinshun） | 19/19、18/18 |
 | `test/multi-search.test.ts`（yinshun／fgdict／13j） | 39/39、18/18、18/18 |

@@ -1360,6 +1360,22 @@ try {
     dictPane.hasTab === true && dictPane.tabShown === true
     && await cdp.eval<boolean>(`!!document.getElementById('dictList') && !!document.getElementById('dictBody')`),
     `tab=${dictPane.hasTab}、顯示=${dictPane.tabShown}`);
+  // 版面不變式（作者 2026-10-18）：一欄同時只能有一個 tabPane 畫出來。
+  // 這條會抓到「某個分頁的 CSS 不小心把 display 寫死」——詞典分頁就這樣在別的分頁
+  // active 時也畫在下面（`.tabPane[data-tab="dict"] { display:flex }` 優先度蓋掉
+  // `.tabPane { display:none }`），畫面上是一片多出來、沒有標題的內容。
+  const paneInvariant = JSON.parse(await cdp.eval<string>(`(() => {
+    const out = {};
+    for (const col of ['#colLeft', '#colRight']) {
+      out[col] = [...document.querySelectorAll(col + ' .tabPane')]
+        .filter((p) => getComputedStyle(p).display !== 'none')
+        .map((p) => p.dataset.tab);
+    }
+    return JSON.stringify(out);
+  })()`)) as Record<string, string[]>;
+  const multiShown = Object.entries(paneInvariant).filter(([, v]) => v.length > 1);
+  ok('一欄同時只顯示一個分頁（其餘 display:none）', multiShown.length === 0,
+    Object.entries(paneInvariant).map(([k, v]) => `${k}=[${v.join(',')}]`).join(' '));
   if (dictPane.isDict) {
     const lens = dictPane.rows.map((r: any) => r.len);
     const labels = dictPane.rows.map((r: any) => r.label);

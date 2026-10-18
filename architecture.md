@@ -169,7 +169,7 @@ wails/*.go                    ← 宿主：ListAdbs / ReadBase64 / Postings / De
 
 | 指令 | 範圍 |
 |---|---|
-| `bun run tools/file-protocol-test.ts --adb <db>` | file:// 全 UI（13j 153／yinshun 166／fgdict 167） |
+| `bun run tools/file-protocol-test.ts --adb <db>` | file:// 全 UI（13j 154／yinshun 167／fgdict 168） |
 | `bun run tools/tour-test.ts --adb <db>` | 操作導覽全播（24 項；13j／yinshun／fgdict 各跑一次） |
 | `bun run test/tour.test.ts` | 劇本→宏→劇本的編解碼與剖析器（30） |
 | `bun run test/backend-cases.test.ts` | TS 引擎 vs 共用測試集（180） |
