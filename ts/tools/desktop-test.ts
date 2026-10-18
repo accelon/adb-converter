@@ -270,6 +270,26 @@ ok('桌面宿主的開檔成本有被量到（reads/ioMs 都有值）',
   picked.skipped || (picked.open.reads > 0 && picked.open.ioMs > 0 && picked.open.totalMs > 0),
   picked.skipped ? '只有一個資料庫' : `totalMs=${picked.open.totalMs?.toFixed?.(1)} ioMs=${picked.open.ioMs?.toFixed?.(1)}`);
 
+// 後面的查詢都用 yinshun（印順）的語料。作者 2026-10-18 起，啟動會優先打開「有 logo」
+// 的庫（也就是 yinshun），上面那一步因此可能選到別的庫 —— 這裡把它切回來。
+const backToYinshun = await evalIn<string>(`(async () => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const cur = window.__accelon26.state().db;
+  if (cur === 'yinshun') return JSON.stringify({ already: true, db: cur });
+  document.getElementById('dbPickBtn').click();
+  await sleep(250);
+  const item = [...document.querySelectorAll('#dbPickMenu .dbPickItem[data-key]')]
+    .find((i) => (i.querySelector('.dbPickName')?.textContent ?? '').includes('印順'));
+  if (!item) return JSON.stringify({ missing: true, db: cur });
+  item.click();
+  for (let i = 0; i < 120; i++) {
+    await sleep(100);
+    if (window.__accelon26.state().db === 'yinshun') break;
+  }
+  return JSON.stringify({ db: window.__accelon26.state().db });
+})()`);
+ok('可以切回印順（後面的查詢語料在那裡）', /"db":"yinshun"/.test(backToYinshun), backToYinshun);
+
 // ---- Go 的查詢後端（詞組命中）必須與 TypeScript 引擎完全相同 ---------------------
 // 作者 2026-10：兩邊都只回「每個詞組的命中」，分段／BM25／分群統計只有 TS 一份。
 const searchCases: { adb: string; q: string }[] = [

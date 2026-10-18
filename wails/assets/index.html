@@ -1063,7 +1063,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T04:28:08.935Z","buildTimeText":"2026-10-18 12:28"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T04:42:44.592Z","buildTimeText":"2026-10-18 12:42"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -7906,6 +7906,26 @@ designed by C.S.Yap`;
     }
     return -1;
   }
+  async function hasLogoResource(file) {
+    try {
+      const r = await AdbReader.open(new BlobIO(file));
+      const names = r.containers.get("resources")?.names ?? [];
+      if (!names.length)
+        return false;
+      const fileBase = (file.path ? file.path.split(/[\\/]/).pop() ?? file.name : file.name).replace(/\.[^.]+$/, "");
+      for (const b of [r.header.dbname, fileBase]) {
+        if (!b)
+          continue;
+        const esc2 = b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const want = new RegExp("(^|/)" + esc2 + "_logo\\.", "i");
+        if (names.some((n) => want.test(n) && IMG_EXT.test(n)))
+          return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
   async function updateDocLogo() {
     const box = $("#docLogo");
     const img = $("#docLogoImg");
@@ -8846,7 +8866,14 @@ designed by C.S.Yap`;
       catalogAdd(s, s.name);
     renderDbPick();
     if (!openDbs.length)
-      await openPicked([srcs[0]]);
+      await openPicked([await pickStartupDb(srcs)]);
+  }
+  async function pickStartupDb(srcs) {
+    for (const s of srcs.slice(0, 12)) {
+      if (await hasLogoResource(s))
+        return s;
+    }
+    return srcs[0];
   }
   var TOUR_APP = {
     tab: (col, name) => showTab(name, col === "L" ? "left" : "right"),

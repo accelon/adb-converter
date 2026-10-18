@@ -443,8 +443,12 @@ async function openPicked(files: AdbSource[]): Promise<void> {
 
 /**
  * Desktop build only: the exe lists every .adb in its working directory (the host
- * reads just the headers) and opens the first one. On `file://` this is a no-op, so
+ * reads just the headers) and opens one of them. On `file://` this is a no-op, so
  * one page serves both builds.
+ *
+ * 先開哪一本（作者 2026-10-18）：**優先有 logo 圖的庫**（例如 yinshun.adb，中間才有
+ * 那張大圖），都沒有才開第一個。判斷只讀檔頭＋資源名稱表（`hasLogoResource`），
+ * 不算「已載入」。
  */
 async function bootDesktop(): Promise<void> {
   // 左上角：桌面版顯示建置時間（hover hint），有新版本時閃動、點擊更新，更新後顯示改版說明。
@@ -455,7 +459,16 @@ async function bootDesktop(): Promise<void> {
   if (!srcs.length) return;
   for (const s of srcs) catalogAdd(s, s.name);
   renderDbPick();
-  if (!openDbs.length) await openPicked([srcs[0]]);
+  if (!openDbs.length) await openPicked([await pickStartupDb(srcs)]);
+}
+
+/** 啟動要開的那一個：第一個有自帶 logo 的庫；都沒有就第一個。
+ *  只探前 12 個（每個都只讀檔頭＋資源名稱表）；資料夾裡幾十個 adb 時不會拖慢啟動。 */
+async function pickStartupDb(srcs: AdbSource[]): Promise<AdbSource> {
+  for (const s of srcs.slice(0, 12)) {
+    if (await hasLogoResource(s)) return s;
+  }
+  return srcs[0];
 }
 
 /**
@@ -869,7 +882,7 @@ import { loadTree } from './search';
 
 import { MAX_DBS, activeCatalogKey, catalogAdd, catalogAddFile, catalogState, dbLog, dbPickOpen, openDbs, renderDbPick, setDbHooks, setDbPickOpen } from './dbs';
 import { initTextPane, renderTextPane, resetTextPane, textState } from './text-pane';
-import { hideDocLogo, logoState, updateDocLogo } from './logo';
+import { hasLogoResource, hideDocLogo, logoState, updateDocLogo } from './logo';
 import { desktopSources, hostState } from './host';
 import { setVariantSearch, variantSearchOn } from './variants';
 import { aboutState, closeAbout, initAbout, openAbout, showAboutOnStartup } from './about';

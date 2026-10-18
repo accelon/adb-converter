@@ -7,6 +7,7 @@
  * one (13j, fgdict) simply show nothing.
  */
 import { $, reader } from './viewer';
+import { AdbReader, BlobIO, type AdbSource } from './adb';
 
 const IMG_EXT = /\.(png|jpe?g|gif|svg|webp|bmp)$/i;
 const MIME: Record<string, string> = {
@@ -42,6 +43,29 @@ function findLogo(): number {
     if (i >= 0) return i;
   }
   return -1;
+}
+
+/**
+ * 這一個 .adb 有沒有自己的 logo 圖（`<dbname>_logo.*` 或 `<檔名>_logo.*`）——
+ * 啟動時「優先打開有 logo 的庫」用的（作者 2026-10-18，例如 yinshun.adb）。
+ * 只讀檔頭與容器名稱表，不載入資料，也不碰全域的 `reader`。
+ */
+export async function hasLogoResource(file: AdbSource): Promise<boolean> {
+  try {
+    const r = await AdbReader.open(new BlobIO(file));
+    const names = r.containers.get('resources')?.names ?? [];
+    if (!names.length) return false;
+    const fileBase = (file.path ? (file.path.split(/[\\/]/).pop() ?? file.name) : file.name).replace(/\.[^.]+$/, '');
+    for (const b of [r.header.dbname, fileBase]) {
+      if (!b) continue;
+      const esc = b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const want = new RegExp('(^|/)' + esc + '_logo\\.', 'i');
+      if (names.some((n) => want.test(n) && IMG_EXT.test(n))) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 /**
