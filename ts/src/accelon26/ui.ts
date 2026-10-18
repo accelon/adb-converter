@@ -10,7 +10,7 @@ import { type AdbSource } from './adb';
 import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, fitDebugInfo, hardBreaksOn, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, readSideFont, pageMarksOn, renderDocTabs, renderRawOn, rerenderDoc, setDocFont, setHardBreaks, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
 import { renderTextPane } from './text-pane';
 import { cursorNode, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
-import { appendTokenRows, renderContainers, renderDocs, renderMeta, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
+import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, syncTreeTabs, treePhases, growTreeFully } from './scopes';
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 import { backendKind, goQueryCount, lastGoAnswer } from './backend';
@@ -906,7 +906,7 @@ export { ADV_KEY, COLS_KEY, DEFAULT_COLS, MAX_SIDE, MIN_SIDE, advanced, applyCol
 function refreshAll(): void {
   if (!reader) { clearDbUi(); return; }
   renderMeta(reader, lastOpen?.parseMs ?? 0, 0, 0, 0);
-  renderContainers(reader);
+  void renderHeader();
   renderDocs();
   renderTokens(reader.classStats(), 0);
   syncTreeTabs();
@@ -934,7 +934,7 @@ function refreshAll(): void {
 function clearDbUi(): void {
   document.body.classList.remove('loaded');
   renderDocs();
-  for (const sel of ['#meta', '#containers', '#capacity', '#docs', '#resources', '#dirTree', '#termsList',
+  for (const sel of ['#meta', '#headerText', '#capacity', '#docs', '#resources', '#dirTree', '#termsList',
     '#freqList', '#folioList', '#latinList', '#searchList', '#tokenRows']) {
     const el = $(sel);
     if (el) el.innerHTML = '<p class="dim">尚未開啟資料庫。</p>';

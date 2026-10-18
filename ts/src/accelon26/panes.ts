@@ -10,10 +10,6 @@ import { revealHit, showLine } from './link';
 
 let showAllClasses = false;
 
-function containerSummary(c: Container) {
-  return `${c.count} blocks · ${fmtBytes(c.totalBlockSize)}` + (c.blockSize ? ` · fixed ${c.blockSize}` : ' · var');
-}
-
 function renderMeta(r: AdbReader, openMs: number, tokenMs: number, layoutMs: number, docsMs: number) {
   const h: AdbHeader = r.header;
   const rows: [string, string][] = [
@@ -43,11 +39,48 @@ function renderMeta(r: AdbReader, openMs: number, tokenMs: number, layoutMs: num
     ${cap.map(([a, b, d]) => `<tr><td>${escapeHtml(a)}</td><td>${escapeHtml(b)}</td><td>${escapeHtml(d)}</td></tr>`).join('')}</table>`;
 }
 
-function renderContainers(r: AdbReader) {
-  $('#containers').innerHTML = r.order.map((n) => {
-    const x = r.containers.get(n)!;
-    return `<li><b>${n}</b> <span class="dim">${containerSummary(x)}</span></li>`;
+/**
+ * 檔頭分頁（作者 2026-10）：顯示**開頭第一個 source 區塊** —— `<集>`、`<樹>`、
+ * `<英文名>`、`<檔>` 這些重要設定都在那裡，平常在本文裡看不到（設定被藏起來）。
+ *
+ * 沒有 `<檔>` 也沒有圖片（resources）的庫**不顯示這個分頁**：那種庫的第一塊就是
+ * 正文的開頭，看本文就好（作者 2026-10：「沒有圖片、文件就不必顯示該分頁」）。
+ */
+function highlightTags(text: string): string {
+  // 逐段跳脫：標籤名上色、屬性用另一個顏色，其餘照原樣
+  return text.split(/(<[^<>]*>)/g).map((seg) => {
+    if (!seg.startsWith('<')) return escapeHtml(seg);
+    const m = /^<([^\s<>/=]+)([\s\S]*)>$/.exec(seg);
+    if (!m) return `<span class="xt">${escapeHtml(seg)}</span>`;
+    return `<span class="xt">${escapeHtml('<' + m[1])}</span><span class="xa">${escapeHtml(m[2])}</span><span class="xt">&gt;</span>`;
   }).join('');
+}
+
+async function renderHeader(): Promise<void> {
+  const btn = document.querySelector<HTMLButtonElement>('#tabsRight .tabBtn[data-tab="header"]');
+  const box = $('#headerText');
+  const r = reader;
+  if (!box) return;
+  if (!r) { box.innerHTML = '<p class="dim">尚未開啟資料庫。</p>'; if (btn) btn.hidden = true; return; }
+  const text = await r.sourceText(0).catch(() => '');
+  const hasDoc = text.includes('<檔');
+  const images = r.containers.get('resources')?.count ?? 0;
+  const show = !!text && (hasDoc || images > 0);
+  if (btn) {
+    btn.hidden = !show;
+    // 正在看檔頭、換到一個沒有檔頭的庫：回到摘要（使用者不會卡在一個看不到按鈕的分頁）
+    if (!show && btn.classList.contains('active')) {
+      document.querySelector<HTMLButtonElement>('#tabsRight .tabBtn[data-tab="sum"]')?.click();
+    }
+  }
+  if (!show) {
+    box.innerHTML = '<p class="dim">此庫的開頭沒有 <code>&lt;檔&gt;</code>／圖片，不顯示檔頭。</p>';
+    return;
+  }
+  const why = [hasDoc ? '<code>&lt;檔&gt;</code>' : '', images ? `${fmtInt(images)} 個資源` : ''].filter(Boolean).join('、');
+  box.innerHTML = `<p class="note">第一個 source 區塊（${fmtInt(text.length)} 字元；這個庫有 ${why}）——
+    <code>&lt;集&gt;</code>、<code>&lt;樹&gt;</code> 等設定都在這裡。</p>
+    <pre class="rawHead">${highlightTags(text)}</pre>`;
 }
 
 const THUMB_LIMIT = 48;
@@ -206,7 +239,7 @@ async function vapaProbe(va: number): Promise<unknown> {
   return ctx ? { block: ctx.block, pa: ctx.pa, hit: ctx.text.slice(ctx.hitStart, ctx.hitEnd), kind: ctx.element?.kind, tag: ctx.element?.tag ?? null } : null;
 }
 
-import { AdbHeader, AdbReader, CLASS_LABELS, Container, TokenRow } from './adb';
+import { AdbHeader, AdbReader, CLASS_LABELS, TokenRow } from './adb';
 
 function snapshotPanes() {
   return { tokenList, tokenOffset, showAllClasses };
@@ -216,4 +249,4 @@ function restorePanes(s: any): void {
   tokenOffset = s.tokenOffset ?? 0;
   showAllClasses = s.showAllClasses ?? false;
 }
-export { PAGE, THUMB_LIMIT, appendTokenRows, binarySearch, containerSummary, hideAllExcept, renderContainers, renderDocs, renderMeta, renderResources, renderTokenList, renderTokens, restorePanes, showAllClasses, showToken, snapshotPanes, tokenList, tokenOffset, vapaProbe };
+export { PAGE, THUMB_LIMIT, appendTokenRows, binarySearch, hideAllExcept, renderDocs, renderHeader, renderMeta, renderResources, renderTokenList, renderTokens, restorePanes, showAllClasses, showToken, snapshotPanes, tokenList, tokenOffset, vapaProbe };

@@ -420,6 +420,15 @@
   table.cap td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
   ul { margin: 0; padding-left: 18px; font-size: 1.077em; }
 
+  /* 檔頭（作者 2026-10）：第一個 source 區塊的原始文字，標籤上色好讀 */
+  .rawHead {
+    margin: 0; padding: 10px 12px; font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+    font-size: 12.5px; line-height: 1.75; white-space: pre-wrap; word-break: break-word;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  }
+  .rawHead .xt { color: var(--gold); }
+  .rawHead .xa { color: var(--link); }
+
   .docItem, .clsChip, .vaChip, .hitBar button {
     background: var(--panel); color: var(--fg); border: 1px solid var(--line);
     border-radius: 5px; cursor: pointer; font: inherit;
@@ -963,6 +972,7 @@
       <button class="tabBtn active" data-tab="sum">摘要</button>
       <button class="tabBtn" data-tab="text" hidden>文字內容</button>
       <button class="tabBtn" data-tab="dict">詞典</button>
+      <button class="tabBtn advOnly" data-tab="header" id="tabHeader" hidden>檔頭</button>
       <button class="tabBtn advOnly" data-tab="meta">META</button>
       <button class="tabBtn advOnly" data-tab="capacity">容量</button>
       <button class="tabBtn advOnly" data-tab="docs">文件</button>
@@ -994,10 +1004,11 @@
           <div class="note">在中間本文點一個詞（例：比丘尼戒），這裡會列出詞條；點詞條看正文。</div>
         </div>
       </div>
+      <!-- 檔頭（作者 2026-10）：開頭第一個 source 區塊 —— <集>／<樹>／<英文名> 這些
+           重要設定都在裡面。沒有 <檔> 也沒有圖片的庫看不到這個分頁（那種庫第一塊就是正文）。 -->
+      <div class="tabPane" data-tab="header"><div id="headerText" class="scrollArea"></div></div>
       <div class="tabPane" data-tab="meta">
         <div id="meta" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div>
-        <h2 style="margin-top:14px">容器</h2>
-        <ul id="containers"></ul>
       </div>
       <div class="tabPane" data-tab="capacity"><div id="capacity" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div></div>
       <div class="tabPane" data-tab="docs"><div id="docs" class="scrollArea"></div></div>

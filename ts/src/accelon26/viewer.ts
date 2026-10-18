@@ -17,7 +17,7 @@ import {
 } from './search';
 import { alreadyOpen, catalogAdd, detachLoaded, registerOpenDb, saveLoaded, switchTo } from './dbs';
 import { showTab } from './ui';
-import { appendTokenRows, renderContainers, renderDocs, renderMeta, renderResources, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
+import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderResources, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { dirActive, dirError, dirLoading, dirTrees, folioCache, labelTables, loadDirectoryTrees, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, resetScopes, setDirError, setDirLoading, syncTreeTabs, treePhases } from './scopes';
 import { SNIPPET_LIMIT, lastResult, renderSnippets, resetSummary, runSearch, searchSeq, showNodeHits, snippetScope, snippetScopeQuery, snippetShown, summaryResult } from './summary';
 import { cursorNode, lastReveal, nodeLabelOf, paintTreeActive, pinnedHit, resetLink, revealCursorInTree, revealHit, showLine } from './link';
@@ -170,7 +170,7 @@ export async function openFile(file: AdbSource): Promise<'opened' | 'existing' |
     document.body.classList.add('loaded');
     // the database's name lives in its chip (#dbTabs), rendered by registerOpenDb below
     renderMeta(reader, openMs, 0, 0, 0);
-    renderContainers(reader);
+    void renderHeader();
 
     // token index: the tokens container's names + each token's packed list header
     const t1 = performance.now();
