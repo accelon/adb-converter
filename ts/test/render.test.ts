@@ -34,7 +34,7 @@ ok('setTierContext 會更新模組狀態', tierContext().levels === 3);
 
 const r = new Accelon3Renderer(ctx);
 const h1 = r.line('<書>周易</書>', 1);
-ok('標題：書（最上層）＝本文 +2×2px，最多 200%', h1.includes(`min(calc(1em + ${2 * LEVEL_STEP_PX}px), ${LEVEL_MAX_SCALE}em)`)
+ok('標題：書（最上層）＝本文 +2×2px，最多 180%', h1.includes(`min(calc(1em + ${2 * LEVEL_STEP_PX}px), ${LEVEL_MAX_SCALE}em)`)
   && h1.includes('data-tag="書"') && h1.includes('--tagtext:var(--tag-text-0)'), h1);
 
 const h3 = r.line('<節>乾</節>', 2);
@@ -76,7 +76,7 @@ ok('文字有轉義', esc === 'a &lt; b &amp; c', esc);
 // 很深的樹（yinshun 可以有十幾層）：每層 +2px，但 CSS 上限 200%（min() 交給瀏覽器）
 const deep = new Accelon3Renderer({ depthOf: new Map([['書', 0], ['章', 1], ['文', 17]]), levels: 19 });
 const deepH = deep.line('<章>經文</章>', 13);
-ok('很深的樹：仍然是「+2px × 層數」但最多 200%',
+ok('很深的樹：仍然是「+2px × 層數」但最多 180%',
   deepH.includes(`min(calc(1em + ${17 * LEVEL_STEP_PX}px), ${LEVEL_MAX_SCALE}em)`) && deepH.includes('data-up="17"'), deepH);
 
 // 沒有樹的庫（fgdict）：全部當普通文字

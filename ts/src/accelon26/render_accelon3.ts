@@ -42,11 +42,12 @@ export const HIDDEN_TAGS = new Set(['樹', '隱']);
 export const LEVEL_STEP_PX = 2;
 
 /**
- * 標題最大不超過本文的 200%。
+ * 標題最大不超過本文的 **180%**（作者 2026-10-18：原本 200%，看起來還是太大）。
  *
- * 樹很深的庫（yinshun 可以有十幾層）也不會變成離譜的大字。
+ * 而且「往上一層」指的是**這一頁**裡的相對層級（見 renderPageBlocks 的 depthSteps），
+ * 不是資料庫的絕對深度 —— 所以很深的庫也不會突然跳成大字。
  */
-export const LEVEL_MAX_SCALE = 2;
+export const LEVEL_MAX_SCALE = 1.8;
 
 /**
  * 從建好的目錄樹算「標籤 → 深度」與「樹有幾層」。
@@ -122,6 +123,13 @@ export interface RenderOptions {
    * 預設 true；false 時**整個標籤都不見** —— 硬換行模式沒有頁分隔、連排模式沒有 `〔n〕`。
    */
   pageMarks?: boolean;
+  /**
+   * 「深度 → 本文上方幾級」（作者 2026-10-18）。`renderPageBlocks` 會依**這一頁**出現的
+   * 標題深度算好：最深的那一層＝+1 級，往上一層再 +1 …… 所以同一個標題（例如「甲」）
+   * 在不同頁面可以有不同大小，和本文之間是平緩的階梯，不會突然變成大字。
+   * 沒有給就用舊行為（資料庫的絕對深度）。
+   */
+  depthSteps?: Map<number, number>;
 }
 
 /** 一行的渲染結果（給分塊用） */
@@ -160,6 +168,7 @@ export class Accelon3Renderer {
     marks: { text: string; hue: number }[];
     convert: ((s: string) => string) | null;
     primary: string;
+    depthSteps: Map<number, number> | null;
   };
 
   constructor(private ctx: RenderContext = current, opts: RenderOptions = {}) {
@@ -167,6 +176,7 @@ export class Accelon3Renderer {
       hardBreaks: opts.hardBreaks !== false,
       headScale: opts.headScale !== false,
       pageMarks: opts.pageMarks !== false,
+      depthSteps: opts.depthSteps ?? null,
       // 長的關鍵字先比對，才不會被短的切碎
       marks: [...(opts.marks ?? [])].filter((m) => m.text).sort((a, b) => b.text.length - a.text.length),
       convert: opts.convert ?? null,
@@ -203,12 +213,15 @@ export class Accelon3Renderer {
   }
 
   private openSpan(tag: string, depth: number): string {
-    // 本文（不在標題堆疊裡）永遠 1em；每往上一層 +2px（作者 2026-10），
-    // 但最多不超過本文的 200%（CSS min() 交給瀏覽器算，換字級時自動跟著變）。
+    // 本文（不在標題堆疊裡）永遠 1em；「往上一層」＋2px，最多 180%（作者 2026-10-18）。
+    // 有 depthSteps（renderPageBlocks 依本頁算的相對層級）就用它 —— 這才是使用者看到的
+    // 「和本文平緩過渡」；沒有就退回舊的絕對深度算法（直接 new 這支類別的場合）。
     // headScale=false（摘要卡片）時不加 font-size：標題只上色、字級不變。
+    const steps = this.opts.depthSteps?.get(depth);
     const up = Math.max(0, this.ctx.levels - 1 - depth);
-    const size = !this.opts.headScale ? '' : up > 0 ? `font-size:min(calc(1em + ${up * LEVEL_STEP_PX}px), ${LEVEL_MAX_SCALE}em);` : 'font-size:1em;';
-    return `<span class="h" data-tag="${esc(tag)}" data-up="${up}" style="${size}--tagtext:var(--tag-text-${depth % 8})">`;
+    const n = steps ?? up;
+    const size = !this.opts.headScale ? '' : n > 0 ? `font-size:min(calc(1em + ${n * LEVEL_STEP_PX}px), ${LEVEL_MAX_SCALE}em);` : 'font-size:1em;';
+    return `<span class="h" data-tag="${esc(tag)}" data-up="${up}" data-depth="${depth}" style="${size}--tagtext:var(--tag-text-${depth % 8})">`;
   }
 
   /** `<頁>`：原書分行時是右靠的分隔；不保留硬換行時是行內的小字頁碼 */
@@ -311,7 +324,21 @@ export class Accelon3Renderer {
  *   **空行**（連續兩個以上的換行）才換段。
  */
 export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: RenderOptions = {}, ctx: RenderContext = current): RenderBlock[] {
-  const r = new Accelon3Renderer(ctx, opts);
+  // 第一遍：先看**這一頁**用到哪些標題深度（作者 2026-10-18）。標題字級依「本頁的相對
+  // 層級」，不依資料庫的絕對深度：最深的那一層離本文最近（+1 級），往上一層再 +1 ——
+  // 所以同一個標題（例如「甲」）在不同頁面會有不同大小，和本文之間是平緩的階梯。
+  const depths = new Set<number>();
+  if (opts.headScale !== false) {
+    const probe = new Accelon3Renderer(ctx, opts);
+    for (let i = 0; i < lines.length; i++) {
+      const html = probe.lineInfo(lines[i], lineNumbers[i] ?? i).html;
+      for (const m of html.matchAll(/data-depth="(\d+)"/g)) depths.add(Number(m[1]));
+    }
+  }
+  const depthSteps = new Map<number, number>();
+  [...depths].sort((a, b) => b - a).forEach((d, i) => depthSteps.set(d, i + 1));
+
+  const r = new Accelon3Renderer(ctx, { ...opts, depthSteps });
   const hard = opts.hardBreaks !== false;
   const out: RenderBlock[] = [];
   let cur: RenderBlock | null = null;

@@ -430,7 +430,10 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   `render_md.ts`），**不放在 viewer.ts**。doc-pane 與 text-pane 都呼叫它。
 
   * 標題＝`t=` 定義的層級標籤（`TreeNode.tag` → `depth`）。字級：**每往上一層 +2px**，
-    以 `min(calc(1em + Npx), 2em)` 表達 —— **最多不超過本文的 200%**，換字級時會跟著算。
+    以 `min(calc(1em + Npx), 1.8em)` 表達，**上限 180%**（作者 2026-10-18）。
+    `N` 不是資料庫的絕對深度：`renderPageBlocks` 先掃**這一頁**用到哪些標題深度，最深的那層
+    ＝+1 級、往上一層再 +1（`depthSteps`）—— 所以同一個標題在不同頁面大小會不同，
+    與本文之間是平緩階梯，不會因為庫很深就突然變成大字。
     字色＝該層的**亮色**主題變數 `--tag-text-N`（比 tDot 的 `--tag-N` 亮、彩度高）；
     標題不用底色（作者 2026-10：底色在深色主題上不明顯）。
   * **字級控制移到各自的欄**（作者 2026-10）：左欄的 `#fsLeftPick` 在左欄分頁列、

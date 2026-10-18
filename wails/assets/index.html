@@ -1075,7 +1075,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T04:59:19.076Z","buildTimeText":"2026-10-18 12:59"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T05:01:37.470Z","buildTimeText":"2026-10-18 13:01"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -5748,7 +5748,7 @@ designed by C.S.Yap`;
   var PARA_TAGS = new Set(["段"]);
   var HIDDEN_TAGS = new Set(["樹", "隱"]);
   var LEVEL_STEP_PX = 2;
-  var LEVEL_MAX_SCALE = 2;
+  var LEVEL_MAX_SCALE = 1.8;
   function computeTierContext(roots, limit = 20000) {
     const depthOf = new Map;
     let levels = 0;
@@ -5795,6 +5795,7 @@ designed by C.S.Yap`;
         hardBreaks: opts.hardBreaks !== false,
         headScale: opts.headScale !== false,
         pageMarks: opts.pageMarks !== false,
+        depthSteps: opts.depthSteps ?? null,
         marks: [...opts.marks ?? []].filter((m) => m.text).sort((a, b) => b.text.length - a.text.length),
         convert: opts.convert ?? null,
         primary: opts.primary ?? ""
@@ -5834,9 +5835,11 @@ designed by C.S.Yap`;
       return out;
     }
     openSpan(tag, depth) {
+      const steps = this.opts.depthSteps?.get(depth);
       const up = Math.max(0, this.ctx.levels - 1 - depth);
-      const size = !this.opts.headScale ? "" : up > 0 ? `font-size:min(calc(1em + ${up * LEVEL_STEP_PX}px), ${LEVEL_MAX_SCALE}em);` : "font-size:1em;";
-      return `<span class="h" data-tag="${esc(tag)}" data-up="${up}" style="${size}--tagtext:var(--tag-text-${depth % 8})">`;
+      const n = steps ?? up;
+      const size = !this.opts.headScale ? "" : n > 0 ? `font-size:min(calc(1em + ${n * LEVEL_STEP_PX}px), ${LEVEL_MAX_SCALE}em);` : "font-size:1em;";
+      return `<span class="h" data-tag="${esc(tag)}" data-up="${up}" data-depth="${depth}" style="${size}--tagtext:var(--tag-text-${depth % 8})">`;
     }
     pageMark(attrs) {
       this.pageSeq++;
@@ -5937,7 +5940,18 @@ designed by C.S.Yap`;
     }
   }
   function renderPageBlocks(lines, lineNumbers, opts = {}, ctx = current) {
-    const r = new Accelon3Renderer(ctx, opts);
+    const depths = new Set;
+    if (opts.headScale !== false) {
+      const probe = new Accelon3Renderer(ctx, opts);
+      for (let i = 0;i < lines.length; i++) {
+        const html = probe.lineInfo(lines[i], lineNumbers[i] ?? i).html;
+        for (const m of html.matchAll(/data-depth="(\d+)"/g))
+          depths.add(Number(m[1]));
+      }
+    }
+    const depthSteps = new Map;
+    [...depths].sort((a, b) => b - a).forEach((d, i) => depthSteps.set(d, i + 1));
+    const r = new Accelon3Renderer(ctx, { ...opts, depthSteps });
     const hard = opts.hardBreaks !== false;
     const out = [];
     let cur = null;
