@@ -114,11 +114,18 @@
   /* ---------------------------------------------------------------- 主視覺 */
   /* 錨點捲動時不要被上面那條 sticky 標頭蓋住（作者 2026-10-18）。 */
   section, #shots { scroll-margin-top: 78px; }
-  /* 注意：section 的 .hero 會蓋掉 .wrap 的左右 padding（同優先度、後者勝），
-     所以這裡要把 24px 寫回來，不然大字會貼著左邊緣（作者 2026-10-18 截圖抓到）。 */
-  .hero { padding: 76px 24px 64px; }
+  /* 作者 2026-10-18：一進站就要看到軟件畫面 —— 主視覺分成左右兩欄，
+     左邊文字＋下載按鈕，右邊是圖庫（約 54%）。 */
+  .hero { padding: 46px 0 54px; }
+  .heroGrid {
+    max-width: 1120px; margin: 0 auto; padding: 0 24px;
+    display: grid; grid-template-columns: minmax(0, 46fr) minmax(0, 54fr);
+    gap: 46px; align-items: center;
+  }
+  .heroText { min-width: 0; }
+  .heroArt { min-width: 0; }
   .hero h1 {
-    font-size: clamp(26px, 3.6vw, 40px); line-height: 1.35; margin: 0 0 18px;
+    font-size: clamp(24px, 2.9vw, 34px); line-height: 1.35; margin: 0 0 16px;
     font-weight: 700; letter-spacing: .01em;
   }
   .hero h1 em { font-style: normal; color: var(--gold); }
@@ -148,9 +155,8 @@
   /* ---------------------------------------------------------------- 截圖（圖庫） */
   /* 四張畫面輪播：3 秒換一張，小白點可切換（作者 2026-10-18：首頁太長）。 */
   /* 說明在圖**上方**（作者 2026-10-18），字比圖說大一點。 */
-  .split { display: grid; grid-template-columns: 2fr 3fr; gap: 46px; align-items: center; }
-  .split > * { min-width: 0; }
-  .splitLeft h2 { margin-bottom: 18px; }
+  .installBody { max-width: 780px; }
+  #install h2 { margin-bottom: 18px; }
   .gallery { position: relative; }
   .slides {
     position: relative; aspect-ratio: 16 / 9;
@@ -228,10 +234,13 @@
   footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; }
   footer .right { margin-left: auto; }
 
+  @media (max-width: 900px) {
+    /* 窄螢幕：文字在上、畫面在下（作者 2026-10-18） */
+    .heroGrid { grid-template-columns: 1fr; gap: 28px; }
+    .hero { padding: 34px 0 40px; }
+  }
   @media (max-width: 780px) {
-    .hero { padding: 52px 24px 44px; }
     .cards { grid-template-columns: 1fr; }
-    .split { grid-template-columns: 1fr; gap: 34px; }
     .gcap { min-height: 0; }
     header.top .wrap { height: 54px; gap: 10px; }
     nav { gap: 10px; font-size: 12.5px; white-space: nowrap; }
@@ -261,49 +270,22 @@
 </header>
 
 <main>
-  <!-- ------------------------------------------------------------ 主視覺 -->
-  <section class="hero wrap" style="border-top:none">
-    <h1>打開 <em>.adb</em> 古籍資料庫，<br>毫秒之間找到那句話。</h1>
-    <p class="lead">
-      accelon26 是 Accelon3 的跨平台平替：直接讀 <code>.adb</code>，不必轉檔、不必匯入。
-      全文檢索、詞典查詢、目錄樹、原書分頁與繁簡通檢，都在同一個視窗裡完成。
-    </p>
-    <a class="btn" href="accelon26.7z" download>↓ 下載 Windows 版</a>
-    <p class="fine">Windows 10／11 · 64 位元 · 單一執行檔、免安裝 · <span id="meta">7-Zip 壓縮檔，約 7 MB</span></p>
-  </section>
-
-  <!-- ------------------------------------------------------------ 下載與安裝（左）＋ 軟件畫面（右，約 60%） -->
-  <!-- 作者 2026-10-18：安裝說明移到下載按鈕下方；截圖改右側輪播（3 秒，小白點可切），
-       說明文字在圖的上方。 -->
-  <section id="install" class="wrap">
-    <div class="split">
-      <div class="splitLeft">
-        <h2>下載與安裝</h2>
-        <ol class="steps">
-          <li>
-            <h3>下載並解壓縮</h3>
-            <p>下載 <a href="accelon26.7z" download>accelon26.7z</a>，用 7-Zip 解開，裡面只有一個
-              <code>accelon26.exe</code>，加兩份說明（<code>README.txt</code> 簡體、<code>README-tc.txt</code> 繁體）。</p>
-          </li>
-          <li>
-            <h3>放到 accelon3.exe 旁邊</h3>
-            <p>把 <code>accelon26.exe</code> 放進 <b>accelon3.exe 同一個資料夾</b>（也就是
-              <code>.adb</code> 檔所在的地方）。不需要安裝，也不需要管理員權限。</p>
-          </li>
-          <li>
-            <h3>雙擊執行</h3>
-            <p>開啟後會自動列出同一個資料夾裡的資料庫。也可以用 <code>📁</code> 或直接把
-              <code>.adb</code> 拖進視窗。</p>
-          </li>
-        </ol>
-        <div class="note">
-          <b>打不開 7z 檔？</b> 7-Zip 是免費的解壓縮工具，到
-          <a href="https://sparanoid.com/lab/7z/" target="_blank" rel="noopener noreferrer">https://sparanoid.com/lab/7z/</a>
-          下載 <b>Windows x64</b> 版即可（免安裝版解開就能用）。
-        </div>
+  <!-- ------------------------------------------------------------ 主視覺（左：文字／下載；右：軟件畫面 54%） -->
+  <!-- 作者 2026-10-18：一進站就要看到畫面 —— 圖庫搬到主視覺右邊（約 54%），
+       3 秒輪播、小白點可切，說明在圖的上方。窄螢幕就疊成上下。 -->
+  <section class="hero" style="border-top:none">
+    <div class="heroGrid">
+      <div class="heroText">
+        <h1>打開 <em>.adb</em> 古籍資料庫，<br>毫秒之間找到那句話。</h1>
+        <p class="lead">
+          accelon26 是 Accelon3 的跨平台平替：直接讀 <code>.adb</code>，不必轉檔、不必匯入。
+          全文檢索、詞典查詢、目錄樹、原書分頁與繁簡通檢，都在同一個視窗裡完成。
+        </p>
+        <a class="btn" href="accelon26.7z" download>↓ 下載 Windows 版</a>
+        <p class="fine">Windows 10／11 · 64 位元 · 單一執行檔、免安裝 · <span id="meta">7-Zip 壓縮檔，約 7 MB</span></p>
       </div>
 
-      <div id="shots" class="splitRight">
+      <div id="shots" class="heroArt">
         <div class="gallery" id="gallery" role="region" aria-roledescription="圖庫" aria-label="軟件畫面">
           <div class="gcap">
             <p class="on"><b>全文搜尋</b>：邊打邊查，右欄是每筆命中的上下文，點一筆本文就跳到那裡，命中的字塗紅。</p>
@@ -332,6 +314,35 @@
             <button type="button" role="tab" aria-selected="false" aria-label="第 4 張：操作導覽"></button>
           </div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ 下載與安裝 -->
+  <section id="install" class="wrap">
+    <h2>下載與安裝</h2>
+    <div class="installBody">
+      <ol class="steps">
+        <li>
+          <h3>下載並解壓縮</h3>
+          <p>下載 <a href="accelon26.7z" download>accelon26.7z</a>，用 7-Zip 解開，裡面只有一個
+            <code>accelon26.exe</code>，加兩份說明（<code>README.txt</code> 簡體、<code>README-tc.txt</code> 繁體）。</p>
+        </li>
+        <li>
+          <h3>放到 accelon3.exe 旁邊</h3>
+          <p>把 <code>accelon26.exe</code> 放進 <b>accelon3.exe 同一個資料夾</b>（也就是
+            <code>.adb</code> 檔所在的地方）。不需要安裝，也不需要管理員權限。</p>
+        </li>
+        <li>
+          <h3>雙擊執行</h3>
+          <p>開啟後會自動列出同一個資料夾裡的資料庫。也可以用 <code>📁</code> 或直接把
+            <code>.adb</code> 拖進視窗。</p>
+        </li>
+      </ol>
+      <div class="note">
+        <b>打不開 7z 檔？</b> 7-Zip 是免費的解壓縮工具，到
+        <a href="https://sparanoid.com/lab/7z/" target="_blank" rel="noopener noreferrer">https://sparanoid.com/lab/7z/</a>
+        下載 <b>Windows x64</b> 版即可（免安裝版解開就能用）。
       </div>
     </div>
   </section>
