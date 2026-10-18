@@ -62,9 +62,13 @@ if [ -f "$ICON" ]; then
   fi
 fi
 
-# Info.plist：用 PlistBuddy 一行一行寫。**不要**用 heredoc 塞 XML —— 腳本裡的縮排
-# 會變成 XML 宣告前面的空白，plutil 就不認得了。
+# Info.plist：先寫一個最小的空 dict，再用 PlistBuddy 一行一行加。
+# **不要**用 heredoc 塞 XML —— 腳本裡的縮排會變成 XML 宣告前面的空白，plutil 就不認得了。
 P="$APP/Contents/Info.plist"
+printf '%s\n' \
+  '<?xml version="1.0" encoding="UTF-8"?>' \
+  '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+  '<plist version="1.0"><dict/></plist>' > "$P"
 /usr/libexec/PlistBuddy \
   -c "Add :CFBundleName string accelon26" \
   -c "Add :CFBundleDisplayName string accelon26" \

@@ -100,17 +100,29 @@ jobs:
             -ldflags "-X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -o ../build/macos/x86_64/accelon26 .
 
-      - name: 煙霧測試（-version／-selftest 不開 GUI）
-        # 在倉庫根目錄跑：那裡有 13j.adb／yinshun.adb／fgdict.adb，-selftest 會真的
-        # mmap 這幾個檔並讀 200 次，等於在 macOS 上驗一遍 syscall.Mmap 那條路。
+      - name: 煙霧測試（-version／-selftest，不開 GUI）
+        # 倉庫裡沒有 .adb（*.adb 在 .gitignore），所以 -selftest 要「自己造」一個：
+        # 512 KiB 的零位元組就夠了 —— 它只驗 mmap、讀取與越界回報，不解析內容。
         run: |
-          ./build/macos/arm64/accelon26 -version
-          ./build/macos/arm64/accelon26 -selftest
+          set +e
+          BIN="$PWD/build/macos/arm64/accelon26"
+          echo "── -version"
+          "$BIN" -version; V=$?
+          echo "version exit=$V"
+          TMPD=$(mktemp -d)
+          dd if=/dev/zero of="$TMPD/synthetic.adb" bs=1024 count=512 2>/dev/null
+          echo "── -selftest（$TMPD）"
+          ( cd "$TMPD" && "$BIN" -selftest ); S=$?
+          echo "selftest exit=$S"
+          if [ "$S" -ne 0 ]; then
+            echo "::error title=smoke::selftest 失敗（exit $S）"
+          fi
           if [ -f build/macos/x86_64/accelon26 ]; then
             file build/macos/x86_64/accelon26    # 確認真的是 Mach-O 64-bit x86_64
           else
             echo "（x86_64 沒有產出，這次只有 arm64）"
           fi
+          [ "$V" -eq 0 ] && [ "$S" -eq 0 ]
 
       - name: 包成 .app ＋ zip
         # Info.plist、icns、ad-hoc 簽章、ditto 壓縮都在 scripts/package-macos.sh 裡
