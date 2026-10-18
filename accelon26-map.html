@@ -58,7 +58,6 @@
       <span class="chip"><span class="rid">#dbHint</span> 沒有資料庫時的閃爍提示</span>
       <span class="chip"><span class="rid">#dbTabs</span> 每個已開啟的庫一個 chip（active 才有 ✕）</span>
       <span class="chip"><span class="rid">#status</span> 狀態列：只顯示錯誤／忙碌</span>
-      <span class="chip"><span class="rid">#tourBtn</span> 頂欄</span>
       <span class="chip"><span class="rid">#settingsBtn</span> 🔧 設置（最右邊）</span>
       <span class="chip"><span class="rid">#main</span> 頂欄</span>
     </div>
@@ -75,7 +74,6 @@
       <tr><td><code>#dbHint</code></td><td>—</td><td>沒有資料庫時的閃爍提示</td></tr>
       <tr><td><code>#dbTabs</code></td><td>—</td><td>每個已開啟的庫一個 chip（active 才有 ✕）</td></tr>
       <tr><td><code>#status</code></td><td>—</td><td>狀態列：只顯示錯誤／忙碌</td></tr>
-      <tr><td><code>#tourBtn</code></td><td>—</td><td>—</td></tr>
       <tr><td><code>#settingsBtn</code></td><td>—</td><td>🔧 設置（最右邊）</td></tr>
       <tr><td><code>#main</code></td><td>—</td><td>—</td></tr>
     </table>
@@ -92,12 +90,12 @@
       <span class="chip"><span class="rid">#dirTree</span> 目錄樹（分批掛上 DOM）</span>
       <span class="chip"><span class="rid">#termsQuery</span> 名詞分頁的輸入</span>
       <span class="chip"><span class="rid">#termsMode</span> 名詞比對位置三態 toggle（開頭／中間／結尾）</span>
+      <span class="chip"><span class="rid">#termsModeName</span> <span class="sel">[data-tab=terms]</span></span>
       <span class="chip"><span class="rid">#termsCount</span> 一般模式顯示的符合詞條數</span>
       <span class="chip"><span class="rid">#termsClear</span> <span class="sel">[data-tab=terms]</span></span>
       <span class="chip"><span class="rid">#termsMeta</span> 進階模式的完整統計</span>
       <span class="chip"><span class="rid">#termsList</span> 名詞分頁的詞條清單</span>
       <span class="chip"><span class="rid">#freqQuery</span> 全文．頻次的輸入</span>
-      <span class="chip"><span class="rid">#freqClear</span> <span class="sel">[data-tab=freq]</span></span>
       <span class="chip"><span class="rid">#freqMeta</span> 頻次統計</span>
       <span class="chip"><span class="rid">#freqList</span> 分段命中數清單</span>
       <span class="chip"><span class="rid">#folioQuery</span> 原書分頁的輸入</span>
@@ -128,12 +126,12 @@
       <tr><td><code>#dirTree</code></td><td><code>dir</code></td><td>目錄樹（分批掛上 DOM）</td></tr>
       <tr><td><code>#termsQuery</code></td><td><code>terms</code></td><td>名詞分頁的輸入</td></tr>
       <tr><td><code>#termsMode</code></td><td><code>terms</code></td><td>名詞比對位置三態 toggle（開頭／中間／結尾）</td></tr>
+      <tr><td><code>#termsModeName</code></td><td><code>terms</code></td><td>—</td></tr>
       <tr><td><code>#termsCount</code></td><td><code>terms</code></td><td>一般模式顯示的符合詞條數</td></tr>
       <tr><td><code>#termsClear</code></td><td><code>terms</code></td><td>—</td></tr>
       <tr><td><code>#termsMeta</code></td><td><code>terms</code></td><td>進階模式的完整統計</td></tr>
       <tr><td><code>#termsList</code></td><td><code>terms</code></td><td>名詞分頁的詞條清單</td></tr>
       <tr><td><code>#freqQuery</code></td><td><code>freq</code></td><td>全文．頻次的輸入</td></tr>
-      <tr><td><code>#freqClear</code></td><td><code>freq</code></td><td>—</td></tr>
       <tr><td><code>#freqMeta</code></td><td><code>freq</code></td><td>頻次統計</td></tr>
       <tr><td><code>#freqList</code></td><td><code>freq</code></td><td>分段命中數清單</td></tr>
       <tr><td><code>#folioQuery</code></td><td><code>folio</code></td><td>原書分頁的輸入</td></tr>
@@ -313,10 +311,13 @@
       <span class="chip"><span class="rid">#aboutExe</span> <span class="sel">[data-tab=images]</span></span>
       <span class="chip"><span class="rid">#aboutUpdateMsg</span> <span class="sel">[data-tab=images]</span></span>
       <span class="chip"><span class="rid">#aboutInstall</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#aboutTour</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#aboutStartup</span> <span class="sel">[data-tab=images]</span></span>
       <span class="chip"><span class="rid">#tourSpot</span> <span class="sel">[data-tab=images]</span></span>
       <span class="chip"><span class="rid">#tourBubble</span> <span class="sel">[data-tab=images]</span></span>
       <span class="chip"><span class="rid">#tourWhere</span> <span class="sel">[data-tab=images]</span></span>
       <span class="chip"><span class="rid">#tourX</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#tourTitle</span> <span class="sel">[data-tab=images]</span></span>
       <span class="chip"><span class="rid">#tourText</span> <span class="sel">[data-tab=images]</span></span>
       <span class="chip"><span class="rid">#tourNote</span> <span class="sel">[data-tab=images]</span></span>
       <span class="chip"><span class="rid">#tourPrev</span> <span class="sel">[data-tab=images]</span></span>
@@ -327,7 +328,7 @@
       <span class="chip"><span class="rid">#tourNext</span> <span class="sel">[data-tab=images]</span></span>
       <span class="chip"><span class="rid">#tourBackdrop</span> <span class="sel">[data-tab=images]</span></span>
       <span class="chip"><span class="rid">#tourBox</span> <span class="sel">[data-tab=images]</span></span>
-      <span class="chip"><span class="rid">#tourTitle</span> <span class="sel">[data-tab=images]</span></span>
+      <span class="chip"><span class="rid">#tourMenuTitle</span> <span class="sel">[data-tab=images]</span></span>
       <span class="chip"><span class="rid">#tourClose</span> <span class="sel">[data-tab=images]</span></span>
       <span class="chip"><span class="rid">#tourList</span> <span class="sel">[data-tab=images]</span></span>
     </div>
@@ -343,10 +344,13 @@
       <tr><td><code>#aboutExe</code></td><td><code>images</code></td><td>—</td></tr>
       <tr><td><code>#aboutUpdateMsg</code></td><td><code>images</code></td><td>—</td></tr>
       <tr><td><code>#aboutInstall</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#aboutTour</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#aboutStartup</code></td><td><code>images</code></td><td>—</td></tr>
       <tr><td><code>#tourSpot</code></td><td><code>images</code></td><td>—</td></tr>
       <tr><td><code>#tourBubble</code></td><td><code>images</code></td><td>—</td></tr>
       <tr><td><code>#tourWhere</code></td><td><code>images</code></td><td>—</td></tr>
       <tr><td><code>#tourX</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#tourTitle</code></td><td><code>images</code></td><td>—</td></tr>
       <tr><td><code>#tourText</code></td><td><code>images</code></td><td>—</td></tr>
       <tr><td><code>#tourNote</code></td><td><code>images</code></td><td>—</td></tr>
       <tr><td><code>#tourPrev</code></td><td><code>images</code></td><td>—</td></tr>
@@ -357,7 +361,7 @@
       <tr><td><code>#tourNext</code></td><td><code>images</code></td><td>—</td></tr>
       <tr><td><code>#tourBackdrop</code></td><td><code>images</code></td><td>—</td></tr>
       <tr><td><code>#tourBox</code></td><td><code>images</code></td><td>—</td></tr>
-      <tr><td><code>#tourTitle</code></td><td><code>images</code></td><td>—</td></tr>
+      <tr><td><code>#tourMenuTitle</code></td><td><code>images</code></td><td>—</td></tr>
       <tr><td><code>#tourClose</code></td><td><code>images</code></td><td>—</td></tr>
       <tr><td><code>#tourList</code></td><td><code>images</code></td><td>—</td></tr>
     </table>

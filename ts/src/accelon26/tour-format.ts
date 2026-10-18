@@ -66,6 +66,11 @@ export const OP = {
   require: 14,
   /** 條件成立就整場跳過 */
   skipIf: 15,
+  /**
+   * 停在這裡，等使用者**在畫面任何地方點一下**（或按空白／→／Enter）才繼續
+   * （作者 2026-10-18：介紹介面的場景要用這種「等你看完」的節奏，不是自動跑完）
+   */
+  tap: 16,
 } as const;
 
 export type OpCode = (typeof OP)[keyof typeof OP];

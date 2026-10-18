@@ -113,19 +113,20 @@
   .tabPane[data-tab="dict"] { flex-direction: column; min-height: 0; }
   .dictList { flex: 0 0 auto; max-height: 38%; overflow: auto; border-bottom: 1px solid var(--line); padding: 6px 8px; }
   .dictSent { color: var(--dim); font-size: 12px; margin-bottom: 4px; }
+  /* 詞條清單是「清單」：跟著右欄字級縮放（作者 2026-10-18），所以用 em 不用 px */
   .dictItem {
     display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
     background: transparent; color: var(--fg); border: 1px solid transparent; border-radius: 5px;
-    font: inherit; font-size: 14px; padding: 3px 6px; cursor: pointer;
+    font: inherit; font-size: 1.077em; padding: 3px 6px; cursor: pointer;
   }
   .dictItem:hover { background: var(--panel2); }
   .dictItem.active { background: #2b3b4d; border-color: var(--accent); }
   .dictItem .lbl { flex: 1 1 auto; font-weight: 600; }
-  .dictItem .db { color: var(--dim); font-size: 12px; }
-  .dictItem .len { color: #ffd479; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .dictItem .db { color: var(--dim); font-size: .857em; }
+  .dictItem .len { color: #ffd479; font-size: .857em; font-variant-numeric: tabular-nums; }
   .dictBody { flex: 1 1 auto; min-height: 0; }
-  .dictHead { font-weight: 700; font-size: 16px; margin: 2px 0 6px; }
-  .dictHead .db { color: var(--dim); font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .dictHead { font-weight: 700; font-size: 1.23em; margin: 2px 0 6px; }
+  .dictHead .db { color: var(--dim); font-weight: 400; font-size: .75em; margin-left: 6px; }
   /* 詞條正文下面：「開頭」／「結尾」兩份親戚清單（作者 2026-10） */
   .dictText { border-bottom: 1px dashed var(--line); padding-bottom: 8px; }
   .dictMore { margin-top: 8px; }
@@ -241,6 +242,21 @@
     font: inherit; font-size: 13px; padding: 4px 14px; cursor: pointer;
   }
   #aboutInstall[hidden] { display: none; }
+  /* 「▶ 操作導覽」＋「啟動時顯示本頁面」（作者 2026-10-18） */
+  .aboutActions {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    border-top: 1px solid var(--line); margin-top: 10px; padding-top: 12px;
+  }
+  #aboutTour {
+    background: var(--accent); color: #08243f; border: 0; border-radius: 7px;
+    font: inherit; font-size: 15px; font-weight: 700; padding: 7px 18px; cursor: pointer;
+  }
+  #aboutTour:hover { filter: brightness(1.12); }
+  .aboutToggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--dim); cursor: pointer; user-select: none;
+  }
+  .aboutToggle:hover { color: var(--fg); }
   .aboutFoot { margin: 10px 0 0; font-size: 12px; color: var(--dim); }
   /* the database name lives on the chip (#dbTabs); this rule went with #dbname */  #file { display: none; }   /* the picker is driven by #dbAdd */
 .dbAdd { border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink);
@@ -264,7 +280,8 @@
   .status.busy { color: var(--warn); }
   .sideToggle {
     background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
-    border-radius: 4px; cursor: pointer; font: inherit; font-size: 15px; padding: 2px 9px; line-height: 1.4;
+    /* 作者 2026-10-18：左右 padding 收窄（9px → 5px），頂端更緊湊 */
+    border-radius: 4px; cursor: pointer; font: inherit; font-size: 15px; padding: 2px 5px; line-height: 1.4;
   }
   .sideToggle:hover { border-color: var(--accent); }
   .sideToggle.off { opacity: .45; }
@@ -395,9 +412,13 @@
   button.fsStep:focus-visible .fsT { outline: 2px solid var(--accent); outline-offset: 2px; }
   /* 左右欄的 tabs 也要把字級控制推到最右邊 */
   #tabsLeft, #tabsRight { align-items: center; }
-  /* 左欄／右欄的字級由 docTools 的下拉控制（CSS 變數；內部字級用 em 跟著縮放） */
-  #colLeft { font-size: var(--fs-left, 13px); }
-  #colRight { font-size: var(--fs-right, 13px); }
+  /* 字級只調「清單」與「內文」（作者 2026-10-18）：
+     欄位本身固定在 13px，這樣分頁按鈕、搜尋列、迷你按鈕都不會跟著長大；
+     只有真正在讀的內容（.scrollArea 裡的清單、詞典清單／正文）吃 CSS 變數。
+     內部字級一律用 em → 清單裡每一種文字都同步縮放。 */
+  #colLeft, #colRight { font-size: 13px; }
+  #colLeft .scrollArea, #colLeft #tokenRows { font-size: var(--fs-left, 13px); }
+  #colRight .scrollArea, #colRight .dictList { font-size: var(--fs-right, 13px); }
   /* 右欄「文字內容」也吃右欄字級：它重用 .docBody（中欄用 --fsdoc），要蓋回來
      （作者 2026-10：右的字級設定要 apply 到右欄的文字內容） */
   #colRight .docBody { font-size: var(--fs-right, 13px); }
@@ -406,8 +427,6 @@
     cursor: pointer; font: inherit; font-size: 12px; padding: 1px 7px;
   }
   .mini:hover { border-color: var(--accent); }
-  /* 左欄裡的迷你按鈕跟著欄位字級縮放（docTools 自己的 .mini 仍是 12px） */
-  #colLeft .mini { font-size: .923em; }
   .docBody { overflow: auto; min-height: 0; flex: 1 1 auto; font-size: var(--fsdoc, 16px); }
   /* the middle pane only ever scrolls its document body */
   #docText { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
@@ -548,7 +567,8 @@
     background: var(--panel); color: var(--fg); border: 1px solid var(--line);
     border-radius: 5px; cursor: pointer; font: inherit; font-size: 1em; padding: 0 4px;
   }
-  /* 名詞的「開頭／中間／結尾」三態 toggle（作者 2026-10）：按一下換下一個 */
+  /* 名詞的「開頭／中間／結尾」三態 toggle（作者 2026-10）：按一下換下一個。
+     作者 2026-10-18：符合的詞條數放進按鈕裡（只放數字，不寫「個詞條」）。 */
   .searchBar button.modeBtn {
     background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
     border-radius: 5px; cursor: pointer; font: inherit; font-size: .92em; padding: 2px 8px;
@@ -558,7 +578,11 @@
   .searchBar button.modeBtn[data-mode="start"] { color: #ffd479; }
   .searchBar button.modeBtn[data-mode="mid"] { color: #8fd3ff; }
   .searchBar button.modeBtn[data-mode="end"] { color: #9fe08a; }
-  .modeCount { color: var(--dim); font-size: .88em; white-space: nowrap; }
+  #termsMode .modeCount {
+    color: var(--fg); opacity: .85; font-size: .95em; margin-left: 5px;
+    font-variant-numeric: tabular-nums;
+  }
+  #termsMode .modeCount:empty { display: none; }
   .snippet {
     background: var(--panel); border: 1px solid var(--line); border-left: 3px solid transparent;
     border-radius: 5px; padding: 6px 9px; margin-bottom: 6px; cursor: pointer; font-size: 1.154em;
@@ -652,44 +676,41 @@
 #tourSpot {
   position: fixed; z-index: 89; pointer-events: none;
   border-radius: 8px; border: 2px solid #ffd479;
-  box-shadow: 0 0 0 9999px rgba(0,0,0,.55), 0 0 22px rgba(255,212,121,.45);
+  /* 作者 2026-10-18：四周壓暗從 .55 降到 .40 —— 之前「＋ 加入 adb」在選單裡幾乎看不見 */
+  box-shadow: 0 0 0 9999px rgba(0,0,0,.40), 0 0 22px rgba(255,212,121,.45);
 }
 #tourSpot[hidden] { display: none; }
 #tourBubble {
   position: fixed; z-index: 90; left: 50%; transform: translateX(-50%);
-  width: min(760px, 92vw); max-height: 46vh; overflow: auto;
-  background: var(--panel); color: var(--fg); border: 1px solid var(--accent);
-  border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.7); padding: 12px 16px 10px;
+  width: min(780px, 92vw); max-height: 48vh; overflow: auto;
+  /* 作者 2026-10-18：底色比面板亮一階、字大一號，讀起來不吃力 */
+  background: #31353f; color: #f2f2f2; border: 1px solid var(--accent);
+  border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.7); padding: 14px 18px 12px;
 }
 #tourBubble[hidden] { display: none; }
 #tourBubble.paused { border-color: var(--warn); }
-.tourHead { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.tourWhere { flex: 1 1 auto; font-size: 12px; color: var(--dim); letter-spacing: .02em; }
-#tourText { font-size: 15px; line-height: 1.75; }
+.tourHead { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.tourWhere { flex: 1 1 auto; font-size: 12.5px; color: #9fb6cd; letter-spacing: .04em; }
+/* 場景主題（作者 2026-10-18）：比說明文字大、比它亮 */
+#tourTitle { font-size: 18px; font-weight: 700; color: #8cc4ff; margin: 0 0 8px; line-height: 1.4; }
+#tourText { font-size: 16.5px; line-height: 1.8; }
 #tourText p { margin: 0 0 8px; }
 #tourText p:last-child { margin-bottom: 0; }
 #tourText b { color: #ffd479; }
-#tourText code { background: #1b1b1b; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 13px; }
-#tourNote { font-size: 12.5px; color: var(--warn); margin: 6px 0 0; }
+#tourText code { background: #1b1b1b; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 14.5px; }
+#tourNote { font-size: 13.5px; color: #ffcf7a; margin: 8px 0 0; }
 #tourNote[hidden] { display: none; }
-.tourBtns { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.tourProg { flex: 1 1 auto; font-size: 12px; color: var(--dim); text-align: right; }
+.tourBtns { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.tourProg { flex: 1 1 auto; font-size: 12.5px; color: #9fb6cd; text-align: right; }
 #tourBubble button {
-  background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
-  border-radius: 7px; font: inherit; font-size: 13px; padding: 4px 12px; cursor: pointer;
+  background: #3a3f4b; color: var(--fg); border: 1px solid var(--line);
+  border-radius: 7px; font: inherit; font-size: 14px; padding: 6px 14px; cursor: pointer;
 }
 #tourBubble button:hover { border-color: var(--accent); }
+#tourBubble button:disabled { opacity: .4; cursor: default; }
 #tourBubble button.primary { background: var(--accent); color: #08243f; border-color: transparent; font-weight: 700; }
 #tourBubble button[hidden] { display: none; }
-/* 導覽選單（🎬）：一份劇本一列 */
-/* 一次都沒看過導覽時，🎬 輕輕呼吸一下（作者 2026-10）：小白不會知道一個沒看過的
-   圖示是做什麼用的。播過一次就永遠不再提示（進度存在 localStorage）。 */
-#tourBtn.nudge { color: #ffd479; border-color: #ffd479; animation: tourNudge 1.8s ease-in-out infinite; }
-@keyframes tourNudge {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255,212,121,0); }
-  50% { box-shadow: 0 0 0 4px rgba(255,212,121,.16); }
-}
-@media (prefers-reduced-motion: reduce) { #tourBtn.nudge { animation: none; } }
+/* 導覽選單：一份劇本一列 */
 #tourBackdrop { position: fixed; inset: 0; z-index: 86; background: rgba(0,0,0,.55); }
 #tourBackdrop[hidden], #tourBox[hidden] { display: none; }
 #tourBox {
@@ -728,9 +749,8 @@
   <span class="dbHint" id="dbHint">← 開啟資料庫</span>
   <span class="dbTabs" id="dbTabs"></span>
   <span class="status" id="status"></span>
-  <!-- 操作導覽（作者 2026-10）：跟著做一次的入場券 -->
-  <button class="sideToggle" id="tourBtn" title="操作導覽：跟著做一次（開庫、查詞、看本文）">🎬</button>
-  <!-- 設置（齒輪）在最右邊：作者 2026-10 把它移到原本資料夾按鈕的位置 -->
+  <!-- 設置（齒輪）在最右邊：作者 2026-10 把它移到原本資料夾按鈕的位置。
+       操作導覽的入口不在頂欄（作者 2026-10-18：移到「關於」裡）。 -->
   <button class="sideToggle" id="settingsBtn" title="設置（進階模式、繁簡通檢、文字顯示）">🔧</button>
 </header>
 
@@ -762,9 +782,9 @@
       <div class="tabPane" data-tab="terms">
         <div class="searchBar">
           <input type="search" id="termsQuery" placeholder="輸入詞條（比對 &lt;詞&gt; 包住的字；. ＝ 任一個字）" autocomplete="off" spellcheck="false">
-          <!-- 三態 toggle（作者 2026-10）：按一下換下一個模式，不用下拉 -->
-          <button type="button" id="termsMode" class="modeBtn" data-mode="start" title="比對位置：按一下切換 開頭 → 中間 → 結尾">開頭</button>
-          <span id="termsCount" class="modeCount"></span>
+          <!-- 三態 toggle（作者 2026-10）：按一下換下一個模式，不用下拉。
+               作者 2026-10-18：符合的詞條數直接放進這顆按鈕裡（只放數字）。 -->
+          <button type="button" id="termsMode" class="modeBtn" data-mode="start" title="比對位置：按一下切換 開頭 → 中間 → 結尾"><span id="termsModeName">開頭</span><span id="termsCount" class="modeCount"></span></button>
           <button id="termsClear" title="清除">✕</button>
         </div>
         <div id="termsMeta" class="note"></div>
@@ -773,7 +793,6 @@
       <div class="tabPane" data-tab="freq">
         <div class="searchBar">
           <input type="search" id="freqQuery" placeholder="輸入詞（分段命中統計）" autocomplete="off" spellcheck="false">
-          <button id="freqClear" title="清除">✕</button>
         </div>
         <div id="freqMeta" class="note"></div>
         <div id="freqList" class="scrollArea"></div>
@@ -976,10 +995,18 @@
     <span id="aboutUpdateMsg">檢查更新中…</span>
     <button id="aboutInstall" hidden>下載更新</button>
   </div>
+  <!-- 操作導覽的入口（作者 2026-10-18：從頂欄的 🎬 搬進來）。
+       這頁預設「啟動時顯示」，所以第一次打開就會看到它。 -->
+  <div class="aboutActions">
+    <button id="aboutTour" class="primary" title="一步一步教你用：開庫、查詞、看本文、目錄、設置、詞典">▶ 操作導覽</button>
+    <label class="aboutToggle" for="aboutStartup">
+      <input type="checkbox" id="aboutStartup"> <span>啟動時顯示本頁面</span>
+    </label>
+  </div>
   <p class="aboutFoot">原始碼與操作說明見官網；有問題請在官網回報。</p>
 </div>
 
-<!-- 操作導覽（作者 2026-10）：🎬 選一份劇本，播放器一步一步做給你看。
+<!-- 操作導覽（作者 2026-10）：從「關於」的「▶ 操作導覽」開始，播放器一步一步做給你看。
      聚光燈與氣泡的內容全部由 tour.ts 產生；這裡只放殼。 -->
 <div id="tourSpot" hidden></div>
 <div id="tourBubble" role="dialog" aria-live="polite" hidden>
@@ -987,6 +1014,7 @@
     <span class="tourWhere" id="tourWhere"></span>
     <button type="button" class="aboutClose" id="tourX" title="結束導覽（Esc）">✕</button>
   </div>
+  <div id="tourTitle"></div>
   <div id="tourText"></div>
   <div id="tourNote" hidden></div>
   <div class="tourBtns">
@@ -1001,9 +1029,9 @@
 
 <!-- 導覽選單：🎬 -->
 <div id="tourBackdrop" hidden></div>
-<div id="tourBox" role="dialog" aria-modal="true" aria-labelledby="tourTitle" hidden>
+<div id="tourBox" role="dialog" aria-modal="true" aria-labelledby="tourMenuTitle" hidden>
   <div class="setHead">
-    <h2 id="tourTitle">操作導覽</h2>
+    <h2 id="tourMenuTitle">操作導覽</h2>
     <button id="tourClose" class="aboutClose" title="關閉（Esc）">✕</button>
   </div>
   <p class="setHint">跟著做一次就會用。每個場景做完會停住，由你決定要不要往下。</p>

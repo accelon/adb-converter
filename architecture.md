@@ -169,9 +169,9 @@ wails/*.go                    ← 宿主：ListAdbs / ReadBase64 / Postings / De
 
 | 指令 | 範圍 |
 |---|---|
-| `bun run tools/file-protocol-test.ts --adb <db>` | file:// 全 UI（13j 154／yinshun 167／fgdict 168） |
-| `bun run tools/tour-test.ts --adb <db>` | 操作導覽全播（24 項；13j／yinshun／fgdict 各跑一次） |
-| `bun run test/tour.test.ts` | 劇本→宏→劇本的編解碼與剖析器（30） |
+| `bun run tools/file-protocol-test.ts --adb <db>` | file:// 全 UI（13j 157／yinshun 170／fgdict 171） |
+| `bun run tools/tour-test.ts --adb <db>` | 操作導覽全播（29 項；13j／yinshun／fgdict 各跑一次） |
+| `bun run test/tour.test.ts` | 劇本→宏→劇本的編解碼與剖析器（31） |
 | `bun run test/backend-cases.test.ts` | TS 引擎 vs 共用測試集（180） |
 | `bun run test/go`（`cd wails && go test ./...`） | Go 引擎 vs 同一份測試集 |
 | `bun run tools/desktop-test.ts --gui --quick` | Wails3 GUI（37） |
@@ -197,9 +197,12 @@ build/accelon26.html     tour.ts 播放器 ＋ 宏
 |---|---|
 | `ts/src/accelon26/tour-format.ts` | opcode 表、二進位編解碼、CRC32、base64（瀏覽器與 Bun 共用） |
 | `ts/tools/build-tours.ts` | 劇本剖析、`#id`／`data-tab`／`api:` 靜態檢查、產生 `tour-data.ts`（`--check` 驗同步） |
-| `ts/src/accelon26/tour.ts` | 播放器：聚光燈、氣泡、條件式等待（`sel`／`count`／`api`／`text`）、場景閘門、鍵盤 |
+| `ts/src/accelon26/tour.ts` | 播放器：聚光燈、氣泡、條件式等待（`sel`／`count`／`api`／`text`）、場景閘門、`停`（點畫面任何地方前進）、鍵盤 |
 | `ts/src/accelon26/tour-data.ts` | 產物（不要手改） |
 | `ts/tools/tour-test.ts` | 真瀏覽器全播：每一份劇本從頭播到尾並斷言 |
+
+入口在**「關於」→「▶ 操作導覽」**；「關於」預設啟動時顯示（`accelon26.about.startup`），
+所以第一次打開就看得到入口。
 
 三條設計約束（改動前先讀）：
 

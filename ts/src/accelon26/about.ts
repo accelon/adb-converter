@@ -18,8 +18,24 @@
  */
 import { desktopAppInfo, desktopCheckUpdate, desktopInstallUpdate } from './host';
 import type { DesktopAppInfo } from './host';
+import { startTour } from './tour';
 
 export const ABOUT_SITE = 'https://shutonggui.cn/accelon26/';
+
+/**
+ * 「啟動時顯示本頁面」（作者 2026-10-18）：預設**開**。
+ * 這一頁現在是首頁兼入口（操作導覽的按鈕在這裡），所以第一次打開就會看到它；
+ * 讀者勾掉之後就不再自動彈出（`0`）。
+ */
+const STARTUP_KEY = 'accelon26.about.startup';
+
+export function aboutStartupOn(): boolean {
+  try { return localStorage.getItem(STARTUP_KEY) !== '0'; } catch { return true; }
+}
+
+function setAboutStartup(on: boolean): void {
+  try { localStorage.setItem(STARTUP_KEY, on ? '1' : '0'); } catch { /* 無痕模式 */ }
+}
 
 /**
  * 未來（回到 Go／桌面版時）網頁版要比對的版本資訊位置：
@@ -41,11 +57,13 @@ export interface AboutState {
   buildText: string;
   remote: string;
   exe: string;
+  /** 「啟動時顯示本頁面」開著嗎 */
+  startup: boolean;
 }
 
 const state: AboutState = {
   open: false, phase: 'idle', message: '', canInstall: false,
-  mode: '', buildTime: '', buildText: '', remote: '', exe: '',
+  mode: '', buildTime: '', buildText: '', remote: '', exe: '', startup: true,
 };
 
 let desktopInfo: DesktopAppInfo | null = null;
@@ -53,7 +71,7 @@ let checking = false;
 
 /** 測試／診斷用 */
 export function aboutState(): AboutState {
-  return { ...state };
+  return { ...state, startup: aboutStartupOn() };
 }
 
 const el = <T extends HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
@@ -75,6 +93,10 @@ function show(open: boolean): void {
     const logo = el<HTMLImageElement>('aboutLogo');
     const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     if (logo && icon?.href) { logo.src = icon.href; logo.hidden = false; }
+    // 「啟動時顯示本頁面」的勾選狀態每次都從存檔還原
+    const startup = el<HTMLInputElement>('aboutStartup');
+    state.startup = aboutStartupOn();
+    if (startup) startup.checked = state.startup;
     el<HTMLElement>('aboutClose')?.focus();
   }
 }
@@ -187,7 +209,27 @@ export function initAbout(): void {
   el<HTMLElement>('aboutClose')?.addEventListener('click', () => closeAbout());
   el<HTMLElement>('aboutBackdrop')?.addEventListener('click', () => closeAbout());
   el<HTMLElement>('aboutInstall')?.addEventListener('click', () => { void install(); });
+  // 「啟動時顯示本頁面」：勾選狀態立即生效並存起來
+  el<HTMLInputElement>('aboutStartup')?.addEventListener('change', (ev) => {
+    const on = (ev.target as HTMLInputElement).checked;
+    state.startup = on;
+    setAboutStartup(on);
+  });
+  // 「▶ 操作導覽」：關掉這一頁，直接開始播（作者 2026-10-18）
+  el<HTMLElement>('aboutTour')?.addEventListener('click', () => {
+    closeAbout();
+    startTour();
+  });
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && state.open) { ev.stopPropagation(); closeAbout(); }
   }, true);
+}
+
+/**
+ * 開機時要不要自動顯示這一頁（作者 2026-10-18：預設要）。
+ * boot() 在最後呼叫，所以 `#aboutLogo` 之類的節點都已經在了。
+ */
+export function showAboutOnStartup(): void {
+  if (!aboutStartupOn()) return;
+  void openAbout();
 }

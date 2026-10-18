@@ -988,18 +988,19 @@ async function renderTerms(): Promise<void> {
 
   let items: TermRow[] = [];
   let res: SearchResult | null = null;
-  /** 一般模式只把「符合幾個詞條」放在 #termsMode 右邊；詳細統計留在進階模式的 #termsMeta */
+  /** 一般模式只把「符合幾個詞條」的**數字**放進 #termsMode 按鈕裡（作者 2026-10-18：
+      不寫「個詞條」）；詳細統計留在進階模式的 #termsMeta。 */
   const setMeta = (brief: string, full: string) => {
-    if (countEl) { countEl.textContent = brief; countEl.hidden = advancedOn; }
+    if (countEl) { countEl.textContent = brief; countEl.hidden = !brief; }
     if (meta) { meta.textContent = full; meta.hidden = !advancedOn; }
   };
   if (!q) {
     items = segs.map((s, i) => ({ from: s.from, to: s.to, idx: i, name: '', count: 0 }));
-    setMeta(`${fmtInt(segs.length)} 個詞條`,
+    setMeta(fmtInt(segs.length),
       `${fmtInt(segs.length)} 個詞條（<${tag}> 包住的字）：未輸入條件，捲動分批載入全部`);
   } else if (usable) {
     items = hits;
-    setMeta(`${fmtInt(hits.length)} 個詞條`,
+    setMeta(fmtInt(hits.length),
       multiQ
         ? `「${q}」：${fmtInt(hits.length)} 個詞條符合（共 ${fmtInt(segs.length)} 個；+ 必須、− 排除）`
         : `「${q}」${modeName}：${fmtInt(hits.length)} 個詞條符合`
@@ -1013,7 +1014,7 @@ async function renderTerms(): Promise<void> {
       .filter((s) => s.count > 0)
       .sort((a, b) => b.count - a.count);
     items = withHits;
-    setMeta(`${fmtInt(withHits.length)} 個詞條`,
+    setMeta(fmtInt(withHits.length),
       `「${q}」：${fmtInt(withHits.length)} 個詞條有命中（此庫沒有 <${tag}> 字串表，先用內文搜尋）`);
   }
   if (!items.length) {

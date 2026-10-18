@@ -972,9 +972,9 @@ DOM 列數也固定。
 
 | 測試 | 結果 |
 |---|---|
-| `file-protocol-test.ts`（13j） | **154/154** |
-| `file-protocol-test.ts`（yinshun） | **167/167** |
-| `file-protocol-test.ts`（fgdict） | **168/168** |
+| `file-protocol-test.ts`（13j） | **157/157** |
+| `file-protocol-test.ts`（yinshun） | **170/170** |
+| `file-protocol-test.ts`（fgdict） | **171/171** |
 | `test/tree.test.ts` | 40/40 |
 | `test/search.test.ts`（13j／yinshun） | 19/19、18/18 |
 | `test/multi-search.test.ts`（yinshun／fgdict／13j） | 39/39、18/18、18/18 |
@@ -985,8 +985,8 @@ DOM 列數也固定。
 | `tools/desktop-test.ts --gui --quick`（桌面） | **37/37** |
 | `test/render.test.ts`（內文渲染） | **19/19** |
 | `test/accelon26.test.ts` / `test/vapa.test.ts` | 22/22、13/13 |
-| `test/tour.test.ts`（劇本⇄宏、剖析器、同步檢查） | **30/30** |
-| `tools/tour-test.ts`（操作導覽全播；13j／yinshun／fgdict） | **24/24** 各一次 |
+| `test/tour.test.ts`（劇本⇄宏、剖析器、同步檢查） | **31/31** |
+| `tools/tour-test.ts`（操作導覽全播；13j／yinshun／fgdict） | **29/29** 各一次 |
 
 新增／改寫的斷言（都在 `file-protocol-test.ts`）：
 * 輸入只更新摘要、本文不隨輸入移動（比對釘住的 VA）
@@ -1523,7 +1523,9 @@ play(id) → running ──step ok──▶ running
 * 進度存在 `accelon26.tour.<id>`，選單的按鈕會變成「繼續（3 / 10）」。
 * 鍵盤：`→`／空白 下一場景、`←` 上一場景、`Esc` 結束 —— 掛在 **window capture**（比 document 的
   capture 先收到），但**有彈窗時讓彈窗先處理 Esc**。
-* 入口：頂欄 🔧 左邊的 🎬（`#tourBtn` → `#tourBox` 列出劇本）。`__accelon26.playTour/stopTour/tourState` 供測試。
+* 入口：**「關於」（左上角 `accelon26`）→「▶ 操作導覽」**（作者 2026-10-18：原本是頂欄的 🎬）。
+  「關於」預設**啟動時顯示**（`accelon26.about.startup`，勾掉就不再自動彈），所以第一次開就會看到入口。
+  `__accelon26.playTour/stopTour/tourState/openTourMenu` 供測試。
 
 ### 11.5 寫一份新劇本
 
@@ -1562,7 +1564,24 @@ play(id) → running ──step ok──▶ running
 | `ts/src/accelon26/tour-format.ts` | opcode 表、編解碼、CRC32、base64 |
 | `ts/src/accelon26/tour.ts` | 播放器：聚光燈、氣泡、條件、狀態機、鍵盤 |
 | `ts/src/accelon26/tour-data.ts` | 產物（不要手改） |
-| `ts/test/tour.test.ts` | 編解碼／剖析器／同步（30） |
-| `ts/tools/tour-test.ts` | 真瀏覽器全播（24／庫） |
+| `ts/test/tour.test.ts` | 編解碼／剖析器／同步（31） |
+| `ts/tools/tour-test.ts` | 真瀏覽器全播（29／庫） |
+
+### 11.8 2026-10-18 作者回饋的調整（都已實作、都有測試）
+
+| 回饋 | 做法 |
+|---|---|
+| 場景 1 跳太快 | 新增 opcode `停`（`tap`，16）：停在原地，等使用者在**畫面任何地方點一下**（或空白／→／Enter）才繼續。場景 1 每一步後面都加了 `停` |
+| 「＋ 加入 adb」太暗 | 聚光燈的壓暗 `rgba(0,0,0,.55)` → `.40` |
+| 氣泡要亮、字要大 | 底色 `#31353f`（比面板亮一階）、說明 16.5px、場景主題另立 `#tourTitle` 18px 粗體 、按鈕 14px |
+| 要能回上一個場景 | `← 上一場景` 永遠顯示（第一個場景只是 disabled） |
+| 🎬 移到 About | 頂欄移除 `#tourBtn`；About 加「▶ 操作導覽」 |
+| About 啟動時顯示 | 新增勾選框 `#aboutStartup`（`accelon26.about.startup`，預設開）；`showAboutOnStartup()` 在 boot 最後呼叫 |
+| 頂欄更緊湊 | `.sideToggle` 左右 padding 9px → 5px |
+| 字級每次 1px | `FONT_STEP` 2 → 1 |
+| 字級只調清單與內文 | `#colLeft/#colRight` 固定 13px；`--fs-left/right` 只套在 `.scrollArea`／`#tokenRows`／`.dictList`（`.dictItem`/`.dictHead` 改成 em）。分頁按鈕、搜尋列、迷你按鈕、`#docTabs` 都不再跟著縮放 |
+| `#freqClear` 不需要 | 移除（`wireOwnSearch` 傳 null 元素本來就安全） |
+| `#termsCount` 移進 `termsMode` | 按鈕改成 `開頭 <span id="termsCount">5</span>`；只放**數字**（不再寫「個詞條」），一般與進階模式都顯示 |
+
 
 | `ts/tools/desktop-test.ts` | 桌面版回歸（headless `-selftest` ＋ `--gui` 的 WebView2/CDP 檢查） |

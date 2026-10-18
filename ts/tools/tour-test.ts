@@ -149,6 +149,37 @@ try {
   ok('選單資料有劇本', Array.isArray(index) && index.length > 0,
     (index ?? []).map((t) => `${t.title}（${t.scenes} 場景/${t.steps} 步）`).join(' '));
 
+  // ------------------------------------------- 「關於」是首頁（作者 2026-10-18）
+  // 它預設在啟動時顯示，而且操作導覽的入口就搬到這裡。
+  const startup = await cdp.eval<string>(`(() => {
+    const box = document.getElementById('aboutBox');
+    const btn = document.getElementById('aboutTour');
+    const chk = document.getElementById('aboutStartup');
+    return JSON.stringify({
+      open: !box.hidden,
+      tour: !!btn && !!btn.getBoundingClientRect().width,
+      checked: chk ? chk.checked : null,
+      state: window.__accelon26.aboutState().startup,
+      headerTour: !!document.getElementById('tourBtn'),
+    });
+  })()`);
+  const su = JSON.parse(startup) as { open: boolean; tour: boolean; checked: boolean; state: boolean; headerTour: boolean };
+  ok('啟動時自動顯示「關於」（含操作導覽的入口）', su.open === true && su.tour === true,
+    `open=${su.open}、導覽按鈕=${su.tour}`);
+  ok('「啟動時顯示本頁面」預設勾選，且頂欄不再有 🎬', su.checked === true && su.state === true && su.headerTour === false,
+    `勾選=${su.checked}、存檔=${su.state}、頂欄🎬=${su.headerTour}`);
+  // 取消勾選 → 存成 0，下次啟動就不再自動顯示
+  const off = await cdp.eval<string>(`(() => {
+    const chk = document.getElementById('aboutStartup');
+    chk.checked = false;
+    chk.dispatchEvent(new Event('change'));
+    return JSON.stringify({ state: window.__accelon26.aboutState().startup,
+      saved: localStorage.getItem('accelon26.about.startup') });
+  })()`);
+  const o = JSON.parse(off) as { state: boolean; saved: string };
+  ok('取消勾選會存起來（不再自動顯示）', o.state === false && o.saved === '0', JSON.stringify(o));
+  await cdp.eval(`(() => { const c = document.getElementById('aboutStartup'); c.checked = true; c.dispatchEvent(new Event('change')); })()`);
+
   // 開 13j（跟使用者一樣：把檔案塞進 input、再觸發 change）
   const doc = await cdp.send('DOM.getDocument');
   const node = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#file' });
@@ -172,12 +203,26 @@ try {
   }
   ok('資料庫開好、目錄樹也掛上來了', ready);
 
+  // 「▶ 操作導覽」＝真正的入口：關掉「關於」、直接開始播
+  await cdp.eval('document.getElementById("aboutTour").click()');
+  await sleep(800);
+  const entry = JSON.parse(await cdp.eval<string>(`(() => {
+    const st = window.__accelon26.tourState();
+    return JSON.stringify({ phase: st.phase, bubble: st.bubble.visible,
+      about: document.getElementById('aboutBox').hidden });
+  })()`)) as { phase: string; bubble: boolean; about: boolean };
+  ok('按「▶ 操作導覽」→ 關掉關於、開始播放', entry.phase !== 'idle' && entry.bubble === true && entry.about === true,
+    JSON.stringify(entry));
+  await cdp.eval('window.__accelon26.stopTour()');
+  await sleep(300);
+
   // ------------------------------------------------------------ 自動播放
   await cdp.eval(`void window.__accelon26.playTour(${JSON.stringify(TOUR)}, 0)`);
   const visited: number[] = [];
   const pointedAt = new Map<number, Set<string>>();
   const tabsSeen = new Set<string>();
   let samples = 0, spotShown = 0, spotMisses = 0, bubbleCovered = 0;
+  let tapWaits = 0;
   const missLog = new Map<string, number>();
   let stuckSince = Date.now();
   let lastKey = '';
@@ -219,6 +264,13 @@ try {
       await sleep(120);
       continue;
     }
+    if (st.waitKind === 'tap') {
+      // 「停」：等使用者在畫面任何地方點一下（作者 2026-10-18）
+      tapWaits++;
+      await cdp.eval('document.body.click()');
+      await sleep(150);
+      continue;
+    }
     if (st.waitKind === 'pause') {
       paused = st.failed;
       console.log(`    （卡住：場景 ${st.scene + 1} 第 ${st.step + 1} 步「${st.note}」）`);
@@ -255,6 +307,7 @@ try {
   ok('聚光燈每次都套在目標上（沒指到空氣）', samples > 20 && spotMisses <= 2,
     `${samples} 次取樣、${spotShown} 次可見、${spotMisses} 次落空 ${[...missLog].map(([s, n]) => `${s}×${n}`).join(' ')}`);
   ok('氣泡不蓋住小目標', bubbleCovered === 0, `${bubbleCovered} 次重疊`);
+  ok('介紹介面的場景每一步都停下來等人點一下（停）', tapWaits >= 3, `${tapWaits} 次「停」`);
   ok('導覽結束後聚光燈收掉', !final.spot.visible);
 
   // 關鍵場景指對了地方
@@ -292,8 +345,8 @@ try {
   const esc = await cdp.eval<TState>('window.__accelon26.tourState()');
   ok('Esc 結束導覽、氣泡收掉', esc.phase === 'idle' && esc.bubble.visible === false, `phase=${esc.phase}`);
 
-  // ------------------------------------------------------------ 🎬 選單
-  await cdp.eval('document.getElementById("tourBtn").click()');
+  // ------------------------------------------------------------ 導覽選單
+  await cdp.eval('window.__accelon26.openTourMenu()');
   await sleep(250);
   const menu = await cdp.eval<string>(`(() => {
     const box = document.getElementById('tourBox');
@@ -303,7 +356,7 @@ try {
       play: rows[0]?.querySelector('[data-play]')?.textContent ?? '' });
   })()`);
   const m = JSON.parse(menu) as { open: boolean; rows: number; name: string; scenes: string; play: string };
-  ok('🎬 打開選單、列出劇本', m.open && m.rows > 0, `${m.name}｜${m.scenes}`);
+  ok('選單列出劇本（多份劇本時才用得到）', m.open && m.rows > 0, `${m.name}｜${m.scenes}`);
   ok('看過之後按鈕變成「繼續」', m.play.includes('繼續') || m.play.includes('從頭'), `「${m.play}」`);
   await cdp.eval('document.getElementById("tourClose").click()');
   await sleep(200);

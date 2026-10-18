@@ -647,10 +647,15 @@ function boot() {
     // 三態 toggle（作者 2026-10）：開頭 → 中間 → 結尾 → 開頭，不用下拉
     const CYCLE = ['start', 'mid', 'end'];
     const LABEL: Record<string, string> = { start: '開頭', mid: '中間', end: '結尾' };
+    // 按鈕裡除了模式名還有「符合詞條數」（#termsCount，由 scopes.ts 寫）；
+    // 所以只改名字那個 span，不能覆寫整個按鈕的 textContent。
+    const nameEl = document.getElementById('termsModeName');
     const show = () => {
       const m = termsMode.dataset.mode ?? 'start';
-      termsMode.textContent = LABEL[m] ?? '開頭';
-      termsMode.title = `比對位置：${LABEL[m]}（按一下切換 開頭 → 中間 → 結尾）`;
+      const label = LABEL[m] ?? '開頭';
+      if (nameEl) nameEl.textContent = label;
+      else termsMode.textContent = label;
+      termsMode.title = `比對位置：${label}（按一下切換 開頭 → 中間 → 結尾）`;
     };
     show();
     termsMode.onclick = () => {
@@ -696,6 +701,9 @@ function boot() {
   void bootDesktop();   // desktop build: catalogue + open the adbs next to the exe
   setStatus('請選擇或拖入 .adb 檔案（13j / yinshun 皆可直接開啟）', 'info');
   installDebugApi();
+  // 「關於」預設在啟動時顯示（作者 2026-10-18）：它現在也是操作導覽的入口。
+  // 放在最後，因為這一頁會讀取 logo／版本，也會順便檢查更新。
+  showAboutOnStartup();
 }
 
 document.addEventListener('DOMContentLoaded', boot);
@@ -864,7 +872,7 @@ import { initTextPane, renderTextPane, resetTextPane, textState } from './text-p
 import { hideDocLogo, logoState, updateDocLogo } from './logo';
 import { desktopSources, hostState } from './host';
 import { setVariantSearch, variantSearchOn } from './variants';
-import { aboutState, closeAbout, initAbout, openAbout } from './about';
+import { aboutState, closeAbout, initAbout, openAbout, showAboutOnStartup } from './about';
 import { simplifiedStats, toSimplified } from './lossless';
 import { initDesktopBrand } from './update-ui';
 import { initDesktopWindowKeys } from './window-keys';

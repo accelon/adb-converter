@@ -158,6 +158,30 @@ try {
   ok('fetch is unavailable on file:// (as expected, so the File API is the only path)',
     fetchWorks.startsWith('blocked'), fetchWorks);
 
+  // ---- 「關於」是首頁（作者 2026-10-18）：啟動就顯示，操作導覽的入口在裡面 ----
+  const startupAbout = JSON.parse(await cdp.eval<string>(`(() => {
+    const box = document.getElementById('aboutBox');
+    const chk = document.getElementById('aboutStartup');
+    const tour = document.getElementById('aboutTour');
+    return JSON.stringify({
+      open: !box.hidden,
+      startup: window.__accelon26.aboutState().startup,
+      checked: chk ? chk.checked : null,
+      tourBtn: !!tour && tour.getBoundingClientRect().width > 0,
+      headerTour: !!document.getElementById('tourBtn'),
+      bg: getComputedStyle(box).backgroundColor,
+    });
+  })()`)) as { open: boolean; startup: boolean; checked: boolean; tourBtn: boolean; headerTour: boolean; bg: string };
+  ok('啟動時顯示「關於」，裡面有「▶ 操作導覽」', startupAbout.open && startupAbout.tourBtn,
+    `open=${startupAbout.open}、導覽按鈕=${startupAbout.tourBtn}、底色 ${startupAbout.bg}`);
+  ok('「啟動時顯示本頁面」預設勾選（可以取消）；頂欄已沒有 🎬',
+    startupAbout.checked === true && startupAbout.startup === true && startupAbout.headerTour === false,
+    `勾選=${startupAbout.checked}、存檔=${startupAbout.startup}、頂欄🎬=${startupAbout.headerTour}`);
+  // 關掉它：後面幾組斷言都假設沒有彈窗（尤其是 elementFromPoint 那組）
+  await cdp.eval('window.__accelon26.closeAbout()');
+  await Bun.sleep(150);
+  ok('關掉之後不擋後面的介面', await cdp.eval<boolean>("document.getElementById('aboutBox').hidden === true"));
+
   // 沒有資料庫時：＋ 右邊有一行閃爍的提示（作者 2026-10）
   // headless Chrome 預設回報 prefers-reduced-motion: reduce（我們的 CSS 會關掉動畫），
   // 所以先模擬「一般使用者」量閃爍，再切回 reduce 確認提示仍然看得見。
@@ -1891,31 +1915,34 @@ try {
       };
       // 已經沒有下拉選單了
       const noSelect = !document.querySelector('#fsBody, #fsLeft, #fsRight');
-      // 點一下 +2px
+      // 作者 2026-10-18：每次調 1px
+      const docStart = varPx('--fsdoc');
       click('fsBodyPick'); await sleep(150);
-      const plus = varPx('--fsdoc');
+      const plus = varPx('--fsdoc') - docStart;
       // 一路點到超過 32 → 回 12
       let wrap = null;
-      for (let i = 0; i < 14; i++) {
+      for (let i = 0; i < 48; i++) {
         const before = varPx('--fsdoc');
-        click('fsBodyPick'); await sleep(90);
+        click('fsBodyPick'); await sleep(60);
         const after = varPx('--fsdoc');
         if (before === 32 && after === 12) { wrap = [before, after]; break; }
       }
-      // Alt+點：−2px，夾在 12（先把字級拉回 18 再往下點）
-      while (varPx('--fsdoc') < 18) { click('fsBodyPick'); await sleep(90); }
+      // Alt+點：−1px，夾在 12（先把字級拉回 18 再往下點）
+      while (varPx('--fsdoc') < 18) { click('fsBodyPick'); await sleep(60); }
       let minSeq = [];
-      for (let i = 0; i < 12; i++) { click('fsBodyPick', true); await sleep(90); minSeq.push(varPx('--fsdoc')); }
+      for (let i = 0; i < 12; i++) { click('fsBodyPick', true); await sleep(60); minSeq.push(varPx('--fsdoc')); }
       const atMin = varPx('--fsdoc');
       const title = document.getElementById('fsBodyPick').title;
-      // 右欄按鈕：套到右欄「文字內容」
-      const before = { text: px('#textBody .docBody'), mid: px('#docText .docBody'), right: px('#colRight') };
-      const rightStart = varPx('--fs-right');
+      // 右欄按鈕：清單與正文跟著變，介面（分頁按鈕、欄位本身）不變
+      const snap = () => ({
+        list: px('#searchList'), dict: px('#dictList'), tab: px('#colLeft .tabBtn[data-tab="dir"]'),
+        tabRight: px('#colRight .tabBtn[data-tab="sum"]'), col: px('#colRight'),
+        text: px('#textBody .docBody'), mid: px('#docText .docBody'), right: varPx('--fs-right'),
+      });
+      const before = snap();
       click('fsRightPick'); await sleep(300);
-      const after = { text: px('#textBody .docBody'), mid: px('#docText .docBody'), right: px('#colRight') };
-      const rightNow = varPx('--fs-right');
-      return { icons, hasText, hits, where, noSelect, plus, wrap, minSeq, atMin, title,
-        rightStart, rightNow, before, after };
+      const after = snap();
+      return { icons, hasText, hits, where, noSelect, plus, wrap, minSeq, atMin, title, before, after };
     })()
   `);
   ok('字級控制是「小 T／大 T」圖示、沒有文字標籤（也沒有下拉選單）',
@@ -1928,23 +1955,29 @@ try {
   ok('字級按鈕真的點得到（中心點最上層在按鈕裡面）',
     rightFs.hits.length === 3 && rightFs.hits.every((h: any) => h.inButton === true),
     JSON.stringify(rightFs.hits));
-  ok('按一下字級 +2px',
-    Number.isFinite(rightFs.plus) && rightFs.plus % 2 === 0,
-    `+2 之後 --fsdoc=${rightFs.plus}px`);
+  ok('按一下字級 +1px（作者 2026-10-18：原本 +2）',
+    rightFs.plus === 1, `+1 之後 --fsdoc = 前值 + ${rightFs.plus}px`);
   ok('加到超過 32px 就回到 12px',
     Array.isArray(rightFs.wrap) && rightFs.wrap[0] === 32 && rightFs.wrap[1] === 12,
     `32 → ${rightFs.wrap?.[1]}px（序列 ${JSON.stringify(rightFs.minSeq.slice(0, 3))}…）`);
-  ok('按住 Alt 點：每次 −2px，最小停在 12px 不再變',
-    rightFs.atMin === 12 && rightFs.minSeq.slice(-4).every((v: number) => v === 12)
-    && rightFs.minSeq.some((v: number) => v === 14),
+  ok('按住 Alt 點：每次 −1px，最小停在 12px 不再變',
+    rightFs.atMin === 12 && rightFs.minSeq.slice(-3).every((v: number) => v === 12)
+    && rightFs.minSeq.some((v: number) => v === 13),
     `Alt 連點：${JSON.stringify(rightFs.minSeq)}｜提示「${rightFs.title}」`);
-  ok('「右」字級套到右欄文字內容（中欄不變）',
-    rightFs.rightNow === rightFs.rightStart + 2
-    && Math.abs(rightFs.after.text - (rightFs.rightStart + 2)) < 0.6
-    && Math.abs(rightFs.after.right - (rightFs.rightStart + 2)) < 0.6
-    && Math.abs(rightFs.after.mid - rightFs.before.mid) < 0.6,
-    `--fs-right ${rightFs.rightStart} → ${rightFs.rightNow}px；文字內容 ${rightFs.before.text} → ${rightFs.after.text}px、`
-    + `右欄 ${rightFs.after.right}px、中欄 ${rightFs.before.mid} → ${rightFs.after.mid}px`);
+  // 字級的範圍（作者 2026-10-18）：只調「清單」與「內文」，
+  // 分頁按鈕、欄位本身（介面）不動。
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.3;
+  ok('字級只調清單與內文：右欄清單／文字內容 +1px、欄位與分頁按鈕不變',
+    near(rightFs.after.right, rightFs.before.right + 1)
+    && near(rightFs.after.list, rightFs.before.list + 1)
+    && near(rightFs.after.text, rightFs.before.text + 1)
+    && near(rightFs.after.col, rightFs.before.col)
+    && near(rightFs.after.tab, rightFs.before.tab)
+    && near(rightFs.after.tabRight, rightFs.before.tabRight)
+    && near(rightFs.after.mid, rightFs.before.mid),
+    `--fs-right ${rightFs.before.right} → ${rightFs.after.right}px；清單 ${rightFs.before.list} → ${rightFs.after.list}、`
+    + `文字內容 ${rightFs.before.text} → ${rightFs.after.text}；欄 ${rightFs.before.col}、`
+    + `分頁 ${rightFs.before.tab}／${rightFs.before.tabRight}；中欄 ${rightFs.before.mid} → ${rightFs.after.mid}px`);
   // 依命中數排序、0 命中不顯示。
   const freq = await cdp.eval<{
     hasTab: boolean; tabName: string; openTab: boolean; noQueryItems: number; sample: string;
@@ -2551,9 +2584,10 @@ try {
         && m.seq[0].startsWith('start:開頭') && m.seq[1].startsWith('mid:中間')
         && m.seq[2].startsWith('end:結尾') && m.seq[3].startsWith('start:開頭'),
         JSON.stringify(m.seq));
-      ok('一般模式：#termsMeta 收起，符合詞條數直接顯示在按鈕右邊',
-        m.metaDisplay === 'none' && /[0-9]/.test(m.count),
-        `#termsMeta display=${m.metaDisplay}、#termsCount「${m.count}」`);
+      ok('一般模式：#termsMeta 收起，符合詞條數（只有數字）在按鈕裡',
+        m.metaDisplay === 'none' && /^[0-9,]+$/.test(String(m.count).trim())
+        && m.seq.every((s: string) => !/個詞條/.test(s)),
+        `#termsMeta display=${m.metaDisplay}、#termsCount「${m.count}」、按鈕「${m.seq[0]}」`);
     }
   }
   if (report.freq) {
@@ -2738,19 +2772,20 @@ try {
       const click = (alt = false) => document.getElementById('fsBodyPick')
         .dispatchEvent(new MouseEvent('click', { altKey: alt, bubbles: true }));
       click();  await sleep(120);
-      const up = String(window.__accelon26.docFont());    // 16 → 18
+      const up = String(window.__accelon26.docFont());    // 16 → 17
       click(true); await sleep(120);
       click(true); await sleep(120);
-      const down = String(window.__accelon26.docFont());  // 18 → 16 → 14
+      const down = String(window.__accelon26.docFont());  // 17 → 16 → 15
       const stored = localStorage.getItem('accelon26.docfs');
       window.__accelon26.setDocFont(16);
       return { up, down, stored, auto, before, after };
     })()
   `);
-  ok('字級按鈕（中）生效並存檔', font.up === '18' && font.down === '14' && font.stored === '14',
-    `＋2 → ${font.up}，Alt−2×2 → ${font.down}，stored=${font.stored}`);
+  ok('字級按鈕（中）生效並存檔', font.up === '17' && font.down === '15' && font.stored === '15',
+    `＋1 → ${font.up}，Alt−1×2 → ${font.down}，stored=${font.stored}`);
 
   // docTools 的三顆字級按鈕：左／中／右（作者 2026-10）
+  // 字級的範圍（作者 2026-10-18）：只調「清單」與「內文」，介面（欄本身、分頁按鈕）不動。
   const fsPick = await cdp.eval<any>(`
     (async () => {
       const wait = (ms) => new Promise(r => setTimeout(r, ms));
@@ -2758,25 +2793,31 @@ try {
         .dispatchEvent(new MouseEvent('click', { altKey: alt, bubbles: true }));
       const px = (sel) => { const el = document.querySelector(sel); return el ? getComputedStyle(el).fontSize : '(none)'; };
       const varPx = (n) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(n));
-      const before = { left: px('#colLeft'), right: px('#colRight'), body: px('#docText .docBody') };
-      // 左欄要到 17px：從 13 起 +2×2
-      click('fsLeftPick'); click('fsLeftPick'); await wait(200);
-      // 右欄要到 11px？範圍是 12–32，所以用 Alt 降到 12（最小）
+      const before = {
+        left: px('#colLeft'), right: px('#colRight'), body: px('#docText .docBody'),
+        dirTree: px('#dirTree'), leftTab: px('#colLeft .tabBtn'),
+      };
+      // 左欄 13 → 17（每次 1px）
+      for (let i = 0; i < 4; i++) click('fsLeftPick');
+      await wait(250);
+      // 右欄降到最小 12（13 → 12，多按的會夾住）
       for (let i = 0; i < 4; i++) click('fsRightPick', true);
-      await wait(200);
-      // 正文 22：16 +2×3
-      click('fsBodyPick'); click('fsBodyPick'); click('fsBodyPick'); await wait(200);
+      await wait(250);
+      // 正文 16 → 19
+      for (let i = 0; i < 3; i++) click('fsBodyPick');
+      await wait(250);
       const after = {
         left: px('#colLeft'), right: px('#colRight'), body: px('#docText .docBody'),
-        leftTab: px('#colLeft .tabBtn') || '(none)',
+        dirTree: px('#dirTree'), leftTab: px('#colLeft .tabBtn'),
         leftVar: varPx('--fs-left'), rightVar: varPx('--fs-right'), bodyVar: varPx('--fsdoc'),
         leftStore: localStorage.getItem('accelon26.fs.left'),
         rightStore: localStorage.getItem('accelon26.fs.right'),
       };
+      // 還原（左 17 → 13、右 12 → 13、正文 16）
+      for (let i = 0; i < 4; i++) click('fsLeftPick', true);
+      click('fsRightPick');
       window.__accelon26.setDocFont(16);
-      click('fsLeftPick', true); click('fsLeftPick', true); await wait(150);   // 17 → 15 → 13
-      click('fsRightPick'); click('fsRightPick'); click('fsRightPick'); await wait(150); // 12 → 18
-      click('fsRightPick', true); click('fsRightPick', true); await wait(150); // 18 → 14 → 12(夾住)
+      await wait(200);
       return { before, after };
     })()
   `);
@@ -2785,15 +2826,18 @@ try {
     await cdp.eval<boolean>(`['#fsLeftPick','#fsBodyPick','#fsRightPick'].every((s) => document.querySelector(s)?.tagName === 'BUTTON')
       && !document.querySelector('#fsLeft, #fsBody, #fsRight')`));
   ok('字級按鈕：左／右各自生效並存檔',
-    Math.abs(pxNum(fsPick.after.left) - 17) < 0.6 && Math.abs(pxNum(fsPick.after.right) - 12) < 0.6
+    Math.abs(pxNum(fsPick.after.leftVar) - 17) < 0.3 && Math.abs(pxNum(fsPick.after.rightVar) - 12) < 0.3
     && fsPick.after.leftStore === '17' && fsPick.after.rightStore === '12',
-    `左欄 ${fsPick.before.left} → ${fsPick.after.left}（stored ${fsPick.after.leftStore}）｜`
-    + `右欄 ${fsPick.before.right} → ${fsPick.after.right}（stored ${fsPick.after.rightStore}）`);
-  ok('字級按鈕：中（正文）跟著變（22px）',
-    Math.abs(pxNum(fsPick.after.body) - 22) < 0.6, `${fsPick.before.body} → ${fsPick.after.body}`);
-  ok('字級按鈕：左欄的列也跟著放大（樹／詞條清單）',
-    Math.abs(pxNum(fsPick.after.leftTab) - 17 * 1.077) < 1.2,
-    `#colLeft .tabBtn = ${fsPick.after.leftTab}（左欄 17px × 1.077）`);
+    `左欄字級 ${fsPick.after.leftVar}px（stored ${fsPick.after.leftStore}）｜`
+    + `右欄字級 ${fsPick.after.rightVar}px（stored ${fsPick.after.rightStore}）`);
+  ok('字級按鈕：中（正文）跟著變（19px）',
+    Math.abs(pxNum(fsPick.after.body) - 19) < 0.6, `${fsPick.before.body} → ${fsPick.after.body}`);
+  ok('字級按鈕：左欄的清單跟著放大，但分頁按鈕與欄本身不動',
+    Math.abs(pxNum(fsPick.after.dirTree) - 17) < 0.6
+    && Math.abs(pxNum(fsPick.after.leftTab) - pxNum(fsPick.before.leftTab)) < 0.2
+    && Math.abs(pxNum(fsPick.after.left) - pxNum(fsPick.before.left)) < 0.2,
+    `#dirTree ${fsPick.before.dirTree} → ${fsPick.after.dirTree}；`
+    + `.tabBtn ${fsPick.before.leftTab} → ${fsPick.after.leftTab}；#colLeft ${fsPick.before.left} → ${fsPick.after.left}`);
   const over = (d: any) => Math.max(0, (d.scrollWidth ?? 0) - (d.clientWidth ?? 0));
   // Short-line pages (a dictionary entry) may legitimately be pushed to the 40px
   // ceiling instead of shrinking, so accept that case too.

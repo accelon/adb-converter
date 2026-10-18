@@ -49,6 +49,8 @@ let failed: { scene: number; step: number; msg: string }[] = [];
 let pending: ((v: string) => void) | null = null;
 let userDone = false;
 let skipReq = false;
+/** `停` 那一步被點到了嗎（作者 2026-10-18：點畫面任何地方就往下走） */
+let tapped = false;
 let raf = 0;
 const cache = new Map<string, Tour>();
 
@@ -242,7 +244,9 @@ function updateUi(): void {
   if (!cur) return;
   const sc = cur.tour.scenes[cur.scene];
   const where = el('tourWhere');
-  if (where) where.textContent = `場景 ${cur.scene + 1} / ${cur.tour.scenes.length} · ${sc.title}`;
+  if (where) where.textContent = `場景 ${cur.scene + 1} / ${cur.tour.scenes.length}`;
+  const title = el('tourTitle');
+  if (title) title.textContent = sc.title;
   const prog = el('tourProg');
   if (prog) prog.textContent = `${Math.min(cur.step, sc.steps.length)} / ${sc.steps.length}`;
   const last = cur.scene >= cur.tour.scenes.length - 1;
@@ -251,13 +255,18 @@ function updateUi(): void {
   show('tourSkip', waitKind === 'user' || waitKind === 'cond' || waitKind === 'pause',
     waitKind === 'pause' ? '略過這步' : waitKind === 'cond' ? '略過等待' : '略過這步');
   show('tourReplay', waitKind !== 'none');
-  show('tourPrev', !!cur && cur.scene > 0);
+  // 作者 2026-10-18：「上一個場景」永遠在（第一個場景只是不能按），
+  // 讓使用者隨時可以回頭看
+  const prev = el<HTMLButtonElement>('tourPrev');
+  if (prev) { prev.hidden = false; prev.disabled = cur.scene === 0; }
   const bubble = el('tourBubble');
   if (bubble) bubble.classList.toggle('paused', waitKind === 'pause');
 }
 
 function beginScene(sc: Scene): void {
   setText(sc.body);
+  const title = el('tourTitle');
+  if (title) title.textContent = sc.title;
   setNote('');
   pointSel = null;
   waitKind = 'none';
@@ -351,6 +360,8 @@ async function exec(st: Step, my: number): Promise<'ok' | 'skip' | 'pause'> {
       return 'ok';
     case OP.user:
       return waitUser(a[0], a[1] ?? '', my);
+    case OP.tap:
+      return waitTap(a[0] ?? '', my);
     case OP.require:
       return waitCond(a[0], 120000, my, `需要：${a[0]}`);
     case OP.skipIf:
@@ -389,6 +400,25 @@ async function waitUser(text: string, cond: string, my: number): Promise<'ok' | 
     if (skipReq) { skipReq = false; return 'ok'; }
     if (cond && evalCond(cond)) return 'ok';
     await sleep(120);
+  }
+  return 'ok';
+}
+
+/**
+ * 停在這裡，等使用者**在畫面任何地方點一下**（作者 2026-10-18）。
+ *
+ * 為什麼要有這一步：介紹介面的場景如果自動跑完，小白根本來不及看第二眼。
+ * 這一種等待沒有按鈕可以按（就只有「點畫面任何地方」），所以氣泡會寫一行提示；
+ * 鍵盤的空白／→／Enter 也算（`onKey` 會設 `tapped`）。
+ */
+async function waitTap(hint: string, my: number): Promise<'ok'> {
+  tapped = false;
+  waitKind = 'tap';
+  setNote(hint || '（點畫面任何地方，或按空白鍵，繼續）');
+  updateUi();
+  while (my === seq) {
+    if (tapped) { tapped = false; setNote(''); return 'ok'; }
+    await sleep(80);
   }
   return 'ok';
 }
@@ -464,17 +494,19 @@ function finish(): void {
   waitKind = 'next';
   pointSel = null;
   layout();
-  setText('**導覽結束。** 這些都可以在設置（🔧）裡隨時改回來；按 🎬 可以再看一次。');
+  const title = el('tourTitle');
+  if (title) title.textContent = '導覽結束';
+  setText('這些都可以在設置（🔧）裡隨時改回來。想再看一次：左上角 **accelon26** →「▶ 操作導覽」。');
   setNote('');
   if (cur) saveProgress(cur.tour.scenes.length - 1);
   const next = el<HTMLButtonElement>('tourNext');
   if (next) { next.hidden = false; next.textContent = '再看一次'; }
-  show('tourPrev', false);
   show('tourDone', false);
   show('tourSkip', false);
   show('tourReplay', false);
+  const prev = el<HTMLButtonElement>('tourPrev');
+  if (prev) prev.hidden = true;
   pending = null;
-  updateNudge();      // 看過了：🎬 不再呼吸
 }
 
 export function stopTour(): void {
@@ -511,12 +543,22 @@ function renderMenu(): void {
 }
 
 export function openTourMenu(): void {
-  if (cur) stopTour();          // 播放中按 🎬 ＝ 先收掉導覽，再挑一份
+  if (cur) stopTour();          // 播放中再開選單 ＝ 先收掉導覽，再挑一份
   const box = el('tourBox');
   const back = el('tourBackdrop');
   if (box) box.hidden = false;
   if (back) back.hidden = false;
   renderMenu();
+}
+
+/**
+ * 「關於」裡的「▶ 操作導覽」（作者 2026-10-18：入口從頂欄的 🎬 搬進來）。
+ * 只有一份劇本就直接播（從上次看到的地方接），多份才開選單讓使用者挑。
+ */
+export function startTour(): void {
+  const first = TOUR_INDEX[0];
+  if (TOUR_INDEX.length === 1 && first) void play(first.id);
+  else openTourMenu();
 }
 
 export function closeTourMenu(): void {
@@ -544,6 +586,13 @@ function onKey(ev: KeyboardEvent): void {
   }
   if (!cur) return;
   if (ev.key === 'ArrowRight' || ev.key === ' ' || ev.key === 'Enter') {
+    // `停` 那一步：空白／→／Enter 也算「點了一下畫面」
+    if (waitKind === 'tap') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      tapped = true;
+      return;
+    }
     if (waitKind !== 'next') return;
     ev.preventDefault();
     ev.stopPropagation();
@@ -558,24 +607,9 @@ function onKey(ev: KeyboardEvent): void {
   }
 }
 
-/** 有沒有看過任何一份導覽（沒看過 → 🎬 輕輕呼吸，見 template 的 #tourBtn.nudge） */
-function anyProgress(): boolean {
-  return TOUR_INDEX.some((t) => {
-    try { return localStorage.getItem(PKEY(t.id)) !== null; } catch { return true; }
-  });
-}
-
-function updateNudge(): void {
-  const btn = el('tourBtn');
-  if (!btn) return;
-  if (anyProgress()) btn.classList.remove('nudge');
-  else btn.classList.add('nudge');
-}
-
 // --------------------------------------------------------------------- 接線
 export function initTour(a: TourApp): void {
   app = a;
-  el('tourBtn')?.addEventListener('click', () => openTourMenu());
   el('tourClose')?.addEventListener('click', () => closeTourMenu());
   el('tourBackdrop')?.addEventListener('click', () => closeTourMenu());
   el('tourX')?.addEventListener('click', () => stopTour());
@@ -590,10 +624,16 @@ export function initTour(a: TourApp): void {
     if (waitKind === 'pause') { pending?.('next'); return; }
     skipReq = true;
   });
+  // 「停」那一步：點畫面任何地方就往下走（導覽自己的按鈕不算，它們各有各的意思）
+  document.addEventListener('click', (ev) => {
+    if (waitKind !== 'tap') return;
+    const t = ev.target as HTMLElement | null;
+    if (t?.closest?.('#tourBubble, #tourBox, #tourBackdrop')) return;
+    tapped = true;
+  }, true);
   // window 的 capture 比 document 的 capture 先收到：導覽的鍵盤優先於其他 Esc 處理
   window.addEventListener('keydown', onKey, true);
   renderMenu();
-  updateNudge();
 }
 
 /** 診斷／測試用（`__accelon26.tourState()`） */

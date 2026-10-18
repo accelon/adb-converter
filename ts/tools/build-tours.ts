@@ -52,6 +52,7 @@ const ALIAS: Record<string, string> = {
   你來: 'user', user: 'user',
   需要: 'require', require: 'require',
   若非: 'skipIf', skipif: 'skipIf', skipIf: 'skipIf',
+  停: 'tap', tap: 'tap',
 };
 
 /** `設定` 認得的鍵 → 播放器交給 app.set() 的鍵（值 1/0 或 0..2） */
@@ -204,6 +205,9 @@ function parseStep(word: string, rest: string, err: (m: string) => void): Step |
       if (!r) { err(`${name} 後面要接條件`); return null; }
       checkCond(r, err);
       return { op: name === 'require' ? OP.require : OP.skipIf, args: [r] };
+    case 'tap':
+      // 參數可有可無：`停` 就顯示預設提示，`停 看完再點一下` 可以自己寫
+      return { op: OP.tap, args: r ? [r] : [] };
     default:
       err(`未實作的指令 ${name}`);
       return null;
@@ -306,7 +310,7 @@ function lint(tour: Tour, ids: Set<string>, err: (m: string) => void): void {
     if (!sc.body && !sc.steps.length) err(`場景 ${i + 1}「${sc.title}」是空的`);
     sc.steps.forEach((st, j) => {
       const where = (m: string) => err(`場景 ${i + 1} 第 ${j + 1} 步：${m}`);
-      if (!st.args.length && st.op !== OP.unpoint) where('缺參數');
+      if (!st.args.length && st.op !== OP.unpoint && st.op !== OP.tap) where('缺參數');
       for (const a of st.args) {
         checkSelector(a, ids, where);
         if (/^api:/.test(a)) checkCond(a, where);

@@ -178,7 +178,9 @@ const sample: Tour = {
   }
   ok('劇本裡每一個 #id 都在 template 裡', missing.length === 0, missing.join(' '));
   ok('播放器自己的殼也在 template 裡（聚光燈／氣泡）',
-    ['tourSpot', 'tourBubble', 'tourNext', 'tourBtn', 'tourList'].every((i) => ids.has(i)));
+    ['tourSpot', 'tourBubble', 'tourNext', 'tourPrev', 'tourTitle', 'tourList'].every((i) => ids.has(i)));
+  ok('導覽的入口在「關於」裡（作者 2026-10-18 從頂欄搬進來）',
+    ids.has('aboutTour') && ids.has('aboutStartup') && !ids.has('tourBtn'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
