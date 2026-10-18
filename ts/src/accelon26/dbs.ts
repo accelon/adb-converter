@@ -20,7 +20,7 @@ import { restoreSummary, snapshotSummary } from './summary';
 import { restoreLink, snapshotLink } from './link';
 import { restoreTextPane, snapshotTextPane } from './text-pane';
 import { backendKind } from './backend';
-import { desktopCharCount, hostState } from './host';
+import { hostState } from './host';
 
 export const MAX_DBS = 5;
 
@@ -171,10 +171,11 @@ export function activeCatalogKey(): string {
   return catalog.find((x) => slotOf(x) === s)?.key ?? '';
 }
 
-// ---- adb 選單的「字數」（作者 2026-10-18）--------------------------------------
-// 字數不在檔頭裡：source 容器是一堆獨立 bzip2 block，要解壓才知道有多少字
-// （corpus-scan 的 chars 欄）。所以**在背景算一次再快取**：桌面版走 Go 的
-// SourceCharCount（一次呼叫掃完，不必每個 block 走一趟 IPC），file:// 版走 TS bzip2。
+// ---- adb 選單的「字數」（作者 2026-10）----------------------------------------
+// 精確字數要把 source 容器每一塊 bzip2 解壓再數 code unit —— jc 有 15,838 塊，
+// 太費時（作者 2026-10：「dblist 使用 max VA 顯示字數，不要抓本文去算字數」）。
+// 所以改用 adb 檔頭 offset 96 的 **max VA**（最大的文字位置）：只讀 4 個位元組，
+// 跟精確值差 1–7%，選單只要「大概多大」就夠了。
 // 只有選單打開時才排隊，一次算一個，算好直接把那一格填上（不重畫整個選單）。
 const charCache = new Map<string, number>();
 const charQueue: CatalogEntry[] = [];
@@ -192,10 +193,9 @@ async function drainChars(): Promise<void> {
     while (charQueue.length) {
       const e = charQueue.shift()!;
       if (charCache.has(e.key)) continue;
-      const n = e.file.path ? await desktopCharCount(e.file.path) : null;
-      const chars = n ?? (await charsFromSource(e.file));
-      if (chars !== null && chars > 0) {
-        charCache.set(e.key, chars);
+      const n = await maxVaOf(e.file);
+      if (n !== null && n > 0) {
+        charCache.set(e.key, n);
         paintChars(e.key);
       }
     }
@@ -204,15 +204,16 @@ async function drainChars(): Promise<void> {
   }
 }
 
-/** file:// 版：開一個臨時 reader，把 source 每個 block 解壓、數 code unit。 */
-async function charsFromSource(file: AdbSource): Promise<number | null> {
+/**
+ * 「字數」＝ adb 檔頭 offset 96 的 max VA（i32，最大的文字位置）。
+ * 只讀檔頭 256 位元組，比解壓整本快上幾個數量級（作者 2026-10）。
+ */
+async function maxVaOf(file: AdbSource): Promise<number | null> {
   try {
-    const r = await AdbReader.open(new BlobIO(file));
-    const c = r.containers.get('source');
-    if (!c) return null;
-    let n = 0;
-    for (let i = 0; i < c.count; i++) n += (await r.sourceText(i)).length;
-    return n;
+    const hdr = new Uint8Array(await file.slice(0, 256).arrayBuffer());
+    if (hdr.length < 100) return null;
+    const n = new DataView(hdr.buffer, hdr.byteOffset, hdr.byteLength).getInt32(96, true);
+    return n > 0 ? n : null;
   } catch {
     return null;
   }
@@ -265,7 +266,8 @@ export function renderDbPick(): void {
         + `<td class="dbPickDate">${fmtDate(e.file.lastModified)}</td></tr>`;
     }).join('');
     menu.innerHTML = shown.length
-      ? '<table class="dbPickTable"><thead><tr><th>檔名</th><th>庫名</th><th>字數</th><th>建置日期</th></tr></thead>'
+      ? '<table class="dbPickTable"><thead><tr><th>檔名</th><th>庫名</th>' +
+        '<th title="取自 adb 檔頭的 max VA（最大的文字位置），是近似值">字數</th><th>建置日期</th></tr></thead>'
         + '<tbody>' + addItem + rows + '</tbody></table>'
       : (addItem
         ? '<table class="dbPickTable"><tbody>' + addItem + '</tbody></table>'

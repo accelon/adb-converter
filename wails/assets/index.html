@@ -420,6 +420,23 @@
   table.cap td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
   ul { margin: 0; padding-left: 18px; font-size: 1.077em; }
 
+  /* 導出（容量分頁底部）：桌面版才有 */
+  .exportBox {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 10px 10px; border-top: 1px solid var(--border-soft);
+  }
+  .exportBox[hidden] { display: none; }
+  .exportBox .note { margin: 0; }
+
+  /* 檔頭（作者 2026-10）：第一個 source 區塊的原始文字，標籤上色好讀 */
+  .rawHead {
+    margin: 0; padding: 10px 12px; font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+    font-size: 12.5px; line-height: 1.75; white-space: pre-wrap; word-break: break-word;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  }
+  .rawHead .xt { color: var(--gold); }
+  .rawHead .xa { color: var(--link); }
+
   .docItem, .clsChip, .vaChip, .hitBar button {
     background: var(--panel); color: var(--fg); border: 1px solid var(--line);
     border-radius: 5px; cursor: pointer; font: inherit;
@@ -963,6 +980,7 @@
       <button class="tabBtn active" data-tab="sum">摘要</button>
       <button class="tabBtn" data-tab="text" hidden>文字內容</button>
       <button class="tabBtn" data-tab="dict">詞典</button>
+      <button class="tabBtn advOnly" data-tab="header" id="tabHeader" hidden>檔頭</button>
       <button class="tabBtn advOnly" data-tab="meta">META</button>
       <button class="tabBtn advOnly" data-tab="capacity">容量</button>
       <button class="tabBtn advOnly" data-tab="docs">文件</button>
@@ -994,12 +1012,21 @@
           <div class="note">在中間本文點一個詞（例：比丘尼戒），這裡會列出詞條；點詞條看正文。</div>
         </div>
       </div>
+      <!-- 檔頭（作者 2026-10）：開頭第一個 source 區塊 —— <集>／<樹>／<英文名> 這些
+           重要設定都在裡面。沒有 <檔> 也沒有圖片的庫看不到這個分頁（那種庫第一塊就是正文）。 -->
+      <div class="tabPane" data-tab="header"><div id="headerText" class="scrollArea"></div></div>
       <div class="tabPane" data-tab="meta">
         <div id="meta" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div>
-        <h2 style="margin-top:14px">容器</h2>
-        <ul id="containers"></ul>
       </div>
-      <div class="tabPane" data-tab="capacity"><div id="capacity" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div></div>
+      <div class="tabPane" data-tab="capacity">
+        <div id="capacity" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div>
+        <!-- 導出（作者 2026-10）：文字 ＋ 圖片打包成 zip 存到「下載」資料夾。
+             只有桌面版有（file:// 版寫不了本機資料夾），所以預設藏起來由 JS 打開。 -->
+        <div class="exportBox" id="exportBox" hidden>
+          <button type="button" class="mini" id="exportZip" title="把這個庫的文字與圖片打包成 zip，存到「下載」資料夾">導出文字與圖片</button>
+          <span class="note" id="exportMsg"></span>
+        </div>
+      </div>
       <div class="tabPane" data-tab="docs"><div id="docs" class="scrollArea"></div></div>
       <div class="tabPane" data-tab="images"><div id="resources" class="scrollArea"></div></div>
     </div>
@@ -1150,7 +1177,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T07:42:40.647Z","buildTimeText":"2026-10-18 15:42"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T13:18:34.494Z","buildTimeText":"2026-10-18 21:18"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -1798,6 +1825,7 @@ designed by C.S.Yap`;
   class BlobIO {
     blob;
     size;
+    path;
     reads = 0;
     bytes = 0;
     ms = 0;
@@ -1806,6 +1834,9 @@ designed by C.S.Yap`;
     constructor(blob) {
       this.blob = blob;
       this.size = blob.size;
+      const p = blob.path;
+      if (p)
+        this.path = p;
       if (blob.decompressText)
         this.decompressText = blob.decompressText.bind(blob);
       if (blob.postings)
@@ -4930,6 +4961,13 @@ designed by C.S.Yap`;
       inst.children = use?.tiers ?? [];
       inst.childTerminal = use?.terminal ?? false;
     }
+    if (out.length && !out.some((i) => i.children.length)) {
+      for (const inst of out) {
+        const rest = chain.slice(inst.depth + 1).filter((t) => t !== inst.tag);
+        inst.children = [...new Set(rest)];
+        inst.childTerminal = false;
+      }
+    }
     out.sort((a, b) => a.va - b.va || a.depth - b.depth);
     const MAX_LABEL_NODES = 20000;
     for (let i = 0;i < out.length; i++) {
@@ -5559,11 +5597,177 @@ designed by C.S.Yap`;
     return { text, start, end, line };
   }
 
+  // src/accelon26/host.ts
+  var call = null;
+  var probed = false;
+  var probe = null;
+  var lastError = "";
+  var lastCount = 0;
+  async function hostCall() {
+    if (!probe)
+      probe = probeHost();
+    return await probe;
+  }
+  async function probeHost() {
+    probed = true;
+    try {
+      const dynamicImport = new Function("u", "return import(u)");
+      const mod = await dynamicImport("/wails/runtime.js");
+      const c = mod?.Call;
+      if (c && typeof c.ByName === "function")
+        call = c;
+    } catch (e) {
+      call = null;
+      lastError = String(e?.message ?? e);
+    }
+    return call;
+  }
+  async function desktopHost() {
+    return !!await hostCall();
+  }
+  var fromBase64 = Uint8Array.fromBase64;
+  function decodeBase64(b64) {
+    if (fromBase64)
+      return fromBase64.call(Uint8Array, b64);
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0;i < bin.length; i++)
+      out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  async function hostRead(path, offset, length) {
+    const c = await hostCall();
+    if (!c || length <= 0)
+      return new Uint8Array(0);
+    const b64 = await c.ByName("main.AdbHost.ReadBase64", path, offset, length);
+    return decodeBase64(b64 || "");
+  }
+  async function hostDecompressText(path, offset, length) {
+    const c = await hostCall();
+    if (!c)
+      return "";
+    const text = await c.ByName("main.AdbHost.DecompressText", path, offset, length);
+    return typeof text === "string" ? text : "";
+  }
+  async function hostPostings(path, token) {
+    const c = await hostCall();
+    if (!c)
+      return [];
+    const out = await c.ByName("main.AdbHost.Postings", path, token);
+    return out ?? [];
+  }
+  async function hostSearchQuery(path, query, maxHits, groups) {
+    const c = await hostCall();
+    if (!c)
+      return null;
+    return await c.ByName("main.AdbHost.SearchQuery", path, query, maxHits, groups);
+  }
+  async function desktopAppInfo() {
+    const c = await hostCall();
+    if (!c)
+      return null;
+    return await c.ByName("main.AdbHost.AppInfo");
+  }
+  async function desktopCheckUpdate() {
+    const c = await hostCall();
+    if (!c)
+      return null;
+    return await c.ByName("main.AdbHost.CheckUpdate");
+  }
+  async function desktopInstallUpdate() {
+    const c = await hostCall();
+    if (!c)
+      return null;
+    return await c.ByName("main.AdbHost.InstallUpdate");
+  }
+  async function desktopReleaseNotes(since) {
+    const c = await hostCall();
+    if (!c)
+      return [];
+    const notes = await c.ByName("main.AdbHost.ReleaseNotes", since);
+    return notes ?? [];
+  }
+  async function desktopIsFullscreen() {
+    const c = await hostCall();
+    if (!c)
+      return false;
+    return !!await c.ByName("main.AdbHost.IsFullscreen");
+  }
+  async function desktopToggleFullscreen() {
+    const c = await hostCall();
+    if (!c)
+      return false;
+    return !!await c.ByName("main.AdbHost.ToggleFullscreen");
+  }
+  async function desktopOpenExternal(url) {
+    const c = await hostCall();
+    if (!c)
+      return false;
+    try {
+      return await c.ByName("main.AdbHost.OpenExternal", url) === true;
+    } catch {
+      return false;
+    }
+  }
+  async function desktopExportTextImages(path) {
+    const c = await hostCall();
+    if (!c)
+      return null;
+    try {
+      return await c.ByName("main.AdbHost.ExportTextImages", path);
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+  }
+  async function desktopRevealInFolder(path) {
+    const c = await hostCall();
+    if (!c)
+      return false;
+    try {
+      return !!await c.ByName("main.AdbHost.RevealInFolder", path);
+    } catch {
+      return false;
+    }
+  }
+  function hostSource(e) {
+    const name = e.name || e.dbcname || e.dbname || e.path;
+    return {
+      name,
+      path: e.path,
+      size: e.size,
+      lastModified: e.modified,
+      slice(start, end) {
+        return {
+          arrayBuffer: async () => {
+            const u8 = await hostRead(e.path, start, Math.max(0, end - start));
+            return u8.buffer;
+          }
+        };
+      },
+      decompressText: (offset, length) => hostDecompressText(e.path, offset, length),
+      postings: (token) => hostPostings(e.path, token),
+      searchQuery: (query, maxHits, groups = []) => hostSearchQuery(e.path, query, maxHits, groups)
+    };
+  }
+  async function desktopSources() {
+    const c = await hostCall();
+    if (!c)
+      return [];
+    try {
+      const list = await c.ByName("main.AdbHost.ListAdbs");
+      const out = (list ?? []).filter((e) => e && e.path).map(hostSource);
+      lastCount = out.length;
+      lastError = "";
+      return out;
+    } catch (e) {
+      lastError = String(e?.message ?? e);
+      return [];
+    }
+  }
+  var hostState = () => ({ available: !!call, listed: lastCount, error: lastError });
+
   // src/accelon26/panes.ts
   var showAllClasses = false;
-  function containerSummary(c) {
-    return `${c.count} blocks · ${fmtBytes(c.totalBlockSize)}` + (c.blockSize ? ` · fixed ${c.blockSize}` : " · var");
-  }
   function renderMeta(r, openMs, tokenMs, layoutMs, docsMs) {
     const h = r.header;
     const rows = [
@@ -5592,12 +5796,102 @@ designed by C.S.Yap`;
     cap.push(["VA 空間", fmtInt(h.maxBlockOffset), ""]);
     $("#capacity").innerHTML = `<table class="cap"><tr><th>容器</th><th>區塊</th><th>大小</th></tr>
     ${cap.map(([a, b, d]) => `<tr><td>${escapeHtml(a)}</td><td>${escapeHtml(b)}</td><td>${escapeHtml(d)}</td></tr>`).join("")}</table>`;
+    setupExport();
   }
-  function renderContainers(r) {
-    $("#containers").innerHTML = r.order.map((n) => {
-      const x = r.containers.get(n);
-      return `<li><b>${n}</b> <span class="dim">${containerSummary(x)}</span></li>`;
+  var exportBound = false;
+  async function setupExport() {
+    const box = $("#exportBox");
+    const btn = $("#exportZip");
+    if (!box || !btn)
+      return;
+    if (!await desktopHost()) {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    if (exportBound)
+      return;
+    exportBound = true;
+    btn.onclick = async () => {
+      const r = reader;
+      const p = r?.io.path;
+      const msg = $("#exportMsg");
+      if (!r || !p) {
+        if (msg)
+          msg.textContent = "這個庫沒有檔案路徑（不是從資料夾清單開的），無法導出。";
+        return;
+      }
+      btn.disabled = true;
+      if (msg)
+        msg.textContent = "正在導出…（大庫要幾十秒）";
+      setStatus("導出文字與圖片…", "busy");
+      const t0 = performance.now();
+      const res = await desktopExportTextImages(p);
+      btn.disabled = false;
+      const secs = ((performance.now() - t0) / 1000).toFixed(0);
+      if (!res || !res.ok) {
+        const why = res?.error ?? "宿主沒有回應";
+        if (msg)
+          msg.textContent = `導出失敗：${why}`;
+        setStatus(`導出失敗：${why}`, "err");
+        return;
+      }
+      const mib = (n) => ((n ?? 0) / 1048576).toFixed(1) + " MiB";
+      const parts = [`文字 ${fmtInt(res.chars ?? 0)} 字`, `${fmtInt(res.blocks ?? 0)} 個區塊`];
+      if (res.imageCount)
+        parts.push(`圖片 ${fmtInt(res.imageCount)} 張（${mib(res.imageBytes)}）`);
+      if (msg) {
+        msg.textContent = `✓ 已存到 ${res.folder}（${mib(res.zipBytes)}，${secs} 秒）：` + `${parts.join("、")}。` + (res.note ? ` ${res.note}` : "");
+        const again = document.createElement("button");
+        again.className = "mini";
+        again.textContent = "在資料夾中顯示";
+        again.onclick = () => void desktopRevealInFolder(res.path ?? "");
+        msg.after(again);
+        again.after(document.createElement("br"));
+      }
+      setStatus(`已導出 ${res.path}`, "info");
+    };
+  }
+  function highlightTags(text) {
+    return text.split(/(<[^<>]*>)/g).map((seg) => {
+      if (!seg.startsWith("<"))
+        return escapeHtml(seg);
+      const m = /^<([^\s<>/=]+)([\s\S]*)>$/.exec(seg);
+      if (!m)
+        return `<span class="xt">${escapeHtml(seg)}</span>`;
+      return `<span class="xt">${escapeHtml("<" + m[1])}</span><span class="xa">${escapeHtml(m[2])}</span><span class="xt">&gt;</span>`;
     }).join("");
+  }
+  async function renderHeader() {
+    const btn = document.querySelector('#tabsRight .tabBtn[data-tab="header"]');
+    const box = $("#headerText");
+    const r = reader;
+    if (!box)
+      return;
+    if (!r) {
+      box.innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
+      if (btn)
+        btn.hidden = true;
+      return;
+    }
+    const text = await r.sourceText(0).catch(() => "");
+    const hasDoc = text.includes("<檔");
+    const images = r.containers.get("resources")?.count ?? 0;
+    const show = !!text && (hasDoc || images > 0);
+    if (btn) {
+      btn.hidden = !show;
+      if (!show && btn.classList.contains("active")) {
+        document.querySelector('#tabsRight .tabBtn[data-tab="sum"]')?.click();
+      }
+    }
+    if (!show) {
+      box.innerHTML = '<p class="dim">此庫的開頭沒有 <code>&lt;檔&gt;</code>／圖片，不顯示檔頭。</p>';
+      return;
+    }
+    const why = [hasDoc ? "<code>&lt;檔&gt;</code>" : "", images ? `${fmtInt(images)} 個資源` : ""].filter(Boolean).join("、");
+    box.innerHTML = `<p class="note">第一個 source 區塊（${fmtInt(text.length)} 字元；這個庫有 ${why}）——
+    <code>&lt;集&gt;</code>、<code>&lt;樹&gt;</code> 等設定都在這裡。</p>
+    <pre class="rawHead">${highlightTags(text)}</pre>`;
   }
   var THUMB_LIMIT = 48;
   async function renderResources() {
@@ -6028,9 +6322,9 @@ designed by C.S.Yap`;
     const depths = new Set;
     const infos = [];
     if (opts.headScale !== false) {
-      const probe = new Accelon3Renderer(ctx, opts);
+      const probe2 = new Accelon3Renderer(ctx, opts);
       for (let i = 0;i < lines.length; i++) {
-        const info = probe.lineInfo(lines[i], lineNumbers[i] ?? i);
+        const info = probe2.lineInfo(lines[i], lineNumbers[i] ?? i);
         infos.push(info);
         for (const m of info.html.matchAll(/data-depth="(\d+)"/g))
           depths.add(Number(m[1]));
@@ -7091,7 +7385,7 @@ designed by C.S.Yap`;
       throw new Error(`導覽宏尾端有 ${bytes.length - r.i} bytes 多餘資料`);
     return tour;
   }
-  function fromBase64(b64) {
+  function fromBase642(b64) {
     const bin = atob(b64);
     const out = new Uint8Array(bin.length);
     for (let i = 0;i < bin.length; i++)
@@ -7203,7 +7497,7 @@ designed by C.S.Yap`;
     if (!b64)
       return null;
     try {
-      t = decodeTour(fromBase64(b64));
+      t = decodeTour(fromBase642(b64));
       cache.set(id, t);
       return t;
     } catch (e) {
@@ -8110,163 +8404,6 @@ designed by C.S.Yap`;
     at,
     shown: !$("#docLogo")?.hidden
   });
-
-  // src/accelon26/host.ts
-  var call = null;
-  var probed = false;
-  var probe = null;
-  var lastError = "";
-  var lastCount = 0;
-  async function hostCall() {
-    if (!probe)
-      probe = probeHost();
-    return await probe;
-  }
-  async function probeHost() {
-    probed = true;
-    try {
-      const dynamicImport = new Function("u", "return import(u)");
-      const mod = await dynamicImport("/wails/runtime.js");
-      const c = mod?.Call;
-      if (c && typeof c.ByName === "function")
-        call = c;
-    } catch (e) {
-      call = null;
-      lastError = String(e?.message ?? e);
-    }
-    return call;
-  }
-  var fromBase642 = Uint8Array.fromBase64;
-  function decodeBase64(b64) {
-    if (fromBase642)
-      return fromBase642.call(Uint8Array, b64);
-    const bin = atob(b64);
-    const out = new Uint8Array(bin.length);
-    for (let i = 0;i < bin.length; i++)
-      out[i] = bin.charCodeAt(i);
-    return out;
-  }
-  async function hostRead(path, offset, length) {
-    const c = await hostCall();
-    if (!c || length <= 0)
-      return new Uint8Array(0);
-    const b64 = await c.ByName("main.AdbHost.ReadBase64", path, offset, length);
-    return decodeBase64(b64 || "");
-  }
-  async function hostDecompressText(path, offset, length) {
-    const c = await hostCall();
-    if (!c)
-      return "";
-    const text = await c.ByName("main.AdbHost.DecompressText", path, offset, length);
-    return typeof text === "string" ? text : "";
-  }
-  async function hostPostings(path, token) {
-    const c = await hostCall();
-    if (!c)
-      return [];
-    const out = await c.ByName("main.AdbHost.Postings", path, token);
-    return out ?? [];
-  }
-  async function hostSearchQuery(path, query, maxHits, groups) {
-    const c = await hostCall();
-    if (!c)
-      return null;
-    return await c.ByName("main.AdbHost.SearchQuery", path, query, maxHits, groups);
-  }
-  async function desktopAppInfo() {
-    const c = await hostCall();
-    if (!c)
-      return null;
-    return await c.ByName("main.AdbHost.AppInfo");
-  }
-  async function desktopCheckUpdate() {
-    const c = await hostCall();
-    if (!c)
-      return null;
-    return await c.ByName("main.AdbHost.CheckUpdate");
-  }
-  async function desktopInstallUpdate() {
-    const c = await hostCall();
-    if (!c)
-      return null;
-    return await c.ByName("main.AdbHost.InstallUpdate");
-  }
-  async function desktopReleaseNotes(since) {
-    const c = await hostCall();
-    if (!c)
-      return [];
-    const notes = await c.ByName("main.AdbHost.ReleaseNotes", since);
-    return notes ?? [];
-  }
-  async function desktopIsFullscreen() {
-    const c = await hostCall();
-    if (!c)
-      return false;
-    return !!await c.ByName("main.AdbHost.IsFullscreen");
-  }
-  async function desktopToggleFullscreen() {
-    const c = await hostCall();
-    if (!c)
-      return false;
-    return !!await c.ByName("main.AdbHost.ToggleFullscreen");
-  }
-  async function desktopOpenExternal(url2) {
-    const c = await hostCall();
-    if (!c)
-      return false;
-    try {
-      return await c.ByName("main.AdbHost.OpenExternal", url2) === true;
-    } catch {
-      return false;
-    }
-  }
-  async function desktopCharCount(path) {
-    const c = await hostCall();
-    if (!c)
-      return null;
-    try {
-      const n = await c.ByName("main.AdbHost.SourceCharCount", path);
-      return typeof n === "number" ? n : null;
-    } catch {
-      return null;
-    }
-  }
-  function hostSource(e) {
-    const name = e.name || e.dbcname || e.dbname || e.path;
-    return {
-      name,
-      path: e.path,
-      size: e.size,
-      lastModified: e.modified,
-      slice(start, end) {
-        return {
-          arrayBuffer: async () => {
-            const u8 = await hostRead(e.path, start, Math.max(0, end - start));
-            return u8.buffer;
-          }
-        };
-      },
-      decompressText: (offset, length) => hostDecompressText(e.path, offset, length),
-      postings: (token) => hostPostings(e.path, token),
-      searchQuery: (query, maxHits, groups = []) => hostSearchQuery(e.path, query, maxHits, groups)
-    };
-  }
-  async function desktopSources() {
-    const c = await hostCall();
-    if (!c)
-      return [];
-    try {
-      const list = await c.ByName("main.AdbHost.ListAdbs");
-      const out = (list ?? []).filter((e) => e && e.path).map(hostSource);
-      lastCount = out.length;
-      lastError = "";
-      return out;
-    } catch (e) {
-      lastError = String(e?.message ?? e);
-      return [];
-    }
-  }
-  var hostState = () => ({ available: !!call, listed: lastCount, error: lastError });
 
   // src/accelon26/about.ts
   var ABOUT_SITE = "https://shutonggui.cn/accelon26/";
@@ -9535,7 +9672,7 @@ designed by C.S.Yap`;
       return;
     }
     renderMeta(reader, lastOpen?.parseMs ?? 0, 0, 0, 0);
-    renderContainers(reader);
+    renderHeader();
     renderDocs();
     renderTokens(reader.classStats(), 0);
     syncTreeTabs();
@@ -9561,7 +9698,7 @@ designed by C.S.Yap`;
     renderDocs();
     for (const sel of [
       "#meta",
-      "#containers",
+      "#headerText",
       "#capacity",
       "#docs",
       "#resources",
@@ -11811,10 +11948,9 @@ designed by C.S.Yap`;
         const e = charQueue.shift();
         if (charCache.has(e.key))
           continue;
-        const n = e.file.path ? await desktopCharCount(e.file.path) : null;
-        const chars = n ?? await charsFromSource(e.file);
-        if (chars !== null && chars > 0) {
-          charCache.set(e.key, chars);
+        const n = await maxVaOf(e.file);
+        if (n !== null && n > 0) {
+          charCache.set(e.key, n);
           paintChars(e.key);
         }
       }
@@ -11822,16 +11958,13 @@ designed by C.S.Yap`;
       charBusy = false;
     }
   }
-  async function charsFromSource(file) {
+  async function maxVaOf(file) {
     try {
-      const r = await AdbReader.open(new BlobIO(file));
-      const c = r.containers.get("source");
-      if (!c)
+      const hdr = new Uint8Array(await file.slice(0, 256).arrayBuffer());
+      if (hdr.length < 100)
         return null;
-      let n = 0;
-      for (let i = 0;i < c.count; i++)
-        n += (await r.sourceText(i)).length;
-      return n;
+      const n = new DataView(hdr.buffer, hdr.byteOffset, hdr.byteLength).getInt32(96, true);
+      return n > 0 ? n : null;
     } catch {
       return null;
     }
@@ -11870,7 +12003,7 @@ designed by C.S.Yap`;
         const cls = "dbPickItem" + (s && s === active2 ? " active" : "");
         return `<tr class="${cls}" data-key="${escapeHtml(e.key)}" data-name="${escapeHtml(e.name)}" tabindex="0"` + ` title="${escapeHtml(e.file.name)}${s ? "" : "（尚未載入，選了才讀）"}">` + `<td class="dbPickFile">${escapeHtml(base2)}</td>` + `<td class="dbPickName">${escapeHtml(e.name)}</td>` + `<td class="dbPickChars" data-key="${escapeHtml(e.key)}">${chars === undefined ? "…" : fmtInt(chars)}</td>` + `<td class="dbPickDate">${fmtDate(e.file.lastModified)}</td></tr>`;
       }).join("");
-      menu.innerHTML = shown.length ? '<table class="dbPickTable"><thead><tr><th>檔名</th><th>庫名</th><th>字數</th><th>建置日期</th></tr></thead>' + "<tbody>" + addItem + rows2 + "</tbody></table>" : addItem ? '<table class="dbPickTable"><tbody>' + addItem + "</tbody></table>" : '<div class="dbPickEmpty">（這個資料夾沒有 .adb）</div>';
+      menu.innerHTML = shown.length ? '<table class="dbPickTable"><thead><tr><th>檔名</th><th>庫名</th>' + '<th title="取自 adb 檔頭的 max VA（最大的文字位置），是近似值">字數</th><th>建置日期</th></tr></thead>' + "<tbody>" + addItem + rows2 + "</tbody></table>" : addItem ? '<table class="dbPickTable"><tbody>' + addItem + "</tbody></table>" : '<div class="dbPickEmpty">（這個資料夾沒有 .adb）</div>';
       menu.querySelectorAll(".dbPickItem[data-add]").forEach((el3) => {
         el3.onclick = (ev) => {
           ev.stopPropagation();
@@ -12133,7 +12266,7 @@ designed by C.S.Yap`;
       const h = reader.header;
       document.body.classList.add("loaded");
       renderMeta(reader, openMs, 0, 0, 0);
-      renderContainers(reader);
+      renderHeader();
       const t1 = performance.now();
       tokens = reader.tokens();
       const tokenMs = performance.now() - t1;
