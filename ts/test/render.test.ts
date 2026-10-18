@@ -85,6 +85,17 @@ ok('沒有樹：標題標籤也只丟標籤', flat.line('<書>書名</書>', 1) 
 
 // ---------------------------------------------------------------- 原書分行
 // 預設（hardBreaks）：<頁> 是右靠分隔；關掉：<頁> 變成行內頁碼，硬換行全部不保留
+const tierCtx = { depthOf: new Map([['書', 0], ['章', 1], ['節', 2]]), levels: 3 };
+const tierPage = renderPageBlocks(
+  ['<書>乙一 如來開示', '<章>丙一 依正行願', '<節>丁一 總標依正', '佛告曼殊室利', '<節>丁二 別陳行願', '正文二'],
+  [1, 2, 3, 4, 5, 6], { hardBreaks: true }, tierCtx);
+const tierHtml = tierPage.map((b) => b.lines.map((l) => l.html).join('')).join('\n');
+ok('標題字級：正文上一層只 +2px、每往上一層再 +2px（不依資料庫深度）',
+  tierHtml.includes(`data-depth="2" style="font-size:min(calc(1em + ${1 * LEVEL_STEP_PX}px)`)
+  && tierHtml.includes(`data-depth="1" style="font-size:min(calc(1em + ${2 * LEVEL_STEP_PX}px)`)
+  && tierHtml.includes(`data-depth="0" style="font-size:min(calc(1em + ${3 * LEVEL_STEP_PX}px)`),
+  tierHtml.split('\n').map((h) => h.slice(0, 110)).join(' ｜ '));
+
 const hard = new Accelon3Renderer(ctx);
 ok('原書分行（預設）：<頁> 是 .pageBreak 分隔',
   hard.line('周易<頁 n="12"/>乾', 1).includes('class="pageBreak"'), hard.line('周易<頁 n="12"/>乾', 2));

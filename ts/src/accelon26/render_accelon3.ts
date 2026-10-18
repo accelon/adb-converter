@@ -324,19 +324,38 @@ export class Accelon3Renderer {
  *   **空行**（連續兩個以上的換行）才換段。
  */
 export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: RenderOptions = {}, ctx: RenderContext = current): RenderBlock[] {
-  // 第一遍：先看**這一頁**用到哪些標題深度（作者 2026-10-18）。標題字級依「本頁的相對
-  // 層級」，不依資料庫的絕對深度：最深的那一層離本文最近（+1 級），往上一層再 +1 ——
-  // 所以同一個標題（例如「甲」）在不同頁面會有不同大小，和本文之間是平緩的階梯。
+  // 第一遍：先看**這一頁**的標題深度，決定字級的階梯（作者 2026-10-18）。
+  // 錨點＝「正文開始的那一層」——第一個後面直接接內文的標題。
+  // 這樣「丁一」只比內文大 2px、「丙一」再大 2px …… 越深的層越接近內文；
+  // 比正文更深的子標題（戊、己、庚…）也一樣是 +2px，不會反而把上面的祖先撐大。
   const depths = new Set<number>();
+  const infos: RenderedLine[] = [];
   if (opts.headScale !== false) {
     const probe = new Accelon3Renderer(ctx, opts);
     for (let i = 0; i < lines.length; i++) {
-      const html = probe.lineInfo(lines[i], lineNumbers[i] ?? i).html;
-      for (const m of html.matchAll(/data-depth="(\d+)"/g)) depths.add(Number(m[1]));
+      const info = probe.lineInfo(lines[i], lineNumbers[i] ?? i);
+      infos.push(info);
+      for (const m of info.html.matchAll(/data-depth="(\d+)"/g)) depths.add(Number(m[1]));
+    }
+  }
+  const maxDepth = depths.size ? Math.max(...depths) : -1;
+  // 錨點：第一個「後面接著內文」的標題的（最深）深度
+  let anchor = -1;
+  for (let i = 0; i < infos.length && anchor < 0; i++) {
+    if (!/class="h"/.test(infos[i].html)) continue;
+    let headingDepth = -1;
+    for (const m of infos[i].html.matchAll(/data-depth="(\d+)"/g)) headingDepth = Math.max(headingDepth, Number(m[1]));
+    for (let j = i + 1; j < infos.length; j++) {
+      if (!infos[j].visible) continue;            // 空行不算
+      if (!/class="h"/.test(infos[j].html)) anchor = headingDepth;   // 下一段是內文 → 這一層就是正文的上一層
+      break;
     }
   }
   const depthSteps = new Map<number, number>();
-  [...depths].sort((a, b) => b - a).forEach((d, i) => depthSteps.set(d, i + 1));
+  for (const d of depths) {
+    const steps = anchor >= 0 ? Math.max(1, anchor - d + 1) : maxDepth - d + 1;
+    depthSteps.set(d, steps);
+  }
 
   const r = new Accelon3Renderer(ctx, { ...opts, depthSteps });
   const hard = opts.hardBreaks !== false;
