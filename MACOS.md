@@ -17,8 +17,13 @@ macOS 用 `syscall.Mmap`／`open`／`osascript`／Wails 的 NSScreen 表）。
    這是 macOS 對「未經 Apple 公證的程式」的規定，不是檔案壞掉。
 
 備用來源：GitHub → Actions → **build-macos** → Run workflow（或推 `mac-*` 標籤），跑完下載
-artifact `accelon26-macos-arm64`／`accelon26-macos-x86_64`。兩邊的檔案是同一個
-`wails/scripts/package-macos.sh` 包出來的，並附 `.sha256` 可以核對。
+artifact `accelon26-macos-arm64`／`accelon26-macos-x86_64`；推標籤時 zip 也會附到
+[Release](https://github.com/accelon/adb-converter/releases)（不需要登入就能下載）。
+三邊的檔案都是同一個 `wails/scripts/package-macos.sh` 包出來的，並附 `.sha256` 可以核對。
+
+> CI 用到現在踩過的坑（留給以後的自己）：`*.adb` 在 `.gitignore`，所以倉庫裡沒有語料，
+> `-selftest` 要自己造一個檔；`$VAR（全形括號）` 在 bash 會被當成變數名（`set -u` 直接
+> unbound variable），一律寫 `${VAR}（`。
 
 ## 這一版有／沒有什麼
 

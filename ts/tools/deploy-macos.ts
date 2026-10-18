@@ -84,7 +84,9 @@ function remote(script: string, label: string): string {
 
 // ---- 要上傳的檔案：accelon26-macos-<arch>.zip（＋ .sha256） ----------------------
 if (!existsSync(DIR)) die('找不到目錄 ' + DIR + '（先跑 wails/scripts/package-macos.sh）');
-const zips = readdirSync(DIR).filter((n) => /^accelon26-macos-[a-z0-9_]+\.zip$/.test(n)).sort();
+const zips = readdirSync(DIR)
+  .filter((n) => /^accelon26-macos-[a-z0-9_]+\.zip(\.sha256)?$/.test(n))
+  .sort();
 if (!zips.length) die(DIR + ' 裡沒有 accelon26-macos-*.zip（先跑 wails/scripts/package-macos.sh）');
 
 const files: { name: string; local: string; size: number; sha256: string }[] = [];

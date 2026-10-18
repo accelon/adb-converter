@@ -173,9 +173,9 @@ jobs:
           generate_release_notes: true
 
       # 建置紀錄推到 ci-log 分支：GitHub 的 API 對「沒登入」的呼叫有速率限制
-      # （每小時 60 次），但 git 沒有。失敗時助理就把 log 抓下來看，不必登入。
-      - name: 把建置 log 推到 ci-log 分支
-        if: always()
+      # （每小時 60 次），但 git 沒有。失敗時把 log 抓下來看，不必登入。
+      - name: 失敗時把建置 log 推到 ci-log 分支
+        if: failure()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
