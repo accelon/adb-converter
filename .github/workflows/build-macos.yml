@@ -127,17 +127,14 @@ jobs:
       - name: 包成 .app ＋ zip
         # Info.plist、icns、ad-hoc 簽章、ditto 壓縮都在 scripts/package-macos.sh 裡
         # （本機編譯也用同一支，所以兩邊的 .app 一模一樣）。
-        # 用 bash -x 跑：失敗時把最後幾行 trace 變成 annotation（公開 repo 讀得到）。
         working-directory: wails
         run: |
           set +e
           for arch in arm64 x86_64; do
             [ -f "../build/macos/$arch/accelon26" ] || continue
             out=$(bash -x scripts/package-macos.sh "$arch" 2>&1); st=$?
-            echo "$out"
+            echo "$out" | tee "../build/pack-$arch.log"
             if [ "$st" -ne 0 ]; then
-              # 把 trace 的尾巴濃縮成「一個」annotation（GitHub 的 workflow command
-              # 認不得換行，所以用 ~ 代替），這樣不登入 GitHub 也讀得到真正的原因。
               msg=$(echo "$out" | tail -c 3000 | tr '\n' '~')
               echo "::error title=package-$arch(exit $st)::$msg"
               exit 1
@@ -174,3 +171,28 @@ jobs:
             build/macos/accelon26-macos-x86_64.zip.sha256
           fail_on_unmatched_files: false
           generate_release_notes: true
+
+      # 建置紀錄推到 ci-log 分支：GitHub 的 API 對「沒登入」的呼叫有速率限制
+      # （每小時 60 次），但 git 沒有。失敗時助理就把 log 抓下來看，不必登入。
+      - name: 把建置 log 推到 ci-log 分支
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          mkdir -p /tmp/cilog
+          {
+            echo "run: ${{ github.run_id }}"
+            echo "ref: ${{ github.ref }}"
+            echo "sha: ${{ github.sha }}"
+            echo "job status: ${{ job.status }}"
+            ls -l build/macos/*.zip 2>/dev/null
+          } > /tmp/cilog/RESULT.txt
+          cp build/*.log /tmp/cilog/ 2>/dev/null
+          cd /tmp/cilog
+          git init -q
+          git config user.name ci
+          git config user.email ci@local
+          git add -A
+          git commit -q -m "ci-log ${{ github.run_id }}"
+          git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:ci-log
