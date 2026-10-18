@@ -43,12 +43,13 @@ macOS 用 `syscall.Mmap`／`open`／`osascript`／Wails 的 NSScreen 表）。
 需要 Xcode Command Line Tools（`xcode-select --install`）。
 
 ```bash
-cd ts && bun install && bun run tools/build-desktop.ts   # 產生 wails/assets/index.html
+cd ts && bun run tools/build-desktop.ts   # 產生 wails/assets/index.html（不需要 npm install）
 cd ../wails
-CGO_ENABLED=1 go build -trimpath -o ../build/macos/accelon26 .
+CGO_ENABLED=1 go build -tags production -trimpath -o ../build/macos/accelon26 .
 ```
 
-`.app` 的外殼（Info.plist、icns、ad-hoc 簽章、ditto 壓縮）看
+`-tags production` 是 Wails 的發佈模式（關掉 DevTools 選單與除錯日誌）；想看 DevTools 就去掉它
+再建一次。`.app` 的外殼（Info.plist、icns、ad-hoc 簽章、ditto 壓縮）看
 `.github/workflows/build-macos.yml` 的後半段，照抄即可。
 
 ## Intel（x86_64）版
