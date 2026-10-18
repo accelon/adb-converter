@@ -1142,7 +1142,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T05:21:24.604Z","buildTimeText":"2026-10-18 13:21"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T05:43:25.047Z","buildTimeText":"2026-10-18 13:43"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -8353,7 +8353,8 @@ designed by C.S.Yap`;
   }
   async function checkDesktop(info) {
     state.buildTime = info.buildTime;
-    fillMeta("桌面版（accelon26.exe）", info.buildTimeText, info.exePath);
+    const mode = info.platform === "darwin" ? "桌面版（macOS）" : "桌面版（accelon26.exe）";
+    fillMeta(mode, info.buildTimeText, info.exePath);
     const fresh = await desktopCheckUpdate();
     if (!fresh) {
       setUpdate("unknown", "無法檢查更新（宿主沒有回應）");
@@ -8365,6 +8366,8 @@ designed by C.S.Yap`;
       setUpdate("found", `發現新版本（${fresh.remoteBuildTime.slice(0, 16).replace("T", " ")}），目前是 ${fresh.buildTimeText}。`, true);
     } else if (fresh.checkOK) {
       setUpdate("latest", `已是最新版本（build ${fresh.buildTimeText}）`);
+    } else if (fresh.noSelfUpdate) {
+      setUpdate("unknown", `${fresh.note || "這個平台不支援自動更新"}（目前 build ${fresh.buildTimeText}）`, true);
     } else if (fresh.devBuild) {
       setUpdate("unknown", fresh.note || "這是開發者本機建置的 exe，不檢查更新");
     } else if (!fresh.dirWritable) {
@@ -8398,6 +8401,10 @@ designed by C.S.Yap`;
     }
   }
   async function install() {
+    if (desktopInfo?.noSelfUpdate) {
+      await openInBrowser(ABOUT_SITE);
+      return;
+    }
     if (desktopInfo) {
       const remote = desktopInfo.remoteBuildTime.slice(0, 16).replace("T", " ");
       const ok = window.confirm(`發現新版本（${remote}），目前執行的是 ${desktopInfo.buildTimeText}。

@@ -18,11 +18,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
-	"unsafe"
-
-	"golang.org/x/sys/windows"
 )
 
 // ---- 建置時間與線上更新（作者 2026-10） -----------------------------------------
@@ -61,6 +57,8 @@ const (
 	manifestName = "versions.json"
 	// 抓版本資訊的逾時（只是一個小 JSON，不該等太久）。
 	manifestTimeout = 8 * time.Second
+	// 這個平台沒有自動更新時給使用者看的話（macOS 第一版）。
+	noSelfUpdateNote = "macOS 版暫不支援自動更新，請到 https://shutonggui.cn/accelon26/ 下載新版"
 )
 
 // versionManifest 是線上的 versions.json（由 ts/tools/release.ts 產生、deploy 一起上傳）。
@@ -215,8 +213,10 @@ type AppInfo struct {
 	BuildSource     string `json:"buildSource"`
 	ExePath         string `json:"exePath"`
 	ExeDir          string `json:"exeDir"`
+	Platform        string `json:"platform"`
 	DirWritable     bool   `json:"dirWritable"`
 	CanUpdate       bool   `json:"canUpdate"`
+	NoSelfUpdate    bool   `json:"noSelfUpdate"` // 這個平台沒有自動更新（macOS）
 	DevBuild        bool   `json:"devBuild"`
 	UpdateURL       string `json:"updateURL"`
 	UpdateAvailable bool   `json:"updateAvailable"`
@@ -263,11 +263,18 @@ func shortTime(t time.Time) string {
 //  1. versions.json（版本真相：buildTime ＋ sha256）—— 新主機走這條；
 //  2. 沒有 versions.json 就退回 HEAD 的 Last-Modified —— 舊主機仍可更新。
 func (h *AdbHost) checkUpdateNow() UpdateStatus {
-	local := exeBuildTime()
 	st := UpdateStatus{
 		CheckedAt:   time.Now(),
 		DirWritable: dirWritable(exeDir()),
 	}
+	// 這個平台沒有「下載一顆新的 exe 換掉自己」這種更新方式（macOS 換的是整個
+	// .app，還牽涉簽章與公證）：連都不連，直接告訴使用者去官網下載。
+	if !updatesSupported() {
+		st.Disabled = true
+		st.Note = noSelfUpdateNote
+		return st
+	}
+	local := exeBuildTime()
 	if !st.DirWritable {
 		st.Disabled = true
 		st.Note = "exe 所在目錄不可寫 → 永遠不檢查更新"
@@ -387,8 +394,10 @@ func (h *AdbHost) AppInfo() AppInfo {
 		BuildSource:     buildSource,
 		ExePath:         exePath(),
 		ExeDir:          exeDir(),
+		Platform:        platformName(),
 		DirWritable:     st.DirWritable,
-		CanUpdate:       st.DirWritable && !st.DevBuild,
+		CanUpdate:       updatesSupported() && st.DirWritable && !st.DevBuild,
+		NoSelfUpdate:    !updatesSupported(),
 		DevBuild:        st.DevBuild,
 		UpdateURL:       updateURL(),
 		UpdateAvailable: st.Available,
@@ -426,6 +435,16 @@ func (h *AdbHost) CheckUpdate() AppInfo {
 // StartUpdateChecker 啟動背景檢查：清掉上次更新留下的 .old，然後先檢查一次，
 // 之後每 updateCheckEvery 檢查一次。**只有真的在跑 GUI 時才呼叫。**
 func (h *AdbHost) StartUpdateChecker() {
+	// 沒有自動更新的平台：把狀態設好（About 要看），連背景 goroutine 都不用開。
+	if !updatesSupported() {
+		h.setUpdateStatus(UpdateStatus{
+			CheckedAt:   time.Now(),
+			Disabled:    true,
+			DirWritable: dirWritable(exeDir()),
+			Note:        noSelfUpdateNote,
+		})
+		return
+	}
 	go func() {
 		cleanupOldExe()
 		for {
@@ -458,6 +477,9 @@ type InstallResult struct {
 // 目錄不可寫、下載不完整（大小／sha256／PE 檔頭／-version 驗不過）都原封不動地失敗，
 // 不留半成品，也不會動到使用者手上那一顆；新版起來後若馬上結束，會把舊版換回去。
 func (h *AdbHost) InstallUpdate() InstallResult {
+	if !updatesSupported() {
+		return InstallResult{Error: noSelfUpdateNote}
+	}
 	if !h.installMu.TryLock() {
 		return InstallResult{Error: "已經在更新中，請稍等"}
 	}
@@ -560,7 +582,7 @@ func (h *AdbHost) InstallUpdate() InstallResult {
 	}
 	rl := exec.Command(prev, rlArgs...)
 	rl.Dir = dir
-	rl.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	hideConsoleWindow(rl) // 不要閃出黑色命令視窗（Windows；macOS 是 no-op）
 	if err := rl.Start(); err != nil {
 		// 連重新啟動器都開不起來：立刻把舊版換回來（我們還沒結束）。
 		_ = os.Remove(self)
@@ -586,10 +608,7 @@ const relaunchWatch = 4 * time.Second
 // 等舊行程真的結束之後才啟動新版，並觀察新版是否起得來；起不來就回滾 + 告訴使用者。
 // 它自己不碰 GUI／WebView2，所以不會跟新版搶資料目錄。
 func runRelauncher(pid int, exe, from, port string) int {
-	if h, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(pid)); err == nil {
-		_, _ = windows.WaitForSingleObject(h, 60000) // 舊行程完全結束（最多等 60 秒）
-		_ = windows.CloseHandle(h)
-	}
+	waitForProcessExit(pid, 60*time.Second) // 舊行程完全結束（最多等 60 秒）
 	// 舊行程結束後，WebView2 的子行程有時還會晚一點才放掉資料目錄。
 	time.Sleep(400 * time.Millisecond)
 
@@ -635,23 +654,8 @@ func restorePrevExe(exe string) {
 	_ = os.Rename(self, exe)
 }
 
-var (
-	user32DLL  = windows.NewLazySystemDLL("user32.dll")
-	procMsgBox = user32DLL.NewProc("MessageBoxW")
-)
-
-// messageBox 是沒有 GUI 時唯一的告知方式（重新啟動器還沒建立 Wails 應用）。
-func messageBox(title, text string) {
-	t, err := windows.UTF16PtrFromString(title)
-	if err != nil {
-		return
-	}
-	x, err := windows.UTF16PtrFromString(text)
-	if err != nil {
-		return
-	}
-	_, _, _ = procMsgBox.Call(0, uintptr(unsafe.Pointer(x)), uintptr(unsafe.Pointer(t)), 0x00000040|0x00040000)
-}
+// messageBox 在平台檔（sys_windows.go 用 MessageBoxW，sys_darwin.go 用 osascript）：
+// 那是沒有 GUI 時唯一的告知方式（重新啟動器還沒建立 Wails 應用）。
 
 // prevExePath 是「上一版」的位置：accelon26.exe → accelon26-prev.exe（可以直接雙擊）。
 func prevExePath(self string) string {

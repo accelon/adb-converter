@@ -146,7 +146,8 @@ export function isNewerBuild(remote: string, local: string): boolean {
 /** 桌面版：問宿主「線上有沒有比這支 exe 新的版本」 */
 async function checkDesktop(info: DesktopAppInfo): Promise<void> {
   state.buildTime = info.buildTime;
-  fillMeta('桌面版（accelon26.exe）', info.buildTimeText, info.exePath);
+  const mode = info.platform === 'darwin' ? '桌面版（macOS）' : '桌面版（accelon26.exe）';
+  fillMeta(mode, info.buildTimeText, info.exePath);
   const fresh = await desktopCheckUpdate();
   if (!fresh) { setUpdate('unknown', '無法檢查更新（宿主沒有回應）'); return; }
   desktopInfo = fresh;
@@ -155,6 +156,9 @@ async function checkDesktop(info: DesktopAppInfo): Promise<void> {
     setUpdate('found', `發現新版本（${fresh.remoteBuildTime.slice(0, 16).replace('T', ' ')}），目前是 ${fresh.buildTimeText}。`, true);
   } else if (fresh.checkOK) {
     setUpdate('latest', `已是最新版本（build ${fresh.buildTimeText}）`);
+  } else if (fresh.noSelfUpdate) {
+    // macOS：不做自動更新（換的是整個 .app）。這不是「檢查失敗」，按鈕改成開官網。
+    setUpdate('unknown', `${fresh.note || '這個平台不支援自動更新'}（目前 build ${fresh.buildTimeText}）`, true);
   } else if (fresh.devBuild) {
     setUpdate('unknown', fresh.note || '這是開發者本機建置的 exe，不檢查更新');
   } else if (!fresh.dirWritable) {
@@ -193,8 +197,13 @@ export async function openAbout(): Promise<void> {
   }
 }
 
-/** 「下載更新」按鈕：桌面版走宿主的下載＋換檔＋重啟；網頁版開官網 */
+/** 「下載更新」按鈕：桌面版走宿主的下載＋換檔＋重啟；網頁版／macOS 版開官網 */
 async function install(): Promise<void> {
+  // macOS 版沒有自動更新（換的是整個 .app）：直接開官網，讓使用者自己下載新版。
+  if (desktopInfo?.noSelfUpdate) {
+    await openInBrowser(ABOUT_SITE);
+    return;
+  }
   if (desktopInfo) {
     const remote = desktopInfo.remoteBuildTime.slice(0, 16).replace('T', ' ');
     const ok = window.confirm(`發現新版本（${remote}），目前執行的是 ${desktopInfo.buildTimeText}。\n\n確定要更新嗎？\n更新完成後 accelon26 會自動重新啟動。`);

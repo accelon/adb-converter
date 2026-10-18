@@ -6,14 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"unicode/utf16"
-	"unsafe"
 )
 
 // 這一層刻意做得極薄，只做兩件事：
@@ -28,82 +25,18 @@ import (
 //   await c.ByName("main.AdbHost.ReadBase64", path, offset, length);
 
 // ---------------------------------------------------------------------------
-// Windows kernel32 mmap 層（直呼 kernel32，不引入 golang.org/x/sys 依賴）
+// mmap 層：mmapFile / unmapFile 是平台相依的（sys_windows.go / sys_darwin.go），
+// 這裡只負責快取映射、參考計數與解除映射的時機。
 //
-// 為什麼用 mmap 而不是每次 os.Open + ReadAt：
-//   - 映射只在首次存取時建立一次（CreateFileMappingW + MapViewOfFile），
-//     之後每次 ReadBase64 都只在行程位址空間內取位元組，沒有任何檔案系統
-//     syscall，省掉 open/seek/read 的核心往返；
-//   - 映射內容由 OS page cache 支撐，隨機小段讀取不會把整個檔案拷進 Go 堆積；
-//     同時開啟多個 adb 也只是各佔一段位址空間（本應用的檔案只有 2–25 MB）；
-//   - base64 直接從映射切片編碼，零中間拷貝。
-// 限制：檔案大小必須 > 0；映射內容在 Close / CloseAll 之前一直有效。
+// 為什麼用 mmap 而不是每次 os.Open + ReadAt，見 sys_windows.go 的說明。
 // ---------------------------------------------------------------------------
-
-const (
-	pageReadonly = 0x02   // PAGE_READONLY
-	fileMapRead  = 0x0004 // FILE_MAP_READ
-)
-
-var (
-	kernel32               = syscall.NewLazyDLL("kernel32.dll")
-	procCreateFileMappingW = kernel32.NewProc("CreateFileMappingW")
-	procMapViewOfFile      = kernel32.NewProc("MapViewOfFile")
-	procUnmapViewOfFile    = kernel32.NewProc("UnmapViewOfFile")
-	procCloseHandle        = kernel32.NewProc("CloseHandle")
-)
-
-// mmapFile 以唯讀方式把整個檔案映射進行程位址空間。
-// 回傳的 []byte 直接指向映射記憶體，呼叫方必須保證在 unmapFile 之前不再使用它。
-func mmapFile(path string, size int64) ([]byte, syscall.Handle, error) {
-	if size <= 0 {
-		return nil, 0, fmt.Errorf("cannot mmap %s: size %d", path, size)
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer f.Close() // 映射物件會持有檔案參考，這裡可以立即關閉控制代碼
-
-	// flProtect 只能是 PAGE_READONLY；FILE_MAP_READ 是 MapViewOfFile 的參數。
-	h, _, errno := procCreateFileMappingW.Call(
-		f.Fd(), 0,
-		pageReadonly,
-		uintptr(uint64(size)>>32), uintptr(uint64(size)&0xffffffff),
-		0,
-	)
-	if h == 0 {
-		return nil, 0, os.NewSyscallError("CreateFileMapping", errno)
-	}
-	addr, _, errno := procMapViewOfFile.Call(h, fileMapRead, 0, 0, 0)
-	if addr == 0 {
-		procCloseHandle.Call(h)
-		return nil, 0, os.NewSyscallError("MapViewOfFile", errno)
-	}
-	// addr 是核心回傳的映射基底位址，其生命週期由 handle 控制。
-	// 用 unsafe.Add(nil, addr) 取得基底指標（等同 uintptr→指標轉換）；
-	// 這樣寫同時避開 go vet 對 uintptr→unsafe.Pointer 的誤報。
-	base := unsafe.Add(nil, addr)
-	view := unsafe.Slice((*byte)(base), int(size))
-	return view, syscall.Handle(h), nil
-}
-
-// unmapFile 解除映射並關閉映射物件控制代碼；對已經解除過的映射是安全的。
-func unmapFile(view []byte, h syscall.Handle) {
-	if len(view) > 0 {
-		procUnmapViewOfFile.Call(uintptr(unsafe.Pointer(&view[0])))
-	}
-	if h != 0 {
-		procCloseHandle.Call(uintptr(h))
-	}
-}
 
 // mapped 是一個已 mmap 的 .adb 檔案。
 type mapped struct {
-	key     string         // 快取鍵：小寫、規範化後的絕對路徑
-	abs     string         // 規範化後的絕對路徑（原樣大小寫）
-	view    []byte         // 整個檔案的映射內容（page cache 支撐）
-	handle  syscall.Handle // CreateFileMapping 的控制代碼
+	key     string     // 快取鍵：小寫、規範化後的絕對路徑
+	abs     string     // 規範化後的絕對路徑（原樣大小寫）
+	view    []byte     // 整個檔案的映射內容（page cache 支撐）
+	handle  mmapHandle // 映射物件的控制代碼（macOS 沒有，一律 0）
 	size    int64
 	refs    int  // 參考計數：>0 期間映射不會被解除
 	pinned  bool // Open 釘住的參考（由 Close 釋放）
@@ -145,13 +78,13 @@ func (h *AdbHost) SetWindowInfo(f func() map[string]any) { h.winInfo = f }
 
 // OpenExternal 用系統的預設瀏覽器開一個網址（「留言給作者」這類外部連結）。
 // WebView2 的 target=_blank 只會開一個內嵌的新視窗，那不是使用者要的：
-// 「關於」裡的「留言給作者」走這條，才會真的開 Chrome／Edge。
+// 「關於」裡的「留言給作者」走這條，才會真的開 Chrome／Edge（macOS 是 Safari）。
+// 實際的啟動指令是平台相依的（openURLCommand）：Windows 用 rundll32，macOS 用 open。
 func (h *AdbHost) OpenExternal(rawurl string) bool {
 	if !strings.HasPrefix(rawurl, "https://") && !strings.HasPrefix(rawurl, "http://") {
 		return false
 	}
-	cmd := exec.Command("rundll32", "url.dll,FileProtocolHandler", rawurl)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd := openURLCommand(rawurl)
 	if err := cmd.Start(); err != nil {
 		return false
 	}

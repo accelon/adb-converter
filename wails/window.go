@@ -7,12 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
-	"github.com/wailsapp/wails/v3/pkg/w32"
-	"golang.org/x/sys/windows"
 )
 
 // ---- 視窗位置與螢幕選擇（作者 2026-10） ------------------------------------------
@@ -162,6 +159,13 @@ type screenChoice struct {
 	Work    application.Rect // 工作區（不含工具列），用來夾視窗位置
 }
 
+// screenDetail 是一張螢幕的原始列舉細節（只有 -screens 診斷在用）：
+// Wails 的 Screen 沒有「目前這張」這個概念，DPI 也是換算過的。
+type screenDetail struct {
+	Scale   float64
+	Current bool
+}
+
 // pickLaunchScreen 是唯一的選螢幕邏輯：**游標落在哪張螢幕的工作區就用那張**
 // （使用者雙擊／點執行就是在那一張）；游標不在任何一張（或拿不到游標）就用主螢幕；
 // 都沒有就用第一張。回 ok=false 表示一張都列舉不到。
@@ -191,29 +195,10 @@ func pickLaunchScreen(screens []screenChoice, cursorX, cursorY int, hasCursor bo
 	return screens[0], true
 }
 
-// windowStyleInfo 讀視窗的 Win32 樣式，用來確認「有標題列、可以縮放、可以關、可以最大化」
-// （全螢幕時 Wails 會換成 WS_POPUP，那時沒有標題列是正常的，按 Esc／F11 會回復）。
-func windowStyleInfo(title string) map[string]any {
-	name, err := syscall.UTF16PtrFromString(title)
-	if err != nil {
-		return nil
-	}
-	hwnd := w32.FindWindowW(nil, name)
-	if hwnd == 0 {
-		return map[string]any{"found": false}
-	}
-	style := uint32(w32.GetWindowLong(hwnd, w32.GWL_STYLE))
-	return map[string]any{
-		"found":       true,
-		"style":       fmt.Sprintf("0x%08X", style),
-		"caption":     style&w32.WS_CAPTION != 0,
-		"resizable":   style&w32.WS_THICKFRAME != 0,
-		"sysMenu":     style&w32.WS_SYSMENU != 0,
-		"minimizeBox": style&w32.WS_MINIMIZEBOX != 0,
-		"maximizeBox": style&w32.WS_MAXIMIZEBOX != 0,
-		"popupOnly":   style&w32.WS_OVERLAPPEDWINDOW == 0,
-	}
-}
+// 視窗樣式、原生螢幕列舉、游標位置這三件事是平台相依的：
+//   windowStyleInfo／nativeScreens／nativeScreenDetails／cursorPos／windowScreenFallback
+// 分別在 window_windows.go（Win32）與 window_darwin.go（Wails＋NSScreen）實作。
+// 下面這些邏輯本身與平台無關，所以兩邊共用同一份。
 
 // containsInclusive 與 Rect.Contains 相同，只是右／下邊界也算在內
 // （游標剛好停在螢幕角落或工具列邊緣時，不要因為差一格就掉回主螢幕）。
@@ -221,41 +206,23 @@ func containsInclusive(r application.Rect, x, y int) bool {
 	return x >= r.X && x <= r.X+r.Width && y >= r.Y && y <= r.Y+r.Height
 }
 
-// w32Screens 用 Win32 列舉螢幕（原始資料，-screens 診斷用）。
-// 注意：這與 Wails 視窗座標系**不一定同一個空間**（DPI 虛擬化），所以視窗定位不用它，
-// 而是用 Wails 自己的 application.Screen（它會在需要時做 physical/DIP 換算）。
-func w32Screens() []screenChoice {
-	list, err := w32.GetAllScreens()
-	if err != nil {
-		log.Printf("window: Win32 螢幕列舉失敗：%v", err)
-		return nil
-	}
-	if len(list) == 0 {
-		log.Printf("window: Win32 說沒有螢幕")
-	}
-	out := make([]screenChoice, 0, len(list))
-	for _, s := range list {
-		mon, work := s.RcMonitor, s.RcWork
-		out = append(out, screenChoice{
-			Name:    windows.UTF16ToString(s.SzDevice[:]),
-			Primary: s.IsPrimary,
-			Monitor: application.Rect{X: int(mon.Left), Y: int(mon.Top), Width: int(mon.Right - mon.Left), Height: int(mon.Bottom - mon.Top)},
-			Work:    application.Rect{X: int(work.Left), Y: int(work.Top), Width: int(work.Right - work.Left), Height: int(work.Bottom - work.Top)},
-		})
-	}
-	return out
-}
-
 // launchScreen 回傳「使用者執行 exe 的那個螢幕」。走 Wails 自己的螢幕表：
 // 用**游標位置**去問 ScreenNearestPhysicalRect（它負責 physical/DIP 換算），
 // 所以回來的 Screen.WorkArea 與 win.SetPosition/SetSize 是同一個座標系。
-// 游標問不到（被拔掉的外接螢幕座標、或拿不到游標）就退回主螢幕。
-func launchScreen(app *application.App) *application.Screen {
-	if x, y, ok := w32.GetCursorPos(); ok {
+// 游標問不到（被拔掉的外接螢幕座標、拿不到游標、或平台沒有游標 API）就問視窗自己
+// 落在哪張螢幕（macOS：新視窗開在「使用者正在用的那張」），再不行退回主螢幕。
+func launchScreen(app *application.App, win *application.WebviewWindow) *application.Screen {
+	// Wails 的螢幕快取要 Run 之後才會有（-screens 在 Run 之前跑，那邊是空的），
+	// 空的時候不必問，也問不出東西。
+	hasTable := len(app.Screen.GetAll()) > 0
+	if x, y, ok := cursorPos(); ok && hasTable {
 		if s := application.ScreenNearestPhysicalRect(application.Rect{X: x, Y: y, Width: 1, Height: 1}); s != nil {
 			return s
 		}
-		log.Printf("window: 游標 (%d,%d) 不在任何螢幕上，改用主螢幕", x, y)
+		log.Printf("window: 游標 (%d,%d) 不在任何螢幕上，改用視窗所在螢幕", x, y)
+	}
+	if s := windowScreenFallback(win); s != nil {
+		return s
 	}
 	if p := app.Screen.GetPrimary(); p != nil {
 		return p
@@ -268,13 +235,14 @@ func launchScreen(app *application.App) *application.Screen {
 }
 
 // launchWorkArea 回傳啟動螢幕的工作區（見 launchScreen）。
-func launchWorkArea(app *application.App) (application.Rect, string, bool) {
-	s := launchScreen(app)
+func launchWorkArea(app *application.App, win *application.WebviewWindow) (application.Rect, string, bool) {
+	s := launchScreen(app, win)
 	if s == nil {
 		return application.Rect{}, "", false
 	}
 	return s.WorkArea, s.Name, true
 }
+
 
 // screenOfRect 找出某個矩形（視窗的絕對座標）落在哪張螢幕上；找不到就回主螢幕。
 func screenOfRect(app *application.App, r application.Rect) *application.Screen {
@@ -452,30 +420,29 @@ func (t *windowTracker) info() map[string]any {
 }
 
 // screensInfo 是 -screens 的輸出：列舉到的每一張螢幕、游標位置、以及會選哪一張。
-func screensInfo(app *application.App) string {
+// Windows 用 Win32 的原始列舉（連 scale／current 都有），macOS 用 Wails 的螢幕表 ——
+// 兩者都只是診斷用，視窗定位一律走 Wails 的座標系（見 launchScreen）。
+func screensInfo(app *application.App, win *application.WebviewWindow) string {
 	out := "accelon26 -screens\n"
-	x, y, hasCursor := w32.GetCursorPos()
+	x, y, hasCursor := cursorPos()
 	if hasCursor {
 		out += fmt.Sprintf("cursor: (%d,%d)\n", x, y)
 	} else {
 		out += "cursor: (拿不到)\n"
 	}
-	// 不建立 App 也能列舉（App 的螢幕快取要 Run 之後才有），所以直接用 Win32，
-	// 再套用與啟動時同一個 pickLaunchScreen。
-	// 不建立 App 也能列舉（New() 之後、Run() 之前也可以），與啟動定位共用同一份資料。
-	choices := w32Screens()
-	list, _ := w32.GetAllScreens()
+	choices := nativeScreens(app)
+	details := nativeScreenDetails(app)
 	for i, c := range choices {
 		scale, current := 1.0, false
-		if i < len(list) {
-			scale, current = float64(list[i].ScaleFactor), list[i].IsCurrent
+		if i < len(details) {
+			scale, current = details[i].Scale, details[i].Current
 		}
 		out += fmt.Sprintf("  #%d %s primary=%v current=%v scale=%.2f monitor=(%d,%d %dx%d) work=(%d,%d %dx%d)\n",
 			i, c.Name, c.Primary, current, scale,
 			c.Monitor.X, c.Monitor.Y, c.Monitor.Width, c.Monitor.Height,
 			c.Work.X, c.Work.Y, c.Work.Width, c.Work.Height)
 	}
-	if s := launchScreen(app); s != nil {
+	if s := launchScreen(app, win); s != nil {
 		out += fmt.Sprintf("Wails 選的啟動螢幕: %s primary=%v work=(%d,%d %dx%d) bounds=(%d,%d %dx%d)\n",
 			s.Name, s.IsPrimary, s.WorkArea.X, s.WorkArea.Y, s.WorkArea.Width, s.WorkArea.Height,
 			s.Bounds.X, s.Bounds.Y, s.Bounds.Width, s.Bounds.Height)

@@ -126,8 +126,15 @@ export interface DesktopAppInfo {
   buildSource: string;
   exePath: string;
   exeDir: string;
+  /** 平台（windows／darwin；網頁版沒有這個欄位） */
+  platform?: string;
   dirWritable: boolean;
   canUpdate: boolean;
+  /**
+   * 這個平台沒有「換掉自己」的自動更新（macOS：換的是整個 .app，牽涉簽章與公證）。
+   * true 時 About 要說「請到官網下載新版」，而不是「檢查失敗」。
+   */
+  noSelfUpdate?: boolean;
   devBuild: boolean;
   updateURL: string;
   updateAvailable: boolean;

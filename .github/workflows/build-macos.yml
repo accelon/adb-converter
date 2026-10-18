@@ -4,12 +4,14 @@ name: build-macos
 #
 # 觸發方式：Actions 頁面手動 Run workflow，或推 `mac-*` 標籤。
 #
-# 前置（重要）：Go 層目前有一部分只在 Windows 編得過 ——
-#   wails/adbhost.go   mmap 走 kernel32、OpenExternal 走 rundll32
-#   wails/update.go    golang.org/x/sys/windows（MessageBox、OpenProcess）、SysProcAttr.HideWindow
-#   wails/window.go    pkg/w32（螢幕列舉、FindWindowW、GetCursorPos）
-# 這些要先拆成 *_windows.go／*_darwin.go，這個 workflow 才會綠。
-# 在那之前它會在「編譯（macOS）」那步停在 undefined / build constraints 的錯誤。
+# 產出：artifact `accelon26-macos-arm64`（.app 的 zip ＋ sha256），解開雙擊即可
+# （未經 Apple 公證，第一次要在 Finder 右鍵 →「打開」）。
+#
+# macOS 版的差異（第一版）：
+#   * 沒有自動更新（Windows 換的是一顆 exe，macOS 換的是整個 .app，牽涉簽章／公證）。
+#     Go 層 updatesSupported() 回 false，About 會顯示「請到官網下載新版」。
+#   * 沒有游標座標 API（不用 cgo）：啟動時放在「視窗所在的那張螢幕」，不是游標那張。
+#   * mmap／開外部連結／訊息框走 sys_darwin.go（syscall.Mmap、open、osascript）。
 
 on:
   workflow_dispatch:
@@ -19,7 +21,7 @@ on:
 
 jobs:
   build:
-    # macos-14 = Apple Silicon（M1）；要 Intel 版就再加一個 macos-13 job。
+    # macos-14 = Apple Silicon（arm64）。要 Intel 版再加一個 job（見 MACOS.md）。
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +42,16 @@ jobs:
           bun install --frozen-lockfile
           bun run tools/build-desktop.ts
 
+      # 先跑一次測試：這裡同時驗證了 mmap（syscall.Mmap）、檔案白名單、搜尋解析
+      # 這些在 macOS 上真的會執行的程式碼（Windows runner 驗不到這些）。
+      - name: 測試（go vet ＋ go test）
+        working-directory: wails
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          go vet ./...
+          go test ./...
+
       - name: 編譯（macOS arm64）
         working-directory: wails
         env:
@@ -49,6 +61,13 @@ jobs:
           go build -trimpath \
             -ldflags "-X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -o ../build/macos/accelon26 .
+
+      - name: 煙霧測試（-version／-selftest 不開 GUI）
+        # 在倉庫根目錄跑：那裡有 13j.adb／yinshun.adb／fgdict.adb，-selftest 會真的
+        # mmap 這幾個檔並讀 200 次，等於在 macOS 上驗一遍 syscall.Mmap 那條路。
+        run: |
+          ./build/macos/accelon26 -version
+          ./build/macos/accelon26 -selftest
 
       - name: 包成 .app
         run: |
@@ -70,32 +89,30 @@ jobs:
             iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/accelon26.icns"
           fi
 
-          cat > "$APP/Contents/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleName</key><string>accelon26</string>
-  <key>CFBundleDisplayName</key><string>accelon26</string>
-  <key>CFBundleIdentifier</key><string>cn.shutonggui.accelon26</string>
-  <key>CFBundleExecutable</key><string>accelon26</string>
-  <key>CFBundleIconFile</key><string>accelon26</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
-  <key>CFBundleVersion</key><string>1.0</string>
-  <key>LSMinimumSystemVersion</key><string>11.0</string>
-  <key>NSHighResolutionCapable</key><true/>
-  <key>NSPrincipalClass</key><string>NSApplication</string>
-</dict>
-</plist>
-PLIST
+          # Info.plist 用 PlistBuddy 一行一行寫（不要在 YAML 的 block scalar 裡塞 XML：
+          # YAML 的縮排會變成 XML 的前導空白，XML 宣告必須是檔案的第一個字元）。
+          P="$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleName string accelon26" \
+            -c "Add :CFBundleDisplayName string accelon26" \
+            -c "Add :CFBundleIdentifier string cn.shutonggui.accelon26" \
+            -c "Add :CFBundleExecutable string accelon26" \
+            -c "Add :CFBundleIconFile string accelon26" \
+            -c "Add :CFBundlePackageType string APPL" \
+            -c "Add :CFBundleShortVersionString string 1.0" \
+            -c "Add :CFBundleVersion string 1.0" \
+            -c "Add :LSMinimumSystemVersion string 11.0" \
+            -c "Add :NSHighResolutionCapable bool true" \
+            -c "Add :NSPrincipalClass string NSApplication" \
+            "$P"
+          plutil -lint "$P"
 
       - name: 臨時簽章（ad-hoc）
         # 沒有 Apple 開發者憑證也能簽：簽完 Gatekeeper 比較不會說「已損毀」。
         # 使用者第一次開仍要在 Finder 右鍵 →「打開」。
         run: |
           codesign --force --deep --sign - build/macos/accelon26.app
-          codesign --verify --verbose build/macos/accelon26.app || true
+          codesign --verify --verbose build/macos/accelon26.app
 
       - name: 壓縮（保留 .app 結構與簽章屬性）
         run: |

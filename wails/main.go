@@ -114,7 +114,7 @@ func main() {
 
 	// -screens：列舉螢幕、游標、會選哪一張、上次的設定，然後結束（多螢幕排錯用）。
 	if *screens {
-		fmt.Print(screensInfo(app))
+		fmt.Print(screensInfo(app, nil)) // 視窗還沒建立：用平台的列舉＋主螢幕
 		return
 	}
 
@@ -153,7 +153,7 @@ func main() {
 	host.StartUpdateChecker()                      // 背景檢查線上更新（含清掉上次留下的 .old）
 
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		wa, screenName, ok := launchWorkArea(app)
+		wa, screenName, ok := launchWorkArea(app, win)
 		st, hasSaved := loadWindowState()
 		tracker.setLaunch(screenName, wa)
 		if !ok { // 一張螢幕都列舉不到：交給作業系統，只把記下的大小套上去
