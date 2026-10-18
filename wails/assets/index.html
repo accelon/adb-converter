@@ -1075,7 +1075,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T05:01:37.470Z","buildTimeText":"2026-10-18 13:01"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T05:06:19.604Z","buildTimeText":"2026-10-18 13:06"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -9042,6 +9042,10 @@ designed by C.S.Yap`;
     if (pickBtn) {
       pickBtn.onclick = (ev) => {
         ev.stopPropagation();
+        if (catalogEmpty() && needsAddItem()) {
+          pickAddFile();
+          return;
+        }
         setDbPickOpen();
       };
       document.addEventListener("click", (ev) => {
@@ -11692,12 +11696,7 @@ designed by C.S.Yap`;
       menu.querySelectorAll(".dbPickItem[data-add]").forEach((el3) => {
         el3.onclick = (ev) => {
           ev.stopPropagation();
-          setDbPickOpen(false);
-          const input = $("#file");
-          if (!input)
-            return;
-          input.value = "";
-          input.click();
+          pickAddFile();
         };
       });
       menu.querySelectorAll(".dbPickItem[data-key]").forEach((el3) => {
@@ -11739,6 +11738,17 @@ designed by C.S.Yap`;
     if (hostState().available)
       return false;
     return backendKind() !== "go";
+  }
+  function catalogEmpty() {
+    return catalog.length === 0;
+  }
+  function pickAddFile() {
+    setDbPickOpen(false);
+    const input = $("#file");
+    if (!input)
+      return;
+    input.value = "";
+    input.click();
   }
   function worstSlot(except) {
     let out = null;

@@ -595,6 +595,9 @@ function boot() {
   if (pickBtn) {
     pickBtn.onclick = (ev) => {
       ev.stopPropagation();
+      // file:// 版而且還沒開過任何 adb：直接開檔案挑選（作者 2026-10-18），
+      // 不必先展開空選單再按「＋ 加入 adb」。
+      if (catalogEmpty() && needsAddItem()) { pickAddFile(); return; }
       setDbPickOpen();
     };
     document.addEventListener('click', (ev) => {
@@ -880,7 +883,7 @@ export function installDebugApi(): void {
 
 import { loadTree } from './search';
 
-import { MAX_DBS, activeCatalogKey, catalogAdd, catalogAddFile, catalogState, dbLog, dbPickOpen, openDbs, renderDbPick, setDbHooks, setDbPickOpen } from './dbs';
+import { MAX_DBS, activeCatalogKey, catalogAdd, catalogAddFile, catalogEmpty, catalogState, dbLog, dbPickOpen, needsAddItem, openDbs, pickAddFile, renderDbPick, setDbHooks, setDbPickOpen } from './dbs';
 import { initTextPane, renderTextPane, resetTextPane, textState } from './text-pane';
 import { hasLogoResource, hideDocLogo, logoState, updateDocLogo } from './logo';
 import { desktopSources, hostState } from './host';

@@ -273,11 +273,7 @@ export function renderDbPick(): void {
     menu.querySelectorAll<HTMLElement>('.dbPickItem[data-add]').forEach((el) => {
       el.onclick = (ev) => {
         ev.stopPropagation();
-        setDbPickOpen(false);
-        const input = $('#file') as HTMLInputElement | null;
-        if (!input) return;
-        input.value = '';
-        input.click();
+        pickAddFile();
       };
     });
     menu.querySelectorAll<HTMLElement>('.dbPickItem[data-key]').forEach((el) => {
@@ -323,6 +319,23 @@ export function renderDbPick(): void {
 export function needsAddItem(): boolean {
   if (hostState().available) return false;
   return backendKind() !== 'go';
+}
+
+/** catalog 是不是空的（還沒開過任何 adb）——file:// 版第一次按 📁 就直接開檔案挑選。 */
+export function catalogEmpty(): boolean {
+  return catalog.length === 0;
+}
+
+/**
+ * 開檔案挑選視窗（作者 2026-10-18）：「＋ 加入 adb」與「清單是空的時候按 📁」共用，
+ * 省得使用者按了 📁 還要再按一次「＋ 加入 adb」。
+ */
+export function pickAddFile(): void {
+  setDbPickOpen(false);
+  const input = $('#file') as HTMLInputElement | null;
+  if (!input) return;
+  input.value = '';
+  input.click();
 }
 
 /** the open slot with the smallest MRU stamp (never `except`) */
