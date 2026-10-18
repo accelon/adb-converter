@@ -1,0 +1,13 @@
+# 下一版要告訴使用者的改動（一行一條；`#` 開頭是註解，不會進說明檔）
+#
+# 平常改 UI／文字／顏色就往下面加一行，**不要**為此重建 exe 或 mac app
+# （作者 2026-10-18：那很費時間）。改完只跑：
+#   cd ts && bun run tools/build-viewer.ts     # → build/accelon26.html（雙擊就能看）
+#
+# 作者說「發佈新版」時才：
+#   cd ts && bun run tools/release.ts --items-file ../wails/release_notes.draft.txt
+#   （release.ts 會把下面每一行 append 到 wails/release_notes.json，帶上這一版的 buildTime）
+#   然後把下面那些行清掉（檔頭留著），再 commit。
+#
+# 寫法：一句話講「使用者感覺到什麼」，不要寫實作細節。例：
+#   字級按鈕跟著主題換色：亮色系、護眼不再是一塊突兀的黑方塊

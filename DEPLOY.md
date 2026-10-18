@@ -41,17 +41,44 @@
 `deploy.ts` 是先傳 `.tmp` 再 `mv`（同一個檔案系統，原子替換），所以任何時刻
 讀者抓到的都是完整的一份。
 
-## 2. 發佈一版
+## 2. 兩種節奏：平常改 UI，作者說「發佈新版」才發佈
+
+### 2.1 平常（預設走這條）
+
+改介面、文字、顏色時**只產生單檔 HTML**，不要重建 exe 或 macOS 的 `.app`
+（作者 2026-10-18：那很費時間，而且會讓所有使用者跳一次沒有意義的更新提示）。
 
 ```powershell
 cd ts
-bun run tools/release.ts          # 建 HTML → 建 exe（注入 buildTime）→ versions.json → www/accelon26.7z
-bun run tools/deploy.ts           # 上傳 exe、再上傳 versions.json，最後從 https 抓回來驗 sha256
-# 網站也要一起更新時：
-bun run tools/deploy.ts --site    # 多傳 www/*.html、www/img/、www/accelon26.7z
-# 只改了壓縮檔裡的說明（不動 exe、不跳更新提示）：
-cd ts && bun run tools/pack-7z.ts
+bun run tools/build-viewer.ts     # → build/accelon26.html（雙擊就能開，選 .adb 看效果）
+bun test test/render.test.ts      # 22 項版面／渲染測試
 ```
+
+改動本身記在 [wails/release_notes.draft.txt](wails/release_notes.draft.txt)：一行一條，
+寫「使用者感覺到什麼」。這份草稿就是下一版的改版說明來源 —— 使用者更新時看到的內容。
+
+`wails/assets/index.html`（exe 內嵌的那份）與 `www/accelon26.7z`、`versions.json`
+**平常不用動**，發佈時 `release.ts` 會一起重建。
+
+### 2.2 發佈（只在他說「發佈新版」時）
+
+```powershell
+cd ts
+bun run tools/release.ts --items-file ../wails/release_notes.draft.txt
+#   → 建 HTML → 建 exe（注入 buildTime）→ 追加改版說明 → versions.json → www/accelon26.7z
+bun run tools/deploy.ts --site    # exe、versions.json、www/*.html、www/img/、7z，最後驗 sha256
+
+bun run tools/deploy.ts           # 只換 exe ＋ versions.json（網站內容沒變時）
+bun run tools/deploy.ts --site-only   # 只換 www/（改了首頁但不想發新版）
+bun run tools/pack-7z.ts          # 只重打包壓縮檔（改 README、不動 exe）
+```
+
+發完把 `wails/release_notes.draft.txt` 裡那幾行清掉（檔頭留著）、連同新的
+`release_notes.json` 一起 commit。
+
+**macOS 版**跟著同一次發佈出：推一個 `mac-*` 標籤（見 [MACOS.md](MACOS.md)），
+CI 會建 arm64／x86_64 兩個 zip 並附到 Release，之後
+`cd ts && bun run tools/deploy-macos.ts` 把它們傳上官網。
 
 壓縮檔內容固定三樣：`accelon26.exe`、`README.txt`（簡體）、`README-tc.txt`（繁體）。
 兩份說明是 **UTF-8 帶 BOM ＋ CRLF**（Windows 記事本才不會亂碼），文字在

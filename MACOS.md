@@ -52,6 +52,10 @@ artifact `accelon26-macos-arm64`／`accelon26-macos-x86_64`；推標籤時 zip �
 
 ## 自己建（作者平常走這條）
 
+> 節奏跟 Windows 一樣（見 [DEPLOY.md](DEPLOY.md)「兩種節奏」）：**平常改 UI 不用建 `.app`**，
+> 只跑 `bun run tools/build-viewer.ts` 出單檔 HTML；作者說「發佈新版」時才建 mac 版 —
+> 而且那時通常是推 `mac-*` 標籤讓 CI 建，不必自己動手。
+
 需要 Xcode Command Line Tools（`xcode-select --install`）。三行：建 HTML、編譯、打包。
 
 ```bash
