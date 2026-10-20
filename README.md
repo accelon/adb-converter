@@ -42,11 +42,28 @@ bun run test/index-match.ts # 反向索引認證
 * [HANDOVER.md](HANDOVER.md) — 轉換管線的技術交件：工具、驗證結果、規則摘要、限制
 * [DEPLOY.md](DEPLOY.md) — 主機、部署、更新器、回滾，以及 `bun run clean`
 * [MACOS.md](MACOS.md) — macOS 版怎麼建、怎麼簽、怎麼上傳
+* [wails3-pitfalls.md](wails3-pitfalls.md) — Wails3 桌面版共通避坑（Windows SmartScreen、WebView2、更新器、macOS Gatekeeper）
+* [yap-software-practice.md](yap-software-practice.md) — 作者預設做法（Windows／Bun／單檔 HTML／Wails3、漢字、無損簡體、主題）
 * [SPEC.md](SPEC.md) — `.adb` 協定規格（§15 索引複刻、§17 管線與驗證狀態）
 * [accelon-vs-tei.md](accelon-vs-tei.md) — Accelon 風格 XML（H1–H6 擴充）與 TEI 巢式結構對照：轉換處方與實測陷阱
 * [PASCAL-NOTES.md](PASCAL-NOTES.md) — Delphi 原始碼逐單元筆記
 * [FORMAT.md](FORMAT.md) — 早期英文逆向筆記
 * [TODO.md](TODO.md) — 待辦與後續計畫
+
+## 共用規範與模塊
+
+`yap-software-practice.md`、`wails3-pitfalls.md`、`ts/src/accelon26/lossless.ts`、`simplified-data.ts` 的 **canonical** 版本在 [agent-norms](https://github.com/accelon/agent-norms)。本 repo 保留 vendored 副本，Bun 建置與 GitHub CI 不依賴旁邊的資料夾。
+
+改 canonical 後，在 `ts/` 跑：
+
+```powershell
+bun run sync:norms     # 複製到本 repo
+bun run check:norms    # 確認沒有 drift（發佈前跑）
+```
+
+`ts/tools/gen-lossless.ts` 是專案版（預設輸出到 `ts/src/accelon26/simplified-data.ts`）；canonical 版在 `agent-norms/lossless-simplified/`。`sync:norms` 會同步它，只改寫 CLI 範例與預設輸出路徑。
+
+「自解說」導覽的可重用模組與 agent skill 也在 agent-norms：`self-explaining-tour/`、`skills/self-explaining-tour/`。本專案的 `ts/tour/` 是目前實際在用的實作與參考。
 
 ## 需求
 

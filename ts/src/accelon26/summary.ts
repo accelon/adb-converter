@@ -315,7 +315,6 @@ async function showNodeHits(
   }
   // The pane shows THIS result: 頻次／全文 searches on its own input, so its rows
   // must not be filtered against a 目錄 query that may be a different word.
-  summaryResult = res;
   snippetScope = { realm, label };
   // The scope belongs to the query that produced THIS result — NOT to whatever text
   // happens to sit in the box right now. Reading the live text made the constraint
@@ -326,7 +325,25 @@ async function showNodeHits(
   // still matches and keeps the scope, which is what the debounce needs.
   snippetScopeQuery = (query ?? lastQuery).trim();
   snippetShown = SNIPPET_LIMIT;
-  meta.innerHTML = `「${escapeHtml(displayName(label))}」範圍內 <b>${fmtInt(count)}</b> 筆命中（共 ${fmtInt(res.hits.length)} 筆；點摘要才會聯動本文）`;
+  // The global result holds at most 5,000 hits (a VA-ordered prefix), so for a common
+  // word every node after the cut-off had an EMPTY pool and its 命中數 looked like a
+  // lie. When the list was truncated, ask the index for THIS realm's hits instead.
+  if (res.truncated && !res.multi && session) {
+    try {
+      const hits = await session.hitsInRange(res.query, realm.from, realm.to, SNIPPET_LIMIT * 20);
+      if (snippetScope?.realm.from === realm.from && hits.length) {
+        res = { ...res, hits, truncated: hits.length >= SNIPPET_LIMIT * 20 };
+      }
+    } catch (e) {
+      // the pane must still open with whatever the global result holds
+      console.warn('hitsInRange failed:', e);
+    }
+  }
+  summaryResult = res;
+  // `count` is the realm's exact hit count; `res.hits` may hold only the first batch
+  // of them (a 10k-hit division is not 10k rendered cards), so say which is which.
+  const loaded = res.hits.length < count ? `；已載入前 ${fmtInt(res.hits.length)} 筆` : '';
+  meta.innerHTML = `「${escapeHtml(displayName(label))}」範圍內 <b>${fmtInt(count)}</b> 筆命中${loaded}（點摘要才會聯動本文）`;
   // pass a LIVE sequence number: a re-search may be in flight, and renderSnippets
   // drops its work when the sequence has moved on
   await renderSnippets(searchSeq);

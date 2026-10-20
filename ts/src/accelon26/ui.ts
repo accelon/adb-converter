@@ -5,13 +5,13 @@
  * ./viewer and the other split modules as ESM live bindings; a module OWNS the
  * state it declares, and other modules get/set it through that module's exports.
  */
-import { $, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, setStatus, tokens, statusText } from './viewer';
+import { $, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, session, setStatus, tokens, statusText } from './viewer';
 import { type AdbSource } from './adb';
 import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, fitDebugInfo, hardBreaksOn, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, readSideFont, pageMarksOn, renderDocTabs, renderRawOn, rerenderDoc, setDocFont, setHardBreaks, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
 import { renderTextPane } from './text-pane';
 import { cursorNode, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
 import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
-import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, syncTreeTabs, treePhases, growTreeFully } from './scopes';
+import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully } from './scopes';
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 import { backendKind, goQueryCount, lastGoAnswer } from './backend';
 import { isDictDb } from './db-kind';
@@ -698,6 +698,11 @@ function boot() {
     };
   });
   $('#colRight').querySelectorAll<HTMLElement>('.tabBtn').forEach((b) => { b.onclick = () => showTab(b.dataset.tab!, 'right'); });
+  // 一個 pane 有多棵 <樹> 時的下拉（taisho：經目／分卷、分書頻次／分卷頻次）
+  const dirPick = $('#dirPick') as HTMLSelectElement | null;
+  if (dirPick) dirPick.onchange = () => selectDirTree(Number(dirPick.value));
+  const freqPick = $('#freqPick') as HTMLSelectElement | null;
+  if (freqPick) freqPick.onchange = () => selectFreqTree(Number(freqPick.value));
   showTab('dir', 'left');
   showTab('dir', 'left');          // 目錄：搜尋 + 目錄樹
 
@@ -823,6 +828,8 @@ export function installDebugApi(): void {
     docStrip: document.querySelectorAll('#docTabStrip .docTab').length,
     snippetScope: snippetScope ? { from: snippetScope.realm.from, to: snippetScope.realm.to, label: snippetScope.label } : null,
     searchQuery: lastQuery,   // the query that produced lastResult (tests wait on it)
+    /** 總命中數：結果被 maxHits 截斷時仍然是精確值（taisho「佛」＝567,678） */
+    hitTotal: hitTotal(),
     /** 繁簡通檢是否開著（系統級） */
     variants: variantSearchOn(),
     /** 是否顯示原始文件（進階模式；false＝渲染成 HTML） */
@@ -856,7 +863,13 @@ export function installDebugApi(): void {
     textCache: reader ? reader.textCacheSize : 0,
     lastFit,
     dirOpen: dirTrees[dirActive] ? dirTrees[dirActive].open.size : 0,
-    scopes: dirTrees.map((d) => d.tree.scope),
+    dirActive,
+    dirTreeCount: dirTrees.length,
+    // the `<樹>` declarations of this database (the tab set), then the trees that were
+    // actually built for the 目錄 pane — taisho declares 7 and builds 2 of them
+    scopes: (session?.trees ?? []).map((t) => t.scope),
+    treeNames: (session?.trees ?? []).map((t) => t.caption ?? ''),
+    builtScopes: dirTrees.map((d) => d.tree.scope),
     freqHidden: ($('#colLeft .tabBtn[data-tab="freq"]') as HTMLButtonElement | null)?.hidden ?? null,
     dirInfo: dirTrees[dirActive]
       ? {

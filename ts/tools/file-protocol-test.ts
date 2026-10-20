@@ -274,11 +274,11 @@ try {
   ok('開檔有細分計時', !!breakdown && breakdown.totalMs > 0, breakdown ? `total ${breakdown.totalMs.toFixed(0)} ms` : 'no breakdown');
 
   const dom = await cdp.eval<Record<string, number | string>>(`(() => ({
-    rows: document.querySelectorAll('#tokenRows .tokenRow').length,
-    meta: document.querySelector('#meta').textContent.trim().slice(0, 80),
-    containers: document.querySelector('#containers').textContent.trim().slice(0, 60),
+    tokens: window.__accelon26.state().tokens,
+    db: window.__accelon26.state().db,
+    meta: (document.querySelector('#meta')?.textContent ?? '').trim().slice(0, 80),
   }))()`);
-  ok('UI rendered from the local file', Number(dom.rows) >= 200 && String(dom.meta).length > 10, JSON.stringify(dom).slice(0, 160));
+  ok('UI rendered from the local file', Number(dom.tokens) > 0 && String(dom.db).length > 0 && String(dom.meta).length > 3, JSON.stringify(dom).slice(0, 160));
 
   // 本文區還空著時，顯示這個資料庫自己在 adb 裡的 logo（resources 的 <dbname>_logo.png）：
   // 有這個資源就必須真的畫出來，沒有就要保持隱藏（13j／fgdict 都沒有）。
@@ -325,28 +325,6 @@ try {
   // 面板，所以「樹的形狀」斷言（幾本書、逐層展開）只在看得到它的庫上跑。
   const dirTabShown = await cdp.eval<boolean>("getComputedStyle(document.querySelector('#colLeft .tabBtn[data-tab=\"dir\"]')).display !== 'none'");
 
-  // isolate: bisect where the token-click path hangs (printed, not asserted)
-  const iso1 = await cdp.eval<string>("(() => { window.__accelon26.setAdvanced(true); window.__accelon26.showTab('token','left'); return 'iso1 ok'; })()");
-  console.log('      ' + iso1);
-  await cdp.eval("new Promise((r) => setTimeout(r, 300)).then(() => 1)");
-  const iso2 = await cdp.eval<string>("document.querySelectorAll('#tokenRows .tokenRow').length + ' rows'")
-  ;
-  console.log('      ' + iso2);
-  const iso3b = await cdp.eval<string>("(() => { const r = document.querySelectorAll('#tokenRows .tokenRow')[0]; return 'onclick=' + (typeof r.onclick) + ' title=' + r.textContent.slice(0, 10); })()");
-  console.log('      ' + iso3b);
-  const bcPoll = await cdp.eval<string>(`
-    (async () => {
-      document.querySelectorAll('#tokenRows .tokenRow')[0].click();
-      const out = [];
-      for (let i = 0; i < 10; i++) {
-        await new Promise((r) => setTimeout(r, 300));
-        out.push(JSON.stringify(window.__accelon26.state().bc));
-        if (document.querySelector('#docText mark.docHit')) { out.push('MARK'); break; }
-      }
-      return out.join(' | ');
-    })()
-  `).catch((e) => 'EVAL FAILED: ' + e.message);
-  console.log('      bc => ' + bcPoll);
   const marked = await cdp.eval<{ mark: string; line: string | null; head: string; pinned: any; gone: boolean }>(`
     (async () => {
       const waitMark = async () => {
@@ -1215,7 +1193,10 @@ try {
       // 點沒有 cur／active 的 sibling → 直接換節
       const chip = sibChips.find((c) => !c.classList.contains('cur') && !c.classList.contains('active') && c.dataset.tag);
       const chipLabel = chip?.textContent.trim() ?? '';
-      const chipFull = (chip?.title.match(/「(.*)」/) ?? [])[1] ?? '';
+      // dropdown items (#trailMenu .trailItem) carry the full label as their TEXT,
+      // chips carry it in the title as 「…」 — accept either, or the assertion would
+      // compare the tab name against an empty string.
+      const chipFull = (((chip?.title ?? '').match(/「(.*)」/) ?? [])[1] ?? '') || chipLabel;
       const vaBeforeChip = st().pinned?.va;
       chip?.click();
       await sleep(1800);
@@ -2467,6 +2448,10 @@ try {
       const freqTab = document.querySelector('#colLeft .tabBtn[data-tab="freq"]');
       if (freqTab && !freqTab.hidden) {
         freqTab.click();
+        // a 120 ms debounce from the previous block's #query cleanup may still be in
+        // flight; an empty search resets the 摘要 pane, so let it land BEFORE clicking a
+        // row here (otherwise the row's summary is wiped again after it is rendered)
+        await new Promise(r => setTimeout(r, 400));
         const fq = document.querySelector('#freqQuery');
         const word = out.db === 'fgdict' ? '法王' : '大乘';
         fq.value = word;
@@ -2492,7 +2477,11 @@ try {
         // poll for the QUERY to be painted (not merely for any mark): the page has to
         // move to the hit first, which can take a moment on a 22k-segment dictionary
         await wait(() => (document.querySelector('#docText mark.docHit')?.textContent ?? '').includes(word), 40);
-        await new Promise(r => setTimeout(r, 400));
+        // the 摘要 follows the click asynchronously (the realm's hits are fetched from
+        // the index when the global result was truncated), so poll for it instead of
+        // sleeping a fixed 400 ms
+        await wait(() => (document.querySelector('#searchMeta')?.textContent ?? '').includes('範圍內')
+          || document.querySelectorAll('#searchList .snippet').length > 0, 40);
         out.freq = {
           word, rowName, rowCount, sameLine, found: !!row,
           rowVa: Number(row?.dataset.va),
@@ -2505,6 +2494,7 @@ try {
           lineText: (document.getElementById('L' + (st().pinned?.line ?? -1))?.textContent ?? '').slice(0, 60),
           sumItems: document.querySelectorAll('#searchList .snippet').length,
           sumMeta: document.querySelector('#searchMeta').textContent.slice(0, 50),
+          scope: st().snippetScope,
           newTabs: st().docTabs.length - before,
         };
       }

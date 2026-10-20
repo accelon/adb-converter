@@ -1,7 +1,8 @@
 /**
  * GENERATED FILE — do not edit.
  *
- * `cd ts && bun run tools/gen-lossless.ts` 從 `vendor/Unihan_Variants.txt` 重新產生
+ * Canonical generator: agent-norms/lossless-simplified/gen-lossless.ts
+ * `bun run gen-lossless.ts` 從 Unihan_Variants.txt 重新產生
  * （kSimplifiedVariant／kTraditionalVariant；來源不進 git）。
  *
  * 每兩個字一組「繁體,簡體」：

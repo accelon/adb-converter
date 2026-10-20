@@ -890,6 +890,8 @@
           <button id="queryClear" title="清除">✕</button>
         </div>
         <div id="dirMeta" class="note"></div>
+        <!-- 同一個庫宣告了兩棵 s="*" 樹（taisho：經目／分卷）時才出現 -->
+        <div class="note" id="dirPickWrap" hidden><select id="dirPick" class="modeSel" title="這個庫宣告了多棵目錄樹"></select></div>
         <div id="dirTree" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div>
       </div>
       <!-- 名詞：s="$詞"（tag 包裹）。詞條＝<詞> 的實例，字典式查詢。 -->
@@ -909,6 +911,8 @@
           <input type="search" id="freqQuery" placeholder="輸入詞（分段命中統計）" autocomplete="off" spellcheck="false">
         </div>
         <div id="freqMeta" class="note"></div>
+        <!-- 同一個庫宣告了兩棵 *… 樹（taisho：分書頻次／分卷頻次）時才出現 -->
+        <div class="note" id="freqPickWrap" hidden><select id="freqPick" class="modeSel" title="這個庫宣告了多棵分段樹"></select></div>
         <div id="freqList" class="scrollArea"></div>
       </div>
       <!-- 原書分頁：s="頁.n"（tag.attr）。列出 <頁> 的 n 值，可直接選或輸入頁碼跳到原書 folio。 -->
@@ -1177,7 +1181,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-18T13:57:44.792Z","buildTimeText":"2026-10-18 21:57"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-20T05:50:47.028Z","buildTimeText":"2026-10-20 13:50"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -3642,6 +3646,12 @@ designed by C.S.Yap`;
     blockCache = new Map;
     elemIndex = [];
     walkedComplete = false;
+    lineAtCache = new Map;
+    lineAtOrder = [];
+    blockAtCache = new Map;
+    blockAtOrder = [];
+    static KEEP_LINES = 64;
+    static KEEP_BLOCKS = 12;
     tagHits = [];
     computedBlockVa = [];
     notes = [];
@@ -3834,12 +3844,20 @@ designed by C.S.Yap`;
       const cached = this.lineCache.get(index);
       if (cached)
         return cached;
+      const rec = await this.tokenize(index, this.va);
+      this.va = rec.vaEnd;
+      this.lineCache.set(index, rec);
+      return rec;
+    }
+    lineVaStart(index) {
+      return index > 0 ? (this.linesV?.[index - 1] ?? -1) + 1 : 0;
+    }
+    async tokenize(index, vaStart) {
       const paStart = this.lineStart(index);
       const paEnd = this.linesEnds[index];
       const text = await this.reader.textSpan(Math.floor(paStart / this.reader.header.srcBlockSize), paStart, paEnd);
       const positions = [];
-      const vaStart = this.va;
-      let tags = 0;
+      let va = vaStart;
       if (text.length > 0) {
         const tk = new Tokenizer(text);
         for (;; ) {
@@ -3852,7 +3870,7 @@ designed by C.S.Yap`;
             const skip = isSkipTag(short);
             const units = this.costOf(name, isClose, skip, raw);
             positions.push({
-              va: this.va,
+              va,
               pa,
               paEnd: pa + raw.length * 2,
               vaUnits: units,
@@ -3862,23 +3880,94 @@ designed by C.S.Yap`;
               skip: units === 0,
               line: index
             });
-            this.va += units;
-            tags++;
+            va += units;
           } else if (tntTrim(raw) !== "") {
             const norm = normalize(raw);
-            positions.push({ va: this.va, pa, paEnd: pa + raw.length * 2, vaUnits: 1, kind: "token", text: raw, normalized: norm, line: index });
-            this.va += 1;
+            positions.push({ va, pa, paEnd: pa + raw.length * 2, vaUnits: 1, kind: "token", text: raw, normalized: norm, line: index });
+            va += 1;
           } else {
-            positions.push({ va: this.va, pa, paEnd: pa + raw.length * 2, vaUnits: 1, kind: "blank", text: raw, line: index });
-            this.va += 1;
+            positions.push({ va, pa, paEnd: pa + raw.length * 2, vaUnits: 1, kind: "blank", text: raw, line: index });
+            va += 1;
           }
           if (tk.atEnd)
             break;
         }
       }
-      const rec = { index, paStart, paEnd, text, positions, vaStart, vaEnd: this.va };
-      this.lineCache.set(index, rec);
+      return { index, paStart, paEnd, text, positions, vaStart, vaEnd: va };
+    }
+    remember(cache, order, key, value, keep) {
+      cache.set(key, value);
+      order.push(key);
+      while (order.length > keep) {
+        const old = order.shift();
+        if (!order.includes(old))
+          cache.delete(old);
+      }
+    }
+    async lineAt(index) {
+      await this.init();
+      const hit = this.lineAtCache.get(index);
+      if (hit)
+        return hit;
+      const rec = await this.tokenize(index, this.lineVaStart(index));
+      this.remember(this.lineAtCache, this.lineAtOrder, index, rec, VaPaMapper.KEEP_LINES);
       return rec;
+    }
+    async blockAt(block) {
+      await this.init();
+      if (block < 0 || block >= this.srcBlocks)
+        return null;
+      const hit = this.blockAtCache.get(block);
+      if (hit)
+        return hit;
+      const stride = this.reader.header.srcBlockSize;
+      const paStart = block * stride;
+      const paEnd = paStart + stride;
+      const ends = this.linesEnds;
+      let lo = 0, hi = ends.length;
+      while (lo < hi) {
+        const mid = lo + hi >> 1;
+        if (ends[mid] <= paStart)
+          lo = mid + 1;
+        else
+          hi = mid;
+      }
+      const positions = [];
+      let firstLine = lo, lastLine = lo;
+      for (let i = lo;i < ends.length && this.lineStart(i) < paEnd; i++) {
+        const rec = await this.lineAt(i);
+        for (const p of rec.positions) {
+          if (Math.floor(p.pa / stride) !== block)
+            continue;
+          positions.push(p);
+        }
+        lastLine = Math.max(lastLine, i);
+      }
+      const vaBase = block === 0 ? 0 : this.vaBlocksStored?.[block] ?? (positions[0]?.va ?? 0);
+      let tokens = 0, tags = 0;
+      for (const p of positions) {
+        if (p.kind === "tag" || p.kind === "close")
+          tags++;
+        else
+          tokens++;
+      }
+      const w = {
+        block,
+        vaBase,
+        positions,
+        paStart,
+        paEnd,
+        firstLine,
+        lastLine,
+        tokens,
+        tags
+      };
+      this.remember(this.blockAtCache, this.blockAtOrder, block, w, VaPaMapper.KEEP_BLOCKS);
+      return w;
+    }
+    async lineUnits(index) {
+      const rec = await this.lineAt(index);
+      return rec.vaEnd - rec.vaStart;
     }
     async advanceTo(block) {
       await this.init();
@@ -3938,8 +4027,7 @@ designed by C.S.Yap`;
       await this.advanceTo(this.srcBlocks);
     }
     async blockWalk(block) {
-      await this.advanceTo(block + 1);
-      return this.blockCache.get(block) ?? null;
+      return this.blockAt(block);
     }
     blockOfVa(va) {
       const stored = this.vaBlocksStored;
@@ -3951,7 +4039,33 @@ designed by C.S.Yap`;
       return 0;
     }
     async elementAt(va, maxBlocks = 600) {
+      await this.init();
       const start = this.blockOfVa(va);
+      if (this.linesV?.length) {
+        const stored = this.vaBlocksStored;
+        for (let b = start;b < Math.min(this.srcBlocks, start + maxBlocks); b++) {
+          const nextBase = b + 1 < this.srcBlocks ? stored?.[b + 1] ?? Number.POSITIVE_INFINITY : Number.POSITIVE_INFINITY;
+          if (va >= nextBase)
+            continue;
+          const w = await this.blockAt(b);
+          if (!w || !w.positions.length) {
+            if (va < nextBase)
+              return null;
+            continue;
+          }
+          let hit = null;
+          for (const p of w.positions) {
+            if (p.va <= va)
+              hit = p;
+            else
+              break;
+          }
+          if (!hit)
+            hit = w.positions[0];
+          return { element: hit, block: b };
+        }
+        return null;
+      }
       for (let b = start;b < Math.min(this.srcBlocks, start + maxBlocks); b++) {
         await this.advanceTo(b + 1);
         const w = this.blockCache.get(b);
@@ -4021,7 +4135,7 @@ designed by C.S.Yap`;
         }
         const next = e.va + Math.max(1, e.vaUnits);
         if (e.kind === "close") {
-          const after = await this.elementAtUnit(el.block, this.unitIndexOf(el) + 1);
+          const after = await this.elementAfter(el);
           if (!after)
             break;
           if (after.va >= vaEnd)
@@ -4037,12 +4151,20 @@ designed by C.S.Yap`;
       }
       return out.join("").slice(0, maxChars);
     }
-    unitIndexOf(found) {
-      const w = this.blockCache.get(found.block);
-      if (!w)
-        return 0;
-      const idx = w.positions.indexOf(found.element);
-      return idx < 0 ? 0 : idx;
+    async elementAfter(found) {
+      const w = this.blockAtCache.get(found.block) ?? this.blockCache.get(found.block);
+      const list = w?.positions;
+      if (list) {
+        const idx2 = list.indexOf(found.element);
+        if (idx2 >= 0)
+          return list[idx2 + 1] ?? null;
+      }
+      const line = found.element.line;
+      if (line === undefined)
+        return null;
+      const rec = await this.lineAt(line);
+      const idx = rec.positions.indexOf(found.element);
+      return idx >= 0 ? rec.positions[idx + 1] ?? null : null;
     }
     async nodeLabel(va, vaEnd) {
       const self = await this.elementAt(va);
@@ -4062,7 +4184,7 @@ designed by C.S.Yap`;
           break;
         if (e.kind === "tag") {
           if (e.skip) {
-            const after = await this.elementAtUnit(el.block, this.unitIndexOf(el) + 1);
+            const after = await this.elementAfter(el);
             if (!after || after.va >= limit)
               break;
             cur = after.va;
@@ -4158,7 +4280,7 @@ designed by C.S.Yap`;
       return this.phraseSpans(va, 1, maxLines);
     }
     async elementAtUnit(block, unit) {
-      const w = await this.blockWalk(block);
+      const w = await this.blockAt(block);
       if (!w)
         return null;
       const pa = block * this.reader.header.srcBlockSize + unit * 2;
@@ -4710,6 +4832,55 @@ designed by C.S.Yap`;
     }
     return out;
   }
+  function matchesInRange(lists, from, to, max = 0) {
+    const n = lists.length;
+    const out = [];
+    let count = 0, first = -1;
+    if (!n || to <= from)
+      return { count: 0, first: -1, hits: out };
+    if (n === 1) {
+      const list = lists[0];
+      if (!list || !list.length)
+        return { count: 0, first: -1, hits: out };
+      const lo2 = lowerBound(list, from);
+      const hi2 = lowerBound(list, to);
+      count = hi2 - lo2;
+      if (count > 0)
+        first = list[lo2];
+      for (let i = lo2;i < hi2 && (!max || out.length < max); i++)
+        out.push({ va: list[i], units: 1 });
+      return { count, first, hits: out };
+    }
+    const anchorAt = lists.findIndex((l) => l !== null && l !== undefined);
+    if (anchorAt < 0)
+      return { count: 0, first: -1, hits: out };
+    const anchor = lists[anchorAt];
+    const lo = lowerBound(anchor, from + anchorAt);
+    const hi = lowerBound(anchor, to + anchorAt);
+    for (let i = lo;i < hi; i++) {
+      const start = anchor[i] - anchorAt;
+      if (start < 0)
+        continue;
+      let ok = true;
+      for (let k = 0;k < n; k++) {
+        const l = lists[k];
+        if (!l || k === anchorAt)
+          continue;
+        if (!hasVa(l, start + k)) {
+          ok = false;
+          break;
+        }
+      }
+      if (!ok)
+        continue;
+      if (first < 0)
+        first = start;
+      count++;
+      if (!max || out.length < max)
+        out.push({ va: start, units: n });
+    }
+    return { count, first, hits: out };
+  }
   function phraseMatch(lists, limit = 1e6) {
     if (!lists.length)
       return [];
@@ -4820,6 +4991,19 @@ designed by C.S.Yap`;
     });
     return { tiers, terminalTier };
   }
+  function instanceValues(a) {
+    if (!a)
+      return [];
+    if (!a.pointers)
+      return a.values;
+    const out = [];
+    for (let j = 0;j < a.values.length; j++) {
+      const i = (a.pointers[j] & 16777215) - 1;
+      if (i >= 0)
+        out[i] = a.values[j];
+    }
+    return out;
+  }
   async function loadTrees(reader) {
     const tags = reader.containers.get("tags");
     if (!tags)
@@ -4828,13 +5012,12 @@ designed by C.S.Yap`;
     if (at < 0)
       return [];
     const va = await reader.decodeBlockList("tags", at);
-    const s = await reader.attributeValues("樹.s");
-    const t = await reader.attributeValues("樹.t");
+    const s = instanceValues(await reader.attributeValues("樹.s"));
+    const t = instanceValues(await reader.attributeValues("樹.t"));
     const out = [];
     for (let i = 0;i < va.length; i++) {
-      const scope = s?.values[i] ?? s?.values[0] ?? "";
-      const tiersRaw = t?.values[i] ?? t?.values[0] ?? "";
-      const { tiers, terminalTier } = parseTiers(tiersRaw);
+      const scope = s[i] ?? "";
+      const { tiers, terminalTier } = parseTiers(t[i] ?? "");
       const scopeInfo = parseScope(scope);
       out.push({
         index: i,
@@ -5352,45 +5535,80 @@ designed by C.S.Yap`;
       const out = [];
       let colorIndex = 0;
       for (const c of parsed.clauses) {
-        const { parts, wild } = splitWildcard(c.text);
-        const tokens = wild ? parts.flatMap((p) => queryTokens(p)) : queryTokens(c.text);
+        const prepared = await this.clauseFor(c);
         const clause = {
           text: c.text,
-          tokens,
+          tokens: prepared.tokens,
           role: c.role,
           nearOf: c.nearOf,
-          wildcard: wild,
-          missing: [],
+          wildcard: prepared.wildcard,
+          missing: prepared.missing,
           occurrences: 0,
           hits: [],
           colorIndex: c.role === "excluded" ? -1 : colorIndex++
         };
-        const lists = [];
-        let absent = false;
-        const pushToken = async (t) => {
-          const st = await this.lookup(t);
-          if (!st.postings.length) {
-            clause.missing.push(t);
-            absent = true;
-          }
-          lists.push(st.postings);
-        };
-        if (!wild) {
-          for (const t of tokens)
-            await pushToken(t);
-        } else {
-          for (let i = 0;i < parts.length; i++) {
-            if (i > 0)
-              lists.push(WILD);
-            for (const t of queryTokens(parts[i]))
-              await pushToken(t);
-          }
-        }
-        clause.hits = !lists.length || absent ? [] : phraseMatchPattern(lists, maxHits);
+        clause.hits = prepared.lists.length && !prepared.missing.length ? phraseMatchPattern(prepared.lists, maxHits) : [];
         clause.occurrences = clause.hits.length;
         out.push(clause);
       }
       return out;
+    }
+    async clauseFor(c) {
+      const { parts, wild } = splitWildcard(c.text);
+      const tokens = wild ? parts.flatMap((p) => queryTokens(p)) : queryTokens(c.text);
+      const lists = [];
+      const missing = [];
+      const pushToken = async (t) => {
+        const st = await this.lookup(t);
+        if (!st.postings.length)
+          missing.push(t);
+        lists.push(st.postings);
+      };
+      if (!wild) {
+        for (const t of tokens)
+          await pushToken(t);
+      } else {
+        for (let i = 0;i < parts.length; i++) {
+          if (i > 0)
+            lists.push(WILD);
+          for (const t of queryTokens(parts[i]))
+            await pushToken(t);
+        }
+      }
+      return { tokens, wildcard: wild, lists, missing };
+    }
+    async rangeStats(query, from, to) {
+      const parsed = parseQuery(query);
+      let count = 0, first = -1, complete = true;
+      for (const c of parsed.clauses) {
+        if (c.role === "excluded")
+          continue;
+        const prepared = await this.clauseFor(c);
+        if (!prepared.lists.length || prepared.missing.length) {
+          complete = false;
+          continue;
+        }
+        const r = matchesInRange(prepared.lists, from, to, 1);
+        count += r.count;
+        if (r.first >= 0 && (first < 0 || r.first < first))
+          first = r.first;
+      }
+      return { count, first, complete };
+    }
+    async hitsInRange(query, from, to, max = 5000) {
+      const parsed = parseQuery(query);
+      const out = [];
+      for (const c of parsed.clauses) {
+        if (c.role === "excluded")
+          continue;
+        const prepared = await this.clauseFor(c);
+        if (!prepared.lists.length || prepared.missing.length)
+          continue;
+        out.push(...matchesInRange(prepared.lists, from, to, max).hits);
+        if (out.length >= max)
+          break;
+      }
+      return out.sort((a, b) => a.va - b.va).slice(0, max);
     }
     async searchClauses(query, maxHits = 2000) {
       const clauses = await this.clauseHits(query, maxHits);
@@ -6014,7 +6232,7 @@ designed by C.S.Yap`;
         const d = docs[i];
         if (!d)
           return;
-        const line = mapper.linesVirtual.findIndex((v) => v >= d.vaStart);
+        const line = mapper.edgeLine(d.vaStart);
         showLine(line < 0 ? 0 : line, d.vaStart);
       };
     });
@@ -6709,11 +6927,22 @@ designed by C.S.Yap`;
       meta.textContent = `「${displayName(label)}」：尚未輸入搜尋詞`;
       return;
     }
-    summaryResult = res;
     snippetScope = { realm, label };
     snippetScopeQuery = (query ?? lastQuery).trim();
     snippetShown = SNIPPET_LIMIT;
-    meta.innerHTML = `「${escapeHtml(displayName(label))}」範圍內 <b>${fmtInt(count)}</b> 筆命中（共 ${fmtInt(res.hits.length)} 筆；點摘要才會聯動本文）`;
+    if (res.truncated && !res.multi && session) {
+      try {
+        const hits = await session.hitsInRange(res.query, realm.from, realm.to, SNIPPET_LIMIT * 20);
+        if (snippetScope?.realm.from === realm.from && hits.length) {
+          res = { ...res, hits, truncated: hits.length >= SNIPPET_LIMIT * 20 };
+        }
+      } catch (e) {
+        console.warn("hitsInRange failed:", e);
+      }
+    }
+    summaryResult = res;
+    const loaded = res.hits.length < count ? `；已載入前 ${fmtInt(res.hits.length)} 筆` : "";
+    meta.innerHTML = `「${escapeHtml(displayName(label))}」範圍內 <b>${fmtInt(count)}</b> 筆命中${loaded}（點摘要才會聯動本文）`;
     await renderSnippets(searchSeq);
   }
   function inGroup(res, va, gi) {
@@ -9533,6 +9762,12 @@ designed by C.S.Yap`;
     $("#colRight").querySelectorAll(".tabBtn").forEach((b) => {
       b.onclick = () => showTab(b.dataset.tab, "right");
     });
+    const dirPick = $("#dirPick");
+    if (dirPick)
+      dirPick.onchange = () => selectDirTree(Number(dirPick.value));
+    const freqPick = $("#freqPick");
+    if (freqPick)
+      freqPick.onchange = () => selectFreqTree(Number(freqPick.value));
     showTab("dir", "left");
     showTab("dir", "left");
     $("#tokenRows")?.addEventListener("scroll", (ev) => {
@@ -9676,6 +9911,7 @@ designed by C.S.Yap`;
         docStrip: document.querySelectorAll("#docTabStrip .docTab").length,
         snippetScope: snippetScope ? { from: snippetScope.realm.from, to: snippetScope.realm.to, label: snippetScope.label } : null,
         searchQuery: lastQuery,
+        hitTotal: hitTotal(),
         variants: variantSearchOn(),
         renderRaw: renderRawOn(),
         hardBreaks: hardBreaksOn(),
@@ -9707,7 +9943,11 @@ designed by C.S.Yap`;
         textCache: reader ? reader.textCacheSize : 0,
         lastFit,
         dirOpen: dirTrees[dirActive] ? dirTrees[dirActive].open.size : 0,
-        scopes: dirTrees.map((d) => d.tree.scope),
+        dirActive,
+        dirTreeCount: dirTrees.length,
+        scopes: (session?.trees ?? []).map((t) => t.scope),
+        treeNames: (session?.trees ?? []).map((t) => t.caption ?? ""),
+        builtScopes: dirTrees.map((d) => d.tree.scope),
         freqHidden: $('#colLeft .tabBtn[data-tab="freq"]')?.hidden ?? null,
         dirInfo: dirTrees[dirActive] ? {
           tiers: dirTrees[dirActive].tree.tiers,
@@ -9895,6 +10135,25 @@ designed by C.S.Yap`;
     }
     return await mapper.nodeLabel(va, vaEnd) || "";
   }
+  var treeCaptions = new Map;
+  async function fillTreeCaptions(trees) {
+    if (!mapper)
+      return;
+    const missing = trees.filter((t) => !treeCaptions.has(t.va));
+    if (missing.length) {
+      const vas = await tagVas("樹");
+      for (const t of missing) {
+        let cap = "";
+        try {
+          cap = await wrappedText("樹", t.va, vas, 24);
+        } catch {}
+        treeCaptions.set(t.va, cap);
+      }
+    }
+    for (const t of trees)
+      if (t.caption === undefined)
+        t.caption = treeCaptions.get(t.va) ?? "";
+  }
   async function loadDirectoryTrees() {
     if (dirTrees.length)
       return;
@@ -9904,6 +10163,7 @@ designed by C.S.Yap`;
     const phase2 = { trees: 0, load: 0, build: 0, instances: 0 };
     treePhases = phase2;
     const declared = session?.trees?.length ? session.trees : await loadTrees(reader);
+    await fillTreeCaptions(declared);
     const wanted = declared.filter((t) => /^\*$/.test(t.scope) && t.tiers.length > 0);
     if (!wanted.length) {
       dirTrees = [];
@@ -9989,6 +10249,13 @@ designed by C.S.Yap`;
       n += 1 + countNodes(x.children);
     return n;
   }
+  var DEFAULT_TAB_LABEL = {
+    dir: "目錄",
+    terms: "名詞",
+    freq: "頻次",
+    folio: "原書分頁",
+    latin: "西文"
+  };
   function syncTreeTabs() {
     const kindOf = (scope) => {
       if (/^\*$/.test(scope))
@@ -10003,30 +10270,69 @@ designed by C.S.Yap`;
         return "folio";
       return "";
     };
-    const scopes = dirTrees.length ? dirTrees.map((d) => d.tree.scope) : (session?.trees ?? []).map((t) => t.scope);
+    const declared = session?.trees ?? [];
+    const src = declared.length ? declared : dirTrees.map((d) => d.tree);
     const present = new Map;
-    for (const scope of scopes) {
-      const k = kindOf(scope);
+    for (const t of src) {
+      const k = kindOf(t.scope);
       if (k && !present.has(k))
-        present.set(k, scope);
+        present.set(k, { scope: t.scope, caption: t.caption ?? "" });
     }
     for (const kind of ["dir", "terms", "freq", "folio", "latin"]) {
-      const scope = present.get(kind);
+      const hit = present.get(kind);
       const btn = $(`#colLeft .tabBtn[data-tab="${kind}"]`);
       if (!btn)
         continue;
-      btn.hidden = !scope;
-      if (scope) {
-        btn.textContent = kind === "freq" ? /^\*u=/.test(scope) ? "頻次" : "全文" : btn.textContent;
-        btn.title = 's="' + scope + '"';
+      btn.hidden = !hit;
+      if (hit) {
+        btn.textContent = hit.caption || (kind === "freq" ? /^\*u=/.test(hit.scope) ? "頻次" : "全文" : DEFAULT_TAB_LABEL[kind]);
+        btn.title = 's="' + hit.scope + '"' + (hit.caption ? "｜" + hit.caption : "");
       }
     }
+    syncTreePickers(declared);
     const active2 = $("#colLeft .tabBtn.active");
     if (!active2 || active2.hidden) {
       const first = ["dir", "terms", "freq", "folio", "latin"].find((k) => present.has(k));
       if (first)
         showTab(first, "left");
     }
+  }
+  function syncTreePickers(trees) {
+    const dirWrap = $("#dirPickWrap");
+    const dirSel = $("#dirPick");
+    if (dirWrap && dirSel) {
+      dirWrap.hidden = dirTrees.length < 2;
+      if (dirTrees.length > 1) {
+        dirSel.innerHTML = dirTrees.map((d, i) => `<option value="${i}"${i === dirActive ? " selected" : ""}>${escapeHtml(d.tree.caption || d.tree.scope)}</option>`).join("");
+      }
+    }
+    const freqWrap = $("#freqPickWrap");
+    const freqSel = $("#freqPick");
+    if (freqWrap && freqSel) {
+      const list = trees.filter((t) => /^\*./.test(t.scope));
+      freqWrap.hidden = list.length < 2;
+      if (list.length > 1) {
+        if (freqTree < 0)
+          freqTree = trees.indexOf(list[0]);
+        freqSel.innerHTML = list.map((t) => `<option value="${trees.indexOf(t)}"${trees.indexOf(t) === freqTree ? " selected" : ""}>${escapeHtml(t.caption || t.scope)}</option>`).join("");
+      }
+    }
+  }
+  function selectDirTree(i) {
+    if (i < 0 || i >= dirTrees.length || i === dirActive)
+      return;
+    dirActive = i;
+    const d = dirTrees[i];
+    setTierContext(computeTierContext(d.roots));
+    dirOrder = [...iterNodes(d.roots)];
+    renderDirTree();
+  }
+  function selectFreqTree(i) {
+    const trees = session?.trees ?? [];
+    if (i < 0 || i >= trees.length || !/^\*./.test(trees[i].scope))
+      return;
+    freqTree = i;
+    renderFreq();
   }
   function realmHits(from, to) {
     const hits2 = lastResult?.hits;
@@ -10044,6 +10350,66 @@ designed by C.S.Yap`;
       return lo;
     };
     return lower(to) - lower(from);
+  }
+  function exactCounting() {
+    const res = lastResult;
+    return !!res && !!session && !!res.truncated && !res.multi;
+  }
+  var realmCounts = new Map;
+  var realmTotal = -1;
+  var realmQuery = "";
+  function realmKey2(from, to) {
+    return (lastResult?.query ?? "") + "|" + from + "|" + to;
+  }
+  function cachedRealmCount(from, to) {
+    const n = realmCounts.get(realmKey2(from, to));
+    if (n !== undefined)
+      return n;
+    return realmHits(from, to);
+  }
+  async function realmCount(from, to) {
+    const res = lastResult;
+    if (!res || !session)
+      return 0;
+    if (realmQuery !== res.query) {
+      realmCounts.clear();
+      realmTotal = -1;
+      realmQuery = res.query;
+    }
+    const key = realmKey2(from, to);
+    const hit = realmCounts.get(key);
+    if (hit !== undefined)
+      return hit;
+    const stat = await session.rangeStats(res.query, from, to);
+    if (lastResult !== res)
+      return stat.count;
+    realmCounts.set(key, stat.count);
+    if (realmCounts.size > 20000)
+      realmCounts.clear();
+    return stat.count;
+  }
+  async function searchTotal() {
+    const res = lastResult;
+    if (!res)
+      return 0;
+    if (!res.truncated || res.multi)
+      return res.hits.length;
+    if (realmQuery !== res.query) {
+      realmCounts.clear();
+      realmTotal = -1;
+      realmQuery = res.query;
+    }
+    if (realmTotal >= 0)
+      return realmTotal;
+    const stat = await session.rangeStats(res.query, 0, reader?.header.maxBlockOffset ?? 0);
+    if (lastResult === res)
+      realmTotal = stat.count;
+    return stat.count;
+  }
+  function hitTotal() {
+    if (!lastResult)
+      return 0;
+    return realmTotal >= 0 && realmQuery === lastResult.query ? realmTotal : lastResult.hits.length;
   }
   function hitBadge(count, total, where = "", hint2 = "") {
     const share = total ? count / total : 0;
@@ -10075,12 +10441,15 @@ designed by C.S.Yap`;
     const rows2 = flattenTree(d.roots, (n) => d.open.has(n.va));
     d.loaded = true;
     const searching = !!lastResult;
-    const totalHits = lastResult?.hits.length ?? 0;
+    const exact = exactCounting();
+    const totalHits = exact ? await searchTotal() : lastResult?.hits.length ?? 0;
     await renderChunked(box, rows2, {
       min: mounted(box),
       prepare: async (slice) => {
         for (const r of slice) {
           const n = r.node;
+          if (exact)
+            await realmCount(n.va, n.vaEnd);
           if (d.labels.has(n.va))
             continue;
           n.label = n.label || await labelFor(n.tag, n.va, n.vaEnd);
@@ -10091,7 +10460,7 @@ designed by C.S.Yap`;
         const n = r.node;
         const open2 = d.open.has(n.va);
         const twisty = r.hasChildren ? open2 ? "▾" : "▸" : "·";
-        const hits2 = searching ? realmHits(n.va, n.vaEnd) : 0;
+        const hits2 = searching ? exact ? cachedRealmCount(n.va, n.vaEnd) : realmHits(n.va, n.vaEnd) : 0;
         let badge = "";
         if (searching) {
           if (hits2 > 0)
@@ -10136,7 +10505,7 @@ designed by C.S.Yap`;
           const label = node.label || `VA ${va}`;
           const wantsNewTab = newTabKey(ev);
           if (onCount) {
-            showNodeHits({ from: va, to: node.vaEnd }, label, realmHits(va, node.vaEnd));
+            showNodeHits({ from: va, to: node.vaEnd }, label, cachedRealmCount(va, node.vaEnd));
             revealHit(va, label, 1, { newTab: wantsNewTab, mode: "node" });
             return;
           }
@@ -10251,6 +10620,7 @@ designed by C.S.Yap`;
     return n ? asTrail(n) : null;
   }
   var freqSeq = 0;
+  var freqTotal = -1;
   async function renderFreq() {
     const meta = $("#freqMeta");
     const list = $("#freqList");
@@ -10259,6 +10629,7 @@ designed by C.S.Yap`;
       return;
     }
     const seq3 = ++freqSeq;
+    freqTotal = -1;
     const segs = await freqSegments();
     if (seq3 !== freqSeq)
       return;
@@ -10267,7 +10638,7 @@ designed by C.S.Yap`;
       list.innerHTML = '<p class="dim">此庫沒有 <code>&lt;樹 s="*u=…"&gt;</code> 可用的分段。</p>';
       return;
     }
-    const spec = treeScope(/^\*./).replace(/^\*/, "").trim();
+    const spec = freqScope().replace(/^\*/, "").trim();
     const segTag = spec && spec.indexOf("=") < 0 ? spec : undefined;
     const q2 = $("#freqQuery").value.trim();
     let rows2 = [];
@@ -10280,28 +10651,41 @@ designed by C.S.Yap`;
       if (seq3 !== freqSeq)
         return;
       const counts = segs.map((s) => ({ ...s, count: 0, firstHit: -1 }));
-      for (const h of res.hits) {
-        let lo = 0, hi = counts.length - 1, at2 = -1;
-        while (lo <= hi) {
-          const mid = lo + hi >> 1;
-          if (counts[mid].from <= h.va) {
-            at2 = mid;
-            lo = mid + 1;
-          } else
-            hi = mid - 1;
+      const exactFreq = !!res.truncated && !res.multi;
+      if (exactFreq) {
+        for (const c of counts) {
+          const st = await session.rangeStats(res.query, c.from, c.to);
+          if (seq3 !== freqSeq)
+            return;
+          c.count = st.count;
+          if (st.first >= 0)
+            c.firstHit = st.first;
         }
-        if (at2 >= 0 && h.va < counts[at2].to) {
-          counts[at2].count++;
-          if (counts[at2].firstHit < 0)
-            counts[at2].firstHit = h.va;
+      } else {
+        for (const h of res.hits) {
+          let lo = 0, hi = counts.length - 1, at2 = -1;
+          while (lo <= hi) {
+            const mid = lo + hi >> 1;
+            if (counts[mid].from <= h.va) {
+              at2 = mid;
+              lo = mid + 1;
+            } else
+              hi = mid - 1;
+          }
+          if (at2 >= 0 && h.va < counts[at2].to) {
+            counts[at2].count++;
+            if (counts[at2].firstHit < 0)
+              counts[at2].firstHit = h.va;
+          }
         }
       }
       const withHits = counts.filter((c) => c.count > 0);
       rows2 = withHits.sort((a, b) => b.count - a.count);
-      const total2 = res.hits.length;
+      const total2 = exactFreq ? counts.reduce((s, c) => s + c.count, 0) : res.hits.length;
+      freqTotal = total2;
       meta.textContent = `「${q2}」${fmtInt(total2)} 筆命中，分布於 ${fmtInt(withHits.length)} / ${fmtInt(segs.length)} 段` + "（依命中數排序，0 不顯示）";
     }
-    const total = res?.hits.length ?? 0;
+    const total = freqTotal >= 0 ? freqTotal : res?.hits.length ?? 0;
     await renderChunked(list, rows2, {
       prepare: (slice) => seq3 === freqSeq ? nameSegs(slice, segTag) : undefined,
       html: (s) => `<div class="snippet" data-va="${s.from}">
@@ -10356,7 +10740,7 @@ designed by C.S.Yap`;
   async function freqSegments() {
     if (!reader || !mapper)
       return [];
-    const spec = treeScope(/^\*./).replace(/^\*/, "").trim();
+    const spec = freqScope().replace(/^\*/, "").trim();
     if (!spec)
       return [];
     const eq = spec.indexOf("=");
@@ -10497,6 +10881,14 @@ designed by C.S.Yap`;
     if (built)
       return built;
     return (session?.trees ?? []).find((t) => re.test(t.scope))?.scope ?? "";
+  }
+  var freqTree = -1;
+  function freqScope() {
+    const trees = session?.trees ?? [];
+    const pick = freqTree >= 0 ? trees[freqTree] : undefined;
+    if (pick && /^\*./.test(pick.scope))
+      return pick.scope;
+    return trees.find((t) => /^\*./.test(t.scope))?.scope ?? "";
   }
   var MODE_NAMES = { any: "任意", start: "開頭", mid: "中間", end: "結尾" };
   function modeMatch(name, q2, mode) {
@@ -10647,7 +11039,18 @@ designed by C.S.Yap`;
       res = await searchAutoVia(session, reader?.io ?? null, q2);
       if (seq3 !== termsSeq)
         return;
-      const counts = countHitsPerSegment(segs, res.hits);
+      let counts;
+      if (res.truncated && !res.multi) {
+        counts = [];
+        for (const s of segs) {
+          const st = await session.rangeStats(res.query, s.from, s.to);
+          if (seq3 !== termsSeq)
+            return;
+          counts.push(st.count);
+        }
+      } else {
+        counts = countHitsPerSegment(segs, res.hits);
+      }
       const withHits = segs.map((s, i) => ({ ...s, idx: i, name: "", count: counts[i] })).filter((s) => s.count > 0).sort((a, b) => b.count - a.count);
       items = withHits;
       setMeta(fmtInt(withHits.length), `「${q2}」：${fmtInt(withHits.length)} 個詞條有命中（此庫沒有 <${tag}> 字串表，先用內文搜尋）`);
@@ -10769,13 +11172,15 @@ designed by C.S.Yap`;
     dirOrder = [];
     dirError = "";
     dirActive = 0;
+    freqTree = -1;
+    treeCaptions.clear();
     folioCache = null;
     labelTables.clear();
     treePhases = {};
     setTierContext(null);
   }
   function snapshotScopes() {
-    return { dirTrees, dirActive, dirError, treePhases, folioCache };
+    return { dirTrees, dirActive, dirError, treePhases, folioCache, freqTree };
   }
   function restoreScopes(s) {
     dirTrees = s.dirTrees ?? [];
@@ -10783,6 +11188,7 @@ designed by C.S.Yap`;
     dirError = s.dirError ?? "";
     treePhases = s.treePhases ?? {};
     folioCache = s.folioCache ?? null;
+    freqTree = s.freqTree ?? -1;
     labelTables.clear();
     dirLoading = false;
   }
@@ -11371,9 +11777,9 @@ designed by C.S.Yap`;
     return v[cut] >= realm.to && at2 >= realm.to && cut > first ? cut - 1 : cut;
   }
   var boundsCache = new Map;
-  var realmKey2 = (realm) => realm.from + ":" + realm.to;
+  var realmKey3 = (realm) => realm.from + ":" + realm.to;
   function boundsOfRealm(realm) {
-    const key = realmKey2(realm);
+    const key = realmKey3(realm);
     let b = boundsCache.get(key);
     if (!b) {
       const first = realmFirstLine(realm);

@@ -17,7 +17,9 @@
     "test:tour-ui": "bun run tools/tour-test.ts",
     "build:tours": "bun run tools/build-tours.ts",
     "cases": "bun run tools/make-search-cases.ts",
-    "clean": "bun run tools/clean.ts"
+    "clean": "bun run tools/clean.ts",
+    "sync:norms": "bun run tools/sync-agent-norms.ts",
+    "check:norms": "bun run tools/sync-agent-norms.ts --check"
   },
   "engines": { "bun": ">=1.1" },
   "license": "Apache-2.0"

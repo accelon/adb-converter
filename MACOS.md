@@ -13,17 +13,15 @@ macOS 用 `syscall.Mmap`／`open`／`osascript`／Wails 的 NSScreen 表）。
    * `accelon26-macos-arm64.zip`（M 系列）
    * `accelon26-macos-x86_64.zip`（Intel）
 2. 解開 → `accelon26.app` → 拖進「應用程式」。
-3. **第一次開啟要在 Finder 上按右鍵 →「打開」→ 再按一次「打開」。**
-   這是 macOS 對「未經 Apple 公證的程式」的規定，不是檔案壞掉。
+3. **第一次開啟會被 Gatekeeper 擋下**（不是檔案壞掉）：macOS 15 起要到「系統設定 → 隱私權與安全性」按「仍要打開」；macOS 15 以前可用 Finder 右鍵 →「打開」。完整說明見 [wails3-pitfalls.md](wails3-pitfalls.md) §6。
 
 備用來源：GitHub → Actions → **build-macos** → Run workflow（或推 `mac-*` 標籤），跑完下載
 artifact `accelon26-macos-arm64`／`accelon26-macos-x86_64`；推標籤時 zip 也會附到
 [Release](https://github.com/accelon/adb-converter/releases)（不需要登入就能下載）。
 三邊的檔案都是同一個 `wails/scripts/package-macos.sh` 包出來的，並附 `.sha256` 可以核對。
 
-> CI 用到現在踩過的坑（留給以後的自己）：`*.adb` 在 `.gitignore`，所以倉庫裡沒有語料，
-> `-selftest` 要自己造一個檔；`$VAR（全形括號）` 在 bash 會被當成變數名（`set -u` 直接
-> unbound variable），一律寫 `${VAR}（`。
+> CI 踩過的坑（留給以後的自己）：`*.adb` 在 `.gitignore`，所以倉庫裡沒有語料，
+> `-selftest` 要自己造一個檔；bash 引號類的通用坑見 [wails3-pitfalls.md](wails3-pitfalls.md) §6。
 
 ## 這一版有／沒有什麼
 
@@ -104,7 +102,7 @@ bash scripts/package-macos.sh x86_64          # → build/macos/accelon26-macos-
 ## 以後可以加
 
 1. 自動更新（下載 `.zip`、解開換掉 `.app`、重啟）——需要先有穩定的簽章。
-2. 公證（Apple Developer 帳號，每年 US$99）：公證過的 `.app` 第一次開不用右鍵。
+2. 公證（Apple Developer 帳號，每年 US$99）：公證過的 `.app` 第一次開不會被 Gatekeeper 擋。
 3. 檔案關聯（`CFBundleDocumentTypes`，雙擊 `.adb` 直接開）。
 4. 游標選螢幕（一支 cgo 的 `CGEventGetLocation`，`#cgo LDFLAGS: -framework ApplicationServices`）。
 5. CI 直接把 zip 傳到官網（需要把 HOST／USER／PASS 放進 repo secrets，並在 runner 上裝 `sshpass`）。

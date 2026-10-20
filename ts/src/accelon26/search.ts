@@ -20,7 +20,7 @@ import { AdbReader, type Container } from './adb';
 import { parseAttrs } from './vapa';
 import { normalize, Tokenizer } from '../tokenize';
 import { tntTrim, isPunctuation, isWhitespace } from '../unicode';
-import { parseQuery, splitWildcard, PROXIMITY_TOKENS } from './query';
+import { parseQuery, splitWildcard, PROXIMITY_TOKENS, type QueryClause } from './query';
 import { variantGroupOf, variantSearchOn } from './variants';
 import type { VaPaMapper } from './vapa';
 
@@ -74,6 +74,59 @@ export interface PhraseHit {
   units: number;
   /** multi-clause search: which clause produced this hit (paint colour) */
   clause?: number;
+}
+
+/**
+ * Matches of one clause that START inside `[from, to)` — the exact count of a VA
+ * range without materialising the hits.
+ *
+ * Why this exists: `singleResult()` keeps only the FIRST `maxHits` (5,000) hits, and
+ * those are a prefix in VA order. On taisho 佛 occurs 567,678 times, so the first
+ * 5,000 all sit in 阿含部上 (VA < 954,553) and the other 55 冊 look empty. The tree
+ * badge, the 頻次 rows and a node's 命中數 must be the realm's REAL hit count
+ * (ACCELON26-HANDOVER §4 五「有搜尋時永遠顯示該節點 realm 內的命中數」), and the posting
+ * lists already hold that answer — two binary searches per token for most queries.
+ *
+ * Rules are exactly `phraseMatchPattern()`'s: the anchor is the first real list,
+ * `start = anchorVa - anchorIndex`, and every other position must be present.
+ */
+export function matchesInRange(lists: (number[] | null)[], from: number, to: number, max = 0): { count: number; first: number; hits: PhraseHit[] } {
+  const n = lists.length;
+  const out: PhraseHit[] = [];
+  let count = 0, first = -1;
+  if (!n || to <= from) return { count: 0, first: -1, hits: out };
+  if (n === 1) {
+    const list = lists[0];
+    if (!list || !list.length) return { count: 0, first: -1, hits: out };
+    const lo = lowerBound(list, from);
+    const hi = lowerBound(list, to);
+    count = hi - lo;
+    if (count > 0) first = list[lo];
+    for (let i = lo; i < hi && (!max || out.length < max); i++) out.push({ va: list[i], units: 1 });
+    return { count, first, hits: out };
+  }
+  const anchorAt = lists.findIndex((l) => l !== null && l !== undefined);
+  if (anchorAt < 0) return { count: 0, first: -1, hits: out };
+  const anchor = lists[anchorAt]!;
+  // a match starting at `start` occupies [start, start + n - 1], so the anchor's own
+  // VA for that match is start + anchorAt
+  const lo = lowerBound(anchor, from + anchorAt);
+  const hi = lowerBound(anchor, to + anchorAt);
+  for (let i = lo; i < hi; i++) {
+    const start = anchor[i] - anchorAt;
+    if (start < 0) continue;
+    let ok = true;
+    for (let k = 0; k < n; k++) {
+      const l = lists[k];
+      if (!l || k === anchorAt) continue;
+      if (!hasVa(l, start + k)) { ok = false; break; }
+    }
+    if (!ok) continue;
+    if (first < 0) first = start;
+    count++;
+    if (!max || out.length < max) out.push({ va: start, units: n });
+  }
+  return { count, first, hits: out };
 }
 
 /**
@@ -231,6 +284,12 @@ export interface SearchTree {
   terminalTier: number;
   /** VA of the <樹> tag instance itself */
   va: number;
+  /**
+   * The `<樹>…</樹>` element's own text — the author's pane caption
+   * (`ss.caption := removetag(getnNodeValue(dn))`): 經目 / 書名 / 分書頻次 …
+   * Filled in by scopes.ts, because resolving it means walking the source.
+   */
+  caption?: string;
 }
 
 /** Parse a `t=` value: "章,節,項." -> tiers [章,節,項] with 項 terminal. */
@@ -247,6 +306,27 @@ export function parseTiers(t: string): { tiers: string[]; terminalTier: number }
   return { tiers, terminalTier };
 }
 
+/**
+ * Spread an attribute table onto INSTANCE order.
+ *
+ * `<tag>.<attr>` is stored per instance, but only for the instances that HAVE the
+ * attribute, and every value carries a pointer saying which instance it belongs to
+ * (`0xTT00NNNN` = tag id TT, 1-based instance NNNN). Reading the values positionally
+ * is wrong as soon as one instance omits the attribute: taisho declares 7 trees of
+ * which only 經目／分卷／反連結 carry `t=`, and positionally the 分卷 tree inherited
+ * 經目's `t="冊,書,品."` (so the 分卷 pane drew the 經目 tree).
+ */
+function instanceValues(a: { values: string[]; pointers: Int32Array | null } | null): string[] {
+  if (!a) return [];
+  if (!a.pointers) return a.values;             // dense table: already in instance order
+  const out: string[] = [];
+  for (let j = 0; j < a.values.length; j++) {
+    const i = (a.pointers[j] & 0xffffff) - 1;   // 1-based instance index
+    if (i >= 0) out[i] = a.values[j];
+  }
+  return out;
+}
+
 /** Read every `<樹>` instance and its s= / t= attributes. */
 export async function loadTrees(reader: AdbReader): Promise<SearchTree[]> {
   const tags = reader.containers.get('tags');
@@ -254,15 +334,12 @@ export async function loadTrees(reader: AdbReader): Promise<SearchTree[]> {
   const at = tags.names.indexOf('樹');
   if (at < 0) return [];
   const va = await reader.decodeBlockList('tags', at);
-  // attribute tables are indexed by instance order; a table may be shorter when
-  // only some instances carry the attribute
-  const s = await reader.attributeValues('樹.s');
-  const t = await reader.attributeValues('樹.t');
+  const s = instanceValues(await reader.attributeValues('樹.s'));
+  const t = instanceValues(await reader.attributeValues('樹.t'));
   const out: SearchTree[] = [];
   for (let i = 0; i < va.length; i++) {
-    const scope = s?.values[i] ?? s?.values[0] ?? '';
-    const tiersRaw = t?.values[i] ?? t?.values[0] ?? '';
-    const { tiers, terminalTier } = parseTiers(tiersRaw);
+    const scope = s[i] ?? '';
+    const { tiers, terminalTier } = parseTiers(t[i] ?? '');
     const scopeInfo = parseScope(scope);
     out.push({
       index: i,
@@ -1116,35 +1193,84 @@ export class SearchSession {
     const out: ClauseHits[] = [];
     let colorIndex = 0;
     for (const c of parsed.clauses) {
-      // 單字萬用字元：`菩.心` ＝ 菩 ＋ 任意一個 token ＋ 心（作者 2026-10）
-      const { parts, wild } = splitWildcard(c.text);
-      const tokens = wild ? parts.flatMap((p) => queryTokens(p)) : queryTokens(c.text);
+      const prepared = await this.clauseFor(c);
       const clause: ClauseHits = {
-        text: c.text, tokens, role: c.role, nearOf: c.nearOf, wildcard: wild,
-        missing: [], occurrences: 0, hits: [],
+        text: c.text, tokens: prepared.tokens, role: c.role, nearOf: c.nearOf, wildcard: prepared.wildcard,
+        missing: prepared.missing, occurrences: 0, hits: [],
         colorIndex: c.role === 'excluded' ? -1 : colorIndex++,
       };
-      const lists: (number[] | null)[] = [];
-      let absent = false;
-      const pushToken = async (t: string): Promise<void> => {
-        const st = await this.lookup(t);
-        if (!st.postings.length) { clause.missing.push(t); absent = true; }
-        lists.push(st.postings);
-      };
-      if (!wild) {
-        for (const t of tokens) await pushToken(t);
-      } else {
-        // parts[i] 之間各插一個 WILD（`.`）；空片段（開頭／結尾的 `.`）不產生 token
-        for (let i = 0; i < parts.length; i++) {
-          if (i > 0) lists.push(WILD);
-          for (const t of queryTokens(parts[i])) await pushToken(t);
-        }
-      }
-      clause.hits = !lists.length || absent ? [] : phraseMatchPattern(lists, maxHits);
+      clause.hits = prepared.lists.length && !prepared.missing.length
+        ? phraseMatchPattern(prepared.lists, maxHits)
+        : [];
       clause.occurrences = clause.hits.length;
       out.push(clause);
     }
     return out;
+  }
+
+  /**
+   * 一個詞組的 posting 清單（`clauseHits` 與「VA 範圍內命中數」共用同一套取法）。
+   *
+   * `wildcard` 的詞組用 `null` 當「任意一個 token」（`.`）；`variants` 開啟時
+   * `lookup()` 會把同組字的 posting 併起來。
+   */
+  private async clauseFor(c: QueryClause): Promise<{ tokens: string[]; wildcard: boolean; lists: (number[] | null)[]; missing: string[] }> {
+    // 單字萬用字元：`菩.心` ＝ 菩 ＋ 任意一個 token ＋ 心（作者 2026-10）
+    const { parts, wild } = splitWildcard(c.text);
+    const tokens = wild ? parts.flatMap((p) => queryTokens(p)) : queryTokens(c.text);
+    const lists: (number[] | null)[] = [];
+    const missing: string[] = [];
+    const pushToken = async (t: string): Promise<void> => {
+      const st = await this.lookup(t);
+      if (!st.postings.length) missing.push(t);
+      lists.push(st.postings);
+    };
+    if (!wild) {
+      for (const t of tokens) await pushToken(t);
+    } else {
+      // parts[i] 之間各插一個 WILD（`.`）；空片段（開頭／結尾的 `.`）不產生 token
+      for (let i = 0; i < parts.length; i++) {
+        if (i > 0) lists.push(WILD);
+        for (const t of queryTokens(parts[i])) await pushToken(t);
+      }
+    }
+    return { tokens, wildcard: wild, lists, missing };
+  }
+
+  /**
+   * 某個 VA 範圍 `[from, to)` 內的精確命中數與第一筆命中。
+   *
+   * 不建 5,000 筆清單、不受 `maxHits` 截斷：答案直接從 posting 清單算出來，
+   * 所以 taisho 的「佛」（567,678 筆）在 56 個冊裡每一冊都是真數字。
+   * 多詞組查詢時回的是「各詞組分別算」的總和（`+`／`−`／`*` 的排名不在這裡做），
+   * 因此呼叫端只在單一詞組的結果上使用它（`!lastResult.multi`）。
+   */
+  async rangeStats(query: string, from: number, to: number): Promise<{ count: number; first: number; complete: boolean }> {
+    const parsed = parseQuery(query);
+    let count = 0, first = -1, complete = true;
+    for (const c of parsed.clauses) {
+      if (c.role === 'excluded') continue;
+      const prepared = await this.clauseFor(c);
+      if (!prepared.lists.length || prepared.missing.length) { complete = false; continue; }
+      const r = matchesInRange(prepared.lists, from, to, 1);
+      count += r.count;
+      if (r.first >= 0 && (first < 0 || r.first < first)) first = r.first;
+    }
+    return { count, first, complete };
+  }
+
+  /** 某個 VA 範圍內的命中（給「只看這個節點」的摘要用；`max` 是顯示上限，不是計數上限） */
+  async hitsInRange(query: string, from: number, to: number, max = 5000): Promise<PhraseHit[]> {
+    const parsed = parseQuery(query);
+    const out: PhraseHit[] = [];
+    for (const c of parsed.clauses) {
+      if (c.role === 'excluded') continue;
+      const prepared = await this.clauseFor(c);
+      if (!prepared.lists.length || prepared.missing.length) continue;
+      out.push(...matchesInRange(prepared.lists, from, to, max).hits);
+      if (out.length >= max) break;
+    }
+    return out.sort((a, b) => a.va - b.va).slice(0, max);
   }
 
   /** `clauseHits()` ＋ 匯總缺失的 token（測試與 Go 後端比對用） */

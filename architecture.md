@@ -81,6 +81,9 @@ DOMContentLoaded → boot()
 使用者：📁 → 加入 adb（=`#file`）或拖放
 ```
 ### 4.2 Wails3
+
+> 建置／WebView2／視窗／更新的共通坑見 [wails3-pitfalls.md](wails3-pitfalls.md)；Windows／漢字／UI 見 [yap-software-practice.md](yap-software-practice.md)。
+
 ```
 DOMContentLoaded → boot()（同上）
   bootDesktop()

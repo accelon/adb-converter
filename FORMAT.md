@@ -122,6 +122,11 @@ this detail matters for any reimplementation.
 * **`tables / lines.physical`** — a packed list of the **END offsets of every line**, in bytes into
   the concatenated UTF-16LE text of all source blocks. `>> 1` gives the UTF-16 code unit index,
   which is the offset used by JavaScript strings.
+* **`tables / lines.virtual`** — the VA of each line, but it is the VA of the line's **last unit**
+  (an *inclusive* end), not of the element that follows it: on 13j line 0 (`<集>十三經</集>`) stores
+  10 while `<集>` costs 4 + three characters + a 4-unit closer, i.e. the next element `<隱>` sits at
+  VA 11. So line *i* starts at `lines.virtual[i-1] + 1` (line 0 at 0). Getting this off by one
+  shifts every element in the database by one VA unit (measured; see `ts/tools/check-element.ts`).
 * Lines do **not** respect block boundaries (13j.adb: only 13 of 42173 line ends coincide with a
   block boundary), so line splitting must run on the reassembled stream.
 * **`resources` container** (when present) — payloads stored **uncompressed**, one per file, with

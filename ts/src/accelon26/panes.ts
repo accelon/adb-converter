@@ -261,7 +261,9 @@ function renderDocs() {
       const d = docs[i];
       if (!d) return;
       // find the first line of that document and show it (no hit to paint)
-      const line = mapper!.linesVirtual.findIndex((v) => v >= d.vaStart);
+      // `edgeLine` is the same "first line whose end is at or past the VA" as a
+      // findIndex over the whole table, without scanning 5 M entries on taisho.
+      const line = mapper!.edgeLine(d.vaStart);
       void showLine(line < 0 ? 0 : line, d.vaStart);
     };
   });

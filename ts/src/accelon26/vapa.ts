@@ -7,16 +7,24 @@
  *   PA (physical address) = byte offset in the unpacked text on the fixed grid
  *        `blockIndex * srcblocksize + offsetInBlock`, UTF-16LE.
  *
- * Why a *sequential* walk: `tables/blocks.virtual` records the VA at the moment
- * the indexer crossed into a block, and a line can straddle that byte boundary —
- * the tokens of such a line before the boundary belong to the earlier block.
- * Walking block by block from the stored base therefore does not line up. This
- * mapper instead replays the whole text in line order with a lazy line cursor,
- * so a VA is always derived from a complete prefix walk, and a block's start VA
- * is an *output* of the walk rather than an input.
+ * Two ways to turn a VA into an element, and the viewer uses the FIRST one:
  *
- * Cost: two tokenizer passes per unit of work (decode + tokenize), cached per
- * line and per block; nothing is walked that is never asked for.
+ *   1. **table-anchored (O(1))** — `tables/lines.virtual` stores the VA at which
+ *      every hard line starts, so the line holding a VA is a binary search and the
+ *      line's elements can be tokenised standalone from that base. `elementAt()`
+ *      does exactly this. taisho (241 MB, 11,255 blocks, 87.9 M VA units) forced
+ *      this change: walking from block 0 to a book at VA 78 M took > 25 s and
+ *      3.8 GB of `TokenPos` objects before it could answer a single click, which
+ *      is the WebView2「內存不足」on a 16 GB machine.
+ *   2. **sequential walk (O(VA))** — replay every line from 0 with a running VA
+ *      counter. Still the ground truth for the *validation* tools (`validate`,
+ *      `lineAdjacency`, `crossLinePairs`, `scoreModel`), which is why it is kept,
+ *      but nothing on the reading path may use it any more.
+ *
+ * The walk also exists because `tables/blocks.virtual` records the VA at the
+ * moment the indexer crossed into a block and a line can straddle that byte
+ * boundary — the tokens before the boundary belong to the earlier block. Both
+ * paths respect that by bucketing each element by `floor(pa / srcblocksize)`.
  */
 import { AdbReader, binarySearchLE, type Container } from './adb';
 import { Tokenizer, isSkipTag, normalize } from '../tokenize';
@@ -119,6 +127,18 @@ export class VaPaMapper {
   private blockCache = new Map<number, BlockWalk>();
   private elemIndex: { pa: number; va: number; i: number; line: number }[] = [];
   private walkedComplete = false;
+
+  /**
+   * Table-anchored caches (see the header comment): a VA is resolved by
+   * tokenising ONE line from its stored VA, so these stay tiny on any database
+   * size. `KEEP_*` bounds are in lines/blocks, not bytes.
+   */
+  private lineAtCache = new Map<number, LineRec>();
+  private lineAtOrder: number[] = [];
+  private blockAtCache = new Map<number, BlockWalk>();
+  private blockAtOrder: number[] = [];
+  private static readonly KEEP_LINES = 64;
+  private static readonly KEEP_BLOCKS = 12;
 
   /** tag instances seen so far (only for the blocks actually walked) */
   readonly tagHits: { tag: string; va: number }[] = [];
@@ -375,12 +395,35 @@ export class VaPaMapper {
   private async walkLine(index: number): Promise<LineRec> {
     const cached = this.lineCache.get(index);
     if (cached) return cached;
+    const rec = await this.tokenize(index, this.va);
+    this.va = rec.vaEnd;              // the walk continues where this line stopped
+    this.lineCache.set(index, rec);
+    return rec;
+  }
+
+  /**
+   * VA at which hard line `index` starts.
+   *
+   * `tables/lines.virtual[i]` is the VA of the line's LAST unit (an inclusive end,
+   * measured on 13j: line 0 `<集>十三經</集>` ends at VA 10 while the next element
+   * `<隱>` sits at 11), so the start of line i is `lines.virtual[i-1] + 1`.
+   * `edgeLine` already reads the table this way (`first line whose end >= va`).
+   */
+  private lineVaStart(index: number): number {
+    return index > 0 ? (this.linesV?.[index - 1] ?? -1) + 1 : 0;
+  }
+
+  /**
+   * Tokenise ONE line standalone, with `vaStart` as the VA of its first element.
+   * The walk passes its running counter; the table-anchored path passes the stored
+   * line VA, which is what makes a lookup independent of everything before it.
+   */
+  private async tokenize(index: number, vaStart: number): Promise<LineRec> {
     const paStart = this.lineStart(index);
     const paEnd = this.linesEnds![index];
     const text = await this.reader.textSpan(Math.floor(paStart / this.reader.header.srcBlockSize), paStart, paEnd);
     const positions: TokenPos[] = [];
-    const vaStart = this.va;
-    let tags = 0;
+    let va = vaStart;
     if (text.length > 0) {
       const tk = new Tokenizer(text);
       for (;;) {
@@ -396,25 +439,93 @@ export class VaPaMapper {
           const skip = isSkipTag(short);
           const units = this.costOf(name, isClose, skip, raw);
           positions.push({
-            va: this.va, pa, paEnd: pa + raw.length * 2, vaUnits: units,
+            va, pa, paEnd: pa + raw.length * 2, vaUnits: units,
             kind: isClose ? 'close' : 'tag', text: raw, tag: name, skip: units === 0, line: index,
           });
-          this.va += units;
-          tags++;
+          va += units;
         } else if (tntTrim(raw) !== '') {
           const norm = normalize(raw);
-          positions.push({ va: this.va, pa, paEnd: pa + raw.length * 2, vaUnits: 1, kind: 'token', text: raw, normalized: norm, line: index });
-          this.va += 1;
+          positions.push({ va, pa, paEnd: pa + raw.length * 2, vaUnits: 1, kind: 'token', text: raw, normalized: norm, line: index });
+          va += 1;
         } else {
-          positions.push({ va: this.va, pa, paEnd: pa + raw.length * 2, vaUnits: 1, kind: 'blank', text: raw, line: index });
-          this.va += 1;
+          positions.push({ va, pa, paEnd: pa + raw.length * 2, vaUnits: 1, kind: 'blank', text: raw, line: index });
+          va += 1;
         }
         if (tk.atEnd) break;
       }
     }
-    const rec: LineRec = { index, paStart, paEnd, text, positions, vaStart, vaEnd: this.va };
-    this.lineCache.set(index, rec);
+    return { index, paStart, paEnd, text, positions, vaStart, vaEnd: va };
+  }
+
+  /** remember `key` in a bounded insertion-order cache */
+  private remember<T>(cache: Map<number, T>, order: number[], key: number, value: T, keep: number): void {
+    cache.set(key, value);
+    order.push(key);
+    while (order.length > keep) {
+      const old = order.shift()!;
+      if (!order.includes(old)) cache.delete(old);
+    }
+  }
+
+  /** the tokenised line, anchored on the stored line VA (no walk) */
+  private async lineAt(index: number): Promise<LineRec> {
+    await this.init();
+    const hit = this.lineAtCache.get(index);
+    if (hit) return hit;
+    const rec = await this.tokenize(index, this.lineVaStart(index));
+    this.remember(this.lineAtCache, this.lineAtOrder, index, rec, VaPaMapper.KEEP_LINES);
     return rec;
+  }
+
+  /**
+   * The elements that START inside one source block, built from the line table
+   * only (the walk-free twin of the `blockCache` that `advanceTo` fills).
+   */
+  private async blockAt(block: number): Promise<BlockWalk | null> {
+    await this.init();
+    if (block < 0 || block >= this.srcBlocks) return null;
+    const hit = this.blockAtCache.get(block);
+    if (hit) return hit;
+    const stride = this.reader.header.srcBlockSize;
+    const paStart = block * stride;
+    const paEnd = paStart + stride;
+    const ends = this.linesEnds!;
+    // first line whose END is past the block start (a line may straddle into it)
+    let lo = 0, hi = ends.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (ends[mid] <= paStart) lo = mid + 1; else hi = mid;
+    }
+    const positions: TokenPos[] = [];
+    let firstLine = lo, lastLine = lo;
+    for (let i = lo; i < ends.length && this.lineStart(i) < paEnd; i++) {
+      const rec = await this.lineAt(i);
+      for (const p of rec.positions) {
+        if (Math.floor(p.pa / stride) !== block) continue;
+        positions.push(p);
+      }
+      lastLine = Math.max(lastLine, i);
+    }
+    const vaBase = block === 0 ? 0 : (this.vaBlocksStored?.[block] ?? (positions[0]?.va ?? 0));
+    let tokens = 0, tags = 0;
+    for (const p of positions) {
+      if (p.kind === 'tag' || p.kind === 'close') tags++; else tokens++;
+    }
+    const w: BlockWalk = {
+      block, vaBase, positions, paStart, paEnd,
+      firstLine, lastLine, tokens, tags,
+    };
+    this.remember(this.blockAtCache, this.blockAtOrder, block, w, VaPaMapper.KEEP_BLOCKS);
+    return w;
+  }
+
+  /**
+   * VA units the line's elements occupy, tokenised standalone. Used by the tests
+   * to prove that `tables/lines.virtual` really is a valid anchor for this file.
+   */
+  async lineUnits(index: number): Promise<number> {
+    const rec = await this.lineAt(index);
+    return rec.vaEnd - rec.vaStart;
   }
 
   /**
@@ -479,8 +590,7 @@ export class VaPaMapper {
   async walkAll(): Promise<void> { await this.advanceTo(this.srcBlocks); }
 
   async blockWalk(block: number): Promise<BlockWalk | null> {
-    await this.advanceTo(block + 1);
-    return this.blockCache.get(block) ?? null;
+    return this.blockAt(block);
   }
 
   // --------------------------------------------------------------- mapping
@@ -493,9 +603,37 @@ export class VaPaMapper {
     return 0;
   }
 
-  /** The element covering `va`; walks forward only as far as needed. */
+  /**
+   * The element covering `va`.
+   *
+   * Table-anchored: `blockOfVa` gives the block, `blockAt` builds only that block
+   * from the line table, and the answer is a scan inside it — O(1 block) instead
+   * of O(VA). A database without `tables/lines.virtual` (nothing to anchor on)
+   * falls back to the walk.
+   */
   async elementAt(va: number, maxBlocks = 600): Promise<{ element: TokenPos; block: number } | null> {
+    await this.init();
     const start = this.blockOfVa(va);
+    if (this.linesV?.length) {
+      const stored = this.vaBlocksStored;
+      for (let b = start; b < Math.min(this.srcBlocks, start + maxBlocks); b++) {
+        const nextBase = b + 1 < this.srcBlocks ? (stored?.[b + 1] ?? Number.POSITIVE_INFINITY) : Number.POSITIVE_INFINITY;
+        if (va >= nextBase) continue;               // belongs to a later block
+        const w = await this.blockAt(b);
+        if (!w || !w.positions.length) {
+          if (va < nextBase) return null;           // empty block
+          continue;
+        }
+        let hit: TokenPos | null = null;
+        for (const p of w.positions) {
+          if (p.va <= va) hit = p;
+          else break;
+        }
+        if (!hit) hit = w.positions[0];
+        return { element: hit, block: b };
+      }
+      return null;
+    }
     for (let b = start; b < Math.min(this.srcBlocks, start + maxBlocks); b++) {
       await this.advanceTo(b + 1);
       const w = this.blockCache.get(b);
@@ -570,7 +708,7 @@ export class VaPaMapper {
       const next = e.va + Math.max(1, e.vaUnits);
       if (e.kind === 'close') {
         // closers cost no VA, so `next` may repeat; step by element order instead
-        const after = await this.elementAtUnit(el.block, this.unitIndexOf(el) + 1);
+        const after = await this.elementAfter(el);
         if (!after) break;
         if (after.va >= vaEnd) break;
         cur = after.va;
@@ -583,12 +721,22 @@ export class VaPaMapper {
     return out.join('').slice(0, maxChars);
   }
 
-  /** unit index of an element inside its block (helper for visibleText) */
-  private unitIndexOf(found: { element: TokenPos; block: number }): number {
-    const w = this.blockCache.get(found.block);
-    if (!w) return 0;
-    const idx = w.positions.indexOf(found.element);
-    return idx < 0 ? 0 : idx;
+  /**
+   * The element right after `found` in document order — used to step over a skip
+   * tag, which costs no VA and therefore cannot be reached by adding units.
+   */
+  private async elementAfter(found: { element: TokenPos; block: number }): Promise<TokenPos | null> {
+    const w = this.blockAtCache.get(found.block) ?? this.blockCache.get(found.block);
+    const list = w?.positions;
+    if (list) {
+      const idx = list.indexOf(found.element);
+      if (idx >= 0) return list[idx + 1] ?? null;
+    }
+    const line = found.element.line;
+    if (line === undefined) return null;
+    const rec = await this.lineAt(line);
+    const idx = rec.positions.indexOf(found.element);
+    return idx >= 0 ? (rec.positions[idx + 1] ?? null) : null;
   }
 
   /**
@@ -618,7 +766,7 @@ export class VaPaMapper {
       if (e.kind === 'close') break;                 // end of this instance
       if (e.kind === 'tag') {
         if (e.skip) {                                // no VA cost: step by order
-          const after = await this.elementAtUnit(el.block, this.unitIndexOf(el) + 1);
+          const after = await this.elementAfter(el);
           if (!after || after.va >= limit) break;
           cur = after.va;
           continue;
@@ -738,7 +886,7 @@ export class VaPaMapper {
 
   /** The element that starts at or before character offset `unit` in `block`. */
   async elementAtUnit(block: number, unit: number): Promise<TokenPos | null> {
-    const w = await this.blockWalk(block);
+    const w = await this.blockAt(block);
     if (!w) return null;
     const pa = block * this.reader.header.srcBlockSize + unit * 2;
     let hit: TokenPos | null = null;

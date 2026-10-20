@@ -40,11 +40,9 @@ bun run tools/browser-test.ts --adb D:\accelon3\yinshun\yinshun.adb
 
 ## 為什麼要「單檔 + inline script」
 
-`file://` 之下：
+`file://` 的限制（ES module、`fetch`、worker、`localStorage`）與單檔設計約束見 [yap-software-practice.md](../../../yap-software-practice.md) §3。
 
-* `<script type="module">` 會被 CORS 擋掉（`Origin 'null'`）→ 必須是傳統 script，且全部 inline。
-* `fetch()` 完全不能用 → 資料庫只能由**使用者挑檔**（`<input type=file>` 或拖放）取得，
-  靠 `File.slice().arrayBuffer()` 做隨機讀取。整個檔案不會進記憶體。
+本專案因此用傳統 script 全部 inline；資料由使用者挑檔（`<input type=file>` 或拖放），靠 `File.slice().arrayBuffer()` 隨機讀取，整個檔案不會進記憶體。
 
 ## 隨機讀取的成本（實測）
 
@@ -141,6 +139,16 @@ bun run tools/browser-test.ts --adb D:\accelon3\yinshun\yinshun.adb
   * 關閉進階時會自動回到預設分頁（搜尋／目錄）。
 * **posting list 面板已移除**：點 token 直接讀它的 posting list 並跳到第一筆命中。
 * **目錄樹（`<樹>` 分頁）**：每個 `<樹>` 一個分頁（右欄「目錄」）。
+  * **分頁名＝`<樹>…</樹>` 的文字**（作者的 `ss.caption := removetag(getnNodeValue(dn))`），
+    不是從 `s=` 推導：taisho 的七棵樹叫 經目／書名／分書頻次／分卷／分卷頻次／西文／反連結，
+    而 `s=` 只有 `*`／`$書`／`*書`／`*卷`／`~00602000`／`%` 六種。取不到文字才退回 kind 的預設名。
+  * **分頁集合永遠來自「`<樹>` 宣告」**（`session.trees`，開檔就有），不是來自已建好的 `dirTrees`
+    —— `dirTrees` 只放 `s="*"` 的樹，拿它當分頁來源會在背景建樹完成時把名詞／頻次／西文全部藏起來
+    （2026-10-20 修：taisho 宣告 7 棵、畫面只剩 目錄＋token）。
+  * **同一個 pane 被宣告多棵時**（taisho：經目＋分卷都是 `s="*"`；分書頻次 `*書` ＋ 分卷頻次 `*卷`），
+    pane 上方出現下拉 `#dirPick` / `#freqPick`，宣告不會被默默丟掉；只宣告一棵時下拉隱藏。
+  * **`樹.t`／`樹.s` 是稀疏的屬性表**：只有帶該屬性的實例才有值，值裡的 pointer（`0xTT00NNNN`）
+    才是實例序號。照位置讀會把 分卷 的 `t=` 讀成 經目 的 `t="冊,書,品."`（同一棵樹畫兩次）。
   * **adb 的標籤幾乎都是兄弟節點**（只有 `<檔>` 是為了過 XML validator 而巢狀），所以層級**不可能**從標記推出來 ——
     這正是「同一份資料可以呈現成不同的樹」的原因。
   * 層級來自 **`t=` 的層級鏈**：`<樹 t="書">` 是入口層，`<書 t="章,節,項.">` 宣告接下來三層。
@@ -266,8 +274,20 @@ UI：預設 13 列收合 → 展開周易 = 82 列（章 乾 坤 屯 蒙…）�
 （`0x04000001`、`0x04000002`…），高位 byte 是 tag id。所以每個屬性值都能**直接對應到 `tags` 容器的哪一個實例**，
 不必用 `elementAt(va)` 掃內文 —— 這是把 `t=` 讀成 per-instance 對照表的正解。
 
-目前實作仍用 `mapper.elementAt(va)` 讀 `t=` 與名字（正確但慢：13j 的背景目錄樹 353 ms），
+目前實作仍用 `mapper.elementAt(va)` 讀 `t=` 與名字（13j 的背景目錄樹 353 ms），
 下一步應改成純屬性容器查表。
+
+**`elementAt` 已改成查行表定位（2026-10-20，taisho 崩潰的根因）**：以前它從 block 0
+逐行重播到目標 VA，並把每個 `TokenPos` 留在記憶體；taisho（241 MB、87.9 M VA）點一本排在
+檔尾的書要 **> 25 s、3.8 GB**（16 GB 桌機的 WebView2 直接「內存不足」）。現在用
+`tables/lines.virtual`（每行start＝`lines.virtual[i-1] + 1`）二分找行、單獨 tokenise 一行，
+遠端查詢 **4.5 ms**、整個程式的堆 < 100 MB。逐行重播只留給驗證工具。
+`tools/check-element.ts` 對拍：每個標籤實例的 VA 都回到自己（13j／yinshun／fgdict／taisho 全過）。
+
+**命中數不從清單算（同日）**：搜尋結果只留前 5,000 筆，而且是 VA 順序的前綴（taisho「佛」
+567,678 筆 → 前 5,000 筆全在第一冊）。目錄徽章、頻次分段、點徽章之後的摘要都改用
+`SearchSession.rangeStats()`／`hitsInRange()` 直接對 posting 清單二分（`matchesInRange()`，
+與 `phraseMatchPattern()` 同一套規則），所以 56 個冊的徽章加總正好是 567,678。
 
 1. **13j 的 `<書>` 是自閉標籤**（`<書 t="章,節,項." id="周易">周易</書>`），`<章>` 是它的**兄弟**而非子節點；
    目前建樹以 VA 涵蓋範圍為界，所以 13j 只長出 7 根 / 118 節點（13 個 `<書>`，其中 6 個蓋到後面的章節）。
@@ -310,11 +330,7 @@ UI：預設 13 列收合 → 展開周易 = 82 列（章 乾 坤 屯 蒙…）�
 
 ### file:// 的三個硬限制（設計已配合）
 
-1. **`<script type="module">` 被 CORS 擋**（`Origin 'null'`）→ 必須是傳統 script 且全部 inline
-   （[tools/build-viewer.ts](../tools/build-viewer.ts) 就是做這件事）。
-2. **`fetch()` 完全不能用** → 資料庫只能由**使用者選檔或拖放**取得，靠 `File.slice()` 隨機讀取。
-3. **不同瀏覽器的檔案存取寬鬆度不同** → 實測用 `--allow-file-access-from-files` 自動化；
-   正常使用時「使用者手動選檔」本身就授權，不需要該旗標。
+通用限制與單檔約束見 [yap-software-practice.md](../../../yap-software-practice.md) §3。本專案因此用傳統 script 全部 inline、資料由使用者選檔／拖放、`File.slice()` 隨機讀取；自動化測試用 `--allow-file-access-from-files`，正常使用時「使用者手動選檔」本身就授權，不需要該旗標。
 
 ## VA → PA（搜尋結果塗紅的基石）
 

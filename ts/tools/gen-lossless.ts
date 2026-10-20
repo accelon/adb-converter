@@ -1,7 +1,7 @@
 /**
- * vendor/Unihan_Variants.txt → 「無損簡體」對照表（`ts/src/accelon26/simplified-data.ts`）。
+ * Unihan_Variants.txt → 「無損簡體」對照表（`simplified-data.ts`）。
  *
- *   cd ts && bun run tools/gen-lossless.ts [--check]
+ *   bun run tools/gen-lossless.ts [--src ../vendor/Unihan_Variants.txt] [--out ../src/accelon26/simplified-data.ts] [--check]
  *
  * 概念（作者 2026-10，參考 ptk/lossless-simplified-chinese 的思路，資料改用 Unihan 自己算）：
  *
@@ -25,17 +25,20 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const args = process.argv.slice(2);
-const ROOT = resolve(import.meta.dir, '../..');
-const SRC = resolve(ROOT, 'vendor/Unihan_Variants.txt');
-const OUT = resolve(ROOT, 'ts/src/accelon26/simplified-data.ts');
-const CHECK = args.includes('--check');
+const argv = process.argv.slice(2);
+const opt = (name: string, fallback: string): string => {
+  const i = argv.indexOf('--' + name);
+  return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? resolve(argv[i + 1]) : fallback;
+};
+const CHECK = argv.includes('--check');
+const SRC = opt('src', resolve(import.meta.dir, '../vendor/Unihan_Variants.txt'));
+const OUT = opt('out', resolve(import.meta.dir, '../src/accelon26/simplified-data.ts'));
 
 if (!existsSync(SRC)) {
   console.error(`找不到 ${SRC}`);
   console.error('vendor/ 不進 git。需要時自己下載：');
   console.error('  https://github.com/CNMan/Unicode/blob/master/Unihan/Unihan_Variants.txt');
-  console.error('（產物 ts/src/accelon26/simplified-data.ts 已 commit，建置不需要 vendor）');
+  console.error('（產物 simplified-data.ts 已 commit，建置不需要 vendor）');
   process.exit(2);
 }
 
@@ -148,7 +151,8 @@ if (str(safe).length % 2 || str(force).length % 2) {
 const header = `/**
  * GENERATED FILE — do not edit.
  *
- * \`cd ts && bun run tools/gen-lossless.ts\` 從 \`vendor/Unihan_Variants.txt\` 重新產生
+ * Canonical generator: agent-norms/lossless-simplified/gen-lossless.ts
+ * \`bun run gen-lossless.ts\` 從 Unihan_Variants.txt 重新產生
  * （kSimplifiedVariant／kTraditionalVariant；來源不進 git）。
  *
  * 每兩個字一組「繁體,簡體」：
@@ -165,7 +169,7 @@ const existing = (() => { try { return readFileSync(OUT, 'utf8'); } catch { retu
 
 if (CHECK) {
   if (existing === body) { console.log(`OK：${OUT} 已是最新（無損 ${safe.length}／強制 ${force.length}）`); process.exit(0); }
-  console.error(`NG：${OUT} 與 vendor/Unihan_Variants.txt 不一致（跑一次 gen-lossless.ts）`);
+  console.error(`NG：${OUT} 與 Unihan 來源不一致（跑一次 gen-lossless.ts）`);
   process.exit(1);
 }
 

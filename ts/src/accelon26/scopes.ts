@@ -95,6 +95,32 @@ async function labelFor(tag: string, va: number, vaEnd: number): Promise<string>
   return (await mapper!.nodeLabel(va, vaEnd)) || '';
 }
 
+/** `<樹>` element text per instance VA — read once per database, then reused. */
+const treeCaptions = new Map<number, string>();
+
+/**
+ * Fill `SearchTree.caption` from the `<樹>…</樹>` element text.
+ *
+ * The author's pane name (`ss.caption := removetag(getnNodeValue(dn))`); `s=` cannot
+ * express it — taisho's seven trees are 經目／書名／分書頻次／分卷／分卷頻次／西文／
+ * 反連結, and two pairs of them share the same `s=`. Costs one line read per
+ * declaration, all of them in the first source block, and runs on the background
+ * path — the tab set does not wait for it.
+ */
+async function fillTreeCaptions(trees: SearchTree[]): Promise<void> {
+  if (!mapper) return;
+  const missing = trees.filter((t) => !treeCaptions.has(t.va));
+  if (missing.length) {
+    const vas = await tagVas('樹');
+    for (const t of missing) {
+      let cap = '';
+      try { cap = await wrappedText('樹', t.va, vas, 24); } catch { /* leave empty */ }
+      treeCaptions.set(t.va, cap);
+    }
+  }
+  for (const t of trees) if (t.caption === undefined) t.caption = treeCaptions.get(t.va) ?? '';
+}
+
 async function loadDirectoryTrees() {
   // Guard against a second call: openFile can be re-entered (e.g. a drop while a
   // load is still running) and re-running would discard the trees already built.
@@ -104,6 +130,8 @@ async function loadDirectoryTrees() {
   const phase: Record<string, number> = { trees: 0, load: 0, build: 0, instances: 0 };
   treePhases = phase;
   const declared = session?.trees?.length ? session.trees : await loadTrees(reader);
+  // 分頁名＝`<樹>` 自己的文字（作者：`ss.caption := removetag(getnNodeValue(dn))`）。
+  await fillTreeCaptions(declared);
   // Only the 目錄 pane's own tree is built — it is the last consumer. The search
   // grouping reads the indexer's own string tables now (search.ts groupNames →
   // caches/<tag>), so nothing else needs a walked tree. A database without `s="*"`
@@ -205,8 +233,8 @@ function countNodes(ns: TreeNode[]): number {
 }
 
 /**
- * The left column's tabs are declared by the database's `<樹>` tags — one tab per
- * declaration, named after the scope:
+ * The left column's tabs are declared by the database's `<樹>` tags — one pane per
+ * SCOPE KIND, captioned with the `<樹>` element's own text:
  *
  *   s="*"          → 目錄        the tier tree + full-text search
  *   s="$詞"        → 名詞        the `<詞>` instances as a term list (dictionary lookup)
@@ -217,7 +245,15 @@ function countNodes(ns: TreeNode[]): number {
  *
  * A database that declares fewer trees gets fewer tabs, and the first available one
  * becomes the active pane (fgdict has no `s="*"` tree, so it lands on 名詞).
+ *
+ * Two declarations can share a kind — taisho's 經目 + 分卷 are both `s="*"`, its
+ * 分書頻次 + 分卷頻次 are `*書`/`*卷`. One pane cannot show both at once, so the pane
+ * gets a picker (syncTreePickers); the declarations are never silently dropped.
  */
+const DEFAULT_TAB_LABEL: Record<string, string> = {
+  dir: '目錄', terms: '名詞', freq: '頻次', folio: '原書分頁', latin: '西文',
+};
+
 function syncTreeTabs() {
   const kindOf = (scope: string): string => {
     if (/^\*$/.test(scope)) return 'dir';
@@ -230,31 +266,88 @@ function syncTreeTabs() {
   // The tab set comes from the `<樹>` DECLARATIONS, which are known immediately —
   // the instances behind them (and their labels) are built in the background. So the
   // reader's pane can appear at once instead of waiting for the tree to finish.
-  const scopes = dirTrees.length
-    ? dirTrees.map((d) => d.tree.scope)
-    : (session?.trees ?? []).map((t) => t.scope);
-  const present = new Map<string, string>();          // kind -> scope
-  for (const scope of scopes) {
-    const k = kindOf(scope);
-    if (k && !present.has(k)) present.set(k, scope);
+  // It must be the DECLARATIONS and not `dirTrees`: that array only ever holds the
+  // `s="*"` trees, so taking the tab set from it hid every other pane the moment the
+  // background build finished (taisho declares 7 trees and showed only 目錄).
+  const declared = (session?.trees ?? []) as SearchTree[];
+  const src = declared.length ? declared : dirTrees.map((d) => d.tree);
+  const present = new Map<string, { scope: string; caption: string }>();   // kind -> first declaration
+  for (const t of src) {
+    const k = kindOf(t.scope);
+    if (k && !present.has(k)) present.set(k, { scope: t.scope, caption: t.caption ?? '' });
   }
   for (const kind of ['dir', 'terms', 'freq', 'folio', 'latin']) {
-    const scope = present.get(kind);
+    const hit = present.get(kind);
     const btn = $(`#colLeft .tabBtn[data-tab="${kind}"]`) as HTMLButtonElement | null;
     if (!btn) continue;
-    btn.hidden = !scope;
-    if (scope) {
-      // `*u=…` counts hits per attribute segment (頻次), `*tag` per tag (全文)
-      btn.textContent = kind === 'freq' ? (/^\*u=/.test(scope) ? '頻次' : '全文') : btn.textContent;
-      btn.title = 's="' + scope + '"';
+    btn.hidden = !hit;
+    if (hit) {
+      // `*u=…` counts hits per attribute segment (頻次), `*tag` per tag (全文) — but
+      // the declared `<樹>` text wins when it has one (taisho: 分書頻次)
+      btn.textContent = hit.caption
+        || (kind === 'freq' ? (/^\*u=/.test(hit.scope) ? '頻次' : '全文') : DEFAULT_TAB_LABEL[kind]);
+      btn.title = 's="' + hit.scope + '"' + (hit.caption ? '｜' + hit.caption : '');
     }
   }
+  syncTreePickers(declared);
   // keep the active tab sane: a dictionary has no 目錄 pane at all
   const active = $('#colLeft .tabBtn.active') as HTMLButtonElement | null;
   if (!active || active.hidden) {
     const first = ['dir', 'terms', 'freq', 'folio', 'latin'].find((k) => present.has(k));
     if (first) showTab(first, 'left');
   }
+}
+
+/**
+ * Pickers for the panes whose kind is declared more than once.
+ *
+ *   #dirPick   every `s="*"` tree that produced instances（taisho：經目／分卷）
+ *   #freqPick  every `*…` tree（taisho：分書頻次／分卷頻次）
+ *
+ * Both stay hidden when the database declares only one, so 13j／yinshun／fgdict look
+ * exactly as they did.
+ */
+function syncTreePickers(trees: SearchTree[]) {
+  const dirWrap = $('#dirPickWrap') as HTMLElement | null;
+  const dirSel = $('#dirPick') as HTMLSelectElement | null;
+  if (dirWrap && dirSel) {
+    dirWrap.hidden = dirTrees.length < 2;
+    if (dirTrees.length > 1) {
+      dirSel.innerHTML = dirTrees
+        .map((d, i) => `<option value="${i}"${i === dirActive ? ' selected' : ''}>${escapeHtml(d.tree.caption || d.tree.scope)}</option>`)
+        .join('');
+    }
+  }
+  const freqWrap = $('#freqPickWrap') as HTMLElement | null;
+  const freqSel = $('#freqPick') as HTMLSelectElement | null;
+  if (freqWrap && freqSel) {
+    const list = trees.filter((t) => /^\*./.test(t.scope));      // `*u=文` / `*書`, not the bare `*`
+    freqWrap.hidden = list.length < 2;
+    if (list.length > 1) {
+      if (freqTree < 0) freqTree = trees.indexOf(list[0]);
+      freqSel.innerHTML = list
+        .map((t) => `<option value="${trees.indexOf(t)}"${trees.indexOf(t) === freqTree ? ' selected' : ''}>${escapeHtml(t.caption || t.scope)}</option>`)
+        .join('');
+    }
+  }
+}
+
+/** 目錄 pane: switch to another `s="*"` tree of the same database（taisho 的 分卷） */
+export function selectDirTree(i: number) {
+  if (i < 0 || i >= dirTrees.length || i === dirActive) return;
+  dirActive = i;
+  const d = dirTrees[i];
+  setTierContext(computeTierContext(d.roots));
+  dirOrder = [...iterNodes(d.roots)];
+  void renderDirTree();
+}
+
+/** 頻次 pane: switch to another `*…` tree of the same database */
+export function selectFreqTree(i: number) {
+  const trees = session?.trees ?? [];
+  if (i < 0 || i >= trees.length || !/^\*./.test(trees[i].scope)) return;
+  freqTree = i;
+  void renderFreq();
 }
 
 /**
@@ -278,6 +371,74 @@ function realmHits(from: number, to: number): number {
     return lo;
   };
   return lower(to) - lower(from);
+}
+
+/**
+ * Can the badges be counted EXACTLY?
+ *
+ * Only when the result list was cut off at `maxHits` AND the query is a single clause
+ * (`+`／`−`／`*` are resolved by `rankClauses`, whose counts cannot be recomputed from
+ * the posting lists alone). When the list is complete, `realmHits` is already exact
+ * and costs nothing.
+ */
+function exactCounting(): boolean {
+  const res = lastResult;
+  return !!res && !!session && !!res.truncated && !res.multi;
+}
+
+/** realm counts for the CURRENT query, counted from the posting lists */
+const realmCounts = new Map<string, number>();
+let realmTotal = -1;
+let realmQuery = '';
+
+function realmKey(from: number, to: number): string {
+  return (lastResult?.query ?? '') + '|' + from + '|' + to;
+}
+
+/** sync read of an already counted realm (the render pass fills it in `prepare`) */
+function cachedRealmCount(from: number, to: number): number {
+  const n = realmCounts.get(realmKey(from, to));
+  if (n !== undefined) return n;
+  // not prepared yet (a row mounted outside the prepare slice): fall back to the
+  // list, which is an undercount but never a lie about *where* hits are
+  return realmHits(from, to);
+}
+
+/** exact hit count of `[from, to)` (memoised per query) */
+async function realmCount(from: number, to: number): Promise<number> {
+  const res = lastResult;
+  if (!res || !session) return 0;
+  if (realmQuery !== res.query) { realmCounts.clear(); realmTotal = -1; realmQuery = res.query; }
+  const key = realmKey(from, to);
+  const hit = realmCounts.get(key);
+  if (hit !== undefined) return hit;
+  const stat = await session.rangeStats(res.query, from, to);
+  // a newer query may have won while we counted: do not poison the new cache
+  if (lastResult !== res) return stat.count;
+  realmCounts.set(key, stat.count);
+  if (realmCounts.size > 20000) realmCounts.clear();
+  return stat.count;
+}
+
+/** total hits of the current query (exact when it was truncated) */
+async function searchTotal(): Promise<number> {
+  const res = lastResult;
+  if (!res) return 0;
+  if (!res.truncated || res.multi) return res.hits.length;
+  if (realmQuery !== res.query) { realmCounts.clear(); realmTotal = -1; realmQuery = res.query; }
+  if (realmTotal >= 0) return realmTotal;
+  const stat = await session!.rangeStats(res.query, 0, reader?.header.maxBlockOffset ?? 0);
+  if (lastResult === res) realmTotal = stat.count;
+  return stat.count;
+}
+
+/**
+ * Hits of the current query — the EXACT number when the result list was truncated
+ * (taisho 佛: 567,678, not 5,000). Diagnostics/tests read it through `state()`.
+ */
+export function hitTotal(): number {
+  if (!lastResult) return 0;
+  return realmTotal >= 0 && realmQuery === lastResult.query ? realmTotal : lastResult.hits.length;
 }
 
 /** Compact directory tree: 30% colours per depth, no growing whitespace. */
@@ -330,7 +491,12 @@ async function renderDirTree(): Promise<void> {
   // (`[va, vaEnd)`) — the same number whether the node is open or collapsed. The
   // child count is only shown when there is no search to report on.
   const searching = !!lastResult;
-  const totalHits = lastResult?.hits.length ?? 0;
+  // The result list holds at most 5,000 hits (a PREFIX in VA order — taisho 佛 occurs
+  // 567,678 times, so the list stops at VA 954,553 and 55 of 56 冊 would read 0).
+  // The realm's count therefore comes from the posting lists (`rangeStats`), which is
+  // also what the 命中數 badge promises (HANDOVER §4 五).
+  const exact = exactCounting();
+  const totalHits = exact ? await searchTotal() : (lastResult?.hits.length ?? 0);
   // Rows are mounted a CHUNK at a time (lazy-list): fgdict's tree is 6,966 rows /
   // ~35k DOM nodes, and building it in one go blocked the main thread for ~390 ms.
   // `min: mounted(box)` keeps an already opened tree as far open as it was.
@@ -342,6 +508,7 @@ async function renderDirTree(): Promise<void> {
     prepare: async (slice) => {
       for (const r of slice) {
         const n = r.node;
+        if (exact) await realmCount(n.va, n.vaEnd);
         if (d.labels.has(n.va)) continue;
         n.label = n.label || (await labelFor(n.tag, n.va, n.vaEnd));
         d.labels.set(n.va, n.label);
@@ -351,7 +518,7 @@ async function renderDirTree(): Promise<void> {
       const n = r.node;
       const open = d.open.has(n.va);
       const twisty = r.hasChildren ? (open ? '▾' : '▸') : '·';
-      const hits = searching ? realmHits(n.va, n.vaEnd) : 0;
+      const hits = searching ? (exact ? cachedRealmCount(n.va, n.vaEnd) : realmHits(n.va, n.vaEnd)) : 0;
       let badge = '';
       if (searching) {
         if (hits > 0) badge = hitBadge(hits, totalHits, '此節點範圍內 ', '；點一下顯示這些命中');
@@ -402,7 +569,9 @@ async function renderDirTree(): Promise<void> {
 
         // 點 tCount：顯示該節點命中的摘要（功能二：輸入只更新摘要，這裡才是看命中）
         if (onCount) {
-          void showNodeHits({ from: va, to: node.vaEnd }, label, realmHits(va, node.vaEnd));
+          // the count must be the realm's real hit count: the result list stops at
+          // 5,000, and `cachedRealmCount` has the exact number the badge showed
+          void showNodeHits({ from: va, to: node.vaEnd }, label, cachedRealmCount(va, node.vaEnd));
           void revealHit(va, label, 1, { newTab: wantsNewTab, mode: 'node' });
           return;
         }
@@ -566,12 +735,15 @@ export function currentNodeAt(va: number): TrailNode | null {
  */
 /** 頻次／全文 pane: same stale-render guard as the 名詞 pane. */
 let freqSeq = 0;
+/** total hits of the 頻次 pane's own query (exact even when the list was truncated) */
+let freqTotal = -1;
 
 async function renderFreq() {
   const meta = $('#freqMeta');
   const list = $('#freqList');
   if (!reader || !mapper || !session) { list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>'; return; }
   const seq = ++freqSeq;
+  freqTotal = -1;
   const segs = await freqSegments();
   if (seq !== freqSeq) return;
   if (!segs.length) {
@@ -582,7 +754,7 @@ async function renderFreq() {
   // A tag-name scope (`*詞`) wraps every segment with one tag, so the segment name
   // is exactly what that tag wraps; an attribute scope (`*u=文`) needs the
   // leading-text heuristic instead.
-  const spec = treeScope(/^\*./).replace(/^\*/, '').trim();
+  const spec = freqScope().replace(/^\*/, '').trim();
   const segTag = spec && spec.indexOf('=') < 0 ? spec : undefined;
   // 頻次 has its OWN input: the two panes are independent searches.
   const q = ($('#freqQuery') as HTMLInputElement).value.trim();
@@ -598,26 +770,38 @@ async function renderFreq() {
     res = await searchAutoVia(session, reader?.io ?? null, q);
     if (seq !== freqSeq) return;              // a newer query already started
     const counts = segs.map((s) => ({ ...s, count: 0, firstHit: -1 }));
-    for (const h of res.hits) {
-      let lo = 0, hi = counts.length - 1, at = -1;
-      while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (counts[mid].from <= h.va) { at = mid; lo = mid + 1; } else hi = mid - 1;
+    const exactFreq = !!res.truncated && !res.multi;
+    if (exactFreq) {
+      // 5,000 筆只是 VA 順序的前綴：分段計數要回到 posting 清單，否則後面的段全是 0
+      for (const c of counts) {
+        const st = await session!.rangeStats(res.query, c.from, c.to);
+        if (seq !== freqSeq) return;
+        c.count = st.count;
+        if (st.first >= 0) c.firstHit = st.first;
       }
-      if (at >= 0 && h.va < counts[at].to) {
-        counts[at].count++;
-        // remember WHERE the word is: the segment start is its heading, and marking
-        // the query there would find nothing (the hit lives further inside)
-        if (counts[at].firstHit < 0) counts[at].firstHit = h.va;
+    } else {
+      for (const h of res.hits) {
+        let lo = 0, hi = counts.length - 1, at = -1;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          if (counts[mid].from <= h.va) { at = mid; lo = mid + 1; } else hi = mid - 1;
+        }
+        if (at >= 0 && h.va < counts[at].to) {
+          counts[at].count++;
+          // remember WHERE the word is: the segment start is its heading, and marking
+          // the query there would find nothing (the hit lives further inside)
+          if (counts[at].firstHit < 0) counts[at].firstHit = h.va;
+        }
       }
     }
     const withHits = counts.filter((c) => c.count > 0);
     rows = withHits.sort((a, b) => b.count - a.count);
-    const total = res.hits.length;
+    const total = exactFreq ? counts.reduce((s, c) => s + c.count, 0) : res.hits.length;
+    freqTotal = total;
     meta.textContent = `「${q}」${fmtInt(total)} 筆命中，分布於 ${fmtInt(withHits.length)} / ${fmtInt(segs.length)} 段`
       + '（依命中數排序，0 不顯示）';
   }
-  const total = res?.hits.length ?? 0;
+  const total = freqTotal >= 0 ? freqTotal : (res?.hits.length ?? 0);
   // One row per segment, mounted a chunk at a time (yinshun has 6,978 of them): the
   // list stays complete, the DOM holds only what the reader is looking at.
   await renderChunked(list, rows, {
@@ -694,7 +878,7 @@ async function renderLatin() {
  */
 async function freqSegments(): Promise<{ from: number; to: number; name: string }[]> {
   if (!reader || !mapper) return [];
-  const spec = treeScope(/^\*./).replace(/^\*/, '').trim();
+  const spec = freqScope().replace(/^\*/, '').trim();
   if (!spec) return [];
   const eq = spec.indexOf('=');
   const attrName = eq > 0 ? spec.slice(0, eq).split('.').pop()!.trim() : '';
@@ -843,6 +1027,19 @@ function treeScope(re: RegExp): string {
   if (built) return built;
   // the panes render before the trees are built, so fall back to the declarations
   return (session?.trees ?? []).find((t) => re.test(t.scope))?.scope ?? '';
+}
+
+/**
+ * 頻次 pane's tree: the reader's pick when the database declares several `*…` trees
+ * (taisho: 分書頻次 `*書` / 分卷頻次 `*卷`), else the first declaration.
+ */
+let freqTree = -1;
+
+function freqScope(): string {
+  const trees = session?.trees ?? [];
+  const pick = freqTree >= 0 ? trees[freqTree] : undefined;
+  if (pick && /^\*./.test(pick.scope)) return pick.scope;
+  return trees.find((t) => /^\*./.test(t.scope))?.scope ?? '';
 }
 
 /**
@@ -1011,7 +1208,18 @@ async function renderTerms(): Promise<void> {
     // no string table in this database: fall back to the full-text search + names
     res = await searchAutoVia(session, reader?.io ?? null, q);
     if (seq !== termsSeq) return;
-    const counts = countHitsPerSegment(segs, res.hits);
+    let counts: number[];
+    if (res.truncated && !res.multi) {
+      // the result is a 5,000-hit prefix; per-entry counts come from the postings
+      counts = [];
+      for (const s of segs) {
+        const st = await session!.rangeStats(res.query, s.from, s.to);
+        if (seq !== termsSeq) return;
+        counts.push(st.count);
+      }
+    } else {
+      counts = countHitsPerSegment(segs, res.hits);
+    }
     const withHits = segs.map((s, i) => ({ ...s, idx: i, name: '', count: counts[i] }))
       .filter((s) => s.count > 0)
       .sort((a, b) => b.count - a.count);
@@ -1146,6 +1354,8 @@ export function resetScopes(): void {
   dirOrder = [];
   dirError = '';
   dirActive = 0;
+  freqTree = -1;
+  treeCaptions.clear();      // keyed by VA: a VA is another node in another database
   folioCache = null;
   labelTables.clear();
   treePhases = {};
@@ -1157,7 +1367,7 @@ import { searchAutoVia } from './backend';
 
 /** the trees of ONE database (labelTables is a pure cache: dropped on switch) */
 function snapshotScopes() {
-  return { dirTrees, dirActive, dirError, treePhases, folioCache };
+  return { dirTrees, dirActive, dirError, treePhases, folioCache, freqTree };
 }
 function restoreScopes(s: any): void {
   dirTrees = s.dirTrees ?? [];
@@ -1165,6 +1375,7 @@ function restoreScopes(s: any): void {
   dirError = s.dirError ?? '';
   treePhases = s.treePhases ?? {};
   folioCache = s.folioCache ?? null;
+  freqTree = s.freqTree ?? -1;
   labelTables.clear();
   dirLoading = false;
 }

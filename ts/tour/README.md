@@ -1,5 +1,8 @@
 # 操作導覽：劇本怎麼寫
 
+> 這一份是 accelon26 的實作。可重用版本（format／player／compiler／shell／example＋agent skill）在
+> [agent-norms/self-explaining-tour](https://github.com/accelon/agent-norms/tree/main/self-explaining-tour)；新專案從那裡開始。
+
 一份 `.tour` 檔就是一份導覽。它會經過編譯變成「宏」（二進位＋base64，人不可讀），
 內嵌進 `accelon26.html`，由內建的播放器一步一步做給使用者看。
 

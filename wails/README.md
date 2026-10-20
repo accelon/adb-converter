@@ -3,6 +3,8 @@
 這個目錄是**獨立的 Go module**（`github.com/accelon/adb-converter/wails`，巢狀在倉庫根
 module 裡，彼此不影響）。
 
+> 通用的 Wails3 建置／WebView2／視窗坑見 [wails3-pitfalls.md](../wails3-pitfalls.md)；Windows／漢字／UI 見 [yap-software-practice.md](../yap-software-practice.md)；本文只記本專案的 Go 層與指令。
+
 **產品的預設形態仍然是單檔 HTML**：`assets/index.html`（由倉庫根目錄的
 TypeScript 建置腳本產生，例如 `bun run tools/build-desktop.ts`）。本目錄只有在
 明確需要桌面 exe 時才建置；這裡的 Go 程式碼只是它的宿主，刻意做得極薄。
@@ -32,8 +34,7 @@ TypeScript 建置腳本產生，例如 `bun run tools/build-desktop.ts`）。本
   const b64  = await Call.ByName("main.AdbHost.ReadBase64", path, offset, length);
   ```
 
-  這也是 `Handler` 必須用 `application.BundledAssetFileServer` 的原因：
-  只有它會在 `/wails/runtime.js` 提供內建 runtime。
+  `Handler` 必須用 `application.BundledAssetFileServer`；原因與常見錯誤見 [wails3-pitfalls.md](../wails3-pitfalls.md) §2.1。
 
 ## 命令（都在 wails/ 目錄下執行）
 

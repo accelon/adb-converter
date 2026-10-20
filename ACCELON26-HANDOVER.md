@@ -23,6 +23,8 @@
 > 「哪個 UI 動作觸發哪些非同步資料抓取」的對照表（file:// 與 Wails3 兩種模式）。
 > 本文件是逐輪的規格與踩坑紀錄，architecture.md 是現況地圖。
 >
+> 桌面版（Wails3）的共通坑見 [wails3-pitfalls.md](wails3-pitfalls.md)；Windows／漢字／UI 的共通實踐見 [yap-software-practice.md](yap-software-practice.md)。
+>
 > **改名（2026-10）**：模組已從 `adbview` 全面改名為 `accelon26` ——
 > 目錄 `ts/src/accelon26/`、模板 `accelon26.template.html`、示意圖 `accelon26-map.html`、
 > 除錯 API `window.__accelon26`、設定鍵 `accelon26.*`（改名前的 `adbview.*` 沒有做遷移：
@@ -252,6 +254,15 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   最多命中的最亮（亮紅 `#ff1744` ＋ 微光暈），≥1000 再加一級字級。
   點 tCount 把右欄「摘要」切到該 realm。
 
+  **「永遠」是字面意思（2026-10-20 修）**：結果清單只留前 `maxHits`（5,000）筆，而且是
+  **VA 順序的前綴**——taisho 的「佛」全庫 567,678 筆，前 5,000 筆全部落在阿含部上
+  （VA < 954,553），所以另外 55 個冊的徽章會全部顯示 0、阿含部上顯示 5,000（真值 7,110）。
+  現在徽章／頻次段數／點 tCount 之後的摘要都改用**索引自己算**（`SearchSession.rangeStats()`／
+  `hitsInRange()`：對 posting 清單二分，`matchesInRange()` 與 `phraseMatchPattern()` 同一套規則），
+  與 `maxHits` 無關；實測 56 個冊的徽章加總 = 567,678 = 精確總數，`state().hitTotal` 也是 567,678。
+  多詞組（`+`／`−`／`*`）的排名結果無法只靠 posting 重算，仍用清單裡的命中數
+  （那時 `truncated` 也只影響顯示，不影響計數語意）。
+
 六）**本文捲動 → 目錄樹同步**：以畫面**中間那一行**（不是第一行）為準，
   對應節點標為 `current`、其所有祖先標為 `ancestor`（只是亮起，**不捲過去、不自動展開**）。
   要展開並捲到該節點，按「文件內容」標題左邊的 🌲「展開樹」小按鈕（`#treeReveal`）。
@@ -292,6 +303,8 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   2. **點列像沒反應（慢）**：`linkTo` 一定會 `mapper.elementAt(va)` 走一次 VA→PA 掃描；fgdict 的
      游標可能落後 20 萬行（實測在 #748 條目時點「法王家」＝第 223,814 行），那幾秒就是「點不動」。
      名詞／全文的列自己帶 realm 又用 `exact`（按文字塗紅），**不需要 element** → 直接跳過掃描。
+     （2026-10-20 追根：`elementAt` 已改成查行表定位，見 §5 之後「VA 定位改成查表」——這條的
+     病根就是它，現在不再有「走一次掃描」。）
   3. **element 找不到就整支放棄**：fgdict 的大文件裡有空 block，`elementAt` 回 null，
      舊碼 `if (!el && !node) return` 讓那種列永久點不動。現在只要呼叫端給了 realm 就照樣聯動
      （行號本來就來自 line table，不靠 walk）。
@@ -494,12 +507,7 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   `#settingsBox`。原本的 🧑‍💻（進階模式）與「繁簡」按鈕都收進來，header 只剩三個圖示
   （◧／◨／🔧）。左上角標題是 `Accelon26`（亮灰 `#d9d9d9`，`26` 仍是金色）。
 
-  * **主題**（作者 2026-10-18）：`#themeSeg` 三選一——**暗色系（預設）／亮色系／護眼**。
-    只換 CSS 變數（`html[data-theme="light"]`／`="eye"`，暗色是 `:root` 不設屬性），
-    版面不動、切換不用重繪；選擇存在 `localStorage['accelon26.theme']`，`<head>` 有一小段
-    script 先套再畫（避免先閃暗底）。色票：暗底 `#1e1e1e`、亮底 `#ffffff`、護眼是偏綠紙色
-    `#eaf1e2`。所有原本寫死在規則裡的顏色（金色、選取底色、標題藍、命中紅…）都收成變數，
-    換主題只要換一組值；`theme.ts` 是唯一碰 `data-theme` 的地方。
+  * **主題**：`#themeSeg` 三選一——**暗色系（預設）／亮色系／護眼**；設定鍵 `localStorage['accelon26.theme']`，`theme.ts` 是唯一碰 `data-theme` 的地方。通用規則（CSS 變數、boot script、色票、三主題驗收）見 [yap-software-practice.md](yap-software-practice.md) §7。
   * **介面**：`#setPageMarks` 顯示原書頁碼（進階模式已移到最下面，見下）。
   * **進階**（作者 2026-10：搬到設置頁**最下面**一區）：`#setAdvanced` 進階模式
     （token 瀏覽、META／容量／文件／圖片、顯示原始文件）。
@@ -509,11 +517,7 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
     狀態存在 `localStorage['accelon26.pagemarks']`，切換時 `rerenderDoc()` 立即重畫。
   * **繁簡．輸入通檢**：`#setVariants` —— 查詢時把一個字的所有寫法合併（`variants.ts`）。
     說明用一般人的例子（打「菩萨」也找得到「菩薩」、打「台」也找得到「臺」「檯」）。
-  * **繁簡．文字顯示**（`#simSeg` 三態，作者 2026-10）：
-    * `保持原樣`（0）—— 不動
-    * `無損簡體`（1）—— 只轉「一對一」的繁→簡；發／髮→发、乾／幹→干、裡／裏→里、
-      臺→台 這種合併字**保留原字**，避免簡化造成誤解（作者舉例：中醫）
-    * `強制簡體`（2）—— 全轉（Unihan kSimplifiedVariant）
+  * **繁簡．文字顯示**（`#simSeg` 三態）：`保持原樣`（0）／`無損簡體`（1）／`強制簡體`（2）；判定與範例見 [yap-software-practice.md](yap-software-practice.md) §6。
   * **設置頁有範例**（`#simDemo`）：同一句「頭髮乾燥，臺灣的醫生後來又發心。」三列並排，
     **不一樣的字**用黃色虛線底線標出（無損 5 個、強制 9 個），目前模式那一列會突顯，
     切換時立刻重畫 —— 一眼看出「無損」保留了 髮／乾／臺。
@@ -524,21 +528,12 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
     `vendor/Unihan_Variants.txt` 產生；每兩個字一組「繁,簡」）。無損 **2641** 組、
     強制 **2810** 組。只收 BMP 的字（產物是「兩字一組」的字串，非 BMP 會對不齊）。
     讀過 `D:\2023\ptk\lossless-simplified-chinese` 的做法後自己算的。
-  * **無損的判定**（作者 2026-10）：
-    1. 簡體字本身不能是常用繁體字 —— 人工表 `LOSSY_TARGETS`（后、台、里、干、只、几、
-       云、面、松、咸、借、谷、舍、系、复、于、郁、冲、准、胡、采、累、布、卷、秋、千、
-       卜、出、板、表、别…）。**所以「後」在無損模式保留原字**（否則「王后／王後」分不出）。
-    2. 繁體字只能對到這一個簡體字。
-    3. 簡體字的其他繁體寫法必須都是**同一個字的異體** —— 用 union-find 併
-       `kZVariant`／`kSemanticVariant`／`kSpecializedSemanticVariant` 的關係，
-       同一組才算（說／説→说、眾／衆→众 可以轉；發／髮、乾／幹 不行）。
-    4. 這個繁體字自己也在那一組裡（否則就是把兩個不同的字併在一起）。
-  * **只影響顯示**：索引、搜尋、塗紅比對仍在原文；塗紅要畫的字（片語／data-src 切片）
-    也先用同一個轉換再找字（`paint.ts`），所以簡體顯示下仍畫得對。
+  * **無損的判定**：一對一、異體 union-find、`LOSSY_TARGETS`、只收 BMP；完整規則見 [yap-software-practice.md](yap-software-practice.md) §6.3。
+  * **只影響顯示**：索引、搜尋、塗紅比對仍在原文（見指南 §6.4）；塗紅要畫的字也先用同一個轉換再找字。
   * 設定都是系統級（存 localStorage：`accelon26.advanced`、`accelon26.variants`、
     `accelon26.simmode`），換庫不變。
   * **顏色全部走主題變數**：`:root` 的 `--tag-0..--tag-7`；`depthColor()` 回傳
-    `var(--tag-N)`，內文標題的 `--tagc` 也用同一組。換 theme 只改 CSS，不必改程式。
+    `var(--tag-N)`，內文標題的 `--tagc` 也用同一組；通用規則見指南 §7.2。
   * 標題後面那串統計（`.docHead .dim`：頁數／行號／source 區塊／字數）**只在進階模式顯示**
     （CSS：`body:not(.advanced) .docHead .dim { display: none }`；中欄與右欄「文字內容」都適用）。
   * **詞典型 adb 不顯示 `docHead`**（作者 2026-10）：詞條名稱已經在分頁標題上，而第一個
@@ -1014,6 +1009,40 @@ DOM 列數也固定。
   長時間跳讀會把整個 24 MB 庫的解碼結果留在記憶體、GC 抖動就變成卡頓。
 * 診斷入口：`state().lastLink`（`ensureMs`／`totalMs`／`rows`）、`state().textCache`。
 
+### VA → 元素改成「查行表」（2026-10-20，taisho 241 MB 崩潰的根因）
+
+**症狀**（客戶回報，2026-10-20）：taisho.adb（241 MB、11,255 個 source 區塊、87,894,472 VA、
+4,982,297 行）在 16 GB 的 Windows 桌機上，**點目錄後面的書（如 史傳部三 → 古清涼傳）整個
+WebView2「內存不足」崩掉**；**查任何文字也一樣**。
+
+**根因**：`elementAt(va)` 從 block 0 逐行重播到目標 VA（`advanceTo`），而它把**每一個**
+`TokenPos`、`elemIndex` 記錄、`tagHits` 全留在記憶體裡，永不淘汰。taisho 的書排在檔尾
+（古清涼傳 VA 78,711,204 ＝ 全庫 89%），所以點一下書就要走完 ~4,900 萬 VA：
+
+| | 舊（逐行走訪） | 新（查行表） |
+|---|---:|---:|
+| `elementAt(78,711,204)` | **> 25 s 還沒走完，堆已 3.8 GB** | **4.5 ms**，堆 90 MB |
+| 點「史傳部三」→ 本文出現 | 沒有出現（例外被 `void revealHit()` 吞掉） | 90 ms／200 行 |
+| 點「古清涼傳」 | 同上 | 58 ms／200 行 |
+| taisho 搜「菩.心」（5000 命中、30 張摘要） | 第一個深處命中就觸發同一條走訪 | 25 ms、堆 89 MB |
+
+**修法**（`vapa.ts`）：`tables/lines.virtual` 已經存了每一行的 VA，所以
+「VA → 哪一行」是二分搜尋、「這一行的元素」只要單獨 tokenise 一次（`tokenize(index, vaStart)`）。
+`elementAt`、`blockWalk`、`elementAtUnit`、skip 標籤的跨步（`elementAfter`）全部走這條，
+快取只留 **12 個 block／64 行**（`blockAtCache`／`lineAtCache`）。逐行重播只留給
+`validate`／`lineAdjacency`／`crossLinePairs`／`scoreModel` 這些**驗證工具**。
+
+**關鍵細節（踩過的坑）**：`tables/lines.virtual[i]` 存的是第 i 行**最後一個 unit 的 VA**
+（含頭不含尾的「inclusive end」），所以第 i 行的起點是 `lines.virtual[i-1] + 1`，
+不是 `lines.virtual[i-1]`。差這 1 個 unit，13j 的 `<隱>` 就會從 VA 11 變成 10、
+整庫的元素全部錯位一格（`test/vapa.test.ts`、`test/search.test.ts` 立刻紅）。
+
+**驗證**：`tools/check-element.ts --adb <adb>` 對每一個標籤實例取樣比對
+（13j 478/478、yinshun 2,578/2,578、fgdict 138/138、taisho 336/336 都回到自己的 VA），
+並在有走訪資料的區塊裡比對查表與逐行重播（13j 400/400、yinshun 400/400、taisho 400/400 一致；
+fgdict 走訪本身漂移 +41,636（最差 +94,246），以查表為準 —— 查表讓 fgdict 的標籤 VA 命中率
+從 32/238 提升到 238/238）。
+
 **自動字級（「不換行」）**：可用寬度必須取**中間欄**（`docTextWidth()`，扣除左右欄與列內 gap）；
 量測必須在**無寬度約束**的容器。**因為有分頁，量測不可以只看當前頁**：
 現在用行表取整份文件的 p90 當「代表行長」，並取 `線表最大行長（≤1.15×p90）` 當上限，
@@ -1024,9 +1053,9 @@ DOM 列數也固定。
 
 | 測試 | 結果 |
 |---|---|
-| `file-protocol-test.ts`（13j） | **157/157** |
-| `file-protocol-test.ts`（yinshun） | **170/170** |
-| `file-protocol-test.ts`（fgdict） | **171/171** |
+| `file-protocol-test.ts`（13j） | **159/159**（2026-10-20 修好兩支過期探針後第一次跑到完） |
+| `file-protocol-test.ts`（yinshun） | **182/182** |
+| `file-protocol-test.ts`（fgdict） | **173/173** |
 | `test/tree.test.ts` | 40/40 |
 | `test/search.test.ts`（13j／yinshun） | 19/19、18/18 |
 | `test/multi-search.test.ts`（yinshun／fgdict／13j） | 39/39、18/18、18/18 |
@@ -1110,13 +1139,10 @@ DOM 列數也固定。
 
 ## 8. 工作注意事項（踩過的坑）
 
-* **不要用 PowerShell 的 `Get-Content`/`Set-Content` 或 `-replace` 改 `.ts`**：
-  本專案檔案是 UTF-8 無 BOM，PS 會把中文變亂碼、也曾把程式碼改壞成語法錯誤。請用編輯工具逐字改。
+> 通用的 Wails3 CDP／WebView2 坑見 [wails3-pitfalls.md](wails3-pitfalls.md) §2.7；Windows／漢字／`file://`／UI 見 [yap-software-practice.md](yap-software-practice.md) §3–§7。本節只留本專案的測試與診斷細節。
+
 * **測試的 page-eval 字串內不要放 TypeScript 型別註解**（`const x: number[]`），
   也不要用未轉義的 `${}`／反引號 —— 兩者都會造成 `SyntaxError`。
-* **瀏覽器可能快取 `file://` 的 HTML**。改完 viewer 後若測試結果與程式碼不符，
-  先確認 `build/accelon26.html` 的內容（例如 `Select-String` 找一個新字串），
-  並讓測試用 `?v=Date.now()` 開啟頁面（file-protocol-test.ts 已加了）。
 * **重複宣告會靜默蓋掉新函式**：`viewer.ts` 曾經同時有兩個 `revealHit`，
   舊版把新版的 `linkTo` 整個蓋掉，浪費了一輪除錯。改完先用
   `bun build src/accelon26/viewer.ts --target browser --outfile build/_check.js` 轉譯一次。
@@ -1126,7 +1152,6 @@ DOM 列數也固定。
   （換頁時 DOM 會先換行、後塗紅）。
 * **`#freqQuery`／`#latinQuery` 曾經完全沒有 handler**（輸入了不會重畫）。
   現在 `boot()` 用 `wireOwnSearch` 接上 input／Enter／Escape／清除鈕。
-* CDP 啟動參數必須含 `--remote-allow-origins=*`，否則 websocket 握手失敗。
 * 測試用的診斷入口都在 `window.__accelon26`（`state()`、`openBreakdown()`、`fitDebug()`、
   `pinnedSpans()`、`treeDebug()`、`debugDoc()`、`setCols()`、`setAdvanced()`、`showTab()`）。
   `state()` 新增 `docTab`／`docTabs`／`docPage`／`docPages`／`docTabPages`／`docPageLines`／
@@ -1135,11 +1160,7 @@ DOM 列數也固定。
 * **左欄頁名與 scope 綁定**：`syncTreeTabs()` 由 `<樹 s="…">` 決定顯示哪幾頁與頁名
   （`*`→目錄、`$X`→名詞、`*u=`→頻次、`*X`→全文、`X.y`→原書分頁、`~X`→西文），
   換庫時「目錄」可能不存在，所以預設頁會自動落到第一個存在的頁。
-* **🌲 展開樹**：使用者要求的是 `🪾`（U+1FABE，Unicode 16），但多數字型沒有這個字
-  （headless Chrome 直接顯示空框），所以按鈕用 `🌲`（U+1F332，通用）。
 * `.gitignore` 已排除 `*.adb`、`build/`、`sourcecode/`，所以資料庫與建置產物不會進版控。
-* **`.ts` 是 CRLF**（`search.ts` 787 個 `\r\n`、0 個 LF）。用 Node 做字串替換時要按檔案的實際行尾組 pattern，
-  否則 `old_string` 會找不到（踩過）；反過來我拆檔時寫出的是 LF，所以現在模組間行尾不一致（功能無害）。
 
 ## 9. 主要資料庫
 
@@ -1150,6 +1171,8 @@ DOM 列數也固定。
 | `D:\accelon3\fgdict.adb` | 18.2 MB | 佛光大辭典。三棵 `<樹>`（`$詞`／`*詞`／`頁.n`）、`<詞>` 22,648 個 |
 
 ## 10. 桌面版（Wails3 宿主，2026-10）
+
+> 通用的 Wails3 建置／橋／視窗／更新坑見 [wails3-pitfalls.md](wails3-pitfalls.md)；Windows／漢字／UI 見 [yap-software-practice.md](yap-software-practice.md)；本章只記本專案的實作、數據與檔案。
 
 **目的**：exe 啟動時就自動列出**工作目錄裡所有 `.adb`**（只讀每個檔的 256 位元組檔頭），
 讀內文用 **mmap**。使用者從右上 `#dbPick` 下拉選一個就加入 `dbTabs`，其餘行為與網頁版完全一樣。
@@ -1283,39 +1306,19 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
 
 ### 10.5 踩到的坑（下一輪別再踩）
 
-1. **`application.BundledAssetFileServer` 不是 `AssetFileServerFS`**：只有前者會在 `/wails/runtime.js`
-   提供內建 runtime（後者只服務 assets）。用錯的話頁面照樣跑，但 `host.ts` 的 import 失敗 → 下拉永遠空的。
-2. **Wails 會覆寫 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`**（`preventEnvAndRegistryOverrides` 會 `os.Setenv`），
-   所以自動化測試要開 devtools 只能從 `application.WindowsOptions.AdditionalBrowserArgs` 傳；
-   本專案用環境變數 `ACCELON26_DEBUG_PORT` 開啟，**預設不開任何除錯埠**。
-3. **Bun 不會對「未 import 的識別字」報錯**（會當成全域）→ `bootDesktop()` 裡的 `catalogAdd` 忘了 import，
-   建置成功、執行時 `ReferenceError`，而且是在 async 裡 → 安靜地什麼都沒發生（下拉空的）。
-   修法：補 import ＋ `state().host.error` 讓它能被看見。
-4. 更新 HTML 後**必須重跑 `tools/build-desktop.ts` 再 `go build`**：HTML 是內嵌的，只 rebuild 其中一邊不會生效。
-5. `wails/assets/index.html` 是**建置產物**（來自 `tools/build-desktop.ts`）；`//go:embed all:assets` 需要它存在。
-6. `physicalBytes()`（adb.ts）目前**沒有任何呼叫者**（原本就不存在），所以 Go 端只做 `DecompressText`、
-   沒有做回原生位元組的版本 —— 保持 Go 層最薄；哪天真要用再加。
-7. **建置順序：先 HTML、再 exe**。exe 內嵌 `wails/assets/index.html`，先 `go build` 才
-   `tools/build-desktop.ts` 就會把**舊的 UI**包進去（我踩過：改了左上角提示，exe 裡還是舊版）。
-   `tools/release.ts` 已把順序固定住。
-8. **Wails 的 DPI/座標系前後不一**：見 §10.8 的「踩到的坑」——螢幕與游標座標在
-   `application.New()` 前後會是不同空間，定位一定要用 Wails 自己的 `application.Screen`。
-9. **在持有 mutex 時 panic ＝ 永久卡死**：`searchFile()` 把解析結果寫進一個 nil map（`h.search[key] = f`）
-   → panic；panic 回溯時 deferred `release()` 又想拿同一把鎖 → 整個 goroutine 卡住，前端
-   `Runtime.evaluate` 逾時 60 s。症狀是「頁面看起來沒反應、Go 沒崩」。修法：寫入前先 `make` map；
-   教訓是**鎖的臨界區裡不要有可能 panic 的動作**。
-10. **Windows 命令列的中文會變亂碼**：`bun run tools/release.ts --items "改名為…"` 經 PowerShell 傳進去
-    後，release_notes.json 變成亂碼（而且已經 commit）。**中文一律用 `--items-file notes.txt`**（UTF-8），
-    release.ts 也會對亂碼字元發警告並中止。凡是「把中文當參數傳給子行程」都要小心。
-11. **`wails3 generate syso` 一定要給 `-arch`**：不給的話它會產生**0 位元組**的 .syso（而且 exit code 0），
-    `go build` 連結時看到壞掉的物件就改走 external linker → `loadinternal: cannot find runtime/cgo` ＋
-    `gcc not found`（本機沒有 gcc）→ 建置失敗。給了 `-arch amd64` 就正常（67 KiB），`CGO_ENABLED=0` 也能連結。
-    release.ts 會檢查檔案大小，太小的直接刪掉（免得下一次建置踩到）。
-12. **共用 promise 的探測**：`hostCall()` 原本用 `probed` 旗標，兩個呼叫同時進來時，第二個會在探測
-    還沒完成前看到 `probed=true / call=null` → 誤判「沒有宿主」（下拉整個空的）。修法：把探測做成
-    一個共用的 promise，所有人 await 同一個。
+> 通用的 Wails3 坑（asset handler、CDP、build 順序、syso、DPI、mutex、探測競態）見 [wails3-pitfalls.md](wails3-pitfalls.md)；Windows／漢字／UI 見 [yap-software-practice.md](yap-software-practice.md)。本節只留本專案獨有的歷史教訓，避免兩邊各寫一份。
+
+* `physicalBytes()`（adb.ts）目前**沒有任何呼叫者**（原本就不存在），所以 Go 端只做 `DecompressText`、
+  沒有做回原生位元組的版本 —— 保持 Go 層最薄；哪天真要用再加。
+* `searchFile()` 曾把解析結果寫進 nil map（`h.search[key] = f`）→ panic；panic 回溯時 deferred `release()`
+  又想拿同一把鎖 → goroutine 卡死，前端 `Runtime.evaluate` 逾時 60 s。修法：寫入前先 `make` map；
+  通用教訓見指南 §7.1。
+* `bootDesktop()` 曾漏 import `catalogAdd`：Bun 不報錯、async 內 `ReferenceError` 被吞 → 下拉空的。
+  已補 import，並用 `state().host.error` 讓它可見；通用教訓見指南 §2.3。
 
 ### 10.8 視窗與螢幕（作者 2026-10）
+
+> 通用的視窗／螢幕／DPI 坑見 [wails3-pitfalls.md](wails3-pitfalls.md) §3；以下只記本專案的規則、狀態檔與驗證。
 
 規則（原文）：「第一次進入 exe 先進入全屏，離開時記下視窗設定，下次恢復；永遠將 exe 投在用戶
 執行 exe 的那個屏，如果偵測不到，就在主屏開啟（經常有軟件開已不存在的外接屏）。」
@@ -1332,10 +1335,7 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
   `application.ScreenNearestPhysicalRect` 找出對應的 Wails 螢幕 → 拿它的 `WorkArea`；
   游標問不到（外接螢幕被拔掉的座標、拿不到游標）→ 主螢幕 → 第一張。
 * **第一次啟動**：全螢幕（`win.Fullscreen()`）；記下的「還原框」是夾進工作區後置中的預設大小。
-* **視窗要有標準 Windows 標題列**（作者 2026-10 指出全螢幕時「沒有窗口標題、不能關也不能縮放」）：
-  Wails 的全螢幕在 Windows 上是把樣式換成 `WS_POPUP`（**沒有標題列**），所以
-  **F11 切換全螢幕、Esc 離開全螢幕**（`ts/src/accelon26/window-keys.ts` → `AdbHost.ToggleFullscreen`），
-  離開後樣式回復成 `WS_OVERLAPPEDWINDOW`（標題列／可縮放／可關／可最大化，測試有斷言）。
+* **視窗要有標準 Windows 標題列**：Wails 全螢幕在 Windows 是 `WS_POPUP`（沒有標題列；通用坑見指南 §3.5），所以本專案用 **F11／Esc** 切換（`ts/src/accelon26/window-keys.ts` → `AdbHost.ToggleFullscreen`），離開後恢復 `WS_OVERLAPPEDWINDOW`（標題列／可縮放／可關／可最大化，測試有斷言）。
   第一次以全螢幕啟動時，畫面頂端會出現 7 秒提示：「全螢幕中：按 Esc 或 F11 回到視窗（Alt+F4 關閉）」；
   `#brand` 的 hover hint 也一直寫著「F11 全螢幕／Esc 回視窗」。`WindowInfo().style` 可以看樣式位元
   （caption／resizable／sysMenu／maximizeBox／popupOnly），排錯時先看它。
@@ -1356,10 +1356,7 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
 * 服務方法 `main.AdbHost.WindowInfo()`（頁面可直接呼叫，**UI 完全不需要知道**）：位置、大小、狀態、
   所在螢幕與工作區、最後一次 normal 的框、狀態檔路徑。
 
-**踩到的坑（座標系，§10.5 第 8 條）**：`w32.GetAllScreens()` 在 `application.New()` **之前與之後**
-會回不同的數字（DPI 虛擬化：本機測試環境前後是 1040x693 三張 vs 3120x2080 一張，游標座標也跟著變），
-而 Wails 的視窗座標系是後者那一套。所以**定位一律走 Wails 自己的 `application.Screen`**
-（`ScreenNearestPhysicalRect` 負責 physical↔DIP 換算），`w32` 只用來列舉與拿游標原始座標（-screens）。
+**座標系**：通用坑見指南 §3.2。本專案 `w32.GetAllScreens()` 在 `application.New()` 前後可能回不同數字（DPI 虛擬化），所以**定位一律走 Wails 的 `application.Screen`**（`ScreenNearestPhysicalRect` 做 physical↔DIP 換算），`w32` 只用來列舉與拿游標原始座標（`-screens`）。
 
 **驗證**（`tools/desktop-test.ts --gui`，共 28 項全過）：
 
@@ -1379,8 +1376,7 @@ ok 連續兩次啟動的視窗設定不會漂移         兩次都是 {relX:70, 
 設定連續兩次啟動完全相同**（不漂移），所以程式不補正這個常數差，只在啟動時等 60 ms 穩定後讀回來
 補一次（不一致才補）。測試因此驗「在工作區內 + 接近要求 + 兩次不漂移」，而不是要求逐像素相同。
 
-關視窗要用真的關閉（頁面呼叫 `Window.Close()`）：硬殺行程不會觸發 `WindowClosing`／`OnShutdown`，
-設定就不會被寫下來（測試就是這樣抓到的）。
+關視窗要用真的關閉；硬殺不會觸發 `WindowClosing`／`OnShutdown`，設定就不會被寫下來（通用坑見指南 §3.4）。
 
 ### 10.7 索引查詢（postings／plAnd／分群）搬到 Go
 
@@ -1418,6 +1414,8 @@ Go 端的自我檢查（不開 GUI）：`cd wails && go test -count=1 -run TestS
 
 ### 10.9 左上角建置時間與線上更新（作者 2026-10）
 
+> 通用的更新／簽章／WebView2 坑見 [wails3-pitfalls.md](wails3-pitfalls.md) §4–§5；以下只記本專案的版本資訊、指令與檔案。
+
 作者原文：「accelon26.exe 改名…左上角 hover hint 顯示 built time。如果
 https://shutonggui.cn/accelon26/accelon26.exe 的 built time 比用戶運行中的更新，左上角閃動
 表示有更新版提醒用戶更新，用戶點下時，問是否確定更新（先檢查 exe 所在目錄是否可寫，不可寫就
@@ -1441,7 +1439,7 @@ UI，兩個宿主共用；桌面版內嵌的那一份仍叫 `wails/assets/index.
    （2026-10-18 實測差 11 秒；上傳慢一點就會「更新完又說有新版」），所以不要靠它。
 
 **不檢查更新的兩種情況**（都不打擾使用者）：
-1. **exe 所在目錄不可寫**（真的寫一個暫存檔測試）→ 永遠不檢查；
+1. **exe 所在目錄不可寫**（真的寫一個暫存檔測試）→ 本專案目前永遠不檢查（通用建議是仍檢查、只停用自動換檔，見指南 §5.7）；
 2. **本地建置時間與現在差不到 2 小時** → 開發者自己的 exe（自動化測試用
    `ACCELON26_UPDATE_URL` 覆寫網址時會強制檢查，否則測不到）。
 
@@ -1459,18 +1457,9 @@ UI，兩個宿主共用；桌面版內嵌的那一份仍叫 `wails/assets/index.
 `accelon26-prev.exe`（可以直接雙擊）→ `.new` 改名成正式名字 → 啟動 prev 這支**重新啟動器**
 （`-relaunch-pid/-relaunch-exe/-relaunch-from/-relaunch-port`）→ 0.7 秒後舊行程結束。
 
-**為什麼要重新啟動器**（2026-10-18 實測）：新舊兩個行程不能同時用同一個 WebView2 使用者
-資料目錄 —— 第二個行程拿到 `8007139f` 直接開不起來（連 2 秒的重疊都會失敗）。所以舊行程
-立刻讓位，由 prev 等它完全結束（＋0.4 秒）才開新版；這支不開視窗、不碰 WebView2。
-重新啟動器再觀察新版 4 秒：新版若馬上結束（非 0）就把 prev 改名回 `accelon26.exe`、
-跳訊息框、把上一版開起來。新版跑得起來時 prev 會在 6 秒後與正常關閉時刪掉
-（`handedOff` 區分「交棒後結束」與「正常關閉」，交棒的那一支不刪）。
-`InstallUpdate` 有鎖（`installMu.TryLock`），連點兩次只會有一次真的動手。
+**為什麼要重新啟動器**：新舊行程不能同時用同一個 WebView2 使用者資料目錄（`8007139f`）；通用坑與 helper 設計見指南 §5.3。本專案的時序：舊行程 0.7 秒後結束，prev 等它完全結束（＋0.4 秒）才開新版；這支不開視窗、不碰 WebView2；再觀察新版 4 秒，失敗就把 prev 改名回 `accelon26.exe`、跳訊息框、開舊版。新版跑得起來時 prev 在 6 秒後與正常關閉時刪掉（`handedOff` 區分交棒與正常關閉）。`InstallUpdate` 有鎖（`installMu.TryLock`）。
 
-**exe 放哪裡／怎麼建**（作者 2026-10）：exe **一律產在工作文件夾的 `accelon3\`**（`release.ts`、
-`go build`、Taskfile、`deploy.ts` 的預設都是那裡）—— 那是 accelon3 的資料夾，幾十個 `.adb` 都在，
-建完直接雙擊就能測。用 **GUI 子系統**（`-ldflags "-H windowsgui"`）建置 —— 這樣
-**Explorer 雙擊不會跳出命令列視窗**。console 版（看得到 log，開發用）加 `--console`。
+**exe 放哪裡／怎麼建**：exe 一律產在 `accelon3\`（那裡有幾十個 `.adb`，建完直接雙擊測）。用 `-ldflags "-H windowsgui"` 建置；console 版加 `--console`（通用坑見指南 §1.4）。
 
 **發佈（作者說「發布」時）**：
 
@@ -1496,6 +1485,7 @@ cd ts; bun run tools/deploy.ts [--site]                       # 上傳 exe → v
   `wails3 generate syso -arch amd64 -icon … -manifest wails/windows.manifest` 產生
   `wails/accelon26.syso`（go build 會自動連結這個資源物件）。`.syso` 是建置產物（gitignore）。
   manifest 宣告 per-monitor v2 DPI 感知、longPathAware、Common-Controls、Win10/11 支援。
+  `-arch` 與 syso 的坑見指南 §1.2。
 * **網頁版圖示**：`page-build.ts` 把同一張 PNG 以 **data URI** 內嵌成 `<link rel="icon">`
   —— 單檔 HTML 不能依賴旁邊的檔案，data URI 才真的「一個檔案帶著走」（+19 KiB）。
 * 驗證：`ExtractAssociatedIcon` 從 exe 取出 32×32 圖示（與來源相同）；網頁版在瀏覽器測試裡斷言
@@ -1524,7 +1514,7 @@ ok 更新後顯示改版說明（notesBox）
 
 測試的「線上新版」是真的：它把 exe 裡烙進去的建置時間改成明天（同長度純文字替換，PE 不受
 影響），再餵一份 `versions.json`（buildTime ＋ sha256 ＋ size 都對得上），所以下載、五道關卡、
-換檔、重新啟動器、回滾、改版說明全部走真的程式碼。
+換檔、重新啟動器、回滾、改版說明全部走真的程式碼。**本專案未簽章，才能這樣 byte-patch；若簽章就不能這樣做（見指南 §4.8）。**
 
 Go 單元測試（`wails/update_test.go`）：目錄可寫／不可寫、遠端較新／較舊／沒有 Last-Modified／
 連不上、開發者本地 exe 跳過檢查、下載＋PE 檔頭檢查、versions.json 判斷與 sha256／size 帶回、
@@ -1698,7 +1688,7 @@ www/
 |---|---|
 | 畫面區 | 四張截圖是**輪播**（`#gallery`，2026-10-18：作者說首頁太長）：3 秒換一張、小白點可點、滑鼠移入／鍵盤聚焦／切到別的頁籤時暫停、系統要求減少動態時不自動換 |
 | 重拍截圖 | `bun run tools/site-shots.ts`（1600×1000 ×1.5 → 2400×1500 JPEG q88）。UI 改了就跑一次，官網的圖才不會過時 |
-| 產生下載檔 | `bun run tools/release.ts`：建好 exe 之後順便打包 `www/accelon26.7z`（7-Zip ultra，17 MB → 7.1 MB）。壓縮檔裡有 `accelon26.exe` ＋ `README.txt`（簡體）＋ `README-tc.txt`（繁體），兩份說明是 **UTF-8 帶 BOM ＋ CRLF**（文字在 `ts/tools/readme-text.ts`）。只改說明時跑 `bun run tools/pack-7z.ts`，不會動 exe、也不會讓使用者跳更新 |
+| 產生下載檔 | `bun run tools/release.ts`：建好 exe 之後順便打包 `www/accelon26.7z`（7-Zip ultra，17 MB → 7.1 MB）。壓縮檔裡有 `accelon26.exe` ＋ `README.txt`（簡體）＋ `README-tc.txt`（繁體），兩份說明是 **UTF-8 帶 BOM ＋ CRLF**（理由與編碼規則見 [yap-software-practice.md](yap-software-practice.md) §4.1；文字在 `ts/tools/readme-text.ts`）。只改說明時跑 `tools/pack-7z.ts`，不會動 exe、也不會讓使用者跳更新 |
 | 公開數據庫頁 | `www/adb/index.html`（作者 2026-10-18）：`index.txt` 是清單來源，`bun run tools/make-adb-index.ts` 讀本地 `accelon3/` 的 adb **檔頭**（`maxblockoffset`＝字數（約）、`dbcname`、檔案時間、大小）產生頁面；adb 有增補就重跑一次再 `bun run tools/deploy.ts --site-only`。首頁 nav／頁尾都有入口 |
 | 部署 | `bun run tools/deploy.ts --site`：先 exe、後 versions.json、再首頁與 7z；每一項都先 `.tmp` 再 `mv`，最後從 https 抓回來驗 sha256。主機事實、回滾與更新器的判斷邏輯見 [DEPLOY.md](DEPLOY.md) |
 | 頁面上的安裝說明 | 解開 7z → 把 `accelon26.exe` 放到 **accelon3.exe 同一個資料夾** → 雙擊。打不開 7z 就到 https://sparanoid.com/lab/7z/ 下載 Windows x64 版 |
