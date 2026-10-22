@@ -10,7 +10,7 @@
  * 四張圖各對應官網列的一個特色：
  *   search.jpg     全文搜尋（邊打邊查、命中塗紅）
  *   tour.jpg       操作導覽（聚光燈＋說明氣泡）
- *   dict.jpg       詞典分頁（點本文的詞就查詞條）
+ *   dict.jpg       詞典分頁（「般若」切到結尾查詞條）
  *   allsearch.jpg  一次搜尋所有資料庫
  *
  * 每換一個資料庫就 reload 一次：換庫時若剛好有「上一庫的分頁載入中」，它會在換庫後
@@ -254,18 +254,16 @@ if (want('dict')) {
   await cdp.eval('window.__accelon26.dictLookupAt("般若")');
   await until(`document.querySelectorAll('#dictList .dictItem').length > 0`);
   await sleep(1500);
-  // 作者 2026-10-22：釋文下面切到「結尾」，列出摩訶般若、文字般若……，
-  // 這才是這頁真正的特色（左欄仍是開頭清單，兩邊對照）。
-  await cdp.eval(`(() => {
-    const b = document.querySelector('#dictBody .dictMoreTab[data-kind="end"]');
-    b?.click();
-  })()`);
-  await until(`!!document.querySelector('#dictBody .dictMoreTab[data-kind="end"].active')
-    && document.querySelectorAll('#dictBody .dictRel').length > 5`);
-  await cdp.eval(`(() => {
-    const b = document.querySelector('#dictBody');
-    if (b) b.scrollTop = b.scrollHeight;
-  })()`);
+  // 作者 2026-10-22：左欄「名詞」的比對位置切到「結尾」——列出二般若、八部般若、
+  // 文字般若……（般若在詞尾，不是詞首）。這才是這頁要突顯的特色。
+  for (let i = 0; i < 3; i++) {
+    const mode = await cdp.eval<string>('document.querySelector("#termsMode").dataset.mode');
+    if (mode === 'end') break;
+    await cdp.eval('document.querySelector("#termsMode").click()');
+    await sleep(600);
+  }
+  await until(`document.querySelector('#termsModeName')?.textContent === '結尾'`);
+  await until(`(document.querySelector('#termsList .snippet b')?.textContent ?? '') !== '般若'`);
   await sleep(900);
   await shot('dict.jpg');
 }
