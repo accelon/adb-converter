@@ -17,28 +17,16 @@ let pinnedHit: { va: number; text: string; token: string; units: number; line: n
 let lastReveal = '';
 
 /**
- * The deepest directory node that contains a VA (its realm is the node's range).
+ * The deepest directory node that owns a VA (its realm is the node's range).
  *
- * Siblings are disjoint and VA-ascending, so this is a descent with a binary
- * search per level — O(depth × log width) instead of walking every node (fgdict
- * has 29,614 of them, and this runs on every link AND on every scroll settle).
+ * 作者 2026-10-22：VA → 節點改成 `nodeOwningVa`（`<檔>` 邊界優先）。範圍判定原本
+ * 會把檔頭 4 個 VA 算成前一本書，游標高亮與「上一頁／下一頁」因此跟著指錯。
+ * Siblings are disjoint and VA-ascending, so the descent is a binary search per
+ * level — O(depth × log width) instead of walking every node (fgdict has 29,614
+ * of them, and this runs on every link AND on every scroll settle).
  */
 function deepestNode(va: number, roots = dirTrees[dirActive]?.roots ?? []): TreeNode | null {
-  let cur: TreeNode | null = null;
-  let list = roots;
-  for (let guard = 0; guard < 32 && list.length; guard++) {
-    let lo = 0, hi = list.length - 1, at = -1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      if (list[mid].va <= va) { at = mid; lo = mid + 1; } else hi = mid - 1;
-    }
-    if (at < 0) break;
-    const n = list[at];
-    if (va >= n.vaEnd) break;
-    cur = n;
-    list = n.children;
-  }
-  return cur;
+  return nodeOwningVa(roots, va, docs);
 }
 
 /** a node's display name (labels are resolved lazily per tree) */
@@ -265,18 +253,16 @@ export const setCursorPending = (b: boolean): void => { cursorPending = b; };
 /**
  * 目前本文所在的節點在文件順序中的位置（DFS）；找不到就 -1。
  * 「上一頁／下一頁」走到節點邊界時，用它換到上／下一個 text node（作者 2026-10）。
+ *
+ * 作者 2026-10-22：節點一樣由 `deepestNode`（`<檔>` 邊界優先）決定。整個 `<檔>`
+ * 的 realm 從檔頭開始，舊的範圍判定會把它算成前一冊的最後一節，於是「下一頁」
+ * 跳到正在讀的這一冊的開頭。
  */
 function orderIndex(realmFrom: number): number {
   const order = treeOrder();
   if (!order.length) return -1;
-  let best = -1;
-  for (let i = 0; i < order.length; i++) {
-    const n = order[i];
-    if (n.va <= realmFrom && realmFrom < Math.max(n.vaEnd, n.va + 1)) {
-      if (best < 0 || n.depth >= order[best].depth) best = i;
-    }
-  }
-  return best;
+  const node = deepestNode(realmFrom);
+  return node ? order.indexOf(node) : -1;
 }
 
 /** 有沒有上／下一個 text node（pager 要不要顯示、按鈕要不要亮） */
@@ -311,9 +297,79 @@ export function resetLink(): void {
   lastReveal = '';
   cursorNode = null;
   cursorPending = false;
+  entryIndexSource = null;
+  entryIndex = null;
 }
 
-import { TreeNode } from './search';
+/* ------------------------------------------------------------ entry links */
+/**
+ * `<聯 n="詞條">` 的目標解析。
+ *
+ * Accelon 的 LINK 標籤只存名字（`n=`），不是位置；這裡用詞典型資料庫現成的
+ * `caches/詞`（詞頭字串表，與 `tags` 容器的第 i 個命中一一對應）做一次線性
+ * 建表，之後 O(1) 查。索引跟著 `reader` 物件快取，換庫或關庫就重建。
+ */
+let entryIndexSource: unknown = null;
+let entryIndex: { names: string[]; vas: number[] } | null = null;
+
+async function buildEntryIndex(): Promise<{ names: string[]; vas: number[] } | null> {
+  if (!reader) return null;
+  const tags = reader.containers.get('tags');
+  if (!tags) return null;
+  for (const tag of ['詞', '字', '詞目', '字頭', 'term', 'entry']) {
+    const ti = tags.names.indexOf(tag);
+    if (ti < 0) continue;
+    try {
+      const names = await reader.cachedStrings(tag);
+      if (!names.length) continue;
+      const vas = await reader.decodeBlockList('tags', ti);
+      if (vas.length !== names.length) continue;
+      return { names, vas };
+    } catch {
+      /* 這個標籤沒有名稱表，換下一個 */
+    }
+  }
+  return null;
+}
+
+/** 把一個詞頭解析成 VA 並聯動本文（`<聯 n=…>` 的點擊入口） */
+export async function linkToEntry(word: string): Promise<boolean> {
+  if (!reader || !word) return false;
+  if (entryIndexSource !== reader) {
+    entryIndexSource = reader;
+    entryIndex = await buildEntryIndex();
+  }
+  if (!entryIndex) return false;
+  const at = entryIndex.names.indexOf(word);
+  if (at < 0) {
+    setStatus(`「${word}」不在本庫的詞頭表`, 'warn');
+    return false;
+  }
+  await linkTo(entryIndex.vas[at], word, 1, { mode: 'node', exact: true });
+  return true;
+}
+
+let entryLinksBound = false;
+
+/** 文件區的委派監聽：`a[data-entry]` → linkToEntry（只綁一次） */
+export function initEntryLinks(): void {
+  if (entryLinksBound) return;
+  entryLinksBound = true;
+  document.addEventListener(
+    'click',
+    (ev) => {
+      const el = ev.target as Element | null;
+      const a = el?.closest?.('a[data-entry]') as HTMLElement | null;
+      if (!a) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      void linkToEntry(a.dataset.entry ?? a.getAttribute('data-entry') ?? '');
+    },
+    true,
+  );
+}
+
+import { TreeNode, nodeOwningVa } from './search';
 
 function snapshotLink() {
   return { pinnedHit, lastReveal, cursorNode };

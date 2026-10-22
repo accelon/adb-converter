@@ -237,6 +237,28 @@ ok('啟動時沒有把每個 adb 都載入（只讀檔頭）', parsed.catalog.fi
 ok('開第一個 adb 是用 mmap 讀的（有 read 統計）', !!parsed.open && parsed.open.reads > 0,
   parsed.open ? `reads=${parsed.open.reads} ioMs=${parsed.open.ioMs?.toFixed?.(1)} parseMs=${parsed.open.parseMs?.toFixed?.(1)}` : 'no breakdown');
 
+// ---- 設定檔與字型（作者 2026-10-22）：只讀，不寫檔（不碰使用者真正的 settings.json） ----
+const settingsInfo = await gui.call<any>('main.AdbHost.SettingsInfo');
+const fonts = await gui.call<string[]>('main.AdbHost.Fonts');
+const aboutSettingsPath = await evalIn<string>(`(async () => {
+  window.__accelon26.openAbout();
+  await new Promise(r => setTimeout(r, 800));
+  const path = document.getElementById('aboutSettings')?.textContent ?? '';
+  const revealHidden = document.getElementById('aboutSettingsReveal')?.hidden;
+  window.__accelon26.closeAbout();
+  return JSON.stringify({ path, revealHidden });
+})()`);
+const aboutSettings = JSON.parse(aboutSettingsPath) as { path: string; revealHidden: boolean };
+ok('設定檔位置在 exe 旁或使用者設定資料夾（settings.json）',
+  !!settingsInfo?.path && /settings\.json$/.test(settingsInfo.path),
+  JSON.stringify(settingsInfo));
+ok('桌面版列出已安裝字型（標籤樣式的字型清單）',
+  Array.isArray(fonts) && fonts.length > 10,
+  `${Array.isArray(fonts) ? fonts.length : 0} 個`);
+ok('About 顯示設定檔的實際位置、可開資料夾',
+  aboutSettings.path === settingsInfo?.path && aboutSettings.revealHidden === false,
+  `About「${aboutSettings.path}」／Info「${settingsInfo?.path}」`);
+
 // pick the OTHER database from the dropdown and time it
 const second = await evalIn<string>(`(async () => {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));

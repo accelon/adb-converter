@@ -429,26 +429,36 @@ const newOuter = buildContainer({ feature: outer.feature, blocks: outerBlocks, n
 const file = assembleAdb(newHeader, newOuter);
 
 // ------------------------------------------------------------------ compare
-const original = fd >= 0 ? readFileSync(from!) : Buffer.alloc(0);
-const same = file.length === original.length && file.equals(original);
-console.log(`${same ? 'ok  ' : 'FAIL'} rebuild ${from}: original ${original.length} B, rebuilt ${file.length} B`);
-if (!same) {
-  let at = 0;
-  while (at < Math.min(original.length, file.length) && original[at] === file[at]) at++;
-  console.log(`     first difference at byte ${at}: original 0x${original[at]?.toString(16)} rebuilt 0x${file[at]?.toString(16)}`);
-  for (const name of outer.names) {
-    const buf = parts.get(name);
-    if (!buf) continue;
-    const bs = containerOf(name);
-    if (!bs) continue;
-    const r = blockRange(outer, outer.names.indexOf(name));
-    const orig = readAt(fd, r.start, r.end - r.start);
-    console.log(`     ${name.padEnd(18)} original ${String(orig.length).padStart(9)} B  rebuilt ${String(buf.length).padStart(9)} B  ${orig.equals(buf) ? 'ok' : 'DIFF'}`);
+// A standalone build (no --from) has nothing to compare against: report the
+// size and succeed, instead of the "FAIL ... original 0 B" of a byte diff.
+if (fd < 0) {
+  if (out) {
+    writeFileSync(out, file);
+    console.log(`built ${out}: ${file.length} B (standalone, ${lines.length} lines)`);
   }
+  process.exitCode = 0;
+} else {
+  const original = readFileSync(from!);
+  const same = file.length === original.length && file.equals(original);
+  console.log(`${same ? 'ok  ' : 'FAIL'} rebuild ${from}: original ${original.length} B, rebuilt ${file.length} B`);
+  if (!same) {
+    let at = 0;
+    while (at < Math.min(original.length, file.length) && original[at] === file[at]) at++;
+    console.log(`     first difference at byte ${at}: original 0x${original[at]?.toString(16)} rebuilt 0x${file[at]?.toString(16)}`);
+    for (const name of outer.names) {
+      const buf = parts.get(name);
+      if (!buf) continue;
+      const bs = containerOf(name);
+      if (!bs) continue;
+      const r = blockRange(outer, outer.names.indexOf(name));
+      const orig = readAt(fd, r.start, r.end - r.start);
+      console.log(`     ${name.padEnd(18)} original ${String(orig.length).padStart(9)} B  rebuilt ${String(buf.length).padStart(9)} B  ${orig.equals(buf) ? 'ok' : 'DIFF'}`);
+    }
+  }
+  if (out) {
+    writeFileSync(out, file);
+    console.log(`wrote ${out}`);
+  }
+  closeSync(fd);
+  process.exitCode = same ? 0 : 1;
 }
-if (out) {
-  writeFileSync(out, file);
-  console.log(`wrote ${out}`);
-}
-if (fd >= 0) closeSync(fd);
-process.exitCode = same ? 0 : 1;

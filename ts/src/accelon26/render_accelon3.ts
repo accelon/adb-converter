@@ -14,6 +14,7 @@
  * 包上 `<div class="docLine" id="Ln">`，所以捲動、塗紅、游標同步都不受影響。
  */
 import type { TreeNode } from './search';
+import { defaultFontOf, fontFamilyOf, tagStyleOf } from './tag-style';
 
 export interface RenderContext {
   /** 標籤 → 它在樹裡的深度（0＝最上層） */
@@ -177,6 +178,8 @@ export class Accelon3Renderer {
   private stack: { tag: string; depth: number }[] = [];
   /** 被隱藏標籤（樹／隱）包住的次數 */
   private hidden = 0;
+  /** 目前還開著的 `<聯>` 錨點數（沒有 n= 的聯不長錨點；收尾時不能多吐 </a>） */
+  private entryLinks = 0;
   /** 這個頁面上的頁碼計數（沒有 n= 時拿它當 id） */
   private pageSeq = 0;
   /** 這一行有沒有可見文字／標題（lineInfo 回報用） */
@@ -238,8 +241,17 @@ export class Accelon3Renderer {
     const steps = this.opts.depthSteps?.get(depth);
     const up = Math.max(0, this.ctx.levels - 1 - depth);
     const n = steps ?? up;
-    const size = !this.opts.headScale ? '' : n > 0 ? `font-size:min(calc(1em + ${n * LEVEL_STEP_PX}px), ${LEVEL_MAX_SCALE}em);` : 'font-size:1em;';
-    return `<span class="h" data-tag="${esc(tag)}" data-up="${up}" data-depth="${depth}" style="${size}--tagtext:var(--tag-text-${tagChromaIndex(tag, depth, this.ctx)})">`;
+    // 作者 2026-10-22：標籤樣式（設置 → 標籤樣式）優先；沒有自訂就維持原本的 auto。
+    const custom = tagStyleOf(tag);
+    let size = !this.opts.headScale ? '' : n > 0 ? `font-size:min(calc(1em + ${n * LEVEL_STEP_PX}px), ${LEVEL_MAX_SCALE}em);` : 'font-size:1em;';
+    if (this.opts.headScale && custom?.size != null) size = `font-size:${custom.size}%;`;
+    const color = custom?.color || `var(--tag-text-${tagChromaIndex(tag, depth, this.ctx)})`;
+    // 作者 2026-10-22：<經> 沒有自訂字型時預設楷體；自訂字型（含空字串＝本文）優先。
+    const fontName = custom ? (custom.font ?? defaultFontOf(tag)) : defaultFontOf(tag);
+    const font = (fontName || custom?.font2)
+      ? `font-family:${fontFamilyOf({ font: fontName, font2: custom?.font2 })};`
+      : '';
+    return `<span class="h" data-tag="${esc(tag)}" data-up="${up}" data-depth="${depth}" style="${size}${font}--tagtext:${color}">`;
   }
 
   /** `<頁>`：原書分行時是右靠的分隔；不保留硬換行時是行內的小字頁碼 */
@@ -296,6 +308,18 @@ export class Accelon3Renderer {
         if (!closing && this.opts.pageMarks) { html += this.pageMark(attrs); this.sawText = true; }
         continue;
       }
+      // `<聯 n="詞條">`：Accelon 的條目連結（LINK，pair，SKIP）。本文只負責長出
+      // 可點的錨點；目標怎麼解析成 VA 由 link.ts 的 linkToEntry 做。
+      if (name === '聯' || name === '_聯') {
+        const target = attrValue(attrs, 'n');
+        if (closing) {
+          if (this.entryLinks > 0) { html += '</a>'; this.entryLinks--; }
+        } else if (target && !selfClose) {
+          html += `<a class="entryLink" href="#" data-entry="${esc(target)}" title="${esc(target)}">`;
+          this.entryLinks++;
+        }
+        continue;
+      }
       if (PARA_TAGS.has(name)) {
         // <段/> 或 <段>：都當段落分隔（最簡做法：<br> ＋ 兩個全形空格）。
         // 縮排放在自己的 span 裡：塗紅在做「文字位移對應」時會跳過它，
@@ -325,6 +349,8 @@ export class Accelon3Renderer {
 
     // 行尾把這一行還開著的標題收掉（下一行會重新開；HTML 才是平衡的）
     html += '</span>'.repeat(this.stack.length);
+    // `<聯>` 錨點同樣在行尾收掉；跨行的聯不重新開（條目連結都是行內）
+    if (this.entryLinks) { html += '</a>'.repeat(this.entryLinks); this.entryLinks = 0; }
     return { no: lineNo, html, raw: text, visible: this.sawText, heading: this.sawHeading };
   }
 

@@ -16,9 +16,10 @@
  *
  * 這一支只碰 DOM 與 host.ts，不 import viewer（避免 viewer → ui → about 的循環）。
  */
-import { desktopAppInfo, desktopCheckUpdate, desktopInstallUpdate, desktopOpenExternal } from './host';
+import { desktopAppInfo, desktopCheckUpdate, desktopInstallUpdate, desktopOpenExternal, desktopRevealInFolder } from './host';
 import type { DesktopAppInfo } from './host';
 import { startTour } from './tour';
+import { exportSettingsFile, initSettings, settingsLocation, settingsVersion } from './settings';
 
 export const ABOUT_SITE = 'https://shutonggui.cn/accelon26/';
 
@@ -134,6 +135,39 @@ function fillMeta(mode: string, buildText: string, exe: string): void {
 }
 
 /**
+ * 「設定檔」一列（作者 2026-10-22）：顯示 settings.json 的**實際**位置。
+ *
+ * 路徑由宿主決定（exe 旁 → 不可寫才退到 %APPDATA%）；網頁版是 localStorage。
+ * `開啟資料夾` 只有桌面版且真的用檔案時才顯示。
+ */
+async function fillSettingsInfo(): Promise<void> {
+  try { await initSettings(); } catch { /* 讀不到就用預設，不要擋 About */ }
+  const loc = settingsLocation();
+  const code = el<HTMLElement>('aboutSettings');
+  const note = el<HTMLElement>('aboutSettingsNote');
+  const reveal = el<HTMLButtonElement>('aboutSettingsReveal');
+  const ver = el<HTMLElement>('aboutSettingsVersion');
+  if (ver) ver.textContent = `v${settingsVersion()}`;
+  if (!code) return;
+  if (!loc) {
+    code.textContent = '（尚未決定）';
+    if (note) note.textContent = '';
+    if (reveal) reveal.hidden = true;
+    return;
+  }
+  const web = loc.kind === 'localStorage';
+  code.textContent = web ? `localStorage['accelon26.settings']` : loc.path;
+  if (reveal) reveal.hidden = web;
+  if (note) {
+    note.textContent = web
+      ? '網頁版沒有檔案：設定存在瀏覽器的 localStorage；用「設置 → 標籤樣式 → 匯出」存成 settings.json 帶走。'
+      : (loc.note || (loc.kind === 'exe'
+        ? '與 accelon26.exe 放在一起，可以直接備份／分享。'
+        : 'exe 資料夾不可寫，改存使用者設定資料夾。'));
+  }
+}
+
+/**
  * 遠端建置時間比本地晚嗎？（桌面版由 Go 判斷；這裡留給未來的 version.json 用）
  */
 export function isNewerBuild(remote: string, local: string): boolean {
@@ -182,6 +216,7 @@ async function checkWeb(): Promise<void> {
 /** 開啟 About；順便（重新）檢查更新 */
 export async function openAbout(): Promise<void> {
   show(true);
+  void fillSettingsInfo();
   if (checking) return;
   checking = true;
   setUpdate('checking', '檢查更新中…');
@@ -252,6 +287,12 @@ export function initAbout(): void {
   el<HTMLElement>('aboutClose')?.addEventListener('click', () => closeAbout());
   el<HTMLElement>('aboutBackdrop')?.addEventListener('click', () => closeAbout());
   el<HTMLElement>('aboutInstall')?.addEventListener('click', () => { void install(); });
+  // 設定檔：匯出／在資料夾中顯示（作者 2026-10-22）
+  el<HTMLElement>('aboutSettingsExport')?.addEventListener('click', () => exportSettingsFile());
+  el<HTMLElement>('aboutSettingsReveal')?.addEventListener('click', () => {
+    const loc = settingsLocation();
+    if (loc && loc.kind !== 'localStorage') void desktopRevealInFolder(loc.path);
+  });
   // 「留言給作者」：在微信旁邊，開官網的留言頁（新視窗／系統瀏覽器），順便帶上版本號
   el<HTMLElement>('aboutMessage')?.addEventListener('click', (ev) => {
     ev.preventDefault();

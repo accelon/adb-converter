@@ -307,5 +307,68 @@ export async function desktopSources(): Promise<AdbSource[]> {
   }
 }
 
+// ---- 設定檔與字型（作者 2026-10-22） -------------------------------------------
+//
+// settings.json 的位置由宿主決定（exe 旁 → 不可寫才退到使用者設定目錄）。
+// 前端只知道路徑與能不能寫；檔案格式（v1）由 TS 的 settings.ts／tag-style.ts 管。
+
+/** wails/settings.go 的 SettingsInfo */
+export interface DesktopSettingsInfo {
+  /** 實際使用的 settings.json 完整路徑 */
+  path: string;
+  /** 'exe'（exe 旁）或 'userconfig'（%APPDATA% 退路） */
+  kind: 'exe' | 'userconfig';
+  /** 目前能不能寫（退路通常可寫） */
+  writable: boolean;
+  /** 為什麼用退路的說明（可空） */
+  note?: string;
+}
+
+export async function desktopSettingsInfo(): Promise<DesktopSettingsInfo | null> {
+  const c = await hostCall();
+  if (!c) return null;
+  try {
+    return await c.ByName('main.AdbHost.SettingsInfo') as DesktopSettingsInfo;
+  } catch {
+    return null;
+  }
+}
+
+/** 讀 settings.json；不存在時 ok=true、text='' */
+export async function desktopLoadSettings(): Promise<{ ok: boolean; text: string; error?: string }> {
+  const c = await hostCall();
+  if (!c) return { ok: false, text: '', error: '沒有桌面宿主' };
+  try {
+    const r = await c.ByName('main.AdbHost.LoadSettings') as { ok: boolean; text: string; error?: string };
+    return r ?? { ok: false, text: '', error: '宿主沒有回應' };
+  } catch (e) {
+    return { ok: false, text: '', error: String((e as Error)?.message ?? e) };
+  }
+}
+
+/** 原子寫入 settings.json（暫存檔＋rename） */
+export async function desktopSaveSettings(text: string): Promise<{ ok: boolean; error?: string }> {
+  const c = await hostCall();
+  if (!c) return { ok: false, error: '沒有桌面宿主' };
+  try {
+    const r = await c.ByName('main.AdbHost.SaveSettings', text) as { ok: boolean; error?: string };
+    return r ?? { ok: false, error: '宿主沒有回應' };
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
+}
+
+/** 桌面版：使用者已安裝的字型家族名（wails/fontlist_*.go） */
+export async function desktopFonts(): Promise<string[]> {
+  const c = await hostCall();
+  if (!c) return [];
+  try {
+    const list = await c.ByName('main.AdbHost.Fonts') as string[] | null;
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
 /** diagnostics for state(): is a host answering, how many databases, and why not */
 export const hostState = () => ({ available: !!call, listed: lastCount, error: lastError });

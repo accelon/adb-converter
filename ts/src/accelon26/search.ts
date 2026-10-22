@@ -16,7 +16,7 @@
  *
  *   bun run test/search.test.ts [--adb ...]
  */
-import { AdbReader, type Container } from './adb';
+import { AdbReader, type Container, type DocRow } from './adb';
 import { parseAttrs } from './vapa';
 import { normalize, Tokenizer } from '../tokenize';
 import { tntTrim, isPunctuation, isWhitespace } from '../unicode';
@@ -719,6 +719,81 @@ function lowerBoundVa(list: TreeInstance[], target: number): number {
     if (list[mid].va < target) lo = mid + 1; else hi = mid;
   }
   return lo;
+}
+
+// ------------------------------------------------------- VA → 節點（<檔> 邊界優先）
+
+/**
+ * 哪一個樹節點「擁有」這個 VA。
+ *
+ * 節點的 `vaEnd` 是「下一個同層標題」的 VA，而 `<檔>` 的開標籤本身佔 4 個 VA：
+ * 於是每一本 `s="*"` 樹最後一串節點都會跨進下一個 `<檔>` 的檔頭 4 個 VA
+ * （yinshun：44 個檔界、131 個節點，全部剛好溢出 4 —— 華雨集第一冊
+ * 3160839..3361718，而 y26 的檔頭是 3361714..3361717）。
+ *
+ * 照範圍判定時，檔頭那 4 個 VA 會被算成「前一本書」：搜尋「彗」時目錄把命中標在
+ * 華雨集第二冊（正確），本文 breadcrumb 卻說華雨集第一（作者 2026-10-22）。
+ *
+ * 規則（`<檔>` 邊界優先於加寬的範圍）：
+ *   1. 節點不能跨過自己所在的 `<檔>`：有效 `vaEnd` ＝ min(`vaEnd`, 檔尾)。
+ *   2. 檔頭（`<檔>` 開標籤到第一個標題之間）的 VA 屬於**這一個檔的第一個節點**，
+ *      不是前一本書。
+ *
+ * 沒有 `<檔>` 的庫（13j 是單一檔）沒有這種邊界，行為與原本的範圍判定相同；
+ * 這時也不做「下一個節點」的退路 —— 資料庫開頭那幾個 VA 本來就不屬於任何書。
+ */
+export function nodeOwningVa(
+  roots: TreeNode[],
+  va: number,
+  docs: readonly Pick<DocRow, 'vaStart' | 'vaEnd'>[] = [],
+): TreeNode | null {
+  if (!roots.length) return null;
+  const doc = docs.find((d) => va >= d.vaStart && va < d.vaEnd);
+  if (!doc) return descendNode(roots, va, Number.MAX_SAFE_INTEGER, -1);
+  const inside = descendNode(roots, va, doc.vaEnd, doc.vaStart);
+  return inside ?? firstNodeIn(roots, va, doc.vaEnd);
+}
+
+/**
+ * 最深的那一個「範圍包含 va」的節點：同層以二分搜尋選最後一個 `va <= target` 的
+ * 節點（同層不重疊，所以它就是唯一的候選），再往下層走。
+ *
+ * `limit` 是容許的範圍終點（＝所在 `<檔>` 的檔尾），`minStart` 是起點
+ * （＝檔頭）：挑到的節點若屬於前一個 `<檔>` 就停止，不能把檔頭算給前一本書。
+ */
+function descendNode(roots: TreeNode[], va: number, limit: number, minStart: number): TreeNode | null {
+  let cur: TreeNode | null = null;
+  let list = roots;
+  for (let guard = 0; guard < 32 && list.length; guard++) {
+    let lo = 0, hi = list.length - 1, at = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (list[mid].va <= va) { at = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    if (at < 0) break;
+    const n = list[at];
+    if (n.va < minStart) break;                       // 前一個 <檔> 的節點
+    // 空節點（vaEnd == va）仍算擁有自己那一個 VA（終端節點），但不能越過檔尾
+    const end = Math.min(Math.max(n.vaEnd, n.va + 1), limit);
+    if (va >= end) break;
+    cur = n;
+    list = n.children;
+  }
+  return cur;
+}
+
+/** 檔頭（第一個標題之前）的 VA：這個檔裡 VA 最小的節點 */
+function firstNodeIn(roots: TreeNode[], va: number, limit: number): TreeNode | null {
+  let best: TreeNode | null = null;
+  const walk = (ns: TreeNode[]): void => {
+    for (const n of ns) {
+      if (n.va >= limit) continue;
+      if (n.va >= va && (!best || n.va < best.va)) best = n;
+      walk(n.children);
+    }
+  };
+  walk(roots);
+  return best;
 }
 
 /** Flat view of a tree, for rendering without recursion. */

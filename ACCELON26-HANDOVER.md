@@ -602,6 +602,10 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   * **點祖先格 → 下拉同層的所有節點**（`scopes.ts: siblingsOf(va)` → `#trailMenu`），
     目前這一個用 `.active` 突顯；下拉**不節略**（`text-overflow: clip`、不設 `max-width`，
     完整標籤；實測 yinshun 最長 16 字沒有被截斷）。點空白處或再點一次收起。
+  * **短路徑的邊界**（作者 2026-10-22）：`<檔>` 的開標籤佔 4 個 VA，節點的 `vaEnd`
+    又停在「下一個標題」，所以每一冊的最後一串節點會跨進下一冊的檔頭。VA → 節點一律走
+    `search.ts: nodeOwningVa`（**檔界優先**：節點不跨檔、檔頭算這一檔的第一個節點），
+    breadcrumb 才不會把「華雨集第二冊」的命中說成第一冊。詳見 §14。
   * **上一頁／下一頁**：小節（少於一頁）以前整個 pager 被藏起來，現在只要「有上／下一個
     節點」就顯示；走到頁面邊界時改成換到**上／下一個 text node**
     （`link.ts: stepRealm()` 用 `treeOrder()` 的 DFS 順序，走 `revealHit(mode:'node')`
@@ -1891,3 +1895,238 @@ bun run tools/deploy-macos.ts
 | `ts/tools/clean.ts` | 清 `build/` |
 | `ts/tools/make-adb-index.ts` | 公開數據庫頁 |
 | `wails/release_notes.draft.txt` | 下一版要告訴使用者的句子（發佈時 append 進 `release_notes.json`） |
+
+## 14. 2026-10-22：`<檔>` 邊界與 breadcrumb（作者回報）
+
+**回報**：yinshun.adb 搜尋「彗」，目錄顯示華雨集第二冊有 1 個命中（正確），但本文上方的
+breadcrumb 說在華雨集第一。
+
+### 14.1 原因：節點範圍跨進下一個檔的檔頭 4 個 VA
+
+* 目錄節點的 `vaEnd` 是**下一個同層標題的 VA**（`buildTree` 的語義），而 `<檔>` 的開標籤
+  本身佔 **4 個 VA**。所以每一冊的最後一串節點都會跨進下一冊的檔頭：
+  yinshun **44 個檔界、131 個節點，全部剛好溢 4 個 VA**。
+
+  ```
+  華雨集第一冊   va 3160839 … vaEnd 3361718   ← 節點範圍
+  y25 的 </檔>   3361713                      （收標籤 0 VA）
+  y26 的 <檔>    3361714 … 3361717            （開標籤 +4 VA，屬於第二冊）
+  <書>華雨集第二冊</書>  va 3361718            ← 第一個標題
+  ```
+
+* 「摘要」點一張命中卡時，`linkTo` 會把 realm 設成**整個 `<檔>`**（不是命中所在的節點）。
+  檔頭 4 個 VA 落在第一冊的 `vaEnd` 之內，於是 VA → 節點的範圍判定回傳**華雨集第一冊的
+  最後一節**，`ancestorTrail()`／`currentNodeAt()` 就把它排成 breadcrumb。
+  目錄的命中徽章是數 `[va, vaEnd)` 的 posting，命中的 VA（3376132）本來就在第二冊，
+  所以兩邊看起來矛盾。
+
+* 同一個原因也讓**游標高亮**（`link.ts: deepestNode`）與**上一頁／下一頁**（`orderIndex`）
+  在檔頭那幾個 VA 指向前一本書。
+
+### 14.2 修法：`<檔>` 邊界優先於加寬的範圍
+
+新增 `search.ts: nodeOwningVa(roots, va, docs)`，VA → 節點只走這一個入口：
+
+1. 節點不能跨過自己所在的 `<檔>`：有效 `vaEnd` ＝ `min(vaEnd, 檔尾)`。
+2. 檔頭（`<檔>` 開標籤到第一個標題之間）的 VA 屬於**這一個檔的第一個節點**，
+   不是前一本書；這一條讓「整個 `<檔>`」的 realm 得到正確的書（華雨集第二冊）。
+3. 沒有 `<檔>` 的庫（13j 單一檔）行為不變；資料庫開頭仍然不屬於任何節點（不做 (2) 的退路）。
+
+呼叫端：`scopes.ts: nodeContainingVa`（breadcrumb 的祖先與自己）、
+`link.ts: deepestNode`（游標高亮、連結時的節點）、`link.ts: orderIndex`（跨節點翻頁）。
+命中徽章的數字不用改：`<檔>` 開標籤不是 token，posting 裡不會有那 4 個 VA。
+
+### 14.3 回歸測試
+
+* `test/tree.test.ts`：每個 `<檔>` 的起點（`vaStart`）必須對到**這一個檔的第一個節點**、
+  檔尾最後一個 VA 仍屬於同一個檔；13j（沒有 `<檔>`）則檢查資料庫開頭不屬於任何節點。
+  yinshun 45 個檔、起點錯 0（修好前 44 個檔的起點都指向前一本書）。
+* `tools/file-protocol-test.ts`：開最後一本書的整個 `<檔>`（`showLine`，與文件清單同一條路，
+  摘要點命中也是同一種 realm）→ breadcrumb 至少要有**一個節點落在這個檔之內**；
+  前一本書的節點全部在 realm 之前。實測（作者回報的那一手）：搜「彗」點摘要卡，
+  修好前 breadcrumb 是 `["華雨集第一冊", …]`、修好後是 `["華雨集第二冊", "同層 44"]`。
+
+### 14.4 這一輪沒有做的事
+
+* **沒有重建 exe**（作者 2026-10 的規矩：平常只做 `build/accelon26.html`）。桌面版要看到修正：
+  `cd ts && bun run tools/build-desktop.ts` → `cd ../wails && go build -ldflags "-H windowsgui" -o ..\accelon3\accelon26.exe .`
+* 整個 `<檔>` 的 realm 走到最後一頁按「下一頁」時，如果這一冊**有子節點**，還是會換到
+  這一冊的第一個子節點（不是下一個檔；沒有子節點的書才會換到下一冊）。這是 realm 語義的
+  老問題，與 breadcrumb 無關，這一輪沒動。
+
+## 15. 2026-10-22：標籤樣式設定（實作）
+
+作者先看 mockup（`ts/mockup/tag-style-settings.html`＋[`TAG-STYLE-SETTINGS.md`](TAG-STYLE-SETTINGS.md)），
+回覆九個決定後實作。**設計稿是 spec，這一節只記實作重點與驗證。**
+
+### 15.1 定案
+
+* 設置改成**分頁**：**介面（主題／介面／進階）在最左**、標籤樣式、繁簡（作者 2026-10-22
+  後續把主題／介面／進階合併成一個「介面」分頁）。
+* 每個標籤設**顏色、相對本文的大小（50–300%）、字型（第一種＋第二種 fallback）**；
+  自訂以**整個標籤**為單位，不做單欄位繼承。
+* **天干地支是同一個設定、22 層**：指定底色，每層色相 +30°（S／L 不變）；不能單獨改某個字。
+* 作用範圍：全域預設／此資料庫；此庫預設繼承全域。
+* **`profiles.adb` 的鍵＝adb 檔名**（重建 adb 不會動到 settings.json；同檔名就繼續套用）。
+* 儲存：網頁版 `localStorage['accelon26.settings']`；exe 版 **exe 旁 `settings.json`**，
+  不可寫才退到 `%APPDATA%\accelon26\settings.json`（Go 用 `dirWritable()` 決定）。
+  About 多一列「設定檔」顯示**實際**位置＋v1，可匯出／在資料夾中顯示。
+* 字型：**exe 列出系統已安裝字型**（Windows 讀登錄檔 Fonts 機碼；macOS 用 `system_profiler`），
+  網頁版只列內建清單。
+* `settings.json` v1 只放標籤樣式；格式／版本見設計稿 §3。
+
+### 15.2 實作檔案
+
+| 檔案 | 工作 |
+|---|---|
+| `ts/src/accelon26/tag-style.ts`（新） | 合併、22 層 ramp、`tagStyleOf`、序列化（只存差異） |
+| `ts/src/accelon26/settings.ts`（新） | localStorage／宿主讀寫、版本檢查、匯出／匯入、位置 |
+| `wails/settings.go`（新） | `SettingsInfo`／`LoadSettings`／`SaveSettings`（原子寫）、位置決策 |
+| `wails/fontlist_windows.go`／`fontlist_darwin.go`（新） | 已安裝字型清單 |
+| `ts/src/accelon26/ui.ts` | 設置分頁、標籤列、ramp、預覽、儲存卡、重繪 |
+| `accelon26.template.html` | 分頁與標籤樣式 markup／CSS（940px） |
+| `render_accelon3.ts`／`scopes.ts`／`doc-pane.ts` | 標題、色點、breadcrumb 先問 `tagStyleOf` |
+| `viewer.ts`／`about.ts` | `setActiveDb`（檔名）、About 的設定檔一列 |
+| `ts/test/tag-style.test.ts`（新）／`wails/settings_test.go`（新） | 單元測試 |
+
+### 15.3 驗證
+
+* `bun run test/tag-style.test.ts` **23/23**（合併、22 層色相、只存差異、版本、檔名鍵；
+  另外用真的 renderer 驗證標題的顏色／大小／字型，第二種字型接在第一種後面）。
+* `go test ./...` 全綠（settings round-trip、原子寫、退路、字型解析）。
+* 網頁版 file:// 端到端（headless）：開 yinshun → 設置 → 全域改「章」#ff0000/200%
+  → 本文標題 32px 紅、目錄色點紅、breadcrumb 紅；天干地支自訂底色 → 22 層 ramp
+  每層 +30°；此庫改「節」→ settings.json 的 adb 鍵 `yinshun.adb`；重新載入後設定還在；
+  About 顯示 localStorage。**8/8**。
+* 桌面版（暫存 exe，不覆寫 `accelon3/accelon26.exe`）：settings 位置在 exe 旁、列出 **158** 個
+  已安裝字型、改設定真的寫出 `settings.json`（v1、章 #00aaff/150）、About 顯示路徑、
+  重新載入後讀回。**6/6**。
+* 既有測試：file:// 全套 **187/187**（yinshun；含新增的標籤樣式 4 項）、tree 43、
+  render 22、backend-layout 11、search 18、tour 31 全綠；`desktop-test --gui --quick`
+  37/38（唯一失敗是視窗位置差 80px 的平台誤差，與本功能無關）。
+  * 全套原本會在目錄徽章那一塊 CDP timeout；原因是 headless 的背景頁被 Chrome 節流
+    （5 分鐘後 `setTimeout` 一分鐘才跑一次）。`file-protocol-test.ts` 的 `openPage` 現在
+    會 `Page.bringToFront`＋`Emulation.setFocusEmulationEnabled`，之後就穩定 187/187。
+
+### 15.4 注意
+
+* **沒有重建 `accelon3/accelon26.exe`**（作者 2026-10 的規矩）。`wails/assets/index.html` 已更新；
+  要換 exe：`cd ts && bun run tools/build-desktop.ts` → `cd ../wails && go build -ldflags "-H windowsgui" -o ..\accelon3\accelon26.exe .`
+* macOS 的字型清單走 `system_profiler SPFontsDataType`，第一次可能幾秒（快取）；**未在 macOS 實測**。
+* 沒有 `s="*"` 樹的庫（fgdict）只顯示預設標籤清單（作者決定 8），仍可改全域樣式。
+* 字型的 inline style 在 renderer 裡用**單引號**（`style="font-family:'DFKai-SB', …"`）：外層是
+  雙引號的 HTML 屬性，家族名再用雙引號會把 style 截斷（這一輪實測抓到的）。
+* 設定頁改成雙欄（分頁）後，操作導覽的繁簡步驟要先切到「繁簡」分頁
+  （`first-run.tour` 已加）；tour-data.ts 已重建。
+* 順手修了一個與本功能無關的 bug：`<聯>` 沒有 `n=` 時以前會多吐一個 `</a>`（render 測試
+  「沒有 t= 的標籤」因此失敗）；現在只有真的開了錨點才收。
+
+## 16. 2026-10-22（追加）：點擊查字典的開關與詞典順序
+
+作者需求：設置／介面加上「點擊查字典」，可以選詞典順序；**先列出目前有的詞典存起來，
+下回找不到也不警告、略過**；也可以關閉自動查字典。
+
+### 16.1 行為
+
+* **開關**：預設開。關閉後，本文的捕捉階段 click handler 直接 return，不會查、也不會
+  切右欄；右欄「詞典」分頁保留上一次的結果，空白時提示「點擊查字典已關閉」。
+* **詞典清單**：設置 → 介面。打開時（`setSettingsPane('ui')`）非同步 `listDicts()` 掃
+  catalog，用 `dictIndexOf()` 判斷真正是詞典型 adb 的（有 `$詞`／名稱表）；列出
+  名稱、檔名與詞條數，↑↓ 調整順序。第一次列出就存。
+* **儲存**（這台電腦；和主題／繁簡一樣走 localStorage）：
+  * `accelon26.dict.auto`：`'1'`／`'0'`。
+  * `accelon26.dict.order`：JSON 陣列，元素是 **adb 檔名**（`fgdict.adb`）。
+  * **不放 settings.json**：settings.json v1 只放可分享的標籤樣式；詞典順序是本機介面偏好。
+* **找不到的詞典**：`orderByFile()` 直接略過（不警告）；清單只列目前找到的。失聯的舊檔名
+  仍留在存檔順序的最後面（下次同檔名的 adb 回來還會被認得）；新加入的詞典也排最後。
+* **查詢順序**：`dictLookup()` 依存的檔名順序分組，同一個詞典內「長的在前」；還沒存順序
+  時維持原本全域「長的在前」，行為不變。清單裡新加入的詞典排在最後。
+* **新詞典**：首次打開設置就會列在最後並存起來；不必手動加入。
+* **偵測成本**：第一次打開設置要為 catalog 的每個 adb 建／查詞典索引（非詞典會快取
+  「不是詞典」）；畫面先顯示「讀取詞典中…」，之後快取。
+
+### 16.2 檔案
+
+| 檔案 | 工作 |
+|---|---|
+| `ts/src/accelon26/dict-settings.ts`（新） | 開關、檔名順序、`orderByFile()`（略過找不到的） |
+| `ts/src/accelon26/dict-lookup.ts` | `listDicts()`；`dictLookup()` 照順序分組 |
+| `ts/src/accelon26/dict-pane.ts` | 自動查字典的開關 gate；空白時的提示 |
+| `ts/src/accelon26/ui.ts`／template | 介面分頁的「點擊查字典」區塊、清單、↑↓、重新整理 |
+| `ts/test/dict-settings.test.ts`（新） | 開關／順序／略過缺失／壞 JSON |
+
+### 16.3 驗證
+
+* `bun run test/dict-settings.test.ts` **10/10**。
+* 真的 viewer（yinshun＋fgdict；fgdict 22,648 條）：設置預設介面 → 清單列出
+  `fgdict.adb` 並存檔；關閉自動 → 點本文句子不變、右欄不動；打開 → 點本文有候選句子／
+  詞條、右欄切到詞典；**6/6**，沒有 JS 例外。
+* file:// 全套：**yinshun 189/189、fgdict 179/179**（含新增的開關／清單斷言；fgdict 的
+  標籤樣式沒有目錄樹，只有 6 列預設標籤＋天干地支，測試已放寬）。
+
+### 16.4 注意
+
+* 詞典順序是**本機偏好**；分享 `settings.json` 不會帶它。
+* 只認 **catalog 裡**的 adb（file:// 是使用者加入過的；exe 是工作目錄的）；沒打開過的
+  詞典也會被列出／查詢（`dictIndexOf` 會自己開 reader）。
+
+## 17. 2026-10-22（第二輪）：本文列、pt、移除預覽、內置標籤、秋黃
+
+作者第二輪調整：
+1. 標籤樣式加「本文」樣式（置頂）；2. 本文字級用 **pt**，不是百分比；3. **取消預覽**，
+   改在每一列的 `.tName` 直接示範；天干地支只示範「甲」；4. **文／項／部／經**設為內置標籤，
+   **\<經\> 預設楷體**；5. 主題「護眼」改名「春綠」，新增「秋黃」。
+
+### 17.1 行為
+
+* **本文列**（表格第一列，`tagStyle.body`）：顏色、字型（第一／第二）、字級。
+  * 字級是 **`body.size`（pt，8–30）**，per-adb 可覆寫；沒自訂時用**文件字級**（`DOCFS`，
+    以 pt 顯示、用文件字級按鈕調整）。改本文列會建立／更新本文條目，不會偷偷改文件字級。
+  * 顏色／字型／字級都存在 `profiles.global.tagStyle.body`／`profiles.adb[...].tagStyle.body`。
+  * 套用：`ui.ts applyBodyStyleToDoc()` 把 `--doc-body-color`／`--doc-body-font`／
+    `--doc-body-size` 設在 `document.documentElement`；CSS 只對 `#docText .docBody` 生效
+    （右欄文字內容不動）。沒有 `--doc-body-size` 時回到 `--fsdoc`。
+* **沒有預覽卡**：每一列的 `.tchip` 用該列的字型／顏色／字級直接示範；本文列示範
+  「本文」在本文 pt；標籤示範在 `本文 pt × 該標籤 %`；天干地支只示範「甲」，沒有 22 格
+  ramp（22 層的 ramp 計算還在 `tag-style.ts`，只是不畫）。
+* **內置標籤**：`STRUCTURAL_TAGS = 書 篇 章 節 詞 文 項 部 經`。`<經>` 沒自訂字型時用
+  `DEFAULT_TAG_FONTS['經'] = '楷體'`；`fontFamilyOf()` 展開成
+  `'DFKai-SB', 'KaiTi', '楷體'`（跨平台）。自訂時 `seedTagStyle` 會把楷體帶進條目；
+  使用者把字型改成「本文」就真的用本文。
+* **主題**：原本 `eye` 的調色盤不變，只把標籤改成「春綠」；新增 `autumn`（秋黃／黃棕紙色），
+  `ThemeName`／`THEME_LABEL`／`stored()`／`<head>` 的先行套用／`#themeSeg` 都加了。
+* **`applyTo` 修正**：只給有寫 `size` 的條目夾範圍；沒寫＝auto，不再偷偷變成 100%
+  （作者只改顏色的標籤／匯入的 partial 條目會因此正確）。
+* **本文的換庫**：`setActiveDb` 新增 `onActiveDbChange` 只通知輕量聽眾（本文樣式），
+  不重繪本文／目錄（避免換庫時兩個 renderDirTree 撞在一起）。
+
+### 17.2 檔案
+
+| 檔案 | 工作 |
+|---|---|
+| `tag-style.ts` | `BODY_KEY`、`bodyStyleOf`、`TagStyleProfile.body`、`fontFamilyOf`、`DEFAULT_TAG_FONTS`、文項部經、`applyTo` 修正 |
+| `render_accelon3.ts` | 經的預設楷體；改用 `fontFamilyOf` |
+| `ui.ts` | 本文列、每列 `.tchip` 示範、pt 字級、`applyBodyStyleToDoc`、移除預覽、字型來源 |
+| `accelon26.template.html` | 本文列／無預覽的 markup、`#docText .docBody` 變數、秋黃主題、春綠標籤、4 個主題按鈕 |
+| `theme.ts` | `autumn`、春綠標籤 |
+| `test/tag-style.test.ts` | 本文、經楷體、內置標籤、body round-trip |
+
+### 17.3 驗證
+
+* `bun run test/tag-style.test.ts` **32/32**。
+* 真的 viewer（yinshun）：無預覽、本文列 12pt→15pt（`--fsdoc` 20px）→章 32→40px、
+  本文紅／DFKai-SB 套到中欄、文項部經列、經楷體、天干地支只示範甲、秋黃切換；**9/9**。
+* file:// 全套：**yinshun 192/192、fgdict 182/182**（含本文列／示範／秋黃的斷言）。
+* `go test ./...` 全綠；桌面 assets 已重建。
+
+### 17.4 注意
+
+* 本文的**字級**存在 `tagStyle.body.size`（pt，per-adb；沒自訂時用文件字級）；文件字級的
+  按鈕仍然存在，是「沒有本文 size 時」的預設。本文列 slider 8–30pt 直接套在 `#docText .docBody`。
+* 本文列的字級 slider 8–30pt（`--doc-body-size`）；沒有 `--doc-body-size` 時用 `--fsdoc`
+  （文件字級，10–40px）。
+* `settings.json` 的 `body` 是 v1 的 additive 欄位（舊檔沒有 body 也能讀）。
+* 標籤示範的 auto 大小用 `autoSizePct(depth)`（100 + 12.5%/層）近似；實際 renderer 用
+  頁面相對層級的 `font-size:min(calc(1em + n*2px), 1.8em)`。
+* 主題 `eye` 的值保留（舊的 localStorage 不會失效），只改顯示名稱為「春綠」。
+

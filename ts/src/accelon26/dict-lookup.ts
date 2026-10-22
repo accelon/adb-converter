@@ -17,6 +17,7 @@ import { AdbReader, BlobIO, type AdbSource } from './adb';
 import { VaPaMapper } from './vapa';
 import { catalog } from './dbs';
 import { renderPageBlocks } from './render_accelon3';
+import { dictOrder, orderByFile } from './dict-settings';
 
 export interface DictRow {
   /** catalog key：同一份檔案只建一次索引 */
@@ -244,16 +245,56 @@ export function relativesOf(
   return out;
 }
 
-/** 對所有 catalog 裡的詞典型 adb 一起查（多個詞典同時使用時會全部列出） */
+/** 對所有 catalog 裡的詞典型 adb 一起查（多個詞典同時使用時會全部列出）。
+ *  作者 2026-10-22：有存「詞典順序」時，先照順序分組，同一個詞典內長的在前；
+ *  存了但這台電腦沒有的檔名直接略過（不警告）。 */
 export async function dictLookup(sentence: string): Promise<DictRow[]> {
   const rows: DictRow[] = [];
-  for (const e of catalog) {
-    const idx = await dictIndexOf(e.key);
-    if (!idx) continue;
-    rows.push(...(await lookupInIndex(idx, sentence)));
+  const order = dictOrder();
+  const ordered = orderByFile(catalog.map((e) => ({ file: e.file.name, entry: e })));
+  const rank = new Map(ordered.map((p, i) => [p.entry.key, i]));
+  for (const { entry } of ordered) {
+    try {
+      const idx = await dictIndexOf(entry.key);
+      if (!idx) continue;
+      rows.push(...(await lookupInIndex(idx, sentence)));
+    } catch {
+      // 某個 adb 壞掉／讀不到：略過它，其他詞典照查（作者 2026-10-22：不警告）
+    }
   }
-  rows.sort((a, b) => b.label.length - a.label.length || (a.label < b.label ? -1 : 1));
+  if (order.length) {
+    rows.sort((a, b) => (rank.get(a.key) ?? 1e9) - (rank.get(b.key) ?? 1e9)
+      || b.label.length - a.label.length
+      || (a.label < b.label ? -1 : 1));
+  } else {
+    rows.sort((a, b) => b.label.length - a.label.length || (a.label < b.label ? -1 : 1));
+  }
   return rows;
+}
+
+/** 設定頁「點擊查字典」的清單：目前 catalog 裡真正是詞典的 adb（會建／用快取索引）。 */
+export interface DictListEntry {
+  /** 穩定鍵：adb 檔名（和標籤樣式、settings.json 的 adb 鍵一致） */
+  file: string;
+  name: string;
+  db: string;
+  entries: number;
+  /** catalog 的 key（同一份檔案只建一次索引用；不要存起來） */
+  key: string;
+}
+
+export async function listDicts(): Promise<DictListEntry[]> {
+  const out: DictListEntry[] = [];
+  for (const e of catalog) {
+    try {
+      const idx = await dictIndexOf(e.key);
+      if (!idx) continue;
+      out.push({ file: e.file.name, name: e.name || idx.db, db: idx.db, entries: idx.rows.length, key: e.key });
+    } catch {
+      // 壞掉／讀不到的 adb：當作不是詞典，略過
+    }
+  }
+  return out;
 }
 
 /** 某個詞條的「開頭／結尾」親戚（跨詞典一起查；作者 2026-10 的第二層清單） */

@@ -96,6 +96,11 @@ class Cdp {
     await this.send('Runtime.enable');
     await this.send('Page.enable');
     await this.send('DOM.enable');
+    // 這個頁面要跑十幾分鐘、裡面有很多 setTimeout 等待；headless 的背景頁會被
+    // Chrome 節流（5 分鐘後 timer 一分鐘才跑一次），CDP 的 evaluate 就會 60 秒 timeout。
+    // 把頁面帶到前景＋模擬 focus，讓計時器正常跑（作者 2026-10-22）。
+    await this.send('Page.bringToFront').catch(() => {});
+    await this.send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
   }
   async eval<T>(expression: string): Promise<T> {
     let r: any;
@@ -780,8 +785,9 @@ try {
       };
       // 進階模式：從設置頁勾選（原本的 🧑‍💻 按鈕已移除）
       const adv = document.querySelector('#setAdvanced');
-      // 作者 2026-10：進階模式是設置頁**最後**一列
-      const rows = [...document.querySelectorAll('#settingsBox .setRow')];
+      // 作者 2026-10-22：主題／介面／進階合併成「介面」分頁；進階模式是這個分頁的最後一列
+      const uiPane = document.querySelector('#setBody .setPane[data-setpane="ui"]');
+      const rows = [...uiPane.querySelectorAll('.setRow')];
       const advRow = adv.closest('.setRow');
       const advIsLast = rows.length > 0 && rows[rows.length - 1] === advRow;
       adv.checked = true; adv.dispatchEvent(new Event('change'));
@@ -814,9 +820,36 @@ try {
       seg[1].click(); await sleep(500);
       const demoSafe = demo();
       seg[0].click(); await sleep(400);          // 還原成原樣，免得後面的測試看到簡體字
+      // 主題（作者 2026-10-22）：春綠／秋黃；秋黃是黃棕紙色
+      const themeLabels = [...document.querySelectorAll('#themeSeg button')].map((b) => b.textContent.trim());
+      const autumnBtn = [...document.querySelectorAll('#themeSeg button')].find((b) => b.dataset.theme === 'autumn');
+      autumnBtn.click();
+      await sleep(250);
+      const autumnTheme = document.documentElement.getAttribute('data-theme');
+      const autumnLs = localStorage.getItem('accelon26.theme');
+      document.querySelector('#themeSeg button[data-theme="dark"]').click();
+      await sleep(150);
+      // 點擊查字典（作者 2026-10-22）：開關存 localStorage，預設開
+      const dictAuto = document.getElementById('setDictAuto');
+      const dictSection = !!document.getElementById('dictOrderList');
+      const dictDefault = !!dictAuto?.checked;
+      dictAuto.checked = false; dictAuto.dispatchEvent(new Event('change'));
+      await sleep(250);
+      const dictOff = localStorage.getItem('accelon26.dict.auto');
+      dictAuto.checked = true; dictAuto.dispatchEvent(new Event('change'));
+      await sleep(250);
+      const dictOn = localStorage.getItem('accelon26.dict.auto');
+      // 清單是非同步掃描的；給它一點時間（fgdict 執行時要看得到 fgdict.adb）
+      for (let i = 0; i < 25 && !document.querySelector('#dictOrderList .dictOrderRow')
+        && !document.querySelector('#dictOrderList .note'); i++) await sleep(150);
+      const dictFiles = [...document.querySelectorAll('#dictOrderList .dictOrderRow')]
+        .map((r) => r.querySelector('.df')?.textContent ?? '');
+      const dictDbIsFg = st().db === 'fgdict';
       window.__accelon26.closeSettings();
       return {
         before, opened, advOn, advOff, advIsLast, demoOrig, demoSafe,
+        dict: { section: dictSection, default: dictDefault, off: dictOff, on: dictOn, files: dictFiles, dbIsFg: dictDbIsFg },
+        theme: { labels: themeLabels, autumn: autumnTheme, ls: autumnLs },
         sim: { t0, t1, t2, t3, m0, m1, m2, db: st().db, stored: localStorage.getItem('accelon26.simmode') },
       };
     })()
@@ -828,9 +861,9 @@ try {
   ok('設置頁可以切換進階模式（取代原本的 🧑‍💻 按鈕）',
     settings.advOn.advanced === true && settings.advOn.body === true && settings.advOff === false,
     `勾選後 advanced=${settings.advOn.advanced}／body=${settings.advOn.body}；取消後=${settings.advOff}`);
-  ok('設置頁的「進階模式」在最下面一列',
+  ok('設置頁的「進階模式」在「介面」分頁的最後一列',
     settings.advIsLast === true,
-    `進階模式是最後一列=${settings.advIsLast}`);
+    `進階模式是介面分頁最後一列=${settings.advIsLast}`);
   ok('文字顯示是三態（保持原樣／無損簡體／強制簡體）',
     JSON.stringify(settings.opened.segs) === JSON.stringify(['保持原樣', '無損簡體', '強制簡體']),
     JSON.stringify(settings.opened.segs));
@@ -844,6 +877,17 @@ try {
     && settings.demoSafe[1].text !== settings.demoSafe[2].text,
     `無損「${settings.demoSafe[1].text}」（${settings.demoSafe[1].marks} 個差異字）／`
     + `強制「${settings.demoOrig[2].text}」（${settings.demoOrig[2].marks} 個）`);
+  ok('點擊查字典：介面有開關（預設開，關閉會存起來）',
+    settings.dict.section === true && settings.dict.default === true
+    && settings.dict.off === '0' && settings.dict.on === '1',
+    JSON.stringify(settings.dict));
+  ok('點擊查字典：有詞典型 adb 時，清單列出檔名（fgdict.adb）',
+    !settings.dict.dbIsFg || settings.dict.files.includes('fgdict.adb'),
+    JSON.stringify(settings.dict.files));
+  ok('主題多了秋黃（黃棕）；春綠是原本的護眼',
+    settings.theme.labels.join('|') === '暗色系|亮色系|春綠|秋黃'
+    && settings.theme.autumn === 'autumn' && settings.theme.ls === 'autumn',
+    JSON.stringify(settings.theme));
   ok('三態都生效，且可以回到原樣',
     settings.sim.m1 === 1 && settings.sim.m2 === 2 && settings.sim.m0 === 0
     && settings.sim.t1 !== settings.sim.t0 && settings.sim.t3 === settings.sim.t0,
@@ -857,6 +901,161 @@ try {
       settings.sim.t2.includes('干') && !settings.sim.t2.includes('乾'),
       `強制開頭「${settings.sim.t2.slice(0, 24)}」`);
   }
+
+  // ---- 標籤樣式（作者 2026-10-22）：本文列、每列示範、內置標籤、天干地支只示範甲 ----
+  const tagStyle = await cdp.eval<any>(`
+    (async () => {
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      window.__accelon26.openSettings();
+      await sleep(400);
+      const tabs = [...document.querySelectorAll('#setTabs .setTab')].map((b) => b.textContent.trim());
+      // 作者 2026-10-22：預設是「介面」分頁；標籤樣式的表格要切過去才畫
+      document.querySelector('#setTabs .setTab[data-setpane="tags"]').click();
+      await sleep(400);
+      const rows = () => [...document.querySelectorAll('#tagTable .tagRow')];
+      const row = (k) => rows().find((r) => r.dataset.key === k);
+      const store = document.querySelector('#tagStorePath')?.textContent ?? '';
+      const first = rows()[0];
+      const body = row('__body__');
+      const jing = row('經');
+      const group = row('天干地支');
+      const initial = {
+        preview: !!document.querySelector('#tagPreview'),
+        bodyKind: body?.dataset.kind,
+        bodyText: body?.querySelector('.tchip')?.textContent,
+        bodySize: body?.querySelector('.sizeVal')?.textContent,
+        bodyMin: body?.querySelector('input[data-field="size"]')?.getAttribute('min'),
+        bodyMax: body?.querySelector('input[data-field="size"]')?.getAttribute('max'),
+        bodyFirst: first === body,
+        builtins: ['文', '項', '部', '經'].map((k) => !!row(k)),
+        jingFont: jing ? getComputedStyle(jing.querySelector('.tchip')).fontFamily : '',
+        groupText: group?.querySelector('.tchip')?.textContent,
+        ramp: document.querySelectorAll('#tagTable .rampCell').length,
+        fontSource: document.querySelector('#tagFontSource')?.textContent ?? '',
+      };
+      // 全域自訂「章」：#ff0000 / 200%
+      document.querySelector('#tagScopeSeg button[data-tag-scope="global"]').click();
+      await sleep(200);
+      row('章').querySelector('button[data-act="own"]').click();
+      await sleep(100);
+      let r = row('章');
+      const color = r.querySelector('input[data-field="color"]');
+      color.value = '#ff0000'; color.dispatchEvent(new Event('input', { bubbles: true }));
+      const size = r.querySelector('input[data-field="size"]');
+      size.value = '200'; size.dispatchEvent(new Event('input', { bubbles: true }));
+      size.dispatchEvent(new Event('change', { bubbles: true }));
+      await sleep(450);
+      const chapterChip = () => row('章').querySelector('.tchip');
+      const chapterColor = getComputedStyle(chapterChip()).color;
+      const chapterSize = getComputedStyle(chapterChip()).fontSize;
+      const chapterInline = chapterChip().style.fontSize;
+      // 本文：字級 15pt（存在 body.size，不是改 doc 字級）；顏色紅、字型 DFKai-SB
+      const bodyRow = () => row('__body__');
+      const docFontBefore = window.__accelon26.state().docFont;
+      const bs = bodyRow().querySelector('input[data-field="size"]');
+      bs.value = '15'; bs.dispatchEvent(new Event('input', { bubbles: true }));
+      bs.dispatchEvent(new Event('change', { bubbles: true }));
+      await sleep(450);
+      const bodySizeVar = getComputedStyle(document.documentElement).getPropertyValue('--doc-body-size').trim();
+      const bodyDocFont = window.__accelon26.state().docFont;
+      const bodyLabel = bodyRow().querySelector('.sizeVal')?.textContent;
+      const chapterSize2 = getComputedStyle(chapterChip()).fontSize;
+      const bodyDoc = document.querySelector('#docText .docBody');
+      const bodyPx = bodyDoc ? getComputedStyle(bodyDoc).fontSize : '';
+      bodyRow().querySelector('button[data-act="own"]').click();
+      await sleep(100);
+      const bc = bodyRow().querySelector('input[data-field="color"]');
+      bc.value = '#ff0000'; bc.dispatchEvent(new Event('input', { bubbles: true }));
+      bc.dispatchEvent(new Event('change', { bubbles: true }));
+      await sleep(250);
+      const bf = bodyRow().querySelector('select[data-field="font"]');
+      bf.value = 'DFKai-SB'; bf.dispatchEvent(new Event('change', { bubbles: true }));
+      await sleep(350);
+      // 標籤樣式的 body 存在 root 變數（沒有開本文時也能檢查；實際中欄由 CSS 取用）
+      const bodyColor = getComputedStyle(document.documentElement).getPropertyValue('--doc-body-color').trim();
+      const bodyFont = getComputedStyle(document.documentElement).getPropertyValue('--doc-body-font').trim();
+      const bodySampleColor = getComputedStyle(bodyRow().querySelector('.tchip')).color;
+      const ls = localStorage.getItem('accelon26.settings') || '';
+      // 天干地支：底色 #00ff00 → 只示範甲（沒有 22 格）
+      row('天干地支').querySelector('button[data-act="own"]').click();
+      await sleep(100);
+      const gc = row('天干地支').querySelector('input[data-field="color"]');
+      gc.value = '#00ff00'; gc.dispatchEvent(new Event('input', { bubbles: true }));
+      gc.dispatchEvent(new Event('change', { bubbles: true }));
+      await sleep(450);
+      const jiaColor = getComputedStyle(row('天干地支').querySelector('.tchip')).color;
+      const lsGroup = localStorage.getItem('accelon26.settings') || '';
+      // 還原本文 12pt（16px），免得後面的字級測試看到 20px
+      const bs2 = bodyRow().querySelector('input[data-field="size"]');
+      bs2.value = '12'; bs2.dispatchEvent(new Event('input', { bubbles: true }));
+      await sleep(250);
+      // 關設置 → 展開到「章」，看目錄色點（沒有樹的庫會跳過）
+      window.__accelon26.closeSettings();
+      await sleep(300);
+      const hasTree = !!document.querySelector('#dirTree .tRow');
+      const trow = () => [...document.querySelectorAll('#dirTree .tRow')];
+      trow()[0]?.querySelector('.tTwisty')?.click();
+      await sleep(800);
+      if (!trow().some((x) => x.querySelector('.tTag')?.textContent === '章')) {
+        const ji = trow().find((x) => x.querySelector('.tTag')?.textContent === '記');
+        ji?.querySelector('.tTwisty')?.click();
+        await sleep(800);
+      }
+      const chapter = trow().find((x) => x.querySelector('.tTag')?.textContent === '章');
+      const dotColor = chapter?.querySelector('.tDot') ? getComputedStyle(chapter.querySelector('.tDot')).backgroundColor : '';
+      // 清掉：測試不留足跡（重設 + 移除 localStorage）
+      window.__accelon26.openSettings();
+      await sleep(250);
+      window.__accelon26.resetTagStyles();
+      await sleep(500);
+      localStorage.removeItem('accelon26.settings');
+      window.__accelon26.closeSettings();
+      await sleep(500);
+      const chapter2 = trow().find((x) => x.querySelector('.tTag')?.textContent === '章');
+      const dotAfter = chapter2?.querySelector('.tDot') ? getComputedStyle(chapter2.querySelector('.tDot')).backgroundColor : '';
+      return {
+        tabs, rowCount: rows().length, store, initial,
+        chapterColor, chapterSize, chapterInline, bodySizeVar, bodyDocFont, bodyLabel, chapterSize2, bodyPx,
+        docFontBefore,
+        bodyColor, bodyFont, bodySampleColor, jiaColor,
+        lsHas: ls.includes('"章"') && ls.includes('#ff0000') && ls.includes('"body"'),
+        groupSaved: lsGroup.includes('"天干地支"') && lsGroup.includes('#00ff00'),
+        hasTree, dotColor, dotAfter,
+      };
+    })()
+  `);
+  ok('設置多了「標籤樣式」分頁：介面最左、沒有預覽、顯示儲存位置',
+    tagStyle.tabs.length === 3 && tagStyle.tabs.join('|') === '介面|標籤樣式|繁簡'
+    && tagStyle.rowCount >= 11 && tagStyle.initial.preview === false
+    && tagStyle.store.includes('localStorage'),
+    JSON.stringify({ tabs: tagStyle.tabs, rows: tagStyle.rowCount, preview: tagStyle.initial.preview, store: tagStyle.store }));
+  ok('標籤樣式：本文列置頂（pt）、文／項／部／經內置、經預設楷體、天干地支只示範甲',
+    tagStyle.initial.bodyFirst === true && tagStyle.initial.bodyKind === 'body'
+    && tagStyle.initial.bodyText === '本文' && /^\d+pt$/.test(tagStyle.initial.bodySize)
+    && tagStyle.initial.bodyMin === '8' && tagStyle.initial.bodyMax === '30'
+    && tagStyle.initial.builtins.every(Boolean)
+    && /Kai|楷/.test(tagStyle.initial.jingFont)
+    && tagStyle.initial.groupText === '甲' && tagStyle.initial.ramp === 0
+    && tagStyle.initial.fontSource.includes('字型清單'),
+    JSON.stringify(tagStyle.initial));
+  ok('章自訂 #ff0000 / 200% → 直接示範在 .tchip（32px）、目錄色點也紅',
+    tagStyle.chapterColor === 'rgb(255, 0, 0)' && tagStyle.chapterSize === '32px'
+    && tagStyle.chapterInline === '24pt' && tagStyle.lsHas
+    && (!tagStyle.hasTree || tagStyle.dotColor === 'rgb(255, 0, 0)'),
+    JSON.stringify({ color: tagStyle.chapterColor, size: tagStyle.chapterSize, inline: tagStyle.chapterInline, dot: tagStyle.dotColor }));
+  ok('本文列 15pt → 中欄 --doc-body-size 15pt（20px）、章跟著 40px；本文顏色／字型套到中欄',
+    tagStyle.bodySizeVar === '15pt' && tagStyle.bodyDocFont === tagStyle.docFontBefore
+    && tagStyle.bodyLabel === '15pt'
+    && tagStyle.chapterSize2 === '40px' && (!tagStyle.bodyPx || tagStyle.bodyPx === '20px')
+    && tagStyle.bodyColor === '#ff0000'
+    && /DFKai-SB/.test(tagStyle.bodyFont) && tagStyle.bodySampleColor === 'rgb(255, 0, 0)',
+    JSON.stringify({ sizeVar: tagStyle.bodySizeVar, docFontBefore: tagStyle.docFontBefore, docFont: tagStyle.bodyDocFont, label: tagStyle.bodyLabel, chapter: tagStyle.chapterSize2, bodyPx: tagStyle.bodyPx, color: tagStyle.bodyColor, font: tagStyle.bodyFont }));
+  ok('標籤樣式：重設後目錄色點回到 auto',
+    !tagStyle.hasTree || (tagStyle.dotAfter && tagStyle.dotAfter !== 'rgb(255, 0, 0)'),
+    `重設前 ${tagStyle.dotColor} → 重設後 ${tagStyle.dotAfter}`);
+  ok('天干地支是同一個設定：底色 #00ff00 → 甲示範綠、存進 groups（只示範甲）',
+    tagStyle.jiaColor === 'rgb(0, 255, 0)' && tagStyle.groupSaved,
+    `甲 ${tagStyle.jiaColor}｜groups=${tagStyle.groupSaved}`);
 
   // 輸入區按 Escape 不再清掉輸入（作者 2026-10）：文字留著、結果也留著，清空要用 ✕。
   // 這一組同時覆蓋兩個 handler：全文搜尋的 #query，以及四個 pane 共用的 wireOwnSearch。
@@ -1253,6 +1452,54 @@ try {
       && Math.max(...trail.menuLabels.map((s: string) => [...s].length)) >= 5,
       `${trail.bookCount} 項、text-overflow=${trail.menuTextOverflow}、被截斷 ${trail.menuClipped} 項、`
       + `最長 ${Math.max(...trail.menuLabels.map((s: string) => [...s].length))} 字`);
+  }
+
+  // ---- 檔頭的 VA 屬於這一個檔（作者 2026-10-22）----
+  // 節點的 vaEnd 是「下一個同層標題」的 VA，而 <檔> 的開標籤佔 4 個 VA：每一冊最後
+  // 一串節點都會跨進下一冊的檔頭。照範圍判定時，本文 realm 從檔頭開始（摘要點命中、
+  // 文件清單都是整個 <檔> 的 realm）breadcrumb 就會說成「前一本書」—— yinshun 搜「彗」：
+  // 目錄標在華雨集第二冊（正確），本文上方卻說華雨集第一。
+  // 這裡直接開最後一本書的整個 <檔>（`showLine`，與文件清單同一條路）：breadcrumb
+  // 至少要有**一個節點落在這一個檔裡面**（目前這一節）；前一本書的節點全部在 realm 之前。
+  const headCrumb = await cdp.eval<any>(`
+    (async () => {
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      const st = () => window.__accelon26.state();
+      window.__accelon26.showTab('dir', 'left');
+      if (!document.querySelector('#dirTree .tRow')) return { skipped: true, why: '沒有目錄樹' };
+      if ((st().docs ?? 0) < 2) return { skipped: true, why: '單一 <檔> 的庫，沒有檔界' };
+      await window.__accelon26.growTree();
+      const rows = [...document.querySelectorAll('#dirTree .tRow')].map((r) => ({
+        va: Number(r.dataset.va),
+        tag: r.querySelector('.tTag')?.textContent ?? '',
+        name: r.querySelector('.tName')?.textContent ?? '',
+      }));
+      const rootTag = rows[0]?.tag ?? '';
+      const books = rows.filter((r) => r.tag === rootTag && r.name);
+      const last = books[books.length - 1] ?? null;
+      if (!last) return { skipped: true, why: '沒有第一層節點' };
+      // 整個 <檔> 的 realm：檔頭在第一個標題之前
+      await window.__accelon26.showLine(0, last.va);
+      await sleep(1400);
+      const realm = st().docRealm;
+      if (!realm) return { skipped: true, why: '本文沒有 realm' };
+      const label = (el) => ((el.title ?? '').match(/「(.*)」/) ?? [])[1] ?? el.textContent.replace(/[▾▸]/g, '').trim();
+      const nav = [...document.querySelectorAll('#docTrail .trail, #docTrail .trailSib')];
+      if (!nav.length) return { skipped: true, why: 'breadcrumb 是空的（同層只有自己）' };
+      const trail = nav.map(label);
+      const navVas = nav.map((el) => Number(el.dataset.va));
+      // 目前節點（breadcrumb 的 self）必須在這一個檔裡面；祖先可能跨檔（一本書橫跨兩冊）
+      const inside = navVas.some((v) => v >= realm.from && v < realm.to);
+      return { skipped: false, last: last.name, realm, trail, navVas, inside };
+    })()
+  `);
+  if (headCrumb.skipped) {
+    console.log(`      （${headCrumb.why}，略過檔頭 breadcrumb 的檢查）`);
+  } else {
+    ok('本文 realm 是整個 <檔> 時，breadcrumb 指著這一個檔的節點（不是前一本書）',
+      headCrumb.inside === true,
+      `開最後一本「${headCrumb.last}」的 <檔> realm ${headCrumb.realm.from}..${headCrumb.realm.to}｜`
+      + `breadcrumb ${JSON.stringify(headCrumb.trail)}（VA ${JSON.stringify(headCrumb.navVas)}）`);
   }
 
   // ---- 原書分行（作者 2026-10）：關閉時不保留硬換行、<頁> 變行內頁碼、關鍵字在渲染前塗好 ----

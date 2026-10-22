@@ -26,6 +26,7 @@ import { setLogoBase, updateDocLogo } from './logo';
 import { DOCFS_DEFAULT, DOCFS_KEY, autoFitFont, boundsCache, boundsOfRealm, docActive, docFontSized, docOfVa, docSession, docTabs, ensurePage, fitDebugInfo, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, paintAsked, readDocFont, renderDocTabs, resetDocPane, sessionFor, setDocFont, wholeRealm } from './doc-pane';
 import { paintHit } from './paint';
 import { resetEngineStats } from './engine-stats';
+import { setActiveDb } from './tag-style';
 
 export const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
@@ -34,6 +35,8 @@ export let mapper: VaPaMapper | null = null;
 export let session: SearchSession | null = null;
 export let tokens: TokenRow[] = [];
 export let docs: DocRow[] = [];
+/** 目前打開的 adb 檔名（settings.json 的 profiles.adb 鍵；作者 2026-10-22） */
+export let currentFile = '';
 let blocksVirtual: number[] = [];
 let currentDoc: DocRow | null = null;
 /** true while a database load is in flight (guards a double `change` event) */
@@ -193,6 +196,9 @@ export async function openFile(file: AdbSource): Promise<'opened' | 'existing' |
 
     const t3 = performance.now();
     docs = await reader.documents();
+    currentFile = file.name;
+    // 設定頁「此資料庫」與 settings.json 的 profiles.adb 鍵（作者 2026-10-22：檔名）
+    setActiveDb(currentFile, h.dbcname || h.dbname || currentFile);
     const docsMs = performance.now() - t3;
     await session.init();
     // The reader's pane is chosen from the `<樹>` declarations right away; the
@@ -296,7 +302,7 @@ export const mods = (ev?: { ctrlKey?: boolean; metaKey?: boolean }): { newTab?: 
 
 /** the viewer's own per-database state (each module snapshots its own) */
 export function snapshotCore() {
-  return { reader, mapper, session, tokens, docs, blocksVirtual, currentDoc, lastOpen, lastTreeMs };
+  return { reader, mapper, session, tokens, docs, currentFile, blocksVirtual, currentDoc, lastOpen, lastTreeMs };
 }
 export function restoreCore(s: any): void {
   reader = s.reader ?? null;
@@ -304,6 +310,8 @@ export function restoreCore(s: any): void {
   session = s.session ?? null;
   tokens = s.tokens ?? [];
   docs = s.docs ?? [];
+  currentFile = s.currentFile ?? '';
+  setActiveDb(currentFile, reader?.header.dbcname || reader?.header.dbname || currentFile);
   blocksVirtual = s.blocksVirtual ?? [];
   currentDoc = s.currentDoc ?? null;
   lastOpen = s.lastOpen ?? null;

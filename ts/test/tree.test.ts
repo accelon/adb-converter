@@ -13,7 +13,7 @@
  */
 import { AdbReader, SyncIO } from '../src/accelon26/adb';
 import { VaPaMapper, parseAttrs } from '../src/accelon26/vapa';
-import { loadTrees, loadTree, buildTree, flattenTree, parseTiers, parseScope, SearchSession } from '../src/accelon26/search';
+import { loadTrees, loadTree, buildTree, flattenTree, nodeOwningVa, parseTiers, parseScope, SearchSession } from '../src/accelon26/search';
 
 const args = process.argv.slice(2);
 const ADBS = args.reduce<string[]>((acc, a, i) => (a === '--adb' ? [...acc, args[i + 1]] : acc), []);
@@ -135,6 +135,39 @@ for (const path of ADBS) {
   void overlap;
   ok('節點數為正且不超過實例數', nodes > 0 && nodes <= instances.length,
     `${fmt(nodes)} 節點 / ${fmt(instances.length)} 實例`);
+
+  // ---- `<檔>` 邊界優先（作者 2026-10-22） -------------------------------------
+  // 節點的 vaEnd 是「下一個同層標題」的 VA，而 <檔> 的開標籤佔 4 個 VA：每一冊的
+  // 最後一串節點都會跨進下一冊的檔頭（yinshun：44 個檔界、131 個節點，全部剛好 4）。
+  // VA → 節點若照範圍判定，檔頭會被算成前一本書 —— 搜「彗」時目錄把命中標在
+  // 華雨集第二冊（正確），本文 breadcrumb 卻說華雨集第一。
+  const docRows = await reader.documents();
+  const allNodes: typeof roots = [];
+  const collect = (ns: typeof roots) => { for (const n of ns) { allNodes.push(n); collect(n.children); } };
+  collect(roots);
+  if (docRows.length) {
+    let startWrong = 0, tailWrong = 0;
+    const startDetail: string[] = [];
+    for (const doc of docRows) {
+      // 這一個檔的第一個節點：檔頭的 VA 應該屬於它，不是前一本書的最後一節
+      const inDoc = allNodes.filter((n) => n.va >= doc.vaStart && n.va < doc.vaEnd);
+      const first = inDoc.length ? inDoc.reduce((a, b) => (a.va <= b.va ? a : b)) : null;
+      const atStart = nodeOwningVa(roots, doc.vaStart, docRows);
+      if (atStart !== first) {
+        startWrong++;
+        if (startDetail.length < 3) startDetail.push(`#${doc.i} ${doc.name} ${doc.vaStart} → ${atStart ? atStart.label || '#' + atStart.va : '(none)'}`);
+      }
+      // 檔尾的最後一個 VA 仍然屬於這一個檔
+      const atTail = nodeOwningVa(roots, doc.vaEnd - 1, docRows);
+      if (atTail && !(atTail.va >= doc.vaStart && atTail.va < doc.vaEnd)) tailWrong++;
+    }
+    ok('檔頭的 VA 對到這一個檔的第一個節點（不是前一本書）',
+      startWrong === 0, `${fmt(docRows.length)} 個 <檔>：起點錯 ${startWrong}${startDetail.length ? '｜' + startDetail.join('；') : ''}`);
+    ok('檔尾的最後一個 VA 仍屬於同一個檔', tailWrong === 0, `${tailWrong} 個跨檔`);
+  } else {
+    // 13j 是單一檔：沒有檔界，資料庫開頭本來就不屬於任何書
+    ok('沒有 <檔> 的庫：資料庫開頭不屬於任何節點', nodeOwningVa(roots, 0, docRows) === null);
+  }
 
   // depth distribution: tier tags should appear at their own depth
   const byDepth = new Map<number, number>();

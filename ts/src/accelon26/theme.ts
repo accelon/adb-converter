@@ -1,21 +1,23 @@
 /**
- * 主題（作者 2026-10-18）：**暗色系（預設）**、亮色系、護眼。
+ * 主題（作者 2026-10-18）：**暗色系（預設）**、亮色系、春綠、秋黃。
  *
  * 只換 CSS 變數（`html[data-theme]`，見 accelon26.template.html），不動版面，所以
  * 切換不用重繪；選擇存在 `localStorage['accelon26.theme']`。載入時 <head> 有一小段
  * 先行套用的 script，避免先畫暗底再跳亮底。
  */
-export type ThemeName = 'dark' | 'light' | 'eye';
+export type ThemeName = 'dark' | 'light' | 'eye' | 'autumn';
 
 const KEY = 'accelon26.theme';
 
 /** 給狀態列用的中文名 */
-export const THEME_LABEL: Record<ThemeName, string> = { dark: '暗色系', light: '亮色系', eye: '護眼' };
+export const THEME_LABEL: Record<ThemeName, string> = {
+  dark: '暗色系', light: '亮色系', eye: '春綠', autumn: '秋黃',
+};
 
 function stored(): ThemeName {
   try {
     const v = localStorage.getItem(KEY);
-    if (v === 'light' || v === 'eye' || v === 'dark') return v;
+    if (v === 'light' || v === 'eye' || v === 'autumn' || v === 'dark') return v;
   } catch { /* 私密模式 */ }
   return 'dark';
 }

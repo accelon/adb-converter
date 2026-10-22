@@ -119,6 +119,8 @@
 > 點 #settingsBtn
 > 等頁面 #settingsBox:not([hidden])
 > 等 400
+> 點 #setTabs .setTab[data-setpane="sim"]
+> 等頁面 #setBody .setPane[data-setpane="sim"]:not([hidden])
 > 指向 #simSeg
 > 點 #simSeg button[data-mode="1"]
 > 等 600

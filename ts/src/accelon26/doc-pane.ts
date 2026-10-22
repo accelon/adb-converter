@@ -11,6 +11,7 @@ import { cursorPending, hasRealmNeighbor, paintTreeActive, pinnedHit, revealHit,
 import { paintHit } from './paint';
 import { Accelon3Renderer, LEVEL_MAX_SCALE, LEVEL_STEP_PX, renderPageBlocks, tagChromaIndex, tierContext, type RenderBlock } from './render_accelon3';
 import { ancestorTrail, currentNodeAt, siblingsOf } from './scopes';
+import { tagColorOf } from './tag-style';
 import { kwMarks } from './kw-marks';
 import { displayConverter, type SimMode } from './lossless';
 import { isDictDb } from './db-kind';
@@ -343,6 +344,10 @@ const TRAIL_SEP = /[\s\u3000、，。：；·｜|／/\-—–_~]+/;
  *  全部排成晶片會把本文整個擠掉。 */
 const MAX_INLINE_SIBS = 5;
 
+/** breadcrumb 的顏色：標籤樣式有自訂就用它，否則用主題的 tag 字色（作者 2026-10-22） */
+const trailColor = (tag: string, depth: number): string =>
+  tagColorOf(tag) ?? `var(--tag-text-${tagChromaIndex(tag, depth)})`;
+
 export function trailLabel(text: string): string {
   const full = (text ?? '').trim();
   if (!full) return '';
@@ -361,7 +366,7 @@ function renderAncestorTrail(s: DocSession): string {
     return `<span class="trailWrap" data-va="${a.va}">`
       + `<button type="button" class="trail" data-va="${a.va}" data-tag="${escapeHtml(a.tag)}"`
       + ` title="「${full}」：點一下換同一層的其他節點"`
-      + ` style="--tagtext:var(--tag-text-${tagChromaIndex(a.tag, a.depth)})">${short}<span class="trailCaret">▾</span></button>`
+      + ` style="--tagtext:${trailColor(a.tag, a.depth)}">${short}<span class="trailCaret">▾</span></button>`
       + '</span>';
   });
   // 目前文件內容的 siblings（作者 2026-10）：直接排在路徑後面，短標籤、可點就換節。
@@ -376,13 +381,13 @@ function renderAncestorTrail(s: DocSession): string {
       sibHtml = `<span class="trailSibs"><span class="trailWrap">`
         + `<button type="button" class="trail trailMore" data-va="${self.va}" data-tag="${escapeHtml(self.tag)}"`
         + ` title="「${full}」：同層 ${sibs.length} 個節點，點一下選"`
-        + ` style="--tagtext:var(--tag-text-${tagChromaIndex(self.tag, self.depth)})">${short}<span class="trailCaret">▾</span></button>`
+        + ` style="--tagtext:${trailColor(self.tag, self.depth)}">${short}<span class="trailCaret">▾</span></button>`
         + `</span><span class="trailCount">同層 ${sibs.length}</span></span>`;
     } else {
       sibHtml = '<span class="trailSibs">' + sibs.map((n) => {
         const full = escapeHtml(n.label);
         const short = escapeHtml(trailLabel(n.label));
-        const style = `--tagtext:var(--tag-text-${tagChromaIndex(n.tag, n.depth)})`;
+        const style = `--tagtext:${trailColor(n.tag, n.depth)}`;
         if (n.va === self.va) {
           return `<span class="trailSib cur" data-va="${n.va}" title="「${full}」（目前這一節）" style="${style}">${short}</span>`;
         }
@@ -462,7 +467,7 @@ function wireTrail(): void {
         item.dataset.va = String(n.va);
         item.dataset.tag = n.tag;
         item.textContent = n.label;
-        item.style.setProperty('--tagtext', `var(--tag-text-${tagChromaIndex(n.tag, n.depth)})`);
+        item.style.setProperty('--tagtext', trailColor(n.tag, n.depth));
         item.onclick = (e2) => {
           e2.stopPropagation();
           closeMenus();

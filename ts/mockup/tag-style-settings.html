@@ -1,0 +1,1224 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>accelon26 mockup — 標籤樣式設定</title>
+<!--
+  這一頁是「設置 → 標籤樣式」的 **mockup**（作者 2026-10-22 的需求）。
+  它不 import accelon26 的任何程式，也不寫入 localStorage／settings.json：
+  只用來確認版面、互動與 settings.json 的形狀。
+
+  看的時候：
+    * 上方灰條是 mockup 自己的工具列（切換設置／本文／關於、主題、桌面或網頁版）。
+    * 中間的對話框就是「設置」新增的「標籤樣式」分頁。
+    * 按「本文」可以看到設定套用在目錄與內文的樣子；按「關於頁」看 settings.json 要顯示在哪。
+-->
+<style>
+  /* ---- 主題變數：與 accelon26.template.html 完全相同（暗色系是預設） ---- */
+  :root {
+    --bg: #1e1e1e; --panel: #252526; --panel2: #2d2d30; --line: #3c3c3c;
+    --fg: #d8d8d8; --dim: #909090; --accent: #5aa9ff; --warn: #e0a54a; --err: #e06c75;
+    --gold: #ffd479; --gold-2: #fff3c4; --hl-bg: #2b3b4d; --row-hover: #262626;
+    --ink-on-accent: #08243f; --link: #7cc0ff; --ok: #9fe08a;
+    --code-bg: #1b1b1b;
+    --tag-0: hsl(0 30% 32%); --tag-1: hsl(55 55% 32%); --tag-2: hsl(110 55% 32%);
+    --tag-3: hsl(165 55% 32%); --tag-4: hsl(220 55% 32%); --tag-5: hsl(275 55% 32%);
+    --tag-6: hsl(330 55% 32%); --tag-7: hsl(25 55% 32%);
+    --tag-text-0: hsl(0 55% 66%); --tag-text-1: hsl(55 75% 68%); --tag-text-2: hsl(110 50% 66%);
+    --tag-text-3: hsl(165 50% 64%); --tag-text-4: hsl(220 75% 72%); --tag-text-5: hsl(275 60% 76%);
+    --tag-text-6: hsl(330 60% 74%); --tag-text-7: hsl(25 80% 68%);
+    color-scheme: dark;
+  }
+  html[data-theme="light"] {
+    --bg: #ffffff; --panel: #f5f6f8; --panel2: #eceef1; --line: #d6d9de;
+    --fg: #1f2328; --dim: #6a7280; --accent: #1f6feb; --warn: #b45309; --err: #c0392b;
+    --gold: #8a5a00; --gold-2: #7a4a00; --hl-bg: #dbe9ff; --row-hover: #eef1f5;
+    --ink-on-accent: #ffffff; --link: #1f6feb; --ok: #2e7d32; --code-bg: #f2f3f5;
+    --tag-0: hsl(0 55% 42%); --tag-1: hsl(48 70% 34%); --tag-2: hsl(110 50% 34%);
+    --tag-3: hsl(165 55% 30%); --tag-4: hsl(220 60% 46%); --tag-5: hsl(275 50% 44%);
+    --tag-6: hsl(330 55% 44%); --tag-7: hsl(25 70% 40%);
+    --tag-text-0: hsl(0 60% 40%); --tag-text-1: hsl(48 75% 30%); --tag-text-2: hsl(110 50% 30%);
+    --tag-text-3: hsl(165 60% 26%); --tag-text-4: hsl(220 65% 40%); --tag-text-5: hsl(275 55% 38%);
+    --tag-text-6: hsl(330 60% 38%); --tag-text-7: hsl(25 75% 34%);
+    color-scheme: light;
+  }
+  html[data-theme="eye"] {
+    --bg: #eaf1e2; --panel: #e2ecd8; --panel2: #d8e5cc; --line: #c3d3b6;
+    --fg: #2c3a2a; --dim: #5d6c55; --accent: #3f7d4e; --warn: #8a6d1f; --err: #b0413e;
+    --gold: #6d5a12; --gold-2: #5c4a0c; --hl-bg: #cfe3c2; --row-hover: #dfe9d5;
+    --ink-on-accent: #ffffff; --link: #2f6b3e; --ok: #3f7d4e; --code-bg: #eef4e8;
+    --tag-0: hsl(0 45% 38%); --tag-1: hsl(48 60% 30%); --tag-2: hsl(110 40% 30%);
+    --tag-3: hsl(165 45% 27%); --tag-4: hsl(220 45% 40%); --tag-5: hsl(275 40% 38%);
+    --tag-6: hsl(330 45% 38%); --tag-7: hsl(25 55% 34%);
+    --tag-text-0: hsl(0 50% 34%); --tag-text-1: hsl(48 65% 26%); --tag-text-2: hsl(110 40% 26%);
+    --tag-text-3: hsl(165 50% 23%); --tag-text-4: hsl(220 50% 34%); --tag-text-5: hsl(275 45% 32%);
+    --tag-text-6: hsl(330 50% 32%); --tag-text-7: hsl(25 60% 28%);
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; overflow: hidden; background: var(--bg); color: var(--fg);
+    font: 14px/1.55 "Microsoft JhengHei", "Segoe UI", system-ui, sans-serif;
+    display: grid; grid-template-rows: auto minmax(0, 1fr);
+  }
+  code, pre { font-family: ui-monospace, Consolas, "Cascadia Mono", monospace; }
+  .dim { color: var(--dim); }
+  .hidden { display: none !important; }
+
+  /* ---- mockup 工具列（不屬於 accelon26，用虛線框區別） ---- */
+  .reviewBar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 7px 12px; background: #101010; color: #d8d8d8;
+    border-bottom: 2px dashed #5aa9ff;
+  }
+  html[data-theme="light"] .reviewBar, html[data-theme="eye"] .reviewBar { background: #1f2328; }
+  .reviewBar .brand { font-weight: 700; letter-spacing: .02em; }
+  .reviewBar .brand .mock { background: #5aa9ff; color: #08243f; border-radius: 4px; padding: 1px 6px; font-size: 11px; margin-left: 6px; }
+  .reviewBar .grow { flex: 1 1 auto; }
+  .reviewBar .rbGroup { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+  .reviewBar .rbLabel { color: #9aa4ad; font-size: 12px; }
+  .reviewBar .seg { border-color: #3c4650; }
+  .reviewBar .seg button { color: #d8d8d8; border-right-color: #3c4650; }
+  .reviewBar .seg button.active { background: #5aa9ff; color: #08243f; }
+  .reviewBar .ghost { background: transparent; color: #d8d8d8; border: 1px solid #3c4650; border-radius: 6px; font: inherit; font-size: 12px; padding: 3px 10px; cursor: pointer; }
+  .reviewBar .ghost:hover { border-color: #5aa9ff; }
+
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button {
+    background: transparent; color: var(--fg); border: 0; border-right: 1px solid var(--line);
+    font: inherit; font-size: 12px; padding: 3px 10px; cursor: pointer; white-space: nowrap;
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover { background: var(--panel2); }
+  .seg button.active { background: var(--accent); color: var(--ink-on-accent); font-weight: 600; }
+  .seg button.on { background: var(--accent); color: var(--ink-on-accent); font-weight: 600; }
+
+  /* ---- 假的 accelon26 畫面（讓設定看起來有上下文） ---- */
+  .app { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+  .appHeader {
+    display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .appHeader h1 { font-size: 19px; margin: 0; font-weight: 700; }
+  .dbChip { font-size: 12px; color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; }
+  .searchBox {
+    flex: 0 1 260px; display: flex; align-items: center; gap: 6px;
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 13px;
+  }
+  .searchBox input { flex: 1 1 auto; background: transparent; border: 0; color: var(--fg); font: inherit; outline: none; }
+  .gear { margin-left: auto; border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; font-size: 15px; }
+  .gear.on { border-color: var(--accent); background: var(--hl-bg); color: var(--gold); }
+  .cols { display: grid; grid-template-columns: 250px minmax(0, 1fr) 260px; min-height: 0; }
+  .col { overflow: auto; padding: 10px 12px; border-right: 1px solid var(--line); min-height: 0; }
+  .col:last-child { border-right: 0; border-left: 1px solid var(--line); }
+  .colTitle { font-size: 12px; color: var(--dim); letter-spacing: .05em; margin: 0 0 8px; }
+  .treeRow { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 4px; font-size: 13px; }
+  .treeRow:hover { background: var(--row-hover); }
+  .treeRow.current { background: var(--hl-bg); box-shadow: inset 2px 0 0 var(--accent); }
+  .treeRow .tw { width: 12px; color: var(--dim); font-size: 11px; }
+  .treeRow .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+  .treeRow .tag { color: var(--dim); font-size: 11px; }
+  .treeRow .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .docTop { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 4px 0 8px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+  .docHead { font-weight: 700; font-size: 17px; color: var(--link); }
+  .crumbs { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; font-size: 13px; }
+  .crumb { border: 1px solid transparent; border-radius: 4px; padding: 0 4px; }
+  .crumb .caret { color: var(--dim); font-size: 10px; margin-left: 2px; }
+  .sep { color: var(--dim); font-size: 11px; padding: 0 2px; }
+  .docBody { font-size: 16px; line-height: 1.75; max-width: 44em; }
+  .docBody .h { font-weight: 600; margin: .55em 0 .3em; padding: 0 2px; }
+  .docBody p { margin: 0 0 .8em; }
+  .snip { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; font-size: 13px; background: var(--panel2); }
+  .snip .n { color: var(--gold); font-weight: 700; margin-left: 6px; }
+
+  /* 對話框（設置／關於）：蓋在 app 區，不蓋住上面的 mockup 工具列（工具列會換行） */
+  .wrap { position: fixed; left: 0; right: 0; bottom: 0; top: var(--chromeH, 44px); z-index: 20; }
+  .wrap[hidden] { display: none; }
+  .backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+  .modal {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(940px, 95vw); max-height: calc(100% - 16px); display: flex; flex-direction: column;
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.65); z-index: 21;
+  }
+  /* 940px：顏色、大小、字型、來源一列看完 */
+  .modalHead { display: flex; align-items: center; gap: 10px; padding: 14px 18px 10px; }
+  .modalHead h2 { margin: 0; font-size: 20px; color: var(--link); }
+  .mockTag { font-size: 11px; color: var(--dim); border: 1px dashed var(--line); border-radius: 999px; padding: 1px 8px; }
+  .x { margin-left: auto; background: transparent; border: 0; color: var(--dim); font-size: 18px; cursor: pointer; }
+  .x:hover { color: var(--fg); }
+  .tabs { display: flex; gap: 2px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+  .tabBtn {
+    background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--dim);
+    font: inherit; font-size: 13px; padding: 8px 12px; cursor: pointer; position: relative;
+  }
+  .tabBtn:hover { color: var(--fg); }
+  .tabBtn.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+  .tabBtn .new { background: var(--accent); color: var(--ink-on-accent); border-radius: 4px; font-size: 10px; padding: 0 4px; margin-left: 5px; vertical-align: 1px; }
+  .tabBody { overflow: auto; padding: 12px 18px 16px; min-height: 0; }
+  .modalFoot { display: flex; align-items: center; gap: 10px; padding: 10px 18px 12px; border-top: 1px solid var(--line); }
+  .modalFoot .hint { margin: 0; flex: 1 1 auto; }
+  .btn { background: var(--accent); color: var(--ink-on-accent); border: 0; border-radius: 6px; font: inherit; font-size: 13px; padding: 5px 14px; cursor: pointer; }
+  .btn.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+  .btn.ghost:hover { border-color: var(--accent); }
+  .btn.small { font-size: 12px; padding: 3px 10px; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .hint { color: var(--dim); font-size: 12px; line-height: 1.5; }
+  .hint code { background: var(--code-bg); border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; }
+
+  /* ---- 標籤樣式分頁 ---- */
+  .scopeBar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 2px 0 10px; }
+  .scopeBar .grow { flex: 1 1 auto; }
+  .scopeNow { font-size: 12px; color: var(--dim); }
+  .scopeNow b { color: var(--fg); font-weight: 600; }
+  .banner {
+    display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--line);
+    border-left: 3px solid var(--accent); border-radius: 6px; background: var(--panel2);
+    padding: 7px 10px; font-size: 12.5px; color: var(--dim); margin: 0 0 12px;
+  }
+  .banner b { color: var(--fg); font-weight: 600; }
+  .previewCard { border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); padding: 8px 10px; margin-bottom: 10px; }
+  .previewHead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+  .previewHead b { font-size: 12px; color: var(--dim); letter-spacing: .05em; }
+  .previewHead .grow { flex: 1 1 auto; }
+  .previewBody { font-size: 16px; line-height: 1.65; }
+  .previewBody .h { font-weight: 600; margin: .2em 0 .1em; }
+  .previewBody .p { margin: 0; }
+  .gutter { color: var(--dim); font-size: 11px; margin-right: 6px; font-weight: 400; }
+  .familyNote { font-size: 11.5px; color: var(--dim); margin-top: 5px; }
+  .familyNote b { color: var(--fg); font-weight: 600; }
+  .familyNote code { background: var(--code-bg); padding: 0 3px; border-radius: 3px; border: 1px solid var(--line); }
+  .familyNote details { margin-top: 3px; }
+  .familyNote summary { cursor: pointer; color: var(--dim); font-size: 11.5px; }
+  .fontSample { margin-top: 4px; font-size: 19px; line-height: 1.5; }
+
+  .tagSection { margin: 14px 0 6px; display: flex; align-items: baseline; gap: 8px; }
+  .tagSection b { font-size: 13px; }
+  .tagSection span { font-size: 11.5px; color: var(--dim); }
+  .tagScroll { overflow-x: auto; padding-bottom: 4px; }
+  .tagTable { display: flex; flex-direction: column; gap: 5px; min-width: 844px; }
+  .tagHead, .tagRow {
+    display: grid; align-items: center; gap: 8px;
+    grid-template-columns: 150px 102px 120px 146px minmax(176px, 1fr) 110px;
+    padding: 5px 8px;
+  }
+  .tagHead { color: var(--dim); font-size: 11px; letter-spacing: .05em; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  .tagRow { border: 1px solid var(--line); border-radius: 7px; background: var(--panel2); }
+  .tagRow.own { border-color: var(--accent); box-shadow: inset 2px 0 0 var(--accent); }
+  .tagRow.groupRow { background: transparent; border-style: dashed; }
+  .tagRow.memberRow { margin-left: 18px; }
+  /* 天干地支的 22 層色相階梯（底色 → 每層 +30°） */
+  .rampWrap { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 3px 0 0; }
+  .rampNote { color: var(--dim); font-size: 11px; margin-right: 6px; }
+  .rampCell { min-width: 26px; text-align: center; border: 1px solid var(--line); border-radius: 4px; padding: 1px 2px; font-size: 12px; background: var(--panel); }
+  .tName { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .tName .nm { font-weight: 700; font-size: 14px; min-width: 1.4em; text-align: center; }
+  .tMeta { color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tchip {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 1.6em;
+    border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; font-weight: 600; font-size: 13px;
+    background: var(--panel); white-space: nowrap;
+  }
+  .chev { background: transparent; border: 0; color: var(--dim); font: inherit; font-size: 11px; cursor: pointer; width: 14px; padding: 0; }
+  .chev:hover { color: var(--fg); }
+  .modeSeg { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+  .modeSeg button { background: transparent; border: 0; border-right: 1px solid var(--line); color: var(--dim); font: inherit; font-size: 11.5px; padding: 2px 7px; cursor: pointer; white-space: nowrap; }
+  .modeSeg button:last-child { border-right: 0; }
+  .modeSeg button.on { background: var(--hl-bg); color: var(--fg); font-weight: 600; }
+  .modeSeg button:hover { color: var(--fg); }
+
+  .ctl { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .ctl input[type="color"] { width: 26px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+  .ctl input[type="range"] { width: 86px; }
+  .ctl .val { font-size: 12px; font-variant-numeric: tabular-nums; min-width: 3.4em; }
+  .ctl select {
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 4px;
+    font: inherit; font-size: 11.5px; padding: 2px 4px; max-width: 96px;
+  }
+  .ctl.disabled { opacity: .55; }
+  .fontCtl { gap: 4px; }
+  .fontCtl select { max-width: 88px; }
+  .src { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .srcTag { font-size: 10.5px; border-radius: 999px; padding: 1px 7px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
+  .srcTag.auto { color: var(--dim); }
+  .srcTag.global { color: var(--link); border-color: var(--link); }
+  .srcTag.adb { color: var(--gold); border-color: var(--gold); }
+  .srcTag.group { color: var(--tag-text-5); border-color: var(--tag-text-5); }
+  .mini { background: transparent; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; font: inherit; font-size: 11px; padding: 1px 6px; cursor: pointer; }
+  .mini:hover { color: var(--fg); border-color: var(--accent); }
+
+  .card { border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); padding: 10px 12px; margin-top: 14px; }
+  .cardRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 0; font-size: 12.5px; }
+  .cardRow b { min-width: 6.5em; color: var(--dim); font-weight: 500; }
+  .cardRow code { font-size: 12px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  .vchip { font-size: 11px; background: var(--hl-bg); border: 1px solid var(--accent); color: var(--fg); border-radius: 999px; padding: 0 7px; }
+  .okchip { font-size: 11px; color: var(--ok); border: 1px solid var(--ok); border-radius: 999px; padding: 0 7px; }
+  .warnchip { font-size: 11px; color: var(--warn); border: 1px solid var(--warn); border-radius: 999px; padding: 0 7px; }
+  .jsonBox { margin-top: 10px; }
+  .jsonBar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .jsonBar .grow { flex: 1 1 auto; }
+  .jsonBox pre { margin: 0; max-height: 230px; overflow: auto; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-size: 11.5px; line-height: 1.45; }
+
+  /* ---- 其他設置分頁（示意，沿用現有控制項） ---- */
+  .setSection { border-top: 1px solid var(--line); padding: 10px 0 4px; }
+  .setSection:first-child { border-top: 0; }
+  .setSection h3 { margin: 0 0 6px; font-size: 13px; color: var(--dim); font-weight: 600; letter-spacing: .04em; }
+  .setRow { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 14px; flex-wrap: wrap; }
+  .setRow > span:first-of-type { min-width: 5em; }
+  .setRow .hint { flex: 1 1 100%; margin-left: 24px; }
+  .simDemo { margin: 6px 0 4px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel2); font-size: 13px; }
+  .simDemo .row { display: flex; gap: 8px; padding: 2px 4px; }
+  .simDemo .lbl { flex: 0 0 5.5em; color: var(--dim); font-size: 12px; }
+  .simDemo em { font-style: normal; color: var(--gold); text-decoration: underline dotted; }
+
+  /* ---- 關於 ---- */
+  .aboutTop { display: flex; align-items: flex-start; gap: 14px; padding: 16px 18px 6px; }
+  .logo {
+    width: 78px; height: 78px; border-radius: 14px; flex: 0 0 auto;
+    display: grid; place-items: center; font-size: 26px; font-weight: 800; letter-spacing: .02em;
+    color: #08243f; background: linear-gradient(135deg, #7cc0ff, #5aa9ff 55%, #ffd479);
+  }
+  .aboutTitles h2 { margin: 0; font-size: 25px; color: var(--link); }
+  .aboutTitles .sub { margin: 4px 0 6px; font-size: 13.5px; opacity: .85; }
+  .aboutTitles .site { margin: 0; font-size: 12.5px; color: var(--dim); }
+  .aboutMeta { padding: 6px 18px 0; }
+  .aboutMeta > div { display: flex; align-items: baseline; gap: 10px; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: 13px; flex-wrap: wrap; }
+  .aboutMeta span { min-width: 5.2em; color: var(--dim); }
+  .aboutMeta b { font-weight: 600; }
+  .aboutMeta code { font-size: 12px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  .aboutMeta .newRow { background: var(--hl-bg); border-radius: 6px; padding: 6px 8px; margin: 6px 0 2px; border-bottom: 0; }
+  .aboutMeta .newRow span { color: var(--fg); }
+  .aboutFoot { padding: 10px 18px 14px; }
+
+  /* ---- 設計說明的抽屜 ---- */
+  .drawer {
+    position: fixed; right: 0; top: 0; bottom: 0; width: min(420px, 94vw); z-index: 30;
+    background: var(--panel); border-left: 1px solid var(--line); box-shadow: -18px 0 50px rgba(0,0,0,.45);
+    display: flex; flex-direction: column;
+  }
+  .drawer[hidden] { display: none; }
+  .drawer .modalHead { padding: 14px 16px 8px; }
+  .drawer .tabBody { padding: 4px 16px 16px; }
+  .drawer h3 { font-size: 13px; margin: 14px 0 4px; color: var(--dim); letter-spacing: .04em; }
+  .drawer ul { margin: 4px 0; padding-left: 18px; font-size: 12.5px; line-height: 1.65; }
+  .drawer li { margin-bottom: 3px; }
+  .drawer .q { color: var(--gold); }
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+    background: var(--panel2); border: 1px solid var(--accent); color: var(--fg);
+    border-radius: 8px; padding: 8px 14px; font-size: 13px; z-index: 50; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  }
+  .toast[hidden] { display: none; }
+
+  @media (max-width: 980px) {
+    .cols { grid-template-columns: 210px minmax(0, 1fr); }
+    .col.right { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ======================= mockup 工具列 ======================= -->
+<div class="reviewBar">
+  <span class="brand">accelon26 設置<span class="mock">MOCKUP</span></span>
+  <span class="rbLabel">第一輪設計稿；第二輪（本文 pt、無預覽、只示範甲、文項部經、春綠／秋黃）以正式版為準</span>
+  <span class="rbGroup">
+    <span class="rbLabel">看</span>
+    <span class="seg" id="viewSeg">
+      <button data-view="settings" class="active">設置・標籤樣式</button>
+      <button data-view="doc">本文</button>
+      <button data-view="about">關於頁</button>
+    </span>
+  </span>
+  <span class="grow"></span>
+  <span class="rbGroup">
+    <span class="rbLabel">主題</span>
+    <span class="seg" id="themeSeg">
+      <button data-theme="dark" class="active">暗</button>
+      <button data-theme="light">亮</button>
+      <button data-theme="eye">春綠</button>
+    </span>
+  </span>
+  <span class="rbGroup">
+    <span class="rbLabel">環境</span>
+    <span class="seg" id="envSeg">
+      <button data-env="desktop" class="active">桌面版 exe</button>
+      <button data-env="web">網頁版 file://</button>
+    </span>
+  </span>
+  <button class="ghost" id="notesBtn">設計說明</button>
+</div>
+
+<!-- ======================= 假的 accelon26 畫面 ======================= -->
+<div class="app">
+  <div class="appHeader">
+    <h1>accelon26</h1>
+    <span class="dbChip">印順法師佛學著作集</span>
+    <span class="searchBox"><span class="dim">🔍</span><input value="彗" aria-label="搜尋"></span>
+    <span class="gear on" title="設置">⚙</span>
+  </div>
+  <div class="cols">
+    <aside class="col left">
+      <p class="colTitle">目錄</p>
+      <div class="treeRow"><span class="tw">▾</span><span class="dot" data-ptag="書"></span><span class="nm" data-ptag="書">華雨集第二冊</span></div>
+      <div class="treeRow" style="padding-left:16px"><span class="tw">▾</span><span class="tag">編</span><span class="dot" data-ptag="編"></span><span class="nm">二　大乘起信論</span></div>
+      <div class="treeRow current" style="padding-left:32px"><span class="tw">▾</span><span class="dot" data-ptag="章"></span><span class="nm" data-ptag="章">第一章　緣起</span></div>
+      <div class="treeRow" style="padding-left:48px"><span class="tw">·</span><span class="dot" data-ptag="節"></span><span class="nm" data-ptag="節">第一節　教起因緣</span></div>
+      <div class="treeRow" style="padding-left:48px"><span class="tw">·</span><span class="dot" data-ptag="節"></span><span class="nm">第二節　釋題</span></div>
+      <div class="treeRow" style="padding-left:32px"><span class="tw">▸</span><span class="dot" data-ptag="章"></span><span class="nm">第二章　大乘義</span></div>
+    </aside>
+    <main class="col center">
+      <div class="docTop">
+        <span class="docHead">華雨集第二冊</span>
+        <span class="crumbs">
+          <span class="crumb" data-ptag="書">華雨集第二冊<span class="caret">▾</span></span>
+          <span class="sep">›</span>
+          <span class="crumb" data-ptag="章">第一章<span class="caret">▾</span></span>
+          <span class="sep">›</span>
+          <span class="crumb" data-ptag="節">第一節<span class="caret">▾</span></span>
+          <span class="sep">｜</span>
+          <span class="crumb" data-ptag="節">第二節<span class="caret">▾</span></span>
+        </span>
+      </div>
+      <div class="docBody">
+        <div class="h" data-ptag="書">華雨集第二冊</div>
+        <div class="h" data-ptag="章">第一章　緣起</div>
+        <div class="h" data-ptag="節">第一節　教起因緣</div>
+        <p>如是我聞：一時，佛住王舍城耆闍崛山中，與大比丘眾萬二千人俱。皆是阿羅漢，諸漏已盡，無復煩惱，逮得己利，盡諸有結，心得自在。</p>
+        <div class="h" data-ptag="甲">甲一　序分</div>
+        <p>其名曰：阿若憍陳如、摩訶迦葉、優樓頻螺迦葉、伽耶迦葉、那提迦葉、舍利弗、大目犍連、摩訶迦旃延、阿㝹樓馱、劫賓那、憍梵波提。</p>
+        <div class="h" data-ptag="節">第二節　釋題</div>
+        <p>「大乘起信論」者，馬鳴菩薩造，真諦三藏譯。大乘者，眾乘之首；起信者，發起正信也。</p>
+      </div>
+    </main>
+    <aside class="col right">
+      <p class="colTitle">摘要</p>
+      <div class="snip">……日沒後，從虛空，似婁<span style="color:var(--gold)">彗</span>星宿而下至地，地皆大動。<span class="n">1</span></div>
+      <div class="snip">爾時，<span style="color:var(--gold)">彗</span>星出時，其光猛利，世間多有災疫。<span class="n">1</span></div>
+      <p class="hint" style="margin-top:10px">設定換色／字級／字型時，這一頁的標題、目錄的色點與 breadcrumb 都會一起變。</p>
+    </aside>
+  </div>
+</div>
+
+<!-- ======================= 設置（新增「標籤樣式」分頁） ======================= -->
+<div class="wrap" id="settingsWrap">
+  <div class="backdrop" data-view="doc"></div>
+  <div class="modal" id="settingsModal" role="dialog" aria-modal="true" aria-label="設置">
+    <div class="modalHead">
+      <h2>設置</h2>
+      <span class="mockTag">mockup：設置分頁</span>
+      <button class="x" data-view="doc" title="關閉（Esc）">✕</button>
+    </div>
+    <div class="tabs" id="setTabs">
+      <button class="tabBtn active" data-tab="ui">介面</button>
+      <button class="tabBtn" data-tab="tags">標籤樣式<span class="new">新</span></button>
+      <button class="tabBtn" data-tab="sim">繁簡</button>
+    </div>
+    <div class="tabBody">
+
+      <!-- ---- 標籤樣式（新分頁） ---- -->
+      <div id="pane-tags" class="hidden">
+        <div class="scopeBar">
+          <span class="seg" id="scopeSeg">
+            <button data-scope="global">全域預設</button>
+            <button data-scope="adb" class="active">此資料庫</button>
+          </span>
+          <span class="scopeNow" id="scopeNow"></span>
+          <span class="grow"></span>
+          <span class="hint" id="scopePath"></span>
+        </div>
+        <div class="banner" id="scopeBanner"></div>
+
+        <div class="previewCard">
+          <div class="previewHead">
+            <b>預覽</b>
+            <span class="dim" id="previewScope"></span>
+            <span class="grow"></span>
+            <span class="dim">本文 16px＝100%</span>
+          </div>
+          <div class="previewBody">
+            <div class="h" data-ptag="書"><span class="gutter">書 <span class="pct" data-pct="書"></span></span>華雨集第二冊</div>
+            <div class="h" data-ptag="甲"><span class="gutter">甲 <span class="pct" data-pct="甲"></span></span>甲一　序分</div>
+            <div class="h" data-ptag="章"><span class="gutter">章 <span class="pct" data-pct="章"></span></span>第一章　緣起</div>
+            <div class="h" data-ptag="節"><span class="gutter">節 <span class="pct" data-pct="節"></span></span>第一節　教起因緣</div>
+            <div class="p">如是我聞：一時，佛住王舍城。</div>
+          </div>
+          <div class="familyNote" id="fontNote"></div>
+        </div>
+
+        <div class="tagSection"><b>結構標籤</b><span>預設都是「自動」：顏色跟著標籤（主題的 8 個色相）、字級跟著層次</span></div>
+        <div class="tagScroll">
+          <div class="tagTable" id="tagTable"></div>
+        </div>
+
+        <div class="card">
+          <div class="cardRow"><b>設定檔版本</b><span class="vchip">v1</span><span class="dim">format: <code>accelon26-settings</code></span></div>
+          <div class="cardRow"><b>儲存位置</b><code id="storePath">—</code><span id="storeBadge"></span></div>
+          <div class="cardRow" id="storeNoteRow"><span class="dim" id="storeNote"></span></div>
+          <label class="cardRow" id="writableRow"><input type="checkbox" id="writable"> <span>模擬「exe 資料夾不可寫入」→ 改存系統設定的區域</span></label>
+          <div class="cardRow" style="margin-top:4px">
+            <b>分享</b>
+            <button class="btn ghost small" id="btnExport">匯出 JSON</button>
+            <button class="btn ghost small" id="btnImport">匯入…</button>
+            <input type="file" id="importFile" accept="application/json,.json" hidden>
+            <button class="btn ghost small" id="btnCopy">複製 JSON</button>
+          </div>
+          <p class="hint" style="margin:6px 0 0">檔案只存<b>改過</b>的標籤（沒改的不寫），換版本、分享都不會蓋掉別人的設定；<code>version</code> 讓將來的格式升級知道怎麼讀。</p>
+        </div>
+
+        <div class="jsonBox">
+          <div class="jsonBar">
+            <span class="seg" id="jsonSeg">
+              <button data-json="file" class="active">settings.json（只存差異）</button>
+              <button data-json="merged">此庫現在生效的值</button>
+            </span>
+            <span class="grow"></span>
+            <span class="hint">示範資料，不是真的檔案</span>
+          </div>
+          <pre id="jsonView"></pre>
+        </div>
+      </div>
+
+      <!-- ---- 其他分頁：介面（主題＋介面＋進階合併）／繁簡（示意） ---- -->
+      <div id="pane-ui">
+        <div class="setSection">
+          <h3>主題</h3>
+          <div class="setRow"><span>配色</span>
+            <span class="seg" id="themeSeg2">
+              <button data-theme="dark">暗色系</button>
+              <button data-theme="light">亮色系</button>
+              <button data-theme="eye">春綠</button>
+            </span>
+          </div>
+          <p class="hint">預設是暗色系。護眼是偏綠的紙色，長時間閱讀比較不刺眼；換主題只換顏色，不用重開。</p>
+        </div>
+        <div class="setSection">
+          <h3>介面</h3>
+          <label class="setRow"><input type="checkbox" checked> <span>顯示原書頁碼</span>
+            <span class="hint">渲染 <code>&lt;頁&gt;</code>／<code>&lt;_頁&gt;</code>：原書分行時是右靠的頁分隔＋頁碼，連排時是行內的小頁碼。</span>
+          </label>
+        </div>
+        <div class="setSection">
+          <h3>進階</h3>
+          <label class="setRow"><input type="checkbox"> <span>進階模式</span>
+            <span class="hint">顯示 token 瀏覽、META／容量／文件／圖片分頁，以及「顯示原始文件」。</span>
+          </label>
+        </div>
+      </div>
+      <div id="pane-sim" class="hidden">
+        <div class="setSection">
+          <h3>繁簡</h3>
+          <label class="setRow"><input type="checkbox"> <span>輸入通檢</span>
+            <span class="hint">打「菩萨」也找得到「菩薩」、打「台」也找得到「臺」「檯」。</span>
+          </label>
+          <div class="setRow"><span>文字顯示</span>
+            <span class="seg"><button class="active">保持原樣</button><button>無損簡體</button><button>強制簡體</button></span>
+          </div>
+          <div class="simDemo">
+            <div class="row"><span class="lbl">保持原樣</span><span>王后與後代，頭髮乾燥，臺灣的醫生後來又發心。</span></div>
+            <div class="row"><span class="lbl">無損簡體</span><span>王后与後代，头髮乾燥，臺灣的医生後来又發心。</span></div>
+          </div>
+          <p class="hint">無損簡體只轉「一對一」的字；發／髮、乾／幹、裡／裏這種合併字保留原樣。</p>
+        </div>
+      </div>
+    </div>
+    <div class="modalFoot">
+      <span class="hint">設定即時生效（不必重開）；本文、目錄色點與 breadcrumb 一起換。</span>
+      <button class="btn ghost" id="btnReset">全部重設</button>
+      <button class="btn" data-view="doc">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= 關於頁（新增「設定檔」一列） ======================= -->
+<div class="wrap" id="aboutWrap" hidden>
+  <div class="backdrop" data-view="doc"></div>
+  <div class="modal" style="width:min(600px,94vw)" role="dialog" aria-modal="true" aria-label="關於">
+    <div class="aboutTop">
+      <div class="logo">26</div>
+      <div class="aboutTitles">
+        <h2>開放古籍平台</h2>
+        <p class="sub">Accelon3 跨平台平替</p>
+        <p class="site">官網 https://shutonggui.cn/accelon26/</p>
+      </div>
+      <button class="x" data-view="doc" title="關閉（Esc）">✕</button>
+    </div>
+    <div class="aboutMeta">
+      <div><span>版本</span><b>2026-10-22 09:00（本機建置）</b></div>
+      <div><span>執行環境</span><b id="aboutMode">桌面版（accelon26.exe）</b></div>
+      <div><span>程式檔</span><b id="aboutExe"><code>C:\accelon3\accelon26.exe</code></b></div>
+      <div class="newRow">
+        <span>設定檔</span>
+        <b><code id="aboutSettings">C:\accelon3\settings.json</code> <span class="vchip">v1</span></b>
+        <button class="mini" id="aboutReveal">開啟資料夾</button>
+        <button class="mini" id="aboutExport">匯出</button>
+      </div>
+      <div><span>開發者</span><b>微信 Sukhanika</b></div>
+    </div>
+    <p class="hint" id="aboutSettingsNote" style="padding:8px 18px 0"></p>
+    <div class="aboutFoot">
+      <p class="hint">設定檔可以在「設置 → 標籤樣式」匯出／匯入（分享給別人，或換電腦用）。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= 設計說明抽屜 ======================= -->
+<div class="drawer" id="notesDrawer" hidden>
+  <div class="modalHead">
+    <h2 style="font-size:17px">設計說明</h2>
+    <button class="x" id="notesClose" title="關閉">✕</button>
+  </div>
+  <div class="tabBody">
+    <p class="hint">這一頁只示範外觀與互動；實作時要動的檔案與資料格式寫在 <code>TAG-STYLE-SETTINGS.md</code>。
+      上方「版面／寬／adb 鍵」可以即時切換，對照下面的問題。</p>
+    <h3>已經定下來的</h3>
+    <ul>
+      <li>設置多一個<b>「標籤樣式」</b>分頁：全域預設／此資料庫 兩層；此庫預設<b>繼承</b>全域。</li>
+      <li>每個標籤可設<b>顏色</b>、<b>相對本文的大小（%）</b>、<b>字型（第一種＋第二種 fallback）</b>。</li>
+      <li>預設 <b>auto</b>：顏色用主題的 8 個 tag 色相（同一標籤同色）、字級跟層次（+2px/層，上限 180%）。</li>
+      <li>已知標籤：書 篇 章 節 詞 ＋ <b>天干</b>（甲乙丙…）＋ <b>地支</b>（子丑寅…）；天干／地支可整組設定，個別字再覆寫。</li>
+      <li>網頁版（file://、http）存 <code>localStorage['accelon26.settings']</code>；exe 版存 <b>exe 旁的 settings.json</b>，不可寫才退到 <code>%APPDATA%\accelon26\settings.json</code>。</li>
+      <li>About 頁多一列<b>「設定檔」</b>顯示實際路徑；settings.json 帶 <code>version</code>，可以匯出／匯入分享。</li>
+    </ul>
+    <h3 class="q">要作者決定的</h3>
+    <ul>
+      <li>設置要改成<b>分頁</b>（這個 mockup）還是保留現在一頁到底、把新內容接在〈進階〉後面？</li>
+      <li>覆寫要<b>整個標籤</b>（顏色／大小／字型一起，這個 mockup）還是可以只改其中一項？</li>
+      <li>「各 adb」的鍵用 <b>dbname</b>（印順法師佛學著作集，重建 adb 也認得）還是檔名？</li>
+      <li>自訂顏色要不要<b>同時套到目錄的色點與 breadcrumb</b>？（mockup 是：要）</li>
+      <li>settings.json 只放標籤樣式，還是把主題／繁簡／介面也一起收進去（v2）？</li>
+      <li>字型清單要固定幾個常見字型＋可手打，還是要列系統字型？（瀏覽器不能可靠列舉系統字型）</li>
+    </ul>
+    <p class="hint">示範資料：全域的「章、節、天干」與此庫的「書」已設成自訂，切到「全域預設」／「此資料庫」就看得出繼承。</p>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* =====================================================================
+   mockup 的狀態與行為（沒有後端、沒有 localStorage、沒有真的 settings.json）
+   ===================================================================== */
+const DB = { name: '印順法師佛學著作集', file: 'yinshun.adb' };
+
+const TAGS = {
+  structural: ['書', '篇', '章', '節', '詞'],
+  // 天干地支＝同一個設定、共 22 層；顏色由使用者指定的底色，每深一層色相 +30°
+  groups: [
+    { id: '天干地支', tags: ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸', '子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'] },
+  ],
+  other: ['記', '部', '項', '編', '干'],
+};
+const META = {
+  '書': '此庫 44 個・第 1 層', '篇': '此庫沒有・第 2 層', '章': '此庫 510 個・第 3 層',
+  '節': '此庫 1,570 個・第 4 層', '詞': '詞典型庫・第 1 層',
+  '記': '此庫 8 個・第 2 層', '部': '此庫 16 個・第 3 層', '項': '此庫 1,091 個・第 5 層',
+  '編': '此庫 5 個・第 2 層', '干': '此庫 105 個・第 4 層',
+  '天干地支': '22 個・第 3–4 層・色相每層 +30°',
+};
+const DEPTH = { '書': 0, '篇': 1, '章': 2, '節': 3, '詞': 3, '記': 1, '部': 2, '項': 3, '編': 1, '干': 2, '天干地支': 2 };
+// 天干（10）＋地支（12）的預設 auto 色相：從 5 開始循環
+const CHROMA = { '書': 0, '篇': 1, '章': 2, '節': 3, '詞': 4, '記': 5, '部': 6, '項': 7, '編': 1, '干': 5 };
+
+// 網頁版（file://、http）：只列已知的系統內建字型（瀏覽器不能可靠列舉）
+const WEB_FONTS = [
+  ['', '本文'],
+  ['PMingLiU', '細明體'],
+  ['MingLiU', '新細明體'],
+  ['DFKai-SB', '標楷體'],
+  ['Microsoft JhengHei', '微軟正黑體'],
+  ['SimSun', '宋體'],
+  ['KaiTi', '楷體'],
+  ['Source Han Serif TC', '思源宋體'],
+  ['Source Han Sans TC', '思源黑體'],
+  ['Noto Serif CJK TC', 'Noto Serif TC'],
+  ['Noto Sans CJK TC', 'Noto Sans TC'],
+];
+// 桌面版：由宿主列出「使用者已安裝」的字型（mockup 這裡是示意清單）
+const DESKTOP_FONTS = [
+  ...WEB_FONTS,
+  ['Microsoft YaHei', '微軟雅黑'],
+  ['SimHei', '黑體'],
+  ['FangSong', '仿宋'],
+  ['NSimSun', '新宋體'],
+  ['DengXian', '等線'],
+  ['Arial', 'Arial'],
+  ['Times New Roman', 'Times New Roman'],
+];
+const fontList = () => (state.env === 'desktop' ? DESKTOP_FONTS : WEB_FONTS);
+const BODY_FONT = '"Microsoft JhengHei", "Segoe UI", system-ui, sans-serif';
+
+const state = {
+  theme: 'dark', env: 'desktop', view: 'settings', writable: true,
+  scope: 'adb', tab: 'ui', jsonMode: 'file',
+  global: { tags: {}, groups: {} },
+  adb: { tags: {}, groups: {} },
+};
+
+/* 示範資料：讓「自訂／繼承」一看就有差別 */
+state.global.tags = {
+  '章': { color: '#7cc0ff', size: 125, font: 'DFKai-SB', font2: 'Source Han Serif TC' },
+  '節': { color: '#9fe08a', size: 120, font: '', font2: '' },
+};
+state.global.groups = {
+  '天干地支': { color: '#e0a54a', size: 105, font: 'DFKai-SB', font2: 'PMingLiU' },
+};
+state.adb.tags = {
+  '書': { color: '#ffd479', size: 140, font: 'Source Han Serif TC', font2: 'PMingLiU' },
+};
+
+/* ---------- 小工具 ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const isGroup = (t) => t === '天干地支';
+const memberOf = (t) => (TAGS.groups.find((g) => g.tags.includes(t)) || {}).id || null;
+const memberIndex = (t) => groupTags().indexOf(t);
+const groupTags = () => TAGS.groups[0].tags;
+const chroma = (t) => {
+  const i = memberIndex(t);
+  if (i >= 0) return (5 + i) % 8;          // 天干地支的 auto 色相（沿用正式版的 tagChroma 循環）
+  return CHROMA[t] ?? 0;
+};
+const autoSize = (t) => Math.min(180, Math.round((100 + (DEPTH[t] ?? 2) * 12.5) * 10) / 10);
+const fmtSize = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
+/* 標籤色的實際 hex（從目前主題的 CSS 變數算出來，顏色輸入框才不會是灰的） */
+const probe = document.createElement('span');
+probe.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden';
+document.body.appendChild(probe);
+function cssColorHex(css) {
+  probe.style.color = css;
+  const c = getComputedStyle(probe).color;
+  const m = c.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+  if (!m) return '#888888';
+  const h = (n) => Number(n).toString(16).padStart(2, '0');
+  return '#' + h(m[1]) + h(m[2]) + h(m[3]);
+}
+const autoColor = (t) => cssColorHex(`var(--tag-text-${chroma(t)})`);
+
+/* 天干地支的色相階梯：底色 → 每層 +30°（只轉色相，飽和度／亮度不變） */
+function hexToHsl(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+  if (!m) return { h: 0, s: 60, l: 60 };
+  const n = parseInt(m[1], 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  const l = (max + min) / 2;
+  const s = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+  return { h, s: s * 100, l: l * 100 };
+}
+const hslCss = ({ h, s, l }) => `hsl(${(((h % 360) + 360) % 360).toFixed(1)} ${s.toFixed(1)}% ${l.toFixed(1)}%)`;
+/** 第 i 層（0 起算）的顏色；底色是 hex */
+function rampColor(baseHex, i) {
+  const hsl = hexToHsl(baseHex);
+  return hslCss({ ...hsl, h: hsl.h + 30 * i });
+}
+
+/* ---------- 繼承鏈：天干地支（群組）→ 全域；一般標籤＝此庫標籤 → 全域標籤 → 自動 ---------- */
+function ownEntry(scope, key) {
+  const b = state[scope];
+  if (isGroup(key)) return b.groups[key];
+  if (memberOf(key)) return undefined;       // 22 個天干地支只有群組一層設定
+  return b.tags[key];
+}
+function chainOf(key) {
+  const out = [];
+  if (isGroup(key)) {
+    if (state.scope === 'adb' && state.adb.groups[key]) out.push([state.adb.groups[key], 'adb']);
+    if (state.global.groups[key]) out.push([state.global.groups[key], 'global']);
+    return out;
+  }
+  const g = memberOf(key);
+  if (g) {
+    if (state.scope === 'adb' && state.adb.groups[g]) out.push([state.adb.groups[g], 'adbGroup', g]);
+    if (state.global.groups[g]) out.push([state.global.groups[g], 'globalGroup', g]);
+    return out;
+  }
+  if (state.scope === 'adb' && state.adb.tags[key]) out.push([state.adb.tags[key], 'adb']);
+  if (state.global.tags[key]) out.push([state.global.tags[key], 'global']);
+  return out;
+}
+function eff(key) {
+  const c = chainOf(key)[0];
+  if (!c) {
+    // 天干地支的 auto 沒有單一顏色：群組列用第一層（甲）的 auto 色當代表
+    const autoKey = isGroup(key) ? groupTags()[0] : key;
+    return { auto: true, color: autoColor(autoKey), size: autoSize(key), font: '', font2: '' };
+  }
+  const [e, , grp] = c;
+  const i = memberIndex(key);
+  return {
+    auto: false,
+    color: i >= 0 ? rampColor(e.color, i) : e.color,
+    size: e.size,
+    font: e.font || '',
+    font2: e.font2 || '',
+  };
+}
+function srcLabel(key) {
+  const c = chainOf(key)[0];
+  if (!c) return '自動';
+  const [, src, grp] = c;
+  if (state.scope === 'adb' && src.startsWith('global')) return '繼承全域' + (grp ? '・' + grp : '');
+  if (src.startsWith('adb')) return '此庫' + (grp ? '・' + grp : '');
+  return '全域' + (grp ? '・' + grp : '');
+}
+function srcClass(key) {
+  const c = chainOf(key)[0];
+  if (!c) return 'auto';
+  return c[1].startsWith('adb') ? 'adb' : (c[1].endsWith('Group') ? 'group' : 'global');
+}
+function familyOf(e) {
+  // 字型名來自設定檔：去掉引號／反斜線，避免把 CSS 弄壞
+  const clean = (s) => String(s || '').replace(/["\\]/g, '');
+  if (!e.font) return BODY_FONT;
+  const list = [`"${clean(e.font)}"`];
+  if (e.font2) list.push(`"${clean(e.font2)}"`);
+  list.push(BODY_FONT);
+  return list.join(', ');
+}
+const allTags = () => [...TAGS.structural, ...TAGS.groups.flatMap((g) => g.tags), ...TAGS.other];
+
+/* ---------- 畫面：主題／檢視／環境 ---------- */
+function setTheme(t) {
+  state.theme = t;
+  if (t === 'dark') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  $$('#themeSeg button, #themeSeg2 button').forEach((b) => b.classList.toggle('active', b.dataset.theme === t));
+  paintAll();
+  renderJson();
+}
+function setView(v) {
+  state.view = v;
+  $$('#viewSeg button').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
+  $('#settingsWrap').hidden = v !== 'settings';
+  $('#aboutWrap').hidden = v !== 'about';
+  if (v === 'settings') setTab(state.tab);
+  if (v === 'about') renderAbout();
+}
+function setEnv(env) {
+  state.env = env;
+  $$('#envSeg button').forEach((b) => b.classList.toggle('active', b.dataset.env === env));
+  renderTagRows();     // 字型清單跟著換（桌面版：已安裝字型／網頁版：內建清單）
+  paintAll();
+  renderJson();
+  renderStorage();
+  renderAbout();
+}
+function setScope(s) {
+  state.scope = s;
+  $$('#scopeSeg button').forEach((b) => b.classList.toggle('active', b.dataset.scope === s));
+  renderScope();
+  renderTagRows();
+  paintAll();
+  renderJson();
+}
+function setTab(tab) {
+  state.tab = tab;
+  $$('#setTabs .tabBtn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  for (const t of ['ui', 'tags', 'sim']) $('#pane-' + t).classList.toggle('hidden', t !== tab);
+}
+
+/** 「各 adb」在 settings.json 裡的鍵：**adb 檔名**（作者 2026-10-22 決定） */
+const ADB_KEY = DB.file;
+
+/* ---------- 畫面：範圍說明 ---------- */
+function renderScope() {
+  const adb = state.scope === 'adb';
+  $('#scopeNow').innerHTML = adb
+    ? `此資料庫：<b>${DB.name}</b> <span class="dim">（${DB.file}）</span>`
+    : '全域預設：<b>出廠的預設值</b>';
+  const n = Object.keys(state.adb.tags).length + Object.keys(state.adb.groups).length;
+  $('#scopeBanner').innerHTML = adb
+    ? `<span>ⓘ</span><span><b>此庫目前 ${n} 個自訂、其餘繼承全域。</b> 在這裡改的任何一列只影響這一本書，換到別的庫不受影響；按「繼承」可以還原成全域的值。</span>`
+    : `<span>ⓘ</span><span><b>全域是出廠預設，所有資料庫都繼承它</b>（除非那一本有自己的設定）。這裡改了會影響還沒自訂的庫。<br>
+       <span class="dim">示範資料：章、節、天干已設成自訂；按「全部重設」可以看全部 auto 的樣子。</span></span>`;
+  $('#previewScope').textContent = adb ? '＝ 此資料庫' : '＝ 全域預設';
+  $('#scopePath').innerHTML = adb
+    ? '<code>profiles.adb["' + esc(ADB_KEY) + '"]</code>'
+    : '<code>profiles.global</code>';
+}
+
+/* ---------- 畫面：標籤列 ---------- */
+function offLabel(key) {
+  return state.scope === 'adb' ? '繼承全域' : '自動';
+}
+function fontOptions(sel, fallback) {
+  const base = fontList();
+  const list = fallback ? [['', '無'], ...base.slice(1)] : base.slice();
+  // 匯入的檔案可能帶清單以外的字型名：原樣列出來，不要讓它變成空白
+  if (sel && !list.some(([v]) => v === sel)) list.push([sel, sel]);
+  return list.map(([v, label]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${label}</option>`).join('');
+}
+/** 天干地支的 22 層色相階梯（底色在左、每層 +30°） */
+function rampHTML(entry) {
+  const tags = groupTags();
+  const cells = tags.map((t, i) => {
+    const c = entry ? rampColor(entry.color, i) : `var(--tag-text-${chroma(t)})`;
+    return `<span class="rampCell" title="${t}：${c}"><b style="color:${c}">${t}</b></span>`;
+  }).join('');
+  const label = entry ? `底色 ${entry.color}，每層 +30°` : '自動：沿用主題的 tag 色相';
+  return `<div class="rampWrap"><span class="rampNote">${label}</span>${cells}</div>`;
+}
+function rowHTML(key, kind) {
+  const own = !!ownEntry(state.scope, key);
+  const e = eff(key);
+  const editable = own;
+  const ro = editable ? '' : ' disabled';
+  const pct = fmtSize(e.size) + '%';
+  const name = `<span class="tchip" data-ptag="${key}">${key}</span><span class="tMeta">${META[key] || ''}</span>`;
+  const ramp = kind === 'group' ? rampHTML(chainOf(key)[0]?.[0] ?? null) : '';
+  return `<div class="tagRow${own ? ' own' : ''}${kind === 'group' ? ' groupRow' : ''}"
+      data-key="${key}" data-kind="${kind}">
+    <div class="tName">${name}</div>
+    <div class="modeSeg">
+      <button data-act="inherit" class="${own ? '' : 'on'}">${offLabel(key)}</button>
+      <button data-act="own" class="${own ? 'on' : ''}">自訂</button>
+    </div>
+    <div class="ctl${editable ? '' : ' disabled'}">
+      <input type="color" value="${e.color}" data-field="color"${ro}>
+      <span class="val hex">${e.auto ? '自動' : e.color}</span>
+    </div>
+    <div class="ctl sizeCtl${editable ? '' : ' disabled'}">
+      <input type="range" min="50" max="300" step="5" value="${Math.round(e.size)}" data-field="size"${ro}>
+      <span class="val sizeVal">${pct}</span>
+    </div>
+    <div class="ctl fontCtl${editable ? '' : ' disabled'}">
+      <select data-field="font"${ro}>${fontOptions(e.font)}</select>
+      <select data-field="font2"${ro}>${fontOptions(e.font2, true)}</select>
+    </div>
+    <div class="src">
+      <span class="srcTag ${srcClass(key)}">${srcLabel(key)}</span>
+      ${own ? `<button class="mini" data-act="reset">重設</button>` : ''}
+    </div>
+    ${ramp}
+  </div>`;
+}
+function renderTagRows() {
+  const host = $('#tagTable');
+  let h = '';
+  h += `<div class="tagHead"><span>標籤</span><span>樣式</span><span>顏色</span><span>大小（相對本文）</span><span>字型（第一／第二 fallback）</span><span style="text-align:right">來源</span></div>`;
+  for (const t of TAGS.structural) h += rowHTML(t, 'tag');
+  for (const g of TAGS.groups) h += rowHTML(g.id, 'group');
+  h += `<div class="tagSection" style="margin-top:8px"><b>此庫的其他標籤</b><span>不在預設清單、但這本 adb 的目錄用到的（換庫會換這一段）</span></div>`;
+  for (const t of TAGS.other) h += rowHTML(t, 'tag');
+  host.innerHTML = h;
+}
+function seed(key) {
+  const e = eff(key);
+  // 群組的 auto 色沒有自己的色相：用第一個成員的顏色當起點
+  const autoKey = isGroup(key) ? ((TAGS.groups.find((g) => g.id === key) || {}).tags || [key])[0] : key;
+  return {
+    color: e.auto ? autoColor(autoKey) : e.color,
+    size: e.auto ? Math.round(e.size) : e.size,
+    font: e.font || '',
+    font2: e.font2 || '',
+  };
+}
+function setOwn(key, kind) {
+  const b = state[state.scope];
+  const store = kind === 'group' ? b.groups : b.tags;
+  store[key] = seed(key);
+}
+function dropOwn(key, kind) {
+  const b = state[state.scope];
+  const store = kind === 'group' ? b.groups : b.tags;
+  delete store[key];
+}
+
+/* ---------- 畫面：把樣式套到預覽、目錄、breadcrumb ---------- */
+function paintAll() {
+  $$('[data-ptag]').forEach((el) => {
+    const t = el.dataset.ptag;
+    const e = eff(t);
+    const color = e.auto ? `var(--tag-text-${chroma(t)})` : e.color;
+    if (el.classList.contains('h')) {
+      el.style.color = color;
+      el.style.fontSize = fmtSize(e.size) + '%';
+      el.style.fontFamily = familyOf(e);
+    } else if (el.classList.contains('dot')) {
+      el.style.background = e.auto ? `var(--tag-${chroma(t)})` : e.color;
+    } else if (el.classList.contains('crumb') || el.classList.contains('tchip')) {
+      el.style.color = e.auto ? `var(--tag-text-${chroma(t)})` : e.color;
+      if (el.classList.contains('crumb')) el.style.borderColor = e.auto ? 'transparent' : e.color;
+    }
+  });
+  $$('.gutter .pct').forEach((s) => { s.textContent = fmtSize(eff(s.closest('.h').dataset.ptag).size) + '%'; });
+  renderFontNote();
+}
+function renderFontNote() {
+  const e = eff('章');
+  const f1 = esc(e.font || '本文');
+  const f2 = esc(e.font2 || '—');
+  const sample = '華雨集第二冊　甲乙丙　子丑寅　𠀀';
+  const source = state.env === 'desktop'
+    ? `桌面版：列出系統已安裝字型（示意 ${DESKTOP_FONTS.length - 1} 個）`
+    : `網頁版：只列內建已知字型（${WEB_FONTS.length - 1} 個）`;
+  $('#fontNote').innerHTML = `
+    <div class="fontLine">章：<b>${f1}</b>${e.font2 ? ` → fallback <b>${f2}</b>` : ''}
+      <span class="dim">（第二種只在第一種缺字時用到）</span>
+      <span class="okchip">${source}</span></div>
+    <details><summary>字型測試（樣本、CSS）</summary>
+      <div class="fontSample" style="font-family:${familyOf(e)}">${sample}</div>
+      <div style="font-size:11px">CSS：<code>font-family:${familyOf(e)}</code></div>
+    </details>`;
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ---------- 畫面：JSON ---------- */
+function fileObject() {
+  return {
+    format: 'accelon26-settings',
+    version: 1,
+    updated: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    profiles: {
+      global: { tagStyle: { tags: state.global.tags, groups: state.global.groups } },
+      adb: { [ADB_KEY]: { name: DB.name, tagStyle: { tags: state.adb.tags, groups: state.adb.groups } } },
+    },
+  };
+}
+function mergedObject() {
+  const out = { scope: state.scope === 'adb' ? 'adb:' + ADB_KEY : 'global', tags: {} };
+  for (const t of allTags()) {
+    const e = eff(t);
+    out.tags[t] = {
+      color: e.auto ? autoColor(t) : e.color,
+      size: e.size,
+      font: e.font || '(本文)',
+      font2: e.font2 || null,
+      from: srcLabel(t),
+    };
+  }
+  return out;
+}
+function renderJson() {
+  const obj = state.jsonMode === 'file' ? fileObject() : mergedObject();
+  $('#jsonView').textContent = JSON.stringify(obj, null, 2);
+}
+
+/* ---------- 畫面：儲存位置 ---------- */
+function storeInfo() {
+  if (state.env === 'web') {
+    return {
+      path: "localStorage['accelon26.settings']",
+      badge: '<span class="okchip">瀏覽器</span>',
+      note: 'file:// 與 http 版都存這裡（同一個瀏覽器、同一個 origin）。要備份或分享就用上面的「匯出 JSON」。',
+      writable: false,
+    };
+  }
+  if (state.writable) {
+    return {
+      path: 'C:\\accelon3\\settings.json',
+      badge: '<span class="okchip">可寫入</span>',
+      note: '與 accelon26.exe 放在同一個資料夾，直接備份／複製就能帶走。',
+      writable: true,
+    };
+  }
+  return {
+    path: '%APPDATA%\\accelon26\\settings.json',
+    badge: '<span class="warnchip">退路</span>',
+    note: 'exe 所在資料夾不能寫（例如安裝在 Program Files、或受控資料夾存取）時，才存到系統設定的區域：C:\\Users\\<user>\\AppData\\Roaming\\accelon26\\settings.json。',
+    writable: true,
+  };
+}
+function renderStorage() {
+  const s = storeInfo();
+  $('#storePath').textContent = s.path;
+  $('#storeBadge').innerHTML = s.badge;
+  $('#storeNote').textContent = s.note;
+  $('#writableRow').classList.toggle('hidden', state.env === 'web');
+  $('#writable').checked = !state.writable;
+  // 讓 About 也跟著
+  renderAbout();
+}
+
+/* ---------- 畫面：關於 ---------- */
+function renderAbout() {
+  const web = state.env === 'web';
+  $('#aboutMode').textContent = web ? '網頁版（單檔 HTML）' : '桌面版（accelon26.exe）';
+  $('#aboutExe').innerHTML = web ? '（單檔 HTML，沒有程式檔）' : '<code>C:\\accelon3\\accelon26.exe</code>';
+  const s = storeInfo();
+  $('#aboutSettings').textContent = web ? "localStorage['accelon26.settings']" : s.path;
+  const reveal = $('#aboutReveal');
+  if (reveal) reveal.hidden = web;   // 網頁版沒有資料夾可開
+  $('#aboutSettingsNote').textContent = web
+    ? '網頁版沒有檔案；設定存在瀏覽器的 localStorage，換瀏覽器或清除網站資料就會回到預設。用「設置 → 標籤樣式 → 匯出」可以存成 settings.json 帶走。'
+    : (state.writable
+      ? '與 accelon26.exe 放在一起，可以直接備份／分享。這是本機檔案（settings.json v1）。'
+      : 'exe 資料夾不可寫，所以放在系統設定的區域（%APPDATA%\\accelon26\\settings.json）；About 顯示的永遠是實際使用的那一個。');
+}
+
+/* ---------- 事件 ---------- */
+$$('#viewSeg button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
+$$('[data-view="doc"]').forEach((el) => el.addEventListener('click', (ev) => {
+  // 背景點擊／完成／✕ 都回到「本文」，但 About 的「開啟資料夾」不要被攔
+  if (el.id === 'aboutReveal' || el.id === 'aboutExport') return;
+  ev.preventDefault();
+  setView('doc');
+}));
+$$('#themeSeg button, #themeSeg2 button').forEach((b) => b.addEventListener('click', () => setTheme(b.dataset.theme)));
+$$('#envSeg button').forEach((b) => b.addEventListener('click', () => setEnv(b.dataset.env)));
+$$('#scopeSeg button').forEach((b) => b.addEventListener('click', () => setScope(b.dataset.scope)));
+$$('#setTabs .tabBtn').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+$$('#jsonSeg button').forEach((b) => b.addEventListener('click', () => {
+  state.jsonMode = b.dataset.json;
+  $$('#jsonSeg button').forEach((x) => x.classList.toggle('active', x === b));
+  renderJson();
+}));
+$('#writable').addEventListener('change', (ev) => {
+  state.writable = !ev.target.checked;
+  renderStorage();
+});
+$('#btnReset').addEventListener('click', () => {
+  state.global = { tags: {}, groups: {} };
+  state.adb = { tags: {}, groups: {} };
+  renderAll();
+  toast('已重設（示範狀態）');
+});
+$('#btnExport').addEventListener('click', exportJson);
+$('#aboutExport').addEventListener('click', exportJson);
+$('#btnCopy').addEventListener('click', async () => {
+  const text = $('#jsonView').textContent;
+  try { await navigator.clipboard.writeText(text); toast('已複製 JSON'); }
+  catch { toast('這個環境不給剪貼簿；請直接選取下面的 JSON'); }
+});
+$('#btnImport').addEventListener('click', () => $('#importFile').click());
+$('#importFile').addEventListener('change', (ev) => importJson(ev.target.files[0]));
+$('#aboutReveal').addEventListener('click', () => toast('mockup：實作時會開檔案總管並選取 settings.json'));
+$('#notesBtn').addEventListener('click', () => { $('#notesDrawer').hidden = false; });
+$('#notesClose').addEventListener('click', () => { $('#notesDrawer').hidden = true; });
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') {
+    if (!$('#notesDrawer').hidden) { $('#notesDrawer').hidden = true; }
+    else if (state.view !== 'doc') setView('doc');
+  }
+});
+
+/* 標籤表：點按鈕（自訂／繼承／重設） */
+$('#tagTable').addEventListener('click', (ev) => {
+  const btn = ev.target.closest('button[data-act]');
+  if (!btn) return;
+  const row = btn.closest('[data-key]');
+  const key = row?.dataset.key;
+  const kind = row?.dataset.kind;
+  if (!key) return;
+  if (btn.dataset.act === 'own') setOwn(key, kind);
+  if (btn.dataset.act === 'inherit' || btn.dataset.act === 'reset') dropOwn(key, kind);
+  renderAll();
+});
+
+/* 標籤表：即時改值（顏色／大小／字型） */
+function onField(ev) {
+  const el = ev.target;
+  const field = el.dataset.field;
+  if (!field) return;
+  const row = el.closest('[data-key]');
+  const key = row?.dataset.key;
+  const kind = row?.dataset.kind;
+  if (!key) return;
+  const store = (kind === 'group' ? state[state.scope].groups : state[state.scope].tags);
+  const entry = store[key];
+  if (!entry) return; // 只有自訂的列可以改
+  if (field === 'color') entry.color = el.value;
+  if (field === 'size') entry.size = Number(el.value);
+  if (field === 'font') entry.font = el.value;
+  if (field === 'font2') entry.font2 = el.value;
+  // 不重建整張表（避免拖動滑桿時失去焦點），只同步這一列與預覽
+  const e = eff(key);
+  row.querySelector('.hex').textContent = e.auto ? '自動' : e.color;
+  row.querySelector('.sizeVal').textContent = fmtSize(e.size) + '%';
+  // 天干地支的 ramp 跟著底色即時重畫（22 層 × +30°）
+  if (kind === 'group' && field === 'color') {
+    const cells = row.querySelectorAll('.rampCell b');
+    cells.forEach((b, i) => { b.style.color = rampColor(entry.color, i); });
+    const note = row.querySelector('.rampNote');
+    if (note) note.textContent = `底色 ${entry.color}，每層 +30°`;
+  }
+  paintAll();
+  renderJson();
+}
+$('#tagTable').addEventListener('input', onField);
+$('#tagTable').addEventListener('change', onField);
+
+/* 匯出／匯入（mockup 只用記憶體） */
+function exportJson() {
+  const text = JSON.stringify(fileObject(), null, 2);
+  try {
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'accelon26-settings.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('已匯出 settings.json（mockup）');
+  } catch { toast('這個瀏覽器不給下載；JSON 在下面，可直接複製'); }
+}
+function importJson(file) {
+  if (!file) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    try {
+      const obj = JSON.parse(String(fr.result));
+      if (obj.format !== 'accelon26-settings') throw new Error('不是 accelon26-settings');
+      if (Number(obj.version) > 1) throw new Error('版本比這個 mockup 新（v' + obj.version + '）');
+      const g = obj.profiles?.global?.tagStyle ?? {};
+      const adbProfiles = obj.profiles?.adb ?? {};
+      // 作者 2026-10-22：adb 的鍵＝檔名
+      const a = (adbProfiles[ADB_KEY] ?? {}).tagStyle ?? {};
+      state.global = { tags: g.tags ?? {}, groups: g.groups ?? {} };
+      state.adb = { tags: a.tags ?? {}, groups: a.groups ?? {} };
+      renderAll();
+      toast('已載入 ' + file.name + '（v' + obj.version + '）');
+    } catch (e) { toast('匯入失敗：' + e.message); }
+  };
+  fr.readAsText(file);
+}
+
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { t.hidden = true; }, 2200);
+}
+
+/** 工具列會換行：量它的高度，讓對話框只蓋住 app 區（不蓋住工具列） */
+function syncChromeHeight() {
+  const bar = $('.reviewBar');
+  if (bar) document.documentElement.style.setProperty('--chromeH', bar.offsetHeight + 'px');
+}
+syncChromeHeight();
+window.addEventListener('resize', syncChromeHeight);
+if (window.ResizeObserver) new ResizeObserver(syncChromeHeight).observe($('.reviewBar'));
+
+/* ---------- 初始化 ---------- */
+function renderAll() {
+  renderScope();
+  renderTagRows();
+  paintAll();
+  renderJson();
+  renderStorage();
+  renderAbout();
+}
+renderAll();
+// 方便截圖／分享：#doc、#about；?theme=light／?env=web／?scope=global／?nowrite=1／?notes=1
+const q = new URLSearchParams(location.search);
+if (q.get('nowrite') === '1') state.writable = false;
+const hash = location.hash.replace('#', '');
+setTheme(q.get('theme') === 'light' || q.get('theme') === 'eye' ? q.get('theme') : 'dark');
+setEnv(q.get('env') === 'web' ? 'web' : 'desktop');
+setView(hash === 'about' ? 'about' : hash === 'doc' ? 'doc' : 'settings');
+setScope(q.get('scope') === 'global' ? 'global' : 'adb');
+renderAll();
+if (q.get('notes') === '1') $('#notesDrawer').hidden = false;
+</script>
+</body>
+</html>

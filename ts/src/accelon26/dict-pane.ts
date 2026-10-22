@@ -13,6 +13,7 @@
  */
 import { $, escapeHtml } from './viewer';
 import { dictIndexState, dictLookup, relativesOfRow, renderEntry, rowOf, type DictRow } from './dict-lookup';
+import { autoDictOn, dictOrder } from './dict-settings';
 import { setDictHooks } from './dict-hooks';
 
 let rows: DictRow[] = [];
@@ -96,10 +97,14 @@ function renderList(): void {
     return;
   }
   if (!rows.length) {
-    list.innerHTML = '<div class="note">在本文點一個詞（例：比丘尼戒）——這裡會列出以它開頭的詞條。</div>';
+    list.innerHTML = autoDictOn()
+      ? '<div class="note">在本文點一個詞（例：比丘尼戒）——這裡會列出以它開頭的詞條。</div>'
+      : '<div class="note">「點擊查字典」已關閉（設置 → 介面）。打開後點本文的詞，這裡會列出詞條。</div>';
     return;
   }
-  const head = `<div class="dictSent">「${escapeHtml(sentence)}」→ ${rows.length} 個詞條（長的在前）</div>`;
+  const byDict = dictOrder().length > 0;
+  const head = `<div class="dictSent">「${escapeHtml(sentence)}」→ ${rows.length} 個詞條`
+    + `（${byDict ? '依詞典順序，同詞典內長的在前' : '長的在前'}）</div>`;
   const items = rows.map((r, i) => {
     const cls = 'dictItem' + (i === active ? ' active' : '');
     return `<button type="button" class="${cls}" data-i="${i}" title="在《${escapeHtml(r.db)}》查這個詞條">`
@@ -199,7 +204,9 @@ export function initDictPane(): void {
   btn?.addEventListener('click', () => renderList());
   // 用**捕捉階段**掛在 document 上：內文的列／塗紅／游標都有自己的處理，
   // 任何一層 stopPropagation 都不該讓查詞失效（作者 2026-10）
+  // 作者 2026-10-22：設置 → 介面可以關掉「自動查字典」；關掉後點字完全不查。
   document.addEventListener('click', (ev) => {
+    if (!autoDictOn()) return;
     const target = ev.target as HTMLElement | null;
     if (!target?.closest?.('#docText')) return;
     void dictLookupAtPoint(ev as MouseEvent);

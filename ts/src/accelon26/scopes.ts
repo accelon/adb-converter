@@ -5,7 +5,7 @@
  * ./viewer and the other split modules as ESM live bindings; a module OWNS the
  * state it declares, and other modules get/set it through that module's exports.
  */
-import { $, altKey, displayName, escapeHtml, fmtBytes, fmtInt, mapper, mods, newTabKey, openFile, opening, reader, session, tokens } from './viewer';
+import { $, altKey, displayName, docs, escapeHtml, fmtBytes, fmtInt, mapper, mods, newTabKey, openFile, opening, reader, session, tokens } from './viewer';
 import { advanced, showTab } from './ui';
 import { showToken } from './panes';
 import { paintTreeActive, revealHit } from './link';
@@ -14,6 +14,7 @@ import { lastResult, showNodeHits } from './summary';
 import { parseQuery, namePattern } from './query';
 import { variantNamePattern, variantSearchOn } from './variants';
 import { computeTierContext, setTierContext, tierContext } from './render_accelon3';
+import { tagColorOf } from './tag-style';
 
 /** directory tree state (one entry per `<樹>` declaration) */
 interface DirTree {
@@ -628,6 +629,10 @@ function collapseDirTree(): void {
  * indent (no file-manager style growing whitespace).
  */
 function depthColor(depth: number, tag?: string): string {
+  // 作者 2026-10-22：標籤樣式有自訂顏色就用它（目錄色點與本文標題同色）；
+  // 沒有才回到主題的 tag 色相／深度。
+  const custom = tag ? tagColorOf(tag) : null;
+  if (custom) return custom;
   // 顏色是**主題變數**（作者 2026-10：不要寫死；換 theme 只要改 CSS 的 --tag-N）。
   // 內文的標題底色也用同一組變數，所以 tDot 與標題一定同色。
   // 作者 2026-10-18：色號跟著**標籤**（章、節 即使同一層也不同色）；沒有 tagChroma 才退回深度。
@@ -649,15 +654,18 @@ function findNode(ns: TreeNode[], va: number): TreeNode | null {
   return null;
 }
 
-/** VA 落在哪個節點的範圍裡（最深的那一個）；沒有樹就 null */
+/**
+ * VA 落在哪個節點的範圍裡（最深的那一個）；沒有樹就 null。
+ *
+ * 作者 2026-10-22：改用 `search.nodeOwningVa`（`<檔>` 邊界優先）——舊的寫法是
+ * 直接比 `va < n.vaEnd`，而節點的 `vaEnd` 會跨進下一個 `<檔>` 的檔頭 4 個 VA，
+ * 於是本文 realm 從檔頭開始時（摘要把命中設成整個 `<檔>`），breadcrumb 會把
+ * 「華雨集第二冊」的命中說成「華雨集第一」。
+ */
 function nodeContainingVa(va: number): TreeNode | null {
   const d = dirTrees[dirActive];
   if (!d) return null;
-  let best: TreeNode | null = null;
-  for (const n of iterNodes(d.roots)) {
-    if (n.va <= va && va < Math.max(n.vaEnd, n.va + 1) && (!best || n.depth >= best.depth)) best = n;
-  }
-  return best;
+  return nodeOwningVa(d.roots, va, docs);
 }
 
 /** 整個目錄樹的 DFS 順序（文件順序）；供上一頁／下一頁跨節點用 */
@@ -1362,7 +1370,7 @@ export function resetScopes(): void {
   setTierContext(null);      // 換庫：上一個庫的層級不能留在渲染器裡
 }
 
-import { SearchResult, SearchTree, TreeNode, buildTree, flattenTree, loadInstanceAttrs, loadTree, loadTrees, parseScope } from './search';
+import { SearchResult, SearchTree, TreeNode, buildTree, flattenTree, loadInstanceAttrs, loadTree, loadTrees, nodeOwningVa, parseScope } from './search';
 import { searchAutoVia } from './backend';
 
 /** the trees of ONE database (labelTables is a pure cache: dropped on switch) */

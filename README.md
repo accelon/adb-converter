@@ -45,6 +45,9 @@ bun run test/index-match.ts # 反向索引認證
 * [wails3-pitfalls.md](wails3-pitfalls.md) — Wails3 桌面版共通避坑（Windows SmartScreen、WebView2、更新器、macOS Gatekeeper）
 * [yap-software-practice.md](yap-software-practice.md) — 作者預設做法（Windows／Bun／單檔 HTML／Wails3、漢字、無損簡體、主題）
 * [SPEC.md](SPEC.md) — `.adb` 協定規格（§15 索引複刻、§17 管線與驗證狀態）
+* [UPGRADE-DIRECTIONS.md](UPGRADE-DIRECTIONS.md) — 容器／索引／轉 offtext 三個方向的改進評估與優先序
+* [OFFTEXT-FACT-LAYER.md](OFFTEXT-FACT-LAYER.md) — 給 AI 編輯的事實層：claim／evidence／驗證與 12 週試點
+* [OFFTEXT-TAG-LANGUAGE.md](OFFTEXT-TAG-LANGUAGE.md) — 自定義標籤語法、註冊表、standoff 位置與 AI 調色盤
 * [accelon-vs-tei.md](accelon-vs-tei.md) — Accelon 風格 XML（H1–H6 擴充）與 TEI 巢式結構對照：轉換處方與實測陷阱
 * [PASCAL-NOTES.md](PASCAL-NOTES.md) — Delphi 原始碼逐單元筆記
 * [FORMAT.md](FORMAT.md) — 早期英文逆向筆記

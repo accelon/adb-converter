@@ -5,11 +5,11 @@
  * ./viewer and the other split modules as ESM live bindings; a module OWNS the
  * state it declares, and other modules get/set it through that module's exports.
  */
-import { $, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, session, setStatus, tokens, statusText } from './viewer';
+import { $, currentFile, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, session, setStatus, tokens, statusText } from './viewer';
 import { type AdbSource } from './adb';
 import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, fitDebugInfo, hardBreaksOn, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, readSideFont, pageMarksOn, renderDocTabs, renderRawOn, rerenderDoc, setDocFont, setHardBreaks, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
 import { renderTextPane } from './text-pane';
-import { cursorNode, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
+import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
 import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully } from './scopes';
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
@@ -17,8 +17,22 @@ import { backendKind, goQueryCount, lastGoAnswer } from './backend';
 import { isDictDb } from './db-kind';
 import { closeSearchAll, initSearchAll, openSearchAll, runSearchAll, searchAllState } from './allsearch';
 import { dictLookupAt, dictPaneState, initDictPane } from './dict-pane';
+import { listDicts, type DictListEntry } from './dict-lookup';
+import { autoDictOn, dictOrder, orderByFile, setAutoDict, setDictOrder } from './dict-settings';
 import { setDictHooks } from './dict-hooks';
 import { initTour, openTourMenu, play as playTour, stopTour, tourState } from './tour';
+import { desktopRevealInFolder } from './host';
+import {
+  BODY_KEY, GROUP_ID, GROUP_TAGS, STRUCTURAL_TAGS, activeDb, bodyStyleOf, counts as tagStyleCounts,
+  defaultFontOf, entryOf, fontFamilyOf, memberIndex, notifyTagStyles, onActiveDbChange,
+  onTagStyleChange, rampColor, resetTagStyles, setEntry, type TagStyle,
+} from './tag-style';
+import {
+  exportSettingsFile, importSettingsFile, initSettings as initTagSettings, installedFonts,
+  saveSettingsSoon, settingsError, settingsLocation, settingsVersion,
+} from './settings';
+import { tagChromaIndex } from './render_accelon3';
+import type { TreeNode } from './search';
 
 // -------------------------------------------------------------------- wiring
 /**
@@ -320,6 +334,8 @@ function updateSettingsUi(): void {
     btn.classList.toggle('on', custom);
     btn.title = custom ? '設置（有不是預設的設定）' : '設置（進階模式、繁簡通檢、文字顯示）';
   }
+  const dictAuto = $('#setDictAuto') as HTMLInputElement | null;
+  if (dictAuto) dictAuto.checked = autoDictOn();
 }
 
 function showSettings(open: boolean): void {
@@ -328,7 +344,7 @@ function showSettings(open: boolean): void {
   const back = $('#settingsBackdrop') as HTMLElement | null;
   if (box) box.hidden = !open;
   if (back) back.hidden = !open;
-  if (open) updateSettingsUi();
+  if (open) { updateSettingsUi(); setSettingsPane(settingsPane); }
 }
 
 export function openSettings(): void {
@@ -367,6 +383,583 @@ function initSettings(): void {
     if (ev.key === 'Escape' && settingsOpen) { ev.stopPropagation(); closeSettings(); }
   }, true);
   updateSettingsUi();
+  wireTagStyle();
+}
+
+/* ================================================================== 標籤樣式（作者 2026-10-22）
+ *
+ * 設置 → 標籤樣式：全域／此資料庫、每個標籤的顏色／大小／字型、天干地支 22 層，
+ * 以及 settings.json 的位置與匯出／匯入。資料模型在 tag-style.ts、讀寫在 settings.ts；
+ * 這裡只做 DOM 與事件。
+ */
+
+type TagScope = 'global' | 'adb';
+let settingsPane = 'ui';
+let tagScope: TagScope = 'adb';
+let tagFonts: [string, string][] | null = null;
+let tagFontSource: 'desktop' | 'builtin' | null = null;
+let tagFontsRequested = false;
+let tagInitRequested = false;
+let tagFullyInit = false;
+
+/** 目前本文字級（pt）；標籤的大小是它的百分比 */
+/** 目前 scope 的本文 pt：本文自訂字級 → 文件字級（兩者都以 pt 表示） */
+const bodyPt = (): number => {
+  const { base } = scopedEntry(BODY_KEY);
+  return base?.size ?? readDocFont() * 0.75;
+};
+
+/** 網頁版（沒有宿主）用的內建字型清單；桌面版會換成系統已安裝的字型 */
+const BUILTIN_FONTS: [string, string][] = [
+  ['', '本文'],
+  ['PMingLiU', '細明體'],
+  ['MingLiU', '新細明體'],
+  ['DFKai-SB', '標楷體'],
+  ['Microsoft JhengHei', '微軟正黑體'],
+  ['SimSun', '宋體'],
+  ['KaiTi', '楷體'],
+  ['Source Han Serif TC', '思源宋體'],
+  ['Source Han Sans TC', '思源黑體'],
+  ['Noto Serif CJK TC', 'Noto Serif TC'],
+  ['Noto Sans CJK TC', 'Noto Sans TC'],
+];
+const FONT_LABELS: Record<string, string> = Object.fromEntries(BUILTIN_FONTS.filter(([v]) => v));
+
+const tagAll = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document): T[] =>
+  [...root.querySelectorAll<T>(sel)];
+
+const escHtml = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+
+/** 自動配色／大小：設定頁的顯示與「自訂」的起點（實際 auto 由 renderer 算） */
+function tagDepthMap(): Map<string, number> {
+  const map = new Map<string, number>();
+  const d = dirTrees[dirActive];
+  if (!d) return map;
+  const walk = (ns: TreeNode[]): void => {
+    for (const n of ns) {
+      const cur = map.get(n.tag);
+      if (cur === undefined || n.depth < cur) map.set(n.tag, n.depth);
+      walk(n.children);
+    }
+  };
+  walk(d.roots);
+  return map;
+}
+function tagDepth(tag: string, depths = tagDepthMap()): number {
+  const d = depths.get(tag);
+  if (d !== undefined) return d;
+  const i = memberIndex(tag);
+  if (i >= 0) return i < 10 ? 2 : 3;
+  return 2;
+}
+const autoSizePct = (depth: number): number => Math.min(180, Math.round((100 + depth * 12.5) * 10) / 10);
+
+let colorProbe: HTMLElement | null = null;
+function probeHex(cssColor: string): string {
+  if (!colorProbe) {
+    colorProbe = document.createElement('span');
+    colorProbe.style.cssText = 'position:absolute;left:-9999px;visibility:hidden';
+    document.body.appendChild(colorProbe);
+  }
+  colorProbe.style.color = cssColor;
+  const c = getComputedStyle(colorProbe).color;
+  const m = c.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+  if (!m) return '#909090';
+  return '#' + [1, 2, 3].map((i) => Number(m[i]).toString(16).padStart(2, '0')).join('');
+}
+function autoColorHex(tag: string, depth: number): string {
+  return probeHex(`var(--tag-text-${tagChromaIndex(tag, depth)})`);
+}
+function autoBodyColorHex(): string {
+  return probeHex('var(--fg)');
+}
+const isHex = (s: string | undefined | null): boolean => !!s && /^#[0-9a-f]{6}$/i.test(s);
+
+function tagFontList(): [string, string][] {
+  return tagFonts ?? BUILTIN_FONTS;
+}
+function fontOptionsHtml(sel: string, fallback: boolean): string {
+  const base = fallback ? [['', '無'], ...tagFontList().slice(1)] : tagFontList().slice();
+  if (fallback && sel === '') {
+    // 空字串＝沒有第二種
+  }
+  if (sel && !base.some(([v]) => v === sel)) base.push([sel, FONT_LABELS[sel] ?? sel]);
+  return base.map(([v, label]) => `<option value="${escHtml(v)}"${v === sel ? ' selected' : ''}>${escHtml(label)}</option>`).join('');
+}
+
+function ensureTagFonts(): void {
+  if (tagFontsRequested) return;
+  tagFontsRequested = true;
+  void installedFonts().then((list) => {
+    if (list.length) {
+      tagFonts = [['', '本文'], ...list.map((n): [string, string] => [n, FONT_LABELS[n] ?? n])];
+      tagFontSource = 'desktop';
+    } else {
+      tagFonts = BUILTIN_FONTS;
+      tagFontSource = 'builtin';
+    }
+    if (settingsOpen && settingsPane === 'tags') renderTagStylePane();
+  }).catch(() => {
+    tagFonts = BUILTIN_FONTS;
+    tagFontSource = 'builtin';
+    if (settingsOpen && settingsPane === 'tags') renderTagStylePane();
+  });
+}
+
+function setSettingsPane(name: string): void {
+  settingsPane = name || 'ui';
+  tagAll('#setTabs .setTab').forEach((b) => b.classList.toggle('active', b.dataset.setpane === settingsPane));
+  tagAll('#setBody .setPane').forEach((p) => { (p as HTMLElement).hidden = p.dataset.setpane !== settingsPane; });
+  if (settingsPane === 'tags') renderTagStylePane();
+  else if (settingsPane === 'ui') void renderDictOrder();
+}
+
+/* ---------------------------------------------------------- 點擊查字典（作者 2026-10-22）
+ *
+ * 設置 → 介面：自動查字典的開關＋詞典順序。順序存**檔名**；清單只列目前
+ * catalog 裡真的是詞典的 adb；找不到的檔名在查詢時直接略過（不警告）。
+ */
+let dictRows: DictListEntry[] = [];
+let dictSeq = 0;
+
+function paintDictOrder(): void {
+  const box = $('#dictOrderList');
+  if (!box) return;
+  if (!dictRows.length) {
+    box.innerHTML = '<div class="note">目前沒有詞典型 adb（有 <code>&lt;樹 s="$詞"&gt;</code> 宣告的庫）。</div>';
+    return;
+  }
+  box.innerHTML = dictRows.map((d, i) => `<div class="dictOrderRow" data-dict-file="${escHtml(d.file)}">
+    <span class="idx">${i + 1}</span>
+    <span class="dn">${escHtml(d.name)}</span>
+    <span class="df">${escHtml(d.file)}</span>
+    <span class="de">${fmtInt(d.entries)} 條</span>
+    <span class="dictMoves">
+      <button type="button" class="setBtn" data-dict-up="${i}" title="往上移（先查）"${i === 0 ? ' disabled' : ''}>↑</button>
+      <button type="button" class="setBtn" data-dict-down="${i}" title="往下移（後查）"${i === dictRows.length - 1 ? ' disabled' : ''}>↓</button>
+    </span>
+  </div>`).join('');
+}
+
+/** 存目前清單的順序；這一輪沒找到的舊檔名留在最後（查詢時略過，不警告） */
+function saveDictOrder(): void {
+  const current = dictRows.map((d) => d.file);
+  const stale = dictOrder().filter((f) => !current.includes(f));
+  setDictOrder([...current, ...stale]);
+}
+
+/** 重新掃描 catalog 裡的詞典；套用已存順序，新詞典排最後並存檔 */
+async function renderDictOrder(force = false): Promise<void> {
+  const box = $('#dictOrderList');
+  if (!box) return;
+  const seq = ++dictSeq;
+  if (force || !dictRows.length) box.innerHTML = '<div class="note">讀取詞典中…</div>';
+  const list = await listDicts().catch(() => [] as DictListEntry[]);
+  if (seq !== dictSeq) return;
+  dictRows = orderByFile(list);
+  // 作者 2026-10-22：列出目前有的詞典就存起來
+  saveDictOrder();
+  paintDictOrder();
+}
+
+function wireDictOrder(): void {
+  const auto = $('#setDictAuto') as HTMLInputElement | null;
+  auto?.addEventListener('change', () => {
+    setAutoDict(auto.checked);
+    setStatus(auto.checked ? '點擊查字典：開啟' : '點擊查字典：關閉', 'info');
+  });
+  $('#dictRefresh')?.addEventListener('click', () => { void renderDictOrder(true); });
+  $('#dictOrderList')?.addEventListener('click', (ev) => {
+    const b = (ev.target as HTMLElement)?.closest('button[data-dict-up],button[data-dict-down]') as HTMLButtonElement | null;
+    if (!b) return;
+    const up = b.dataset.dictUp !== undefined;
+    const i = Number(up ? b.dataset.dictUp : b.dataset.dictDown);
+    const j = up ? i - 1 : i + 1;
+    if (!Number.isInteger(i) || j < 0 || j >= dictRows.length) return;
+    [dictRows[i], dictRows[j]] = [dictRows[j], dictRows[i]];
+    saveDictOrder();
+    paintDictOrder();
+    setStatus('詞典順序已更新', 'info');
+  });
+}
+
+function setTagScope(s: TagScope): void {
+  if (s === 'adb' && !activeDb().file) return;
+  tagScope = s;
+  renderTagStylePane();
+}
+
+/** 這一列在目前 scope 下看到的「自己」與「繼承來源」；global scope 不偷看 adb 的值 */
+function scopedEntry(key: string): { own?: TagStyle; base?: TagStyle; inherited: boolean } {
+  const own = entryOf(tagScope, key);
+  const global = tagScope === 'adb' ? entryOf('global', key) : undefined;
+  const base = own ?? global;
+  return { own, base, inherited: !own && !!global };
+}
+
+/** 標籤樣式的「自訂」起點：把目前 scope 生效的值抄成一份完整條目 */
+function seedTagStyle(key: string): TagStyle {
+  const { base } = scopedEntry(key);
+  if (key === BODY_KEY) {
+    const out: TagStyle = {
+      color: base?.color && isHex(base.color) ? base.color : autoBodyColorHex(),
+      font: base?.font ?? '',
+      font2: base?.font2 ?? '',
+    };
+    if (base?.size !== undefined) out.size = base.size;   // 保留既有本文字級（pt）
+    return out;
+  }
+  const depths = tagDepthMap();
+  const autoTag = key === GROUP_ID ? GROUP_TAGS[0] : key;
+  const depth = tagDepth(key, depths);
+  const color = base && isHex(base.color) ? base.color : autoColorHex(autoTag, depth);
+  return {
+    color,
+    size: base?.size ?? Math.round(autoSizePct(depth)),
+    // 作者 2026-10-22：自訂 <經> 時把預設楷體一起帶進條目，之後仍可改成別的字型
+    font: base?.font ?? defaultFontOf(key) ?? '',
+    font2: base?.font2 ?? '',
+  };
+}
+
+function rowHtml(key: string, kind: 'body' | 'tag' | 'group', depths: Map<string, number>): string {
+  const { own: ownEntry, base, inherited } = scopedEntry(key);
+  const editable = !!ownEntry;
+  const ro = editable ? '' : ' disabled';
+  const baseSize = bodyPt();
+  let colorCss = '';
+  let colorInput = '';
+  let font = '';
+  let font2 = '';
+  let sizeLabel = '';
+  let sampleText = key;
+  let samplePct = 0;
+  let meta = '';
+  let sizeDisabled = !editable;
+  let sizeMin = 50, sizeMax = 300, sizeStep = 5;
+  let sizeValue = 0;
+
+  if (kind === 'body') {
+    colorCss = ownEntry?.color || base?.color || 'var(--fg)';
+    colorInput = isHex(base?.color) ? base!.color! : autoBodyColorHex();
+    font = base?.font ?? '';
+    font2 = base?.font2 ?? '';
+    sampleText = '本文';
+    meta = '整篇正文';
+    sizeValue = Math.round(baseSize);
+    sizeLabel = `${sizeValue}pt`;
+    sizeDisabled = false;
+    sizeMin = 8; sizeMax = 30; sizeStep = 1;
+  } else if (kind === 'group') {
+    const depth = tagDepth(GROUP_TAGS[0], depths);
+    const baseColor = base?.color ?? null;
+    colorCss = baseColor && isHex(baseColor) ? rampColor(baseColor, 0) : `var(--tag-text-${tagChromaIndex(GROUP_TAGS[0], depth)})`;
+    colorInput = isHex(base?.color) ? base!.color! : autoColorHex(GROUP_TAGS[0], depth);
+    const size = base?.size ?? Math.round(autoSizePct(depth));
+    samplePct = size;
+    sizeValue = size;
+    sizeLabel = `${Math.round(size)}%`;
+    sampleText = GROUP_TAGS[0];
+    font = base?.font ?? '';
+    font2 = base?.font2 ?? '';
+    meta = '天干地支・22 層（每層 +30°）';
+  } else {
+    const depth = tagDepth(key, depths);
+    colorCss = base?.color || `var(--tag-text-${tagChromaIndex(key, depth)})`;
+    colorInput = isHex(base?.color) ? base!.color! : autoColorHex(key, depth);
+    const size = base?.size ?? Math.round(autoSizePct(depth));
+    samplePct = size;
+    sizeValue = size;
+    sizeLabel = `${Math.round(size)}%`;
+    font = base?.font ?? defaultFontOf(key) ?? '';
+    font2 = base?.font2 ?? '';
+    if (!base?.font && defaultFontOf(key)) meta = `預設${defaultFontOf(key)}`;
+  }
+
+  const samplePt = samplePct ? (baseSize * samplePct / 100) : baseSize;
+  const style = `color:${colorCss};font-family:${fontFamilyOf({ font: font || null, font2: font2 || null })};font-size:${samplePt.toFixed(1)}pt`;
+  const name = `<span class="tchip" data-pct="${samplePct || ''}" style="${style}">${escHtml(sampleText)}</span>`
+    + (meta ? `<span class="tMeta">${escHtml(meta)}</span>` : '');
+  const src = ownEntry
+    ? (tagScope === 'adb' ? '此庫' : '全域')
+    : (inherited ? (tagScope === 'adb' ? '繼承全域' : '全域') : (kind === 'body' ? '預設' : '自動'));
+  const srcCls = ownEntry ? (tagScope === 'adb' ? 'adb' : 'global') : (inherited ? 'global' : 'auto');
+  const offLabel = kind === 'body'
+    ? (tagScope === 'adb' ? '繼承全域' : '預設')
+    : (tagScope === 'adb' ? '繼承全域' : '自動');
+  const hexLabel = ownEntry ? (ownEntry.color ?? '自動') : (inherited ? '繼承' : (kind === 'body' ? '預設' : '自動'));
+  return `<div class="tagRow${ownEntry ? ' own' : ''}${kind === 'group' ? ' groupRow' : ''}${kind === 'body' ? ' bodyRow' : ''}"
+      data-key="${escHtml(key)}" data-kind="${kind}">
+    <div class="tName">${name}</div>
+    <div class="modeSeg">
+      <button type="button" data-act="inherit" class="${ownEntry ? '' : 'on'}">${offLabel}</button>
+      <button type="button" data-act="own" class="${ownEntry ? 'on' : ''}">自訂</button>
+    </div>
+    <div class="ctl${editable ? '' : ' disabled'}">
+      <input type="color" value="${colorInput}" data-field="color"${ro}>
+      <span class="val hex">${hexLabel}</span>
+    </div>
+    <div class="ctl sizeCtl${sizeDisabled ? ' disabled' : ''}">
+      <input type="range" min="${sizeMin}" max="${sizeMax}" step="${sizeStep}" value="${Math.round(sizeValue)}" data-field="size"${sizeDisabled ? ' disabled' : ''}>
+      <span class="val sizeVal">${sizeLabel}</span>
+    </div>
+    <div class="ctl fontCtl${editable ? '' : ' disabled'}">
+      <select data-field="font"${ro}>${fontOptionsHtml(font, false)}</select>
+      <select data-field="font2"${ro}>${fontOptionsHtml(font2, true)}</select>
+    </div>
+    <div class="src">
+      <span class="srcTag ${srcCls}">${src}</span>
+      ${ownEntry ? '<button type="button" class="mini" data-act="reset">重設</button>' : ''}
+    </div>
+  </div>`;
+}
+
+function renderTagTable(): void {
+  const host = $('#tagTable');
+  if (!host) return;
+  const depths = tagDepthMap();
+  let h = '<div class="tagHead"><span>標籤</span><span>樣式</span><span>顏色</span><span>大小（本文 pt／標籤 %）</span><span>字型（第一／第二 fallback）</span><span>來源</span></div>';
+  // 作者 2026-10-22：本文置頂；示範字直接長在每一列（不再有預覽）
+  h += rowHtml(BODY_KEY, 'body', depths);
+  const known = STRUCTURAL_TAGS as readonly string[];
+  for (const t of known) h += rowHtml(t, 'tag', depths);
+  h += rowHtml(GROUP_ID, 'group', depths);
+  const others = [...depths.entries()]
+    .filter(([t]) => !known.includes(t) && memberIndex(t) < 0)
+    .sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant'));
+  if (others.length) {
+    h += '<div class="tagSectionHead" style="margin:8px 0 2px"><b>此庫的其他標籤</b><span>目錄樹用到、不在內置清單的標籤</span></div>';
+    for (const [t] of others) h += rowHtml(t, 'tag', depths);
+  }
+  host.innerHTML = h;
+}
+
+/** 字型清單來源（取代原本預覽卡的字型說明） */
+function renderTagFontSource(): void {
+  const source = tagFontSource === 'desktop'
+    ? '桌面版：系統已安裝字型'
+    : tagFontSource === 'builtin' ? '網頁版：內建字型' : '字型清單載入中…';
+  const n = tagFonts ? tagFonts.length - 1 : 0;
+  const el = $('#tagFontSource');
+  if (el) el.textContent = `字型清單：${source}（${n} 個）；第二種字型只在第一種缺字時用到。`;
+}
+
+/** 把本文的顏色／字型／字級套到中欄（字級以 pt 為單位，沒自訂時用文件字級） */
+function applyBodyStyleToDoc(): void {
+  const b = bodyStyleOf();
+  const root = document.documentElement;
+  if (b?.color) root.style.setProperty('--doc-body-color', b.color);
+  else root.style.removeProperty('--doc-body-color');
+  if (b && (b.font || b.font2)) root.style.setProperty('--doc-body-font', fontFamilyOf(b));
+  else root.style.removeProperty('--doc-body-font');
+  if (b?.size != null) root.style.setProperty('--doc-body-size', `${b.size}pt`);
+  else root.style.removeProperty('--doc-body-size');
+}
+
+/** 本文 pt 改了：每一列的示範字級（pt）跟著重算，不必重建整張表 */
+function updateTagSampleSizes(): void {
+  const base = bodyPt();
+  tagAll('#tagTable .tagRow').forEach((row) => {
+    const chip = row.querySelector('.tchip') as HTMLElement | null;
+    if (!chip) return;
+    const pct = Number(chip.dataset.pct || '0');
+    chip.style.fontSize = `${(pct ? base * pct / 100 : base).toFixed(1)}pt`;
+  });
+  const sv = document.querySelector('#tagTable .tagRow[data-kind="body"] .sizeVal');
+  if (sv) sv.textContent = `${Math.round(base)}pt`;
+}
+
+function renderTagStore(): void {
+  const loc = settingsLocation();
+  const path = $('#tagStorePath');
+  const badge = $('#tagStoreBadge');
+  const note = $('#tagStoreNote');
+  const status = $('#tagStoreStatus');
+  const reveal = $('#tagReveal') as HTMLButtonElement | null;
+  if (path) path.textContent = loc ? loc.path : '（尚未決定）';
+  const ver = $('#tagStoreVersion');
+  if (ver) ver.textContent = `v${settingsVersion()}`;
+  if (badge) {
+    badge.innerHTML = !loc ? '' : loc.kind === 'localStorage'
+      ? '<span class="okchip">瀏覽器</span>'
+      : loc.kind === 'exe' ? '<span class="okchip">可寫入</span>' : '<span class="warnchip">退路</span>';
+  }
+  if (note) {
+    note.textContent = !loc ? '設定檔位置讀取中…'
+      : loc.kind === 'localStorage' ? '網頁版存在 localStorage；用「匯出」可以存成 settings.json 帶走。'
+        : (loc.note || (loc.kind === 'exe' ? '與 accelon26.exe 同一個資料夾，可以直接備份／分享。' : 'exe 資料夾不可寫，改存使用者設定資料夾。'));
+  }
+  if (reveal) reveal.hidden = !loc || loc.kind === 'localStorage';
+  if (status) status.textContent = settingsError();
+  if (!loc && !tagInitRequested) {
+    tagInitRequested = true;
+    void initTagSettings().then(() => renderTagStore());
+  }
+}
+
+function renderTagStylePane(): void {
+  const db = activeDb();
+  if (!db.file && tagScope === 'adb') tagScope = 'global';
+  tagAll('#tagScopeSeg button').forEach((b) => {
+    const btn = b as HTMLButtonElement;
+    btn.classList.toggle('active', b.dataset.tagScope === tagScope);
+    btn.disabled = b.dataset.tagScope === 'adb' && !db.file;
+  });
+  const now = $('#tagScopeNow');
+  if (now) {
+    now.innerHTML = tagScope === 'adb'
+      ? `此資料庫：<b>${escHtml(db.name || db.file)}</b> <span class="dim">（${escHtml(db.file)}）</span>`
+      : '全域預設：<b>出廠預設值</b>';
+  }
+  const path = $('#tagScopePath');
+  if (path) {
+    path.innerHTML = tagScope === 'adb' && db.file
+      ? `<code>profiles.adb["${escHtml(db.file)}"]</code>`
+      : '<code>profiles.global</code>';
+  }
+  const n = tagStyleCounts();
+  const hasTree = !!dirTrees[dirActive];
+  const banner = $('#tagBanner');
+  if (banner) {
+    banner.innerHTML = tagScope === 'adb'
+      ? `<span>ⓘ</span><span><b>此庫目前 ${n.adb} 個自訂、其餘繼承全域。</b> 在這裡改的只影響這一本書；按「繼承全域」可以還原。`
+        + (hasTree ? '' : ' <span class="dim">（此庫沒有目錄樹，只列出預設標籤。）</span>') + '</span>'
+      : `<span>ⓘ</span><span><b>全域是出廠預設，所有資料庫都繼承它。</b> 這裡改了會影響還沒自訂的庫。`
+        + (hasTree ? '' : ' <span class="dim">（此庫沒有目錄樹，只列出預設標籤。）</span>') + '</span>';
+  }
+  renderTagTable();
+  renderTagFontSource();
+  renderTagStore();
+  if (!tagFullyInit) {
+    tagFullyInit = true;
+    void initTagSettings().then(() => {
+      if (settingsOpen && settingsPane === 'tags') renderTagStylePane();
+    }).catch(() => { /* 讀不到就用預設 */ });
+  }
+}
+
+function onTagTableClick(ev: Event): void {
+  const btn = (ev.target as HTMLElement)?.closest('button[data-act]') as HTMLButtonElement | null;
+  if (!btn) return;
+  const row = btn.closest('[data-key]') as HTMLElement | null;
+  const key = row?.dataset.key;
+  if (!key) return;
+  const label = key === BODY_KEY ? '本文' : key === GROUP_ID ? '天干地支' : key;
+  if (btn.dataset.act === 'own') {
+    setEntry(tagScope, key, seedTagStyle(key));
+    setStatus(`標籤樣式：${label} 已自訂`, 'info');
+  } else {
+    setEntry(tagScope, key, null);
+    setStatus(`標籤樣式：${label} 回到${tagScope === 'adb' ? '全域' : (key === BODY_KEY ? '預設' : '自動')}`, 'info');
+  }
+  saveSettingsSoon();
+  renderTagStylePane();
+}
+
+function onTagTableField(ev: Event): void {
+  const el = ev.target as HTMLInputElement | HTMLSelectElement | null;
+  const field = el?.dataset?.field;
+  if (!el || !field) return;
+  const row = el.closest('[data-key]') as HTMLElement | null;
+  const key = row?.dataset.key;
+  if (!key) return;
+  const live = ev.type === 'input';
+
+  // 本文的字級：建立在本文條目（pt；per-adb 也可以），沒自訂時用文件字級
+  if (key === BODY_KEY && field === 'size') {
+    const raw = Number((el as HTMLInputElement).value);
+    if (!Number.isFinite(raw)) return;
+    const pt = Math.max(8, Math.min(30, Math.round(raw)));
+    const { base } = scopedEntry(BODY_KEY);
+    setEntry(tagScope, BODY_KEY, { ...(base ?? {}), size: pt }, { silent: live });
+    saveSettingsSoon();
+    applyBodyStyleToDoc();
+    updateTagSampleSizes();
+    const sv = row.querySelector('.sizeVal');
+    if (sv) sv.textContent = `${pt}pt`;
+    setStatus(`本文字級：${pt}pt`, 'info');
+    if (!live) { notifyTagStyles(); renderTagStylePane(); }
+    return;
+  }
+
+  const entry = entryOf(tagScope, key);
+  if (!entry) return;                      // 只有自訂的列可以改（本文的字級除外）
+  const next: TagStyle = { ...entry };
+  if (field === 'color') next.color = (el as HTMLInputElement).value;
+  if (field === 'size') next.size = Number((el as HTMLInputElement).value);
+  if (field === 'font') next.font = (el as HTMLSelectElement).value;
+  if (field === 'font2') next.font2 = (el as HTMLSelectElement).value;
+  setEntry(tagScope, key, next, { silent: live });
+  saveSettingsSoon();
+
+  const chip = row.querySelector('.tchip') as HTMLElement | null;
+  if (field === 'color' && chip) {
+    if (key === GROUP_ID && next.color) chip.style.color = rampColor(next.color, 0);
+    else chip.style.color = next.color || 'var(--fg)';
+    if (key === BODY_KEY) applyBodyStyleToDoc();
+  }
+  if (field === 'size' && chip) {
+    const pct = next.size ?? entry.size ?? 0;
+    chip.style.fontSize = `${(bodyPt() * pct / 100).toFixed(1)}pt`;
+    const sv = row.querySelector('.sizeVal');
+    if (sv) sv.textContent = `${Math.round(pct)}%`;
+  }
+  if ((field === 'font' || field === 'font2') && chip) {
+    const f = next.font ?? (key === BODY_KEY ? null : defaultFontOf(key)) ?? null;
+    chip.style.fontFamily = fontFamilyOf({ font: f, font2: next.font2 ?? null });
+    if (key === BODY_KEY) applyBodyStyleToDoc();
+  }
+  const hex = row.querySelector('.hex');
+  if (hex) hex.textContent = next.color || '自動';
+  if (!live) {
+    notifyTagStyles();
+    renderTagStylePane();
+  }
+}
+
+function wireTagStyle(): void {
+  tagAll('#setTabs .setTab').forEach((b) => b.addEventListener('click', () => setSettingsPane(b.dataset.setpane || 'tags')));
+  tagAll('#tagScopeSeg button').forEach((b) => b.addEventListener('click', () => setTagScope(b.dataset.tagScope as TagScope)));
+  $('#tagTable')?.addEventListener('click', onTagTableClick);
+  $('#tagTable')?.addEventListener('input', onTagTableField);
+  $('#tagTable')?.addEventListener('change', onTagTableField);
+  $('#tagExport')?.addEventListener('click', () => { exportSettingsFile(); setStatus('已匯出 accelon26-settings.json', 'info'); });
+  const importInput = $('#tagImportFile') as HTMLInputElement | null;
+  $('#tagImport')?.addEventListener('click', () => importInput?.click());
+  importInput?.addEventListener('change', () => {
+    const f = importInput.files?.[0];
+    if (!f) return;
+    void importSettingsFile(f).then((r) => {
+      if (r.ok) {
+        setStatus(`已匯入 ${f.name}（v${r.version ?? 1}）`, 'info');
+        notifyTagStyles();
+        renderTagStylePane();
+      } else {
+        setStatus('匯入失敗：' + (r.error || '未知錯誤'), 'err');
+      }
+    });
+    importInput.value = '';
+  });
+  $('#tagReveal')?.addEventListener('click', () => {
+    const loc = settingsLocation();
+    if (!loc || loc.kind === 'localStorage') return;
+    void desktopRevealInFolder(loc.path);
+  });
+  ensureTagFonts();
+  wireDictOrder();
+  applyBodyStyleToDoc();
+  onTagStyleChange(() => {
+    applyBodyStyleToDoc();
+    rerenderDoc();
+    if (dirTrees.length) void renderDirTree();
+  });
+  onActiveDbChange(() => {
+    applyBodyStyleToDoc();
+    if (settingsOpen && settingsPane === 'tags') renderTagStylePane();
+  });
+  void initTagSettings().then(() => {
+    if (settingsOpen && settingsPane === 'tags') renderTagStylePane();
+  });
 }
 
 /** 文字顯示三態：0 原樣、1 無損簡體、2 強制簡體（只影響畫面，不影響搜尋） */
@@ -526,12 +1119,14 @@ function boot() {
   // 設置（齒輪）：主題、進階模式、繁簡通檢、文字顯示
   initVariants();
   initSettings();
-  // 主題（作者 2026-10-18）：暗色系／亮色系／護眼，預設暗色系
+  // 主題（作者 2026-10-18）：暗色系／亮色系／春綠／秋黃，預設暗色系
   initTheme((name) => setStatus('主題：' + THEME_LABEL[name], 'info'));
   // 搜尋所有 adb（放大鏡，作者 2026-10）
   initSearchAll();
   // 右欄「詞典」分頁：點本文就查詞條（作者 2026-10）
   initDictPane();
+  // 本文的 `<聯 n="詞">`（別名／參見）點擊後聯動到該詞條（作者 2026-10）
+  initEntryLinks();
   setDictHooks.current = () => { setSide('right', true); showTab('dict', 'right'); };
   // 操作導覽（🎬）：劇本 → 宏 → 播放器，見 tour.ts 與 ts/tour/*.tour
   initTour(TOUR_APP);
@@ -748,6 +1343,8 @@ export function installDebugApi(): void {
   pageMarksOn,
   /** 設置彈窗 */
   openSettings, closeSettings, settingsState,
+  /** 標籤樣式：測試／診斷用（清空後存檔；正常使用者在設置頁操作） */
+  resetTagStyles: () => { resetTagStyles(); saveSettingsSoon(); },
   /** 搜尋所有 adb */
   openSearchAll, closeSearchAll, runSearchAll, searchAllState,
   /** 詞典分頁 */
@@ -792,6 +1389,13 @@ export function installDebugApi(): void {
   state: () => ({
     db: reader?.header.dbname ?? null,
     theme: themeOf(),
+    /** 標籤樣式（作者 2026-10-22）：設定頁的分頁與「哪一本 adb」 */
+    tagStyles: tagStyleCounts(),
+    settings: (() => { const l = settingsLocation(); return l ? { kind: l.kind, path: l.path } : null; })(),
+    settingsError: settingsError(),
+    /** 點擊查字典（作者 2026-10-22） */
+    dictAuto: autoDictOn(),
+    dictOrder: dictOrder(),
     dbLog,
     dbs: openDbs.map((d: any) => ({ name: d.name, tabs: d.docPane?.docTabs?.length ?? -1, docs: d.core?.docs?.length ?? -1 })),
     tokens: tokens.length,
