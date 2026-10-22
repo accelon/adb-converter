@@ -143,6 +143,13 @@ if (!CHECK_ONLY) {
     }
     // 3) 官網（--site 或 --site-only）：www/ 下的所有 .html 與 .7z（首頁、留言頁、下載檔）
     if (SITE) {
+      // 先從 release_notes.json 重生成 changelog.html，首頁的「更新說明」才不會漏版
+      const gen = Bun.spawnSync({
+        cmd: ['bun', 'run', 'tools/make-changelog.ts'],
+        cwd: resolve(ROOT, 'ts'),
+        stdout: 'inherit', stderr: 'inherit',
+      });
+      if (gen.exitCode !== 0) die('更新說明頁產生失敗');
       const siteDir = resolve(ROOT, 'www');
       const names = readdirSync(siteDir).filter((n) => n.endsWith('.html') || n.endsWith('.7z')).sort();
       for (const name of names) {

@@ -119,6 +119,14 @@
   .ghLink:hover { color: var(--fg); border-color: var(--dim); text-decoration: none; }
   .ghLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .ghLink svg { width: 17px; height: 17px; fill: currentColor; }
+  /* 最新版本號＋更新說明（作者 2026-10-22） */
+  .verLine { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; font-size: 13px; color: var(--dim); }
+  .verLine .vBadge {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 10px;
+  }
+  .verLine .vBadge b { color: var(--fg); font-weight: 600; }
+  .verLine a { color: var(--accent); }
 
   /* ---------------------------------------------------------------- 主視覺 */
   /* 錨點捲動時不要被上面那條 sticky 標頭蓋住（作者 2026-10-18）。 */
@@ -325,6 +333,10 @@
             下載 macOS 版
           </a>
         </div>
+        <p class="verLine">
+          <span class="vBadge">最新版 <b id="verNo">2026-10-22</b></span>
+          <a href="changelog.html">更新說明 →</a>
+        </p>
         <p class="fine">
           Windows 10／11 · 64 位元 · 免安裝 · <span id="meta">7-Zip 壓縮檔，約 7 MB</span><br>
           macOS 11 以上 · Apple Silicon／Intel · <a href="#install">第一次要右鍵「打開」</a>
@@ -335,6 +347,7 @@
         <div class="gallery" id="gallery" role="region" aria-roledescription="圖庫" aria-label="軟件畫面">
           <div class="gcap">
             <p class="on"><b>全文搜尋</b>：邊打邊查，右欄是每筆命中的上下文，點一筆本文就跳到那裡，命中的字塗紅。</p>
+            <p><b>標籤樣式</b>：本文與每個標籤的顏色、字級（本文用 pt）與字型都能分別設定；每一列直接示範，天干地支只示範「甲」。</p>
             <p><b>詞典</b>：詞典型資料庫（例如佛光大辭典）左邊查詞條、中間讀釋文，右欄還列出開頭相近的詞條。</p>
             <p><b>一次搜尋所有資料庫</b>：先看哪一本書有命中，再決定要開哪一本，不必逐本開來試。</p>
             <p><b>操作導覽</b>：第一次用可以跟著走一遍——聚光燈指著該按的地方，一個場景一停，由你決定要不要往下。</p>
@@ -342,6 +355,9 @@
           <div class="slides">
             <figure class="slide on">
               <img src="img/search.jpg" alt="accelon26 全文搜尋：左欄目錄、中間本文、右欄摘要" width="1280" height="720" decoding="async">
+            </figure>
+            <figure class="slide">
+              <img src="img/tagstyle.jpg" alt="accelon26 標籤樣式設定：本文與每個標籤的顏色、字級、字型" width="1280" height="720" loading="lazy" decoding="async">
             </figure>
             <figure class="slide">
               <img src="img/dict.jpg" alt="accelon26 詞典分頁：詞條清單與釋文" width="1280" height="720" decoding="async">
@@ -355,9 +371,10 @@
           </div>
           <div class="dots" role="tablist" aria-label="切換畫面">
             <button type="button" role="tab" aria-selected="true" aria-label="第 1 張：全文搜尋"></button>
-            <button type="button" role="tab" aria-selected="false" aria-label="第 2 張：詞典"></button>
-            <button type="button" role="tab" aria-selected="false" aria-label="第 3 張：一次搜尋所有資料庫"></button>
-            <button type="button" role="tab" aria-selected="false" aria-label="第 4 張：操作導覽"></button>
+            <button type="button" role="tab" aria-selected="false" aria-label="第 2 張：標籤樣式設定"></button>
+            <button type="button" role="tab" aria-selected="false" aria-label="第 3 張：詞典"></button>
+            <button type="button" role="tab" aria-selected="false" aria-label="第 4 張：一次搜尋所有資料庫"></button>
+            <button type="button" role="tab" aria-selected="false" aria-label="第 5 張：操作導覽"></button>
           </div>
         </div>
       </div>
@@ -443,7 +460,7 @@
 
 <footer>
   <div class="wrap">
-    <span>accelon26 · Accelon3 跨平台平替 · <a href="adb/index.html">公開數據庫</a></span>
+    <span>accelon26 · Accelon3 跨平台平替 · <a href="adb/index.html">公開數據庫</a> · <a href="changelog.html">更新說明</a></span>
     <span class="right">授權：Apache-2.0 · 開發者微信 Sukhanika</span>
   </div>
 </footer>
@@ -469,6 +486,24 @@
       }
       if (bits.length) out.textContent = bits.join(' · ');
     }).catch(function () { /* file:// 或沒有 CORS：保持預設 */ });
+  }());
+
+  // 最新版本號（作者 2026-10-22）：從 versions.json 取 buildTime，連到 changelog。
+  // 讀不到就保留 HTML 的靜態值，不影響下載。
+  (function () {
+    var no = document.getElementById('verNo');
+    if (!no || !window.fetch) return;
+    fetch('versions.json', { cache: 'no-cache' }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (j) {
+      if (!j || !j.buildTime) return;
+      var d = new Date(j.buildTime);
+      if (isNaN(d.getTime())) return;
+      var p = function (n) { return String(n).padStart(2, '0'); };
+      no.textContent = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+      no.title = 'build ' + j.buildTime +
+        (j.sha256 ? ' · sha256 ' + String(j.sha256).slice(0, 12) + '…' : '');
+    }).catch(function () { /* 保持靜態值 */ });
   }());
 
   // 軟件畫面圖庫（作者 2026-10-18）：3 秒換一張，小白點可點；
