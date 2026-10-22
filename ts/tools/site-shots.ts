@@ -25,6 +25,11 @@ const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return
 const ROOT = resolve(import.meta.dir, '../..');
 const HTML = resolve(opt('html', resolve(ROOT, 'build/accelon26.html')));
 const OUT = resolve(opt('out', resolve(ROOT, 'www/img')));
+// 只拍其中一張（作者 2026-10-22：官網只換詞典那張時，不必四張全重生）
+//   --only dict   只拍 dict.jpg
+//   不給就是四張全拍
+const only = opt('only', 'all');
+const want = (s: string) => only === 'all' || only === s;
 const W = 1280;
 const H = 720;
 // 720p（作者 2026-10-18）：視窗小、字就相對大；1x 輸出，官網上縮到 60% 寬時字還看得清。
@@ -195,74 +200,95 @@ mkdirSync(OUT, { recursive: true });
 console.log(`拍 ${W}×${H} ×${SCALE} q${QUALITY} → ${OUT}`);
 
 // ================================================================ 1) 全文搜尋
-await ready();
-await openAdb('13j.adb');
-await cdp.eval(`(() => {
-  const q = document.querySelector('#query');
-  q.value = '君子';
-  q.dispatchEvent(new Event('input'));
-})()`);
-await until(`document.querySelectorAll('#searchList .snippet').length > 3`);
-await cdp.eval('document.querySelector("#searchList .snippet")?.click()');
-await until(`document.querySelectorAll('#docText mark.docHit').length > 0`);
-await shot('search.jpg');
+if (want('search') || want('tour')) {
+  await ready();
+  await openAdb('13j.adb');
+  await cdp.eval(`(() => {
+    const q = document.querySelector('#query');
+    q.value = '君子';
+    q.dispatchEvent(new Event('input'));
+  })()`);
+  await until(`document.querySelectorAll('#searchList .snippet').length > 3`);
+  await cdp.eval('document.querySelector("#searchList .snippet")?.click()');
+  await until(`document.querySelectorAll('#docText mark.docHit').length > 0`);
+  if (want('search')) await shot('search.jpg');
+}
 
 // ================================================================ 2) 操作導覽
 // 停在「本文跳到那一句、命中塗紅」那一步：聚光燈照著本文，氣泡正在解說
-await cdp.eval('void window.__accelon26.playTour("first-run", 2)');
-await until(`(() => {
-  const st = window.__accelon26.tourState();
-  return st.point === '#docText' && st.spot && st.spot.visible;
-})()`);
-await sleep(900);
-await shot('tour.jpg');
-await cdp.eval('window.__accelon26.stopTour()');
-await sleep(400);
+if (want('tour')) {
+  await cdp.eval('void window.__accelon26.playTour("first-run", 2)');
+  await until(`(() => {
+    const st = window.__accelon26.tourState();
+    return st.point === '#docText' && st.spot && st.spot.visible;
+  })()`);
+  await sleep(900);
+  await shot('tour.jpg');
+  await cdp.eval('window.__accelon26.stopTour()');
+  await sleep(400);
+}
 
 // ================================================================ 3) 詞典（重新載入，畫面乾淨）
-await reload();
-await openAdb('fgdict.adb');
-// 名詞：查「般若」→ 點第一列（中間就顯示那個詞條的正文）
-await cdp.eval(`(() => {
-  const q = document.querySelector('#termsQuery');
-  q.value = '般若';
-  q.dispatchEvent(new Event('input'));
-})()`);
-// 等的是「列表真的換成般若那幾條」——剛開庫時未篩選的列表已經有 .snippet，
-// 只等 .snippet 會點到舊的「一」（作者 2026-10-18 的截圖踩過）
-await until(`(document.querySelector('#termsList .snippet b')?.textContent ?? '').includes('般若')`);
-await cdp.eval('document.querySelector("#termsList .snippet")?.click()');
-await until(`document.querySelectorAll('#docText .docLine').length > 0`);
-await until(`(document.querySelector('#docTabStrip .docTab .docTabName')?.textContent ?? '').startsWith('般若')`);
-await sleep(700);
-// 右欄「詞典」：同樣查般若，上面列詞條、下面是釋文
-await cdp.eval(`(() => {
-  const btn = document.querySelector('#colRight .tabBtn[data-tab="dict"]');
-  if (btn) btn.click();
-})()`);
-await sleep(400);
-await cdp.eval('window.__accelon26.dictLookupAt("般若")');
-await until(`document.querySelectorAll('#dictList .dictItem').length > 0`);
-await sleep(1500);
-await shot('dict.jpg');
+if (want('dict')) {
+  await reload();
+  await openAdb('fgdict.adb');
+  // 名詞：查「般若」→ 點第一列（中間就顯示那個詞條的正文）
+  await cdp.eval(`(() => {
+    const q = document.querySelector('#termsQuery');
+    q.value = '般若';
+    q.dispatchEvent(new Event('input'));
+  })()`);
+  // 等的是「列表真的換成般若那幾條」——剛開庫時未篩選的列表已經有 .snippet，
+  // 只等 .snippet 會點到舊的「一」（作者 2026-10-18 的截圖踩過）
+  await until(`(document.querySelector('#termsList .snippet b')?.textContent ?? '').includes('般若')`);
+  await cdp.eval('document.querySelector("#termsList .snippet")?.click()');
+  await until(`document.querySelectorAll('#docText .docLine').length > 0`);
+  await until(`(document.querySelector('#docTabStrip .docTab .docTabName')?.textContent ?? '').startsWith('般若')`);
+  await sleep(700);
+  // 右欄「詞典」：同樣查般若，上面列詞條、下面是釋文
+  await cdp.eval(`(() => {
+    const btn = document.querySelector('#colRight .tabBtn[data-tab="dict"]');
+    if (btn) btn.click();
+  })()`);
+  await sleep(400);
+  await cdp.eval('window.__accelon26.dictLookupAt("般若")');
+  await until(`document.querySelectorAll('#dictList .dictItem').length > 0`);
+  await sleep(1500);
+  // 作者 2026-10-22：釋文下面切到「結尾」，列出摩訶般若、文字般若……，
+  // 這才是這頁真正的特色（左欄仍是開頭清單，兩邊對照）。
+  await cdp.eval(`(() => {
+    const b = document.querySelector('#dictBody .dictMoreTab[data-kind="end"]');
+    b?.click();
+  })()`);
+  await until(`!!document.querySelector('#dictBody .dictMoreTab[data-kind="end"].active')
+    && document.querySelectorAll('#dictBody .dictRel').length > 5`);
+  await cdp.eval(`(() => {
+    const b = document.querySelector('#dictBody');
+    if (b) b.scrollTop = b.scrollHeight;
+  })()`);
+  await sleep(900);
+  await shot('dict.jpg');
+}
 
 // ================================================================ 4) 搜尋所有資料庫
 // 重新載入：換庫時若前一個庫有本文分頁，它會留在中間（截圖不要拍到）。
 // 這裡兩個庫都不開任何本文分頁，所以畫面乾淨。
-await reload();
-await openAdb('13j.adb');
-await openAdb('fgdict.adb');   // 第二個庫（兩個都在 catalog 裡）
-await cdp.eval('window.__accelon26.openSearchAll()');
-await sleep(400);
-await cdp.eval(`(() => {
-  const q = document.querySelector('#allSearchQuery');
-  q.value = '般若';
-  document.querySelector('#allSearchGo').click();
-})()`);
-await until(`document.querySelectorAll('#allSearchList .allSearchRow.done').length >= 2`, 400);
-await sleep(1000);
-await shot('allsearch.jpg');
+if (want('allsearch')) {
+  await reload();
+  await openAdb('13j.adb');
+  await openAdb('fgdict.adb');   // 第二個庫（兩個都在 catalog 裡）
+  await cdp.eval('window.__accelon26.openSearchAll()');
+  await sleep(400);
+  await cdp.eval(`(() => {
+    const q = document.querySelector('#allSearchQuery');
+    q.value = '般若';
+    document.querySelector('#allSearchGo').click();
+  })()`);
+  await until(`document.querySelectorAll('#allSearchList .allSearchRow.done').length >= 2`, 400);
+  await sleep(1000);
+  await shot('allsearch.jpg');
 
-await cdp.eval('window.__accelon26.closeSearchAll()');
+  await cdp.eval('window.__accelon26.closeSearchAll()');
+}
 proc.kill();
 console.log(`\n${n} 張圖寫到 ${OUT}`);
