@@ -137,8 +137,10 @@ func main() {
 	// 才定位、套用上次的狀態、顯示 —— 這樣不會先出現在錯的螢幕再跳過去。
 	//
 	// 定位規則（作者 2026-10）：永遠放在「使用者執行 exe 的那張螢幕」（啟動瞬間游標所在，
-	// 偵測不到就主螢幕）；第一次啟動全螢幕；之後恢復上次記下的位置、大小與狀態，
+	// 偵測不到就主螢幕）；第一次啟動是正常視窗（不要全螢幕——全螢幕會蓋掉標題列，
+	// 使用者看不到右上角的關閉鈕）；之後恢復上次記下的位置、大小與狀態，
 	// 但一定夾進那張螢幕的工作區（上次那張外接螢幕這回可能已經不在了）。
+	// 全螢幕只用 Esc／F11 在這次工作階段切換，不會在下次啟動時恢復。
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "accelon26",
 		URL:    "/",
@@ -180,15 +182,14 @@ func main() {
 			return
 		}
 		var x, y, w, h int
-		state := stateFullscreen // 第一次啟動：全螢幕
+		state := startupState(st, hasSaved) // 第一次啟動：正常視窗；全螢幕不恢復
 		if hasSaved {
 			st = clampWindowState(st, wa)
 			w, h = st.W, st.H
 			x, y = wa.X+st.RelX, wa.Y+st.RelY
-			state = st.State
 		} else {
-			// 第一次啟動：全螢幕（這裡的框只當「還原時」用，所以先夾進工作區再置中，
-			// 免得預設尺寸比螢幕大、置中算出負座標讓全螢幕跑到別張螢幕上）
+			// 第一次啟動：正常視窗（先夾進工作區再置中，免得預設尺寸比螢幕大、
+			// 置中算出負座標）
 			w, h = clampWindowState(windowState{W: defaultWindowW, H: defaultWindowH}, wa).W, clampWindowState(windowState{W: defaultWindowW, H: defaultWindowH}, wa).H
 			x, y = wa.X+(wa.Width-w)/2, wa.Y+(wa.Height-h)/2
 		}
@@ -206,18 +207,18 @@ func main() {
 		if gx, gy := win.Position(); gx != x || gy != y {
 			log.Printf("window: 位置仍對不上：實際 (%d,%d)、要求 (%d,%d)", gx, gy, x, y)
 		}
-		tracker.snapshot() // 先記下 normal 的框（還原用），再進全螢幕／最大化
-		switch state {
-		case stateFullscreen:
-			win.Fullscreen()
-		case stateMaximised:
+		tracker.snapshot() // 先記下 normal 的框（還原用），再套用最大化
+		if state == stateMaximised {
 			win.Maximise()
 		}
 		tracker.snapshot()
 		win.Show()
-		why := "第一次啟動：全螢幕"
+		why := "第一次啟動：正常視窗"
 		if hasSaved {
 			why = "恢復上次設定"
+			if st.State == stateFullscreen {
+				why = "上次是全螢幕，這次改成正常視窗"
+			}
 		}
 		log.Printf("window: 螢幕 %s 工作區 (%d,%d %dx%d) → %dx%d@%d,%d state=%s（%s）",
 			screenName, wa.X, wa.Y, wa.Width, wa.Height, w, h, x, y, state, why)

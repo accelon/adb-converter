@@ -37,6 +37,28 @@ func TestWindowStateRoundTrip(t *testing.T) {
 	}
 }
 
+// TestStartupState：第一次啟動與「上次全螢幕」都必須用正常視窗 ——
+// 全螢幕沒有標題列，使用者會找不到右上角的關閉鈕（作者 2026-10-23）。
+func TestStartupState(t *testing.T) {
+	cases := []struct {
+		name  string
+		st    windowState
+		saved bool
+		want  string
+	}{
+		{"第一次啟動", windowState{}, false, stateNormal},
+		{"上次 normal", windowState{State: stateNormal}, true, stateNormal},
+		{"上次 maximised", windowState{State: stateMaximised}, true, stateMaximised},
+		{"上次 fullscreen（舊版預設）", windowState{State: stateFullscreen}, true, stateNormal},
+		{"狀態檔沒有 state", windowState{}, true, stateNormal},
+	}
+	for _, c := range cases {
+		if got := startupState(c.st, c.saved); got != c.want {
+			t.Errorf("%s：got %q want %q", c.name, got, c.want)
+		}
+	}
+}
+
 // TestClampWindowState：上次在外接螢幕、這回那張不在了 —— 位置與大小都要夾進工作區。
 func TestClampWindowState(t *testing.T) {
 	work := rect(0, 0, 1920, 1040)

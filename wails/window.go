@@ -14,8 +14,8 @@ import (
 
 // ---- 視窗位置與螢幕選擇（作者 2026-10） ------------------------------------------
 //
-//   1. 第一次啟動 → 全螢幕
-//   2. 離開時記下視窗設定（位置、大小、狀態），下次恢復
+//   1. 第一次啟動 → 正常視窗（不全螢幕：全螢幕沒有標題列，看不到右上角的關閉鈕）
+//   2. 離開時記下視窗設定（位置、大小、狀態），下次恢復；但全螢幕不恢復
 //   3. 使用者可能有多張外接螢幕，**上次那張這回不一定還在** → 一律以「使用者執行 exe 的那個
 //      螢幕」為準（＝啟動瞬間滑鼠游標所在的螢幕：雙擊／點執行就是在那裡），偵測不到就退回
 //      主螢幕，再不行用列舉到的第一張
@@ -102,6 +102,20 @@ func saveWindowState(st windowState) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// startupState 決定這次啟動要用哪種視窗狀態。
+// 第一次啟動一律 normal；就算狀態檔記著 fullscreen（舊版預設），也改成 normal ——
+// 全螢幕會換成沒有標題列／關閉鈕的視窗外框，使用者一開始就找不到右上角的 X。
+// maximised 保留（仍有標題列與關閉鈕）。
+func startupState(st windowState, hasSaved bool) string {
+	if !hasSaved || st.State == stateFullscreen {
+		return stateNormal
+	}
+	if st.State == stateMaximised {
+		return stateMaximised
+	}
+	return stateNormal
 }
 
 // clampWindowState 把記住的矩形夾進工作區：大小不超過工作區、位置不越界。
@@ -456,7 +470,7 @@ func screensInfo(app *application.App, win *application.WebviewWindow) string {
 	if st, ok := loadWindowState(); ok {
 		out += fmt.Sprintf("saved state: %+v\n", st)
 	} else {
-		out += "saved state: （無 → 這次會全螢幕）\n"
+		out += "saved state: （無 → 這次用正常視窗）\n"
 	}
 	out += "state path: " + statePath() + "\n"
 	return out

@@ -190,7 +190,7 @@ async function startGui(stateDir: string, opts: { spawn?: boolean; env?: Record<
 }
 
 // ---------------------------------------------------------------- 視窗啟動與基本斷言
-// 先清掉狀態檔：這樣這一次啟動一定是「第一次啟動」＝全螢幕（也正是要驗的行為）。
+// 先清掉狀態檔：這樣這一次啟動一定是「第一次啟動」＝正常視窗（也正是要驗的行為）。
 rmSync(STATE_DIR, { recursive: true, force: true });
 const gui = await startGui(STATE_DIR);
 const evalIn = gui.evalIn;
@@ -478,15 +478,19 @@ if (existsSync(blocksAdb)) {
 }
 
 
-// ---- 視窗與螢幕：第一次全螢幕、離開記下設定、下次恢復、一律投在啟動螢幕上 -------------
+// ---- 視窗與螢幕：第一次正常視窗（不全螢幕）、離開記下設定、下次恢復、一律投在啟動螢幕上 ----
 // 作者：「第一次進入 exe 先進入全屏，離開時記下視窗設定，下次恢復；永遠將 exe 投在用戶執行
 // exe 的那個屏，偵測不到就在主屏開啟（經常有軟件開已不存在的外接屏）。」
+// 作者 2026-10-23：「一開始看不到右上角關窗 X。一開始不要進入全屏。」
 const info1 = await gui.windowInfo();
-ok('第一次啟動是全螢幕', info1.fullscreen === true && info1.state === 'fullscreen',
-  `state=${info1.state} ${info1.w}x${info1.h}@${info1.x},${info1.y}`);
-ok('第一次啟動是全螢幕時有提示（按 Esc／F11 回視窗）',
-  (await gui.evalIn<string>(`document.getElementById('fsHint')?.textContent ?? ''`)).includes('Esc'),
-  await gui.evalIn<string>(`document.getElementById('fsHint')?.textContent ?? '(沒有提示)'`));
+ok('第一次啟動是正常視窗（不全螢幕）', info1.fullscreen === false && info1.state === 'normal',
+  `state=${info1.state} fullscreen=${info1.fullscreen} ${info1.w}x${info1.h}@${info1.x},${info1.y}`);
+ok('第一次啟動就看得到標題列與關閉鈕',
+  info1.style?.caption === true && info1.style?.sysMenu === true && info1.style?.maximizeBox === true,
+  `style=${info1.style?.style} caption=${info1.style?.caption} sysMenu=${info1.style?.sysMenu}`);
+ok('第一次啟動沒有全螢幕提示（因為不是全螢幕）',
+  await gui.evalIn<boolean>(`!document.getElementById('fsHint')`),
+  'fsHint 不存在');
 ok('知道自己落在哪張螢幕（含工作區）', !!info1.screen && !!info1.workArea,
   `screen=${info1.screen} primary=${info1.screenPrimary} work=${info1.workArea?.Width}x${info1.workArea?.Height}@${info1.workArea?.X},${info1.workArea?.Y}`);
 ok('狀態檔寫在 ACCELON26_STATE_DIR（不碰使用者的 %AppData%）',
@@ -498,14 +502,23 @@ const savedRaw = existsSync(STATE_FILE) ? readFileSync(STATE_FILE, 'utf8') : '';
 let saved: any = null;
 try { saved = JSON.parse(savedRaw); } catch { /* keep null */ }
 ok('離開時記下視窗設定', !!saved && saved.w > 0 && saved.h > 0, savedRaw.replace(/\s+/g, ' ').slice(0, 120));
-ok('記下來的狀態是 fullscreen', saved?.state === 'fullscreen', String(saved?.state));
+ok('記下來的狀態是 normal（全螢幕不寫進啟動狀態）', saved?.state === 'normal', String(saved?.state));
 
-// 同一個狀態檔再啟動一次 → 恢復上次的狀態
+// 同一個狀態檔再啟動一次 → 恢復上次的 normal 視窗
 const gui2 = await startGui(STATE_DIR);
 const info2 = await gui2.windowInfo();
-ok('第二次啟動恢復上次的狀態（fullscreen）', info2.fullscreen === true && info2.state === 'fullscreen',
-  `state=${info2.state} ${info2.w}x${info2.h}@${info2.x},${info2.y}`);
+ok('第二次啟動恢復 normal（不會恢復全螢幕）', info2.fullscreen === false && info2.state === 'normal',
+  `state=${info2.state} fullscreen=${info2.fullscreen} ${info2.w}x${info2.h}@${info2.x},${info2.y}`);
 await gui2.close();
+
+// 舊版預設會把 fullscreen 寫進狀態檔；更新後仍要從正常視窗啟動（使用者才看得到右上角 X）
+writeFileSync(STATE_FILE, JSON.stringify({ relX: 40, relY: 30, w: 900, h: 700, state: 'fullscreen' }));
+const guiOld = await startGui(STATE_DIR);
+const infoOld = await guiOld.windowInfo();
+ok('舊狀態檔是 fullscreen 時，更新後仍以正常視窗啟動',
+  infoOld.fullscreen === false && infoOld.state === 'normal' && infoOld.style?.caption === true,
+  `state=${infoOld.state} fullscreen=${infoOld.fullscreen} caption=${infoOld.style?.caption}`);
+await guiOld.close();
 
 // 手寫一個「上次是普通視窗、位置相對那張螢幕的工作區」的設定 → 應該恢復同樣大小，
 // 而且位置是相對『這次啟動的螢幕』的工作區（上次那張外接螢幕不在了也不會跑到畫面外）

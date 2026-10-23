@@ -1333,22 +1333,25 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
   `State`＝normal／maximised／fullscreen、`Screen` 上次那張螢幕的名字）；可用環境變數
   `ACCELON26_STATE_DIR` 改寫（自動化測試與可攜版用）。原子寫入（.tmp ＋ rename），壞掉的檔視同第一次。
 * **啟動流程**：視窗先建立但 `Hidden: true` → 等 `events.Common.ApplicationStarted`（訊息迴圈與
-  螢幕資訊都就緒）→ 選螢幕 → 夾進工作區 → `SetSize`／`SetPosition` → 套用狀態（全螢幕／最大化）
-  → `Show()`。所以不會「先出現在錯的螢幕再跳過去」。
+  螢幕資訊都就緒）→ 選螢幕 → 夾進工作區 → `SetSize`／`SetPosition` → 套用狀態（只最大化；
+  不全螢幕）→ `Show()`。所以不會「先出現在錯的螢幕再跳過去」。
 * **選螢幕**：啟動瞬間的**滑鼠游標**所在螢幕（雙擊／點執行就是在那一張）→
   `application.ScreenNearestPhysicalRect` 找出對應的 Wails 螢幕 → 拿它的 `WorkArea`；
   游標問不到（外接螢幕被拔掉的座標、拿不到游標）→ 主螢幕 → 第一張。
-* **第一次啟動**：全螢幕（`win.Fullscreen()`）；記下的「還原框」是夾進工作區後置中的預設大小。
+* **第一次啟動**：正常視窗（`stateNormal`，預設 1400×900 夾進工作區後置中）；**不要全螢幕**。
+  全螢幕會換成沒有標題列的外框，使用者一開始就看不到右上角的關閉鈕（作者 2026-10-23 回報）。
+  就算舊版留下的 `window.json` 記著 `state=fullscreen`，`startupState()` 也會改成 normal；
+  最大化仍保留（有標題列與關閉鈕）。
 * **視窗要有標準 Windows 標題列**：Wails 全螢幕在 Windows 是 `WS_POPUP`（沒有標題列；通用坑見指南 §3.5），所以本專案用 **F11／Esc** 切換（`ts/src/accelon26/window-keys.ts` → `AdbHost.ToggleFullscreen`），離開後恢復 `WS_OVERLAPPEDWINDOW`（標題列／可縮放／可關／可最大化，測試有斷言）。
-  第一次以全螢幕啟動時，畫面頂端會出現 7 秒提示：「全螢幕中：按 Esc 或 F11 回到視窗（Alt+F4 關閉）」；
+  按 F11 進入全螢幕時，畫面頂端會出現 7 秒提示：「全螢幕中：按 Esc 或 F11 回到視窗（Alt+F4 關閉）」；
   `#brand` 的 hover hint 也一直寫著「F11 全螢幕／Esc 回視窗」。`WindowInfo().style` 可以看樣式位元
   （caption／resizable／sysMenu／maximizeBox／popupOnly），排錯時先看它。
 * **相對位置用「啟動時選的那張螢幕」**算（不是「視窗框最近的那張」）：平台有時會把視窗再挪幾十像素，
   剛好跨過螢幕邊界時「最近的那張」會在兩張之間跳，存下來的相對位置就會在兩個座標系之間擺盪
   （實測：{DISPLAY2,99,0} ⇄ {DISPLAY1,70,38} 交替）。改用啟動螢幕後立刻收斂 ✓。
-* **之後啟動**：恢復上次的狀態與框，位置＝工作區原點 ＋ 相對位置，**並夾進工作區**
+* **之後啟動**：恢復上次的框，位置＝工作區原點 ＋ 相對位置，**並夾進工作區**
   （大小不超過工作區、位置不越界）—— 這是「上次在外接螢幕、這回那張不在了」的解藥
-  （`clampWindowState`，有單元測試）。
+  （`clampWindowState`，有單元測試）。上次若是 fullscreen，一律改成 normal 啟動。
 * **離開**：`WindowClosing` 先寫一次（那一刻視窗還在），`OnShutdown` 當保險，`windowTracker`
   只寫一次。追蹤器是**事件驅動**的（移動／縮放／最大化／全螢幕都會更新「最後一次 normal 的框」），
   所以就算 save 時視窗已經銷毀也寫得出來。
@@ -1362,14 +1365,17 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
 
 **座標系**：通用坑見指南 §3.2。本專案 `w32.GetAllScreens()` 在 `application.New()` 前後可能回不同數字（DPI 虛擬化），所以**定位一律走 Wails 的 `application.Screen`**（`ScreenNearestPhysicalRect` 做 physical↔DIP 換算），`w32` 只用來列舉與拿游標原始座標（`-screens`）。
 
-**驗證**（`tools/desktop-test.ts --gui`，共 28 項全過）：
+**驗證**（`tools/desktop-test.ts --gui --quick`，全過）：
 
 ```
-ok 第一次啟動是全螢幕                    state=fullscreen 1040x694@0,0
+ok 第一次啟動是正常視窗（不全螢幕）      state=normal fullscreen=false 1040x694@0,0
+ok 第一次啟動就看得到標題列與關閉鈕      caption=true sysMenu=true
+ok 第一次啟動沒有全螢幕提示（因為不是全螢幕）
 ok 知道自己落在哪張螢幕（含工作區）        screen=\.\DISPLAY1 primary=true work=1040x694@0,0
 ok 狀態檔寫在 ACCELON26_STATE_DIR
-ok 離開時記下視窗設定                    { "relX":0, "relY":0, "w":1040, "h":694, "state":"fullscreen", "screen":"\\.\DISPLAY1" }
-ok 第二次啟動恢復上次的狀態（fullscreen）
+ok 離開時記下視窗設定                    { "relX":0, "relY":0, "w":1040, "h":694, "state":"normal", "screen":"\\.\DISPLAY1" }
+ok 第二次啟動恢復 normal（不會恢復全螢幕）
+ok 舊狀態檔是 fullscreen 時，更新後仍以正常視窗啟動
 ok 恢復記下的大小（夾進啟動螢幕的工作區）  state=normal got 900x694 want 900x694（要求 900x700 → 夾到 694）
 ok 恢復的位置在啟動螢幕的工作區內
 ok 恢復的位置接近要求                    got (70,0) want (40,0)（平台差 30 px，見下）
