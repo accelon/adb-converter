@@ -1365,7 +1365,7 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
 
 **座標系**：通用坑見指南 §3.2。本專案 `w32.GetAllScreens()` 在 `application.New()` 前後可能回不同數字（DPI 虛擬化），所以**定位一律走 Wails 的 `application.Screen`**（`ScreenNearestPhysicalRect` 做 physical↔DIP 換算），`w32` 只用來列舉與拿游標原始座標（`-screens`）。
 
-**驗證**（`tools/desktop-test.ts --gui --quick`，全過）：
+**驗證**（`tools/desktop-test.ts --gui --quick`，43 項全過）：
 
 ```
 ok 第一次啟動是正常視窗（不全螢幕）      state=normal fullscreen=false 1040x694@0,0
