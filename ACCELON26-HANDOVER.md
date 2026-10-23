@@ -1342,6 +1342,8 @@ Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎
   全螢幕會換成沒有標題列的外框，使用者一開始就看不到右上角的關閉鈕（作者 2026-10-23 回報）。
   就算舊版留下的 `window.json` 記著 `state=fullscreen`，`startupState()` 也會改成 normal；
   最大化仍保留（有標題列與關閉鈕）。
+  > 2026-10-23：這個修正已在 repo、測試也過了，但**先不發佈**（作者要求避免一天多個版本）；
+  > 官網仍是 2026-10-22，`wails/release_notes.draft.txt` 已排入下一版。
 * **視窗要有標準 Windows 標題列**：Wails 全螢幕在 Windows 是 `WS_POPUP`（沒有標題列；通用坑見指南 §3.5），所以本專案用 **F11／Esc** 切換（`ts/src/accelon26/window-keys.ts` → `AdbHost.ToggleFullscreen`），離開後恢復 `WS_OVERLAPPEDWINDOW`（標題列／可縮放／可關／可最大化，測試有斷言）。
   按 F11 進入全螢幕時，畫面頂端會出現 7 秒提示：「全螢幕中：按 Esc 或 F11 回到視窗（Alt+F4 關閉）」；
   `#brand` 的 hover hint 也一直寫著「F11 全螢幕／Esc 回視窗」。`WindowInfo().style` 可以看樣式位元
