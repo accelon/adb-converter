@@ -994,8 +994,9 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
     + (isDictDb(mapper)
       ? ''
       : '<div class="docHead">' + escapeHtml(displayName(s.name))
-        + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁 · 行 '
-        + fmtInt(shownFirst) + '–' + fmtInt(shownLast) + ' · <b style="color:' + (hist ? 'var(--history-fg)' : 'var(--warn)') + '">' + badge + '</b></span></div>')
+        + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁'
+        + (hist ? '' : ' · 行 ' + fmtInt(shownFirst) + '–' + fmtInt(shownLast))
+        + ' · <b style="color:' + (hist ? 'var(--history-fg)' : 'var(--warn)') + '">' + badge + '</b></span></div>')
     + renderAncestorTrail(s)
     + '</div>'
     + '<div class="diffLegend">' + (hist ? '歷史版本 diff' : '修訂檢視') + '：<b class="add">新增 ' + added + ' 行</b> · '
