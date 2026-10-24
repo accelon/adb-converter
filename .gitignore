@@ -5,6 +5,8 @@
 *.tsv
 build/
 ts/build/
+ts/.cache-codemirror/
+node_modules/
 accelon3/
 *.log
 *.tmp

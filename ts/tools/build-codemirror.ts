@@ -18,7 +18,7 @@ import { resolve } from 'node:path';
 const here = import.meta.dir;
 const root = resolve(here, '..');
 const out = resolve(root, 'src/vendor/codemirror');
-const entryDir = resolve(root, '.cache');
+const entryDir = resolve(root, '.cache-codemirror');
 const entry = resolve(entryDir, 'codemirror-entry.js');
 if (!existsSync(resolve(root, 'node_modules/@codemirror/view'))) {
   console.error('missing @codemirror packages: run the npm install line in this file first');
