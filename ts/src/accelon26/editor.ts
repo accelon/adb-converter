@@ -202,7 +202,8 @@ export function mountPageEditor(parent: HTMLElement, lines: string[], hooks: Edi
     '.cm-gutters': { backgroundColor: 'var(--panel)', color: 'var(--dim)', border: 'none' },
     '.cm-activeLine': { backgroundColor: 'rgba(90,169,255,.06)' },
     '.cm-activeLineGutter': { backgroundColor: 'rgba(90,169,255,.10)' },
-    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: 'rgba(90,169,255,.25)' },
+    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: 'var(--cm-sel-bg, #1d4e89)' },
+    '.cm-content ::selection': { backgroundColor: 'var(--cm-sel-bg, #1d4e89)', color: 'var(--cm-sel-fg, #fff)' },
   });
 
   const state = EditorState.create({

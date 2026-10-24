@@ -15,25 +15,34 @@ import { parseQuery, namePattern } from './query';
 import { variantNamePattern, variantSearchOn } from './variants';
 import { computeTierContext, setTierContext, tierContext } from './render_accelon3';
 import { tagColorOf } from './tag-style';
-import { findSession, onEditsChange, sourceKey } from './edit-session';
+import { diffPage, findSession, onEditsChange, sourceKey } from './edit-session';
 
 
 function editSessionNow() {
   return currentSource ? findSession(sourceKey(currentSource)) : undefined;
 }
 
-/** Does this tree node's realm contain a page that has a staged revision? */
-function nodeHasEdits(es: ReturnType<typeof editSessionNow>, n: TreeNode): boolean {
-  if (!es || !es.edits.size) return false;
+/**
+ * The DEEPEST tree node for each actually changed line.
+ *
+ * A page edit covers ~200 lines, which may contain many child nodes; marking by
+ * realm overlap painted every child (and all ancestors). Here each changed line
+ * is mapped to its owning node, so only the edited node is red.
+ */
+function editedNodeVas(es: ReturnType<typeof editSessionNow>): Set<number> {
+  const out = new Set<number>();
+  if (!es || !es.edits.size) return out;
   const v = mapper?.linesVirtual;
-  if (!v || !v.length) return false;
-  const end = n.vaEnd || n.va + 1;
+  if (!v || !v.length) return out;
   for (const e of es.edits.values()) {
-    const a = e.first > 0 ? (v[e.first - 1] ?? 0) + 1 : 0;
-    const b = (v[e.last] ?? 0) + 1;
-    if (a < end && b > n.va) return true;
+    for (const c of diffPage(e).changes) {
+      const line = Math.max(0, Number(c.line) || 0);
+      const va = line > 0 ? (v[line - 1] ?? 0) + 1 : 0;
+      const node = nodeContainingVa(va);
+      if (node) out.add(node.va);
+    }
   }
-  return false;
+  return out;
 }
 
 /** directory tree state (one entry per `<樹>` declaration) */
@@ -508,6 +517,7 @@ async function renderDirTree(): Promise<void> {
   }
   const rows = flattenTree(d.roots, (n) => d.open.has(n.va));
   d.loaded = true;
+  const editedSet = editedNodeVas(editSessionNow());
   // While a search is active the badge is ALWAYS the hit count of this node's realm
   // (`[va, vaEnd)`) — the same number whether the node is open or collapsed. The
   // child count is only shown when there is no search to report on.
@@ -546,7 +556,7 @@ async function renderDirTree(): Promise<void> {
       } else if (r.hasChildren && !open) {
         badge = `<span class="tCount">${fmtInt(n.children.length)}</span>`;
       }
-      const edited = nodeHasEdits(editSessionNow(), n);
+      const edited = editedSet.has(n.va);
       return `<div class="tRow${edited ? ' edited' : ''}" data-va="${n.va}">
       <span class="tTwisty">${twisty}</span>
       <span class="tDot" style="background:${depthColor(n.depth, n.tag)}"></span>
@@ -1396,10 +1406,10 @@ import { searchAutoVia } from './backend';
 
 // 修訂數變動：目錄樹已掛載的節點名稱即時轉紅（不重畫，保留捲動位置）
 onEditsChange(() => {
-  const es = editSessionNow();
+  const edited = editedNodeVas(editSessionNow());
   document.querySelectorAll<HTMLElement>('#dirTree .tRow[data-va]').forEach((row) => {
     const n = findNode(dirOrder, Number(row.dataset.va));
-    row.classList.toggle('edited', !!n && nodeHasEdits(es, n));
+    row.classList.toggle('edited', !!n && edited.has(n.va));
   });
 });
 

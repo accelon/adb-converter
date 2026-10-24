@@ -30,6 +30,8 @@
   --diff-add: #7dff9e; --diff-del: #ff5252;
   /* 歷史版本 docTab：棕黃 */
   --history-bg: #6b4f1d; --history-fg: #ffe6a3;
+  /* CodeMirror 選取：深藍底＋淺字，避免和標籤紅／一般字混在一起 */
+  --cm-sel-bg: #1d4e89; --cm-sel-fg: #ffffff;
   color-scheme: dark;
     --fs: 15px;               /* base font size */
     --left: 25fr;             /* column widths, draggable; 0fr = hidden */
@@ -76,6 +78,7 @@
     --caret: #c2410c;
     --diff-add: #0a8f3c; --diff-del: #d92d20;
     --history-bg: #e8d29a; --history-fg: #5a430f;
+    --cm-sel-bg: #b6d4fe; --cm-sel-fg: #0b2545;
     color-scheme: light;
     --tag-0: hsl(0 55% 42%); --tag-1: hsl(48 70% 34%); --tag-2: hsl(110 50% 34%);
     --tag-3: hsl(165 55% 30%); --tag-4: hsl(220 60% 46%); --tag-5: hsl(275 50% 44%);
@@ -99,6 +102,7 @@
     --caret: #a02060;
     --diff-add: #087a2f; --diff-del: #c0262c;
     --history-bg: #dfc98e; --history-fg: #513c0d;
+    --cm-sel-bg: #b7d6a5; --cm-sel-fg: #1f331b;
     color-scheme: light;
     --tag-0: hsl(0 45% 38%); --tag-1: hsl(48 60% 30%); --tag-2: hsl(110 40% 30%);
     --tag-3: hsl(165 45% 27%); --tag-4: hsl(220 45% 40%); --tag-5: hsl(275 40% 38%);
@@ -123,6 +127,7 @@
     --caret: #006b7a;
     --diff-add: #2e7d32; --diff-del: #c0392b;
     --history-bg: #e2c98c; --history-fg: #513c0d;
+    --cm-sel-bg: #e8cf9a; --cm-sel-fg: #3a2d1b;
     color-scheme: light;
     --tag-0: hsl(20 60% 38%); --tag-1: hsl(45 70% 32%); --tag-2: hsl(75 45% 32%);
     --tag-3: hsl(150 35% 30%); --tag-4: hsl(205 45% 38%); --tag-5: hsl(280 35% 40%);
@@ -990,6 +995,16 @@
   #docEditor .cmHost { flex: 1 1 auto; min-height: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--bg); }
   #docEditor .cm-editor { height: 100%; }
   #docEditor .cm-scroller { overflow: auto; }
+  /* 選取區：深/淺底 + 高對比字；drawSelection 與原生 selection 都蓋 */
+  #docEditor .cm-selectionBackground {
+    background: var(--cm-sel-bg) !important;
+    box-shadow: inset 0 0 0 1px var(--accent);
+    border-radius: 2px;
+  }
+  #docEditor .cm-content ::selection {
+    background: var(--cm-sel-bg);
+    color: var(--cm-sel-fg);
+  }
   .cm-editor .cm-content { caret-color: var(--caret); }
   /* drawSelection() 畫的是 .cm-cursor：3px 粗、用與 accent 相反的色 */
   .cm-editor .cm-cursor, .cm-editor .cm-dropCursor {
