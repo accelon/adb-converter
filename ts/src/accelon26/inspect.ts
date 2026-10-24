@@ -9,26 +9,16 @@ export type InspectStatus = (msg: string, kind?: 'info' | 'err') => void;
 let layer: HTMLElement | null = null;
 let closeHandlers: (() => void) | null = null;
 
-function caretPoint(): { x: number; y: number } | null {
-  const view = (window as any).__accelon26EditView;
-  if (view?.state && document.querySelector('.cm-editor')) {
-    try {
-      const c = view.coordsAtPos(view.state.selection.main.head);
-      if (c) return { x: c.left + 1, y: (c.top + c.bottom) / 2 };
-    } catch { /* editor 已卸載 */ }
-  }
-  const sel = window.getSelection();
-  if (sel?.rangeCount) {
-    const range = sel.getRangeAt(0);
-    let r = range.getBoundingClientRect();
-    if (!r.width && !r.height && sel.focusNode) {
-      const node = sel.focusNode;
-      const el = node.nodeType === 1 ? node as Element : node.parentElement;
-      if (el) r = el.getBoundingClientRect();
-    }
-    if (r.width || r.height) return { x: r.left + Math.min(2, Math.max(0, r.width / 2)), y: r.top + r.height / 2 };
-  }
-  return null;
+// F9 看的是「鼠標所在」的元件，不是文字游標；記住最後一次 pointer 位置。
+let mouseX = 0, mouseY = 0, mouseSeen = false;
+window.addEventListener('pointermove', (ev) => {
+  mouseX = ev.clientX;
+  mouseY = ev.clientY;
+  mouseSeen = true;
+}, { passive: true });
+
+function mousePoint(): { x: number; y: number } | null {
+  return mouseSeen ? { x: mouseX, y: mouseY } : null;
 }
 
 function idAncestor(start: Element | null): HTMLElement | null {
@@ -91,8 +81,8 @@ export function stopInspect(): void {
 /** F9: open on the caret, or close if already open. */
 export function toggleInspect(status: InspectStatus): void {
   if (layer) { stopInspect(); return; }
-  const pt = caretPoint();
-  if (!pt) { status('F9：請先把游標放在文字上', 'err'); return; }
+  const pt = mousePoint();
+  if (!pt) { status('F9：請先把鼠標移到要檢查的元件上', 'err'); return; }
   const raw = document.elementFromPoint(pt.x, pt.y);
   const target = idAncestor(raw);
   if (!target) { status('F9：這個位置沒有 div/span id', 'err'); return; }

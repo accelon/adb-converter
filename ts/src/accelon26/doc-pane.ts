@@ -1054,21 +1054,34 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   const rrNow = pageRangeOf(dt);
   const pageEdit = esNow ? pageEditAt(esNow, rrNow.first, rrNow.last) : undefined;
   if (s.showDiff && pageEdit) { renderDiffPage(s, dt, pageEdit); return; }
-  lastDocLines = dt.lines;
+  // 離開編輯後，閱讀模式要看到「改過的文字」：把這一頁的 PageEdit.newLines
+  // 疊回 base 的 dt。行數不變（改錯字）是常態；有插刪行時重新編 lineNumbers。
+  let viewDt = dt;
+  if (pageEdit) {
+    const start = Math.max(0, pageEdit.first - rrNow.first);
+    const oldCount = pageEdit.last - pageEdit.first + 1;
+    const lines = dt.lines.slice();
+    if (start <= lines.length) lines.splice(start, Math.min(oldCount, lines.length - start), ...pageEdit.newLines);
+    const lineNumbers = lines.length === dt.lineNumbers.length
+      ? dt.lineNumbers
+      : lines.map((_, i) => (dt.lineNumbers[0] ?? rrNow.first) + i);
+    viewDt = { ...dt, lines, lineNumbers };
+  }
+  lastDocLines = viewDt.lines;
   // The pinned line is marked HERE (synchronously) so the row exists with its
   // hitLine class the moment the page is in the DOM; paintHit only adds the mark.
   // the pinned line is marked only while it is ON this page (see ensurePage)
   // 原書分行（作者 2026-10）：硬換行要不要保留。false＝文字連著排（見 renderPageBlocks）。
   // 「顯示原書頁碼」（作者 2026-10）：`<頁>`／`<_頁>` 要不要渲染（頁碼與頁分隔都算）。
   const blocks = renderRaw
-    ? dt.lines.map((line, k) => ({ kind: 'line' as const, lines: [{ no: dt.lineNumbers[k], html: escapeHtml(simConverter() ? simConverter()!(line) : line), raw: line, visible: true, heading: false }] }))
-    : renderPageBlocks(dt.lines, dt.lineNumbers, {
+    ? viewDt.lines.map((line, k) => ({ kind: 'line' as const, lines: [{ no: viewDt.lineNumbers[k], html: escapeHtml(simConverter() ? simConverter()!(line) : line), raw: line, visible: true, heading: false }] }))
+    : renderPageBlocks(viewDt.lines, viewDt.lineNumbers, {
       hardBreaks, marks: hardBreaks ? [] : kwMarks(), convert: simConverter(), pageMarks: pageMarksOn(),
     });
   const rows = renderBlocks(blocks, s);
   const b = pageBounds(s.realm, s.page);
-  const nFirst = dt.lineNumbers[0] ?? 0;
-  const nLast = dt.lineNumbers[dt.lineNumbers.length - 1] ?? 0;
+  const nFirst = viewDt.lineNumbers[0] ?? 0;
+  const nLast = viewDt.lineNumbers[viewDt.lineNumbers.length - 1] ?? 0;
   // 詞典型 adb 不顯示 docHead（作者 2026-10）：詞條名稱已經在分頁標題上，
   // 而第一個詞條字串通常就是命中、會被塗紅 —— 再放一次就變成同一個詞顯示三次。
   // 標題（.docHead）與 breadcrumb 排在同一行（作者 2026-10-18）：.docTop 是 flex row，
@@ -1095,7 +1108,7 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
     body.addEventListener('scroll', scheduleCursorSync, { passive: true });
   }
   if (s.pinned) void paintHit(s.pinned.va, s.pinned.units);
-  else if (dt.lineNumbers.length) document.getElementById('L' + nFirst)?.scrollIntoView({ block: 'start' });
+  else if (viewDt.lineNumbers.length) document.getElementById('L' + nFirst)?.scrollIntoView({ block: 'start' });
   scheduleCursorSync();
   void updateDocLogo();   // 有文字就把 logo 收起來
 }
