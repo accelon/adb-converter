@@ -217,6 +217,10 @@ cd ts && bun run tools/install-message-backend.ts --uninstall
 * 成功的回 `{"ok":true}`；資料問題回 4xx（頁面顯示訊息，不寄）；寄信失敗回 5xx（頁面**退回
   郵件程式**並提示，留言不會丟掉）。
 * 「類型」只認 `回報錯誤`／`功能要求`／`改良建議`，其他值當作沒填。
+* 版本：桌面版／軟件內的「留言給作者」會帶 `build`、`buildText`；官網直接留言則由頁面抓
+  `versions.json` 的 `buildTime`，後端再以同一個檔補一次，主旨、信件內文與 `messages.jsonl` 都會有版本。
+* 發信人：有填 Email 時 `From` 用留言者的 email、`Reply-To` 也是留言者；SMTP 認證信箱放
+  `Sender`（envelope sender 仍是 QQ 信箱）。沒填 Email 才用作者的 QQ 信箱當 From。
 * 換收件地址或授權碼：改 `.local/smtp.json` 後重跑 `install-message-backend.ts`。
 
 > 授權碼是 QQ 信箱「設定 → 帳號 → POP3/SMTP 服務」產生的 16 位字串，**不是登入密碼**。

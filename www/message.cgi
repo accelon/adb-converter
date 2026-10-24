@@ -34,6 +34,7 @@ CONF = "/etc/accelon26-message/smtp.json"
 DATA = "/var/lib/accelon26-message"
 LOG = os.path.join(DATA, "messages.jsonl")
 RATE_DIR = os.path.join(DATA, "rate")
+MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "versions.json")
 MAX_BODY = 32 * 1024
 MAX_MESSAGE = 5000
 TYPES = {"回報錯誤", "功能要求", "改良建議"}
@@ -95,6 +96,17 @@ def append_log(record):
         pass
 
 
+def site_build():
+    """官網版本的 buildTime（versions.json）；網頁版直接留言時至少帶上這一版。"""
+    try:
+        with open(MANIFEST, "r", encoding="utf-8") as f:
+            v = json.load(f)
+        b = v.get("buildTime") if isinstance(v, dict) else None
+        return str(b)[:40] if b else ""
+    except Exception:
+        return ""
+
+
 def load_conf():
     with open(CONF, "r", encoding="utf-8") as f:
         conf = json.load(f)
@@ -108,8 +120,9 @@ def send_mail(conf, rec):
     subject = "[accelon26] " + (rec["type"] or "留言")
     if rec["name"]:
         subject += " — " + rec["name"]
-    if rec["buildText"]:
-        subject += "（" + rec["buildText"] + "）"
+    ver_for_subject = rec["buildText"] or rec["build"]
+    if ver_for_subject:
+        subject += "（" + ver_for_subject + "）"
     lines = []
     if rec["buildText"] or rec["build"]:
         ver = rec["buildText"] or rec["build"]
@@ -138,17 +151,22 @@ def send_mail(conf, rec):
 
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = formataddr(("accelon26 留言", conf["user"]))
     msg["To"] = conf["to"]
     msg["Date"] = formatdate(localtime=True)
     if rec["email"]:
+        # 發信人＝留言者；SMTP 認證信箱放 Sender（避免 QQ 直接以認證帳號覆寫 From）
+        msg["From"] = formataddr((rec["name"] or "accelon26 訪客", rec["email"]))
         msg["Reply-To"] = rec["email"]
+        msg["Sender"] = conf["user"]
+    else:
+        msg["From"] = formataddr(("accelon26 留言", conf["user"]))
     msg.set_content("\n".join(lines))
 
     ctx = ssl.create_default_context()
     with smtplib.SMTP_SSL(conf["host"], int(conf["port"]), timeout=25, context=ctx) as s:
         s.login(conf["user"], conf["password"])
-        s.send_message(msg)
+        # envelope sender 必須是認證信箱；From 標頭才是留言者
+        s.sendmail(conf["user"], [conf["to"]], msg.as_string())
 
 
 def main():
@@ -186,8 +204,8 @@ def main():
 
     rec = {
         "type": field(data, "type", 20),
-        "name": field(data, "name", 40),
-        "email": field(data, "email", 120),
+        "name": field(data, "name", 40).replace("\r", "").replace("\n", ""),
+        "email": field(data, "email", 120).replace("\r", "").replace("\n", ""),
         "wechat": field(data, "wechat", 60),
         "start": field(data, "start", 20),
         "message": field(data, "message", MAX_MESSAGE),
@@ -204,6 +222,9 @@ def main():
         out(400, {"ok": False, "error": "留言太短了"})
     if rec["email"] and ("@" not in rec["email"] or "." not in rec["email"].split("@")[-1]):
         out(400, {"ok": False, "error": "Email 看起來不太對"})
+    # 網頁直接留言沒有帶 build 時，至少補上官網最新版本的 buildTime
+    if not rec["build"]:
+        rec["build"] = site_build()
     if rate_limited(rec["ip"]):
         out(429, {"ok": False, "error": "這個 IP 一小時內已經留了 " + str(PER_HOUR) + " 則，請稍後再試"})
 

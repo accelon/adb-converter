@@ -306,18 +306,43 @@
   function val(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; }
   function showErr(msg) { errEl.textContent = msg || ''; if (msg) errEl.scrollIntoView({ block: 'nearest' }); }
 
-  // 版本號（作者 2026-10-18）：桌面版的「留言給作者」會帶 build/buildText 過來。
+  // 版本號（作者 2026-10-18）：桌面版的「留言給作者」會帶 build/buildText 過來；
+  // 官網直接留言則從 versions.json 取目前這一個 build（作者 2026-10-25）。
   var q = new URLSearchParams(location.search);
   var V = {
-    from: (q.get('from') || '').slice(0, 12),
+    from: (q.get('from') || 'web').slice(0, 12),
     build: (q.get('build') || '').slice(0, 40),
     text: (q.get('buildText') || q.get('v') || '').slice(0, 40)
   };
-  var verText = V.text || V.build
-    ? (V.from === 'desktop' ? '桌面版 ' : '') + (V.text || V.build) + (V.text && V.build && V.build !== V.text ? '（' + V.build + '）' : '')
-    : '（網頁版，沒有帶版本號）';
+  function fmtBuild(b) {
+    var d = new Date(b);
+    if (isNaN(d.getTime())) return b;
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+      + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
   var verEl = document.getElementById('ver');
-  if (verEl) verEl.textContent = verText;
+  function paintVer() {
+    var shown = V.text || (V.build ? fmtBuild(V.build) : '');
+    if (!shown) {
+      if (verEl) verEl.textContent = '（網頁版，版本讀取中…）';
+      return;
+    }
+    var prefix = V.from === 'desktop' ? '桌面版 ' : '網頁版 ';
+    if (verEl) verEl.textContent = prefix + shown
+      + (V.text && V.build && V.build !== V.text ? '（' + V.build + '）' : '');
+  }
+  paintVer();
+  if (!V.build && !V.text && window.fetch) {
+    fetch('versions.json', { cache: 'no-cache' }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (j) {
+      if (!j || !j.buildTime) { if (verEl) verEl.textContent = '（網頁版，沒有帶版本號）'; return; }
+      V.build = String(j.buildTime).slice(0, 40);
+      V.text = fmtBuild(V.build);
+      paintVer();
+    }).catch(function () { if (verEl) verEl.textContent = '（網頁版，沒有帶版本號）'; });
+  }
 
   function mailBody(d) {
     var lines = [];
