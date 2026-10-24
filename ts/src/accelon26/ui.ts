@@ -983,6 +983,8 @@ function setAdvanced(on: boolean) {
   advanced = on;
   localStorage.setItem(ADV_KEY, on ? '1' : '0');
   document.body.classList.toggle('advanced', on);
+  // 只有進階模式能編輯：關掉進階時先暫存並離開編輯態（修訂仍留著）
+  if (!on) { const s = docSession(); if (s?.editing) exitEdit(s); }
   updateSettingsUi();
   // leave a tab that is no longer available. The advanced-only tabs (token, META,
   // 容量, 文件, 圖片) disappear with the mode, and a database without `s="*"` has no

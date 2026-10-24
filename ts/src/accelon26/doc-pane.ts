@@ -327,7 +327,7 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
   const dtNow = s.cache.dt;
   const rr = pageRangeOf(dtNow);
   const es = editSessionOf();
-  if (!s.editing && s.autoEdit !== false && es && pageEditAt(es, rr.first, rr.last)) s.editing = true;
+  if (editAllowed() && !s.editing && s.autoEdit !== false && es && pageEditAt(es, rr.first, rr.last)) s.editing = true;
   const nums = dtNow.lineNumbers;
   if (targetLine !== undefined && s.pinned && nums.length) {
     if (s.pinned.line < nums[0]) s.pinned.line = nums[0];
@@ -585,6 +585,10 @@ document.addEventListener('selectionchange', () => {
   rememberDocSelection();
 });
 
+function editAllowed(): boolean {
+  return document.body.classList.contains('advanced');
+}
+
 function editSessionOf(): DbEditSession | null {
   return currentSource ? editSessionFor(currentSource, currentFile || currentSource.name) : null;
 }
@@ -660,6 +664,10 @@ export function flushEdit(): void {
 }
 
 export function enterEdit(s: DocSession, fromSelection = false): void {
+  if (!editAllowed()) {
+    setStatus('請先開啟進階模式才能編輯', 'err');
+    return;
+  }
   if (!s || !s.cache?.dt) return;
   if (reader && reader.header.size > 50 * 1024 * 1024) {
     setStatus('這個 adb 超過 50 MB，網頁版暫不支援編輯（桌面版或 Go 版再處理）', 'err');
@@ -847,6 +855,7 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
 /** render one page: tab strip, header, rows, pager. */
 function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   if (!dt) return;
+  if (s.editing && !editAllowed()) s.editing = false;
   setEditControls(s);
   if (s.editing) { renderEditPage(s, dt); return; }
   const esNow = editSessionOf();
