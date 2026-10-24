@@ -1055,7 +1055,6 @@ function wireDocMetaTips(): void {
     const meta = head.querySelector<HTMLElement>('.docMeta');
     if (!meta) return;
     head.addEventListener('mouseenter', () => {
-      if (!document.body.classList.contains('advanced')) return;
       const text = (meta.textContent || '').trim();
       if (!text) return;
       hideDocMetaTip();
