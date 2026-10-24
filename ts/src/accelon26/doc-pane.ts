@@ -15,7 +15,7 @@ import { tagColorOf } from './tag-style';
 import { kwMarks } from './kw-marks';
 import { displayConverter, type SimMode } from './lossless';
 import { isDictDb } from './db-kind';
-import { discardPage, hasEditsInRange, onEditsChange, pageEditAt, pageKey, sessionFor as editSessionFor, stagePage, type DbEditSession } from './edit-session';
+import { diffPage, discardPage, hasEditsInRange, onEditsChange, pageEditAt, pageKey, sessionFor as editSessionFor, stagePage, type DbEditSession, type PageEdit } from './edit-session';
 import { mountPageEditor, type PageEditor } from './editor';
 
 /**
@@ -147,6 +147,8 @@ interface DocSession {
   editing?: boolean;
   /** 回到這一頁時自動進編輯態（使用者按「完成」後暫時關掉） */
   autoEdit?: boolean;
+  /** 閱讀模式顯示這一頁的修訂 diff（新增綠、刪除紅） */
+  showDiff?: boolean;
 }
 
 let docTabs: DocSession[] = [];
@@ -594,12 +596,26 @@ function docNameOf(s: DocSession): string {
   return s.doc?.name || s.name || '';
 }
 
-function setEditButton(s: DocSession | null): void {
+function setEditControls(s: DocSession | null): void {
   const btn = document.getElementById('editBtn') as HTMLButtonElement | null;
-  if (!btn) return;
-  const on = !!s?.editing;
-  btn.classList.toggle('on', on);
-  btn.title = on ? '完成編輯（內容已自動暫存）' : '編輯這一頁（修錯字；離開會自動暫存）';
+  if (btn) {
+    const on = !!s?.editing;
+    btn.classList.toggle('on', on);
+    btn.title = on ? '完成編輯（內容已自動暫存）' : '編輯這一頁（修錯字；離開會自動暫存）';
+  }
+  const toggle = document.getElementById('diffToggle') as HTMLElement | null;
+  const box = document.getElementById('showDiff') as HTMLInputElement | null;
+  let has = false;
+  const dt = s?.cache?.dt;
+  if (s && dt && !s.editing) {
+    const es = editSessionOf();
+    if (es) {
+      const r = pageRangeOf(dt);
+      has = !!pageEditAt(es, r.first, r.last);
+    }
+  }
+  if (toggle) toggle.hidden = !has;
+  if (box) box.checked = has && !!s?.showDiff;
 }
 
 function noticeEditor(msg: string): void {
@@ -696,7 +712,7 @@ function renderEditPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
     && document.body.contains(activeEditor.ed.view.dom)) {
     renderDocTabs(s);
     renderPager(s, b);
-    setEditButton(s);
+    setEditControls(s);
     return;
   }
   stageActiveEditor();
@@ -723,7 +739,7 @@ function renderEditPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
   renderDocTabs(s);
   renderPager(s, b);
   wireTrail();
-  setEditButton(s);
+  setEditControls(s);
   const host = document.getElementById('cmHost');
   if (!host) return;
   const ed = mountPageEditor(host, lines.slice(), { onChange: scheduleStage, onNotice: noticeEditor });
@@ -749,11 +765,95 @@ function renderEditPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
   });
 }
 
+/** 把一行中真正改動的那一段包成紅／綠；at 是共同前綴長度。 */
+function diffSegment(line: string, at: number, text: string, cls: string): string {
+  if (!text) return escapeHtml(line);
+  const cut = Math.max(0, Math.min(line.length, at));
+  const rest = Math.min(line.length, cut + text.length);
+  return escapeHtml(line.slice(0, cut))
+    + '<span class="' + cls + '">' + escapeHtml(text) + '</span>'
+    + escapeHtml(line.slice(rest));
+}
+
+function diffRow(kind: 'context' | 'del' | 'ins', no: string, sign: string, html: string): string {
+  return '<div class="diffRow ' + kind + '"><span class="diffNo">' + no
+    + '</span><span class="diffSign">' + sign + '</span><span class="diffText">' + html + '</span></div>';
+}
+
+/** 閱讀模式的修訂檢視：新增綠、刪除紅，完全不呼叫 paintHit（不塗搜尋關鍵字）。 */
+function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docText']>>, edit: PageEdit): void {
+  const b = pageBounds(s.realm, s.page);
+  const nFirst = dt.lineNumbers[0] ?? 0;
+  const nLast = dt.lineNumbers[dt.lineNumbers.length - 1] ?? 0;
+  const changes = diffPage(edit).changes;
+  let added = 0, removed = 0, replaced = 0;
+  const rows: string[] = [];
+  let oi = 0;
+  let ni = 0;
+  const first = edit.first;
+  const context = (text: string, no: number) => diffRow('context', String(no), ' ', escapeHtml(text));
+  for (const c of changes) {
+    const rel = Math.max(0, Math.min(edit.oldLines.length, c.line - first));
+    while (oi < rel) {
+      rows.push(context(edit.oldLines[oi], first + oi + 1));
+      oi++;
+      ni++;
+    }
+    if (c.kind === 'replace') {
+      const oldLine = c.oldLine ?? edit.oldLines[oi] ?? '';
+      const newLine = c.newLine ?? edit.newLines[ni] ?? '';
+      rows.push(diffRow('del', String(first + oi + 1), '-', diffSegment(oldLine, c.at ?? 0, c.oldText ?? '', 'diff-del-inner')));
+      rows.push(diffRow('ins', '', '+', diffSegment(newLine, c.at ?? 0, c.newText ?? '', 'diff-ins-inner')));
+      replaced++;
+      oi++;
+      ni++;
+    } else if (c.kind === 'delete') {
+      const oldLine = c.oldLine ?? edit.oldLines[oi] ?? '';
+      rows.push(diffRow('del', String(first + oi + 1), '-', escapeHtml(oldLine)));
+      removed++;
+      oi++;
+    } else {
+      const newLine = c.newLine ?? edit.newLines[ni] ?? '';
+      rows.push(diffRow('ins', '', '+', escapeHtml(newLine)));
+      added++;
+      ni++;
+    }
+  }
+  while (oi < edit.oldLines.length) {
+    rows.push(context(edit.oldLines[oi], first + oi + 1));
+    oi++;
+    ni++;
+  }
+  $('#docText').innerHTML = '<div class="docTop">'
+    + (isDictDb(mapper)
+      ? ''
+      : '<div class="docHead">' + escapeHtml(displayName(s.name))
+        + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁 · 行 '
+        + fmtInt(nFirst) + '–' + fmtInt(nLast) + ' · <b style="color:var(--warn)">修訂檢視</b></span></div>')
+    + renderAncestorTrail(s)
+    + '</div>'
+    + '<div class="diffLegend">修訂檢視：<b class="add">新增 ' + added + ' 行</b> · '
+    + '<b class="del">刪除 ' + removed + ' 行</b> · 修改 ' + replaced + ' 處'
+    + '<span class="dim">（搜尋塗紅已暫停）</span></div>'
+    + '<div class="diffView">' + rows.join('') + '</div>';
+  lastDocLines = dt.lines;
+  renderDocTabs(s);
+  renderPager(s, b);
+  wireTrail();
+  setEditControls(s);
+  const view = document.querySelector<HTMLElement>('.diffView');
+  if (view) view.scrollTop = 0;
+}
+
 /** render one page: tab strip, header, rows, pager. */
 function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   if (!dt) return;
-  setEditButton(s);
+  setEditControls(s);
   if (s.editing) { renderEditPage(s, dt); return; }
+  const esNow = editSessionOf();
+  const rrNow = pageRangeOf(dt);
+  const pageEdit = esNow ? pageEditAt(esNow, rrNow.first, rrNow.last) : undefined;
+  if (s.showDiff && pageEdit) { renderDiffPage(s, dt, pageEdit); return; }
   lastDocLines = dt.lines;
   // The pinned line is marked HERE (synchronously) so the row exists with its
   // hitLine class the moment the page is in the DOM; paintHit only adds the mark.
@@ -1233,7 +1333,7 @@ export function resetDocPane(): void {
 // 修訂數變動：docTab 的紅底即時更新（dbChip 由 dbs.ts 自己訂閱）
 onEditsChange(() => {
   const s = docSession();
-  if (s) renderDocTabs(s);
+  if (s) { renderDocTabs(s); setEditControls(s); }
 });
 
 import { DocRow } from './adb';

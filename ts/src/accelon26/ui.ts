@@ -7,7 +7,7 @@
  */
 import { $, currentFile, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, session, setStatus, tokens, statusText } from './viewer';
 import { type AdbSource } from './adb';
-import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, readSideFont, pageMarksOn, rememberDocSelection, renderDocTabs, renderRawOn, rerenderDoc, setDocFont, setHardBreaks, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
+import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, readSideFont, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, setDocFont, setHardBreaks, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
 import { renderTextPane } from './text-pane';
 import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
 import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
@@ -1182,6 +1182,13 @@ function boot() {
       if (s.editing) exitEdit(s); else enterEdit(s, true);
     };
   }
+  const showDiff = $('#showDiff') as HTMLInputElement | null;
+  if (showDiff) showDiff.onchange = () => {
+    const s = docSession();
+    if (!s) return;
+    s.showDiff = showDiff.checked;
+    renderDoc(s);
+  };
   // 設定／測試仍可能呼叫 raw；有舊元素才綁（新介面沒有）
   const showRaw = $('#showRaw') as HTMLInputElement | null;
   if (showRaw) {

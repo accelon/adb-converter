@@ -985,6 +985,32 @@
     margin-left: -1px;
     box-shadow: 0 0 3px var(--caret);
   }
+  /* 閱讀模式：顯示修訂（作者 2026-10-24） */
+  .diffToggle { font-size: 12.5px; gap: 4px; }
+  .diffToggle[hidden] { display: none; }
+  .diffView {
+    font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+    font-size: 12.5px; line-height: 1.75; overflow: auto; min-height: 0; flex: 1 1 auto;
+    padding: 2px 0 30vh;
+  }
+  .diffRow { display: flex; gap: 8px; padding: 0 4px; border-radius: 3px; }
+  .diffNo {
+    width: 4.5em; flex: 0 0 auto; text-align: right; color: var(--dim);
+    font-variant-numeric: tabular-nums; user-select: none;
+  }
+  .diffSign { width: 1.2em; flex: 0 0 auto; text-align: center; user-select: none; }
+  .diffText { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; word-break: break-word; }
+  .diffRow.context .diffText { color: var(--fg); }
+  .diffRow.del .diffText, .diffRow.del .diffSign { color: var(--hit-2); }
+  .diffRow.del .diffText { background: rgba(255,107,107,.10); }
+  .diffRow.ins .diffText, .diffRow.ins .diffSign { color: var(--ok); }
+  .diffRow.ins .diffText { background: rgba(80,200,120,.10); }
+  .diff-del-inner { background: rgba(255,80,80,.28); text-decoration: line-through; }
+  .diff-ins-inner { background: rgba(80,220,120,.28); }
+  .diffLegend { font-size: 12px; color: var(--dim); margin: 0 0 8px 4px; }
+  .diffLegend b { font-weight: 600; }
+  .diffLegend .add { color: var(--ok); }
+  .diffLegend .del { color: var(--hit-2); }
   /* 目錄樹：有未產生修訂的節點，名稱塗紅（作者 2026-10-24） */
   .tRow.edited .tName { color: var(--hit-2); font-weight: 600; }
   .cm-tag { color: #ff6b6b; font-weight: 600; }
@@ -1164,6 +1190,7 @@
           </button>
           <label class="fsPick" id="hbToggle" title="原書分行：保留原書的硬換行（取消＝文字連著排，只有標題與空行換段）"><input type="checkbox" id="showHardBreaks" checked> 原書分行</label>
           <button type="button" class="mini editBtn" id="editBtn" title="編輯這一頁（修錯字；離開會自動暫存）" aria-label="編輯這一頁">✎</button>
+          <label class="fsPick diffToggle" id="diffToggle" hidden title="顯示這一頁的修訂：新增綠、刪除紅；不回讀搜尋關鍵字"><input type="checkbox" id="showDiff"> 顯示修訂</label>
         </span>
       </div>
       <div class="docTabs" id="docTabs" hidden>
