@@ -21,6 +21,7 @@ import { restoreLink, snapshotLink } from './link';
 import { restoreTextPane, snapshotTextPane } from './text-pane';
 import { backendKind } from './backend';
 import { hostState } from './host';
+import { discardAll, editCount, findSession, hasEdits, onEditsChange, sourceKey } from './edit-session';
 
 export const MAX_DBS = 5;
 
@@ -412,15 +413,26 @@ export function renderDbTabs(): void {
   const box = $('#dbTabs');
   if (!box) return;
   const active = activeSlot();
+  const SAVE_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h9l3 3v9H2V2zm2 1v4h7V3H4zm0 7v4h8v-4H4z"/></svg>';
   box.innerHTML = openDbs.map((d) => {
     const on = d === active;
+    const n = editCount(findSession(sourceKey(d.file)));
+    const edit = n
+      ? '<span class="dbChipEdit" data-save="' + d.id + '" title="' + n + ' 頁修訂：點一下產生新 ADB">' + SAVE_SVG + n + ' 頁修訂</span>'
+      : '';
     return '<span class="dbChip' + (on ? ' active' : '') + '" data-id="' + d.id + '" title="' + escapeHtml(d.name) + '">'
-      + escapeHtml(d.name)
+      + escapeHtml(d.name) + edit
       + '<span class="dbChipClose" data-close="' + d.id + '" title="關閉（含它的所有本文分頁）">✕</span>'
       + '</span>';
   }).join('');
   box.querySelectorAll<HTMLElement>('.dbChip').forEach((el) => {
     el.onclick = (ev) => {
+      const saveId = Number((ev.target as HTMLElement)?.closest('.dbChipEdit')?.getAttribute('data-save') ?? 0);
+      if (saveId) {
+        ev.stopPropagation();
+        window.dispatchEvent(new CustomEvent('accelon26:rebuild', { detail: { id: saveId } }));
+        return;
+      }
       const closeId = Number((ev.target as HTMLElement)?.closest('.dbChipClose')?.getAttribute('data-close') ?? 0);
       if (closeId) { void closeDb(closeId); return; }
       const id = Number(el.dataset.id);
@@ -454,6 +466,11 @@ export function switchTo(id: number, front = false): void {
 export function closeDb(id: number): void {
   const at = openDbs.findIndex((d) => d.id === id);
   if (at < 0) return;
+  const slot = openDbs[at];
+  const es = findSession(sourceKey(slot.file));
+  const n = editCount(es);
+  if (n > 0 && !window.confirm('「' + slot.name + '」有 ' + n + ' 頁修訂，關閉會丟失。仍要關閉？')) return;
+  if (es) discardAll(es);
   const wasActive = openDbs[at] === activeSlot();
   openDbs.splice(at, 1);
   if (wasActive) {
@@ -465,6 +482,9 @@ export function closeDb(id: number): void {
   renderDbTabs();
   renderDbPick();
 }
+
+// 修訂數變動：dbChip 的「n 頁修訂」即時更新
+onEditsChange(() => { try { renderDbTabs(); } catch { /* boot */ } });
 
 /** ✕ next to the active database's name */
 export function closeActiveDb(): void {

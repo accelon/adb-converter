@@ -962,6 +962,78 @@
 }
 .tourActs button:hover { border-color: var(--accent); }
 .tourActs button.primary { background: var(--accent); color: var(--ink-on-accent); border-color: transparent; font-weight: 700; }
+  /* ---- 編輯態（作者 2026-10-24）：CodeMirror、標籤塗紅、修訂 ---- */
+  .editBtn {
+    font-size: 15px; line-height: 1; padding: 2px 7px 3px; color: var(--gold);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 5px; cursor: pointer;
+  }
+  .editBtn:hover { border-color: var(--accent); }
+  .editBtn.on { border-color: var(--accent); background: var(--hl-bg); box-shadow: inset 0 0 0 1px var(--accent); }
+  #docEditor { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+  #docEditor .cmHost { flex: 1 1 auto; min-height: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--bg); }
+  #docEditor .cm-editor { height: 100%; }
+  #docEditor .cm-scroller { overflow: auto; }
+  .cm-tag { color: #ff6b6b; font-weight: 600; }
+  .cm-tag-close { color: #ff8f8f; }
+  .cm-tag-self { color: #ffb15c; }
+  .cm-tag-bad { text-decoration: underline wavy #ff3b30; text-underline-offset: 3px; }
+  .editBar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-size: 12.5px; color: var(--dim); flex: 0 0 auto;
+  }
+  .editBar .grow { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .editBar .mini { font-size: 12px; }
+  .editNotice { color: var(--gold); }
+  .docTab.dirty { background: #8e2f2f; color: #fff; border-color: #c94b4b; }
+  .docTab.dirty:hover { background: #a33a3a; color: #fff; }
+  .docTab.dirty.active { background: #b23a3a; color: #fff; border-color: #ff8a80; }
+  .dbChipEdit {
+    display: inline-flex; align-items: center; gap: 3px; margin-left: 5px; padding: 0 4px;
+    border-radius: 4px; background: rgba(255,107,107,.16); color: #ffb3b3; font-size: 11.5px;
+    border: 1px solid rgba(255,107,107,.45); cursor: pointer; white-space: nowrap;
+  }
+  .dbChipEdit:hover { background: rgba(255,107,107,.30); color: #fff; }
+  .dbChipEdit svg { width: 12px; height: 12px; fill: currentColor; }
+  .revisionCard {
+    border: 1px solid var(--line); border-radius: 7px; background: var(--panel);
+    padding: 8px 10px; margin-bottom: 8px;
+  }
+  .revisionHead { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .revisionHead b { color: var(--gold); font-size: 13px; }
+  .revisionHead span { color: var(--dim); font-size: 11.5px; }
+  .revisionPage { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-soft); }
+  .revisionPage > b { font-size: 12.5px; color: var(--fg); }
+  .revisionChange { font-size: 12.5px; line-height: 1.7; margin: 2px 0 0 1em; color: var(--dim); }
+  .revisionChange .del { color: #ff8a80; text-decoration: line-through; }
+  .revisionChange .ins { color: var(--ok); }
+  .revisionChange .where { color: var(--link); font-variant-numeric: tabular-nums; }
+  .revisionEmpty { color: var(--dim); padding: 10px; }
+  .editModalBody { min-height: 70px; max-height: 55vh; overflow: auto; font-size: 13px; line-height: 1.7; }
+  .editModalBody .big { font-size: 15px; color: var(--fg); }
+  .editModalBody ul { margin: 6px 0 0; padding-left: 20px; }
+  .editModalBtns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  #editModalBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 80; }
+  #editModalBackdrop[hidden], #editModal[hidden] { display: none; }
+  #editModal {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(580px, 92vw); max-height: 82vh; overflow: auto;
+    background: var(--panel); border: 1px solid var(--accent); border-radius: 9px;
+    padding: 14px 18px 16px; z-index: 81; box-shadow: 0 18px 60px rgba(0,0,0,.55);
+  }
+  #editModal .setHead { margin-bottom: 6px; }
+
+  #editProgress {
+    position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.55);
+  }
+  #editProgress[hidden] { display: none; }
+  .editProgressBox {
+    width: min(460px, 86vw); background: var(--panel); border: 1px solid var(--accent);
+    border-radius: 9px; padding: 18px 20px; box-shadow: 0 12px 40px rgba(0,0,0,.45);
+  }
+  #editProgressText { font-size: 13px; color: var(--fg); margin-bottom: 10px; }
+  .editProgressTrack { height: 6px; background: var(--panel2); border-radius: 999px; overflow: hidden; }
+  #editProgressBar { height: 100%; width: 0; background: var(--accent); transition: width .18s ease; }
 </style>
 </head>
 <body>
@@ -1077,7 +1149,7 @@
             <span class="fsT" aria-hidden="true"><b>T</b><b>T</b></span>
           </button>
           <label class="fsPick" id="hbToggle" title="原書分行：保留原書的硬換行（取消＝文字連著排，只有標題與空行換段）"><input type="checkbox" id="showHardBreaks" checked> 原書分行</label>
-          <label class="fsPick advOnly" id="rawToggle" title="進階：不渲染標籤，顯示原始文件（含 XML 標籤）"><input type="checkbox" id="showRaw"> 原始文件</label>
+          <button type="button" class="mini editBtn" id="editBtn" title="編輯這一頁（修錯字；離開會自動暫存）" aria-label="編輯這一頁">✎</button>
         </span>
       </div>
       <div class="docTabs" id="docTabs" hidden>
@@ -1106,6 +1178,7 @@
       <button class="tabBtn advOnly" data-tab="capacity">容量</button>
       <button class="tabBtn advOnly" data-tab="docs">文件</button>
       <button class="tabBtn advOnly" data-tab="images">圖片</button>
+      <button class="tabBtn advOnly" data-tab="revisions">修訂</button>
       <!-- 右欄字級：黑底白字的「小 T / 大 T」 -->
       <button type="button" class="fsPick iconOnly fsStep" id="fsRightPick" data-fs="right" title="右欄字級">
         <span class="fsT" aria-hidden="true"><b>T</b><b>T</b></span>
@@ -1150,6 +1223,7 @@
       </div>
       <div class="tabPane" data-tab="docs"><div id="docs" class="scrollArea"></div></div>
       <div class="tabPane" data-tab="images"><div id="resources" class="scrollArea"></div></div>
+      <div class="tabPane" data-tab="revisions"><div id="revisionsPane" class="scrollArea"></div></div>
     </div>
   </section>
 </main>
@@ -1371,6 +1445,28 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
+<!-- 編輯確認／進度（作者 2026-10-24） -->
+<div id="editModalBackdrop" hidden></div>
+<div id="editModal" role="dialog" aria-modal="true" aria-labelledby="editModalTitle" hidden>
+  <div class="setHead">
+    <h2 id="editModalTitle">產生新 ADB</h2>
+    <button id="editModalClose" class="aboutClose" title="取消">✕</button>
+  </div>
+  <div id="editModalBody" class="editModalBody"></div>
+  <div class="editModalBtns">
+    <button type="button" id="editModalCancel">取消</button>
+    <button type="button" id="editModalGo" class="primary">產生並下載</button>
+  </div>
+</div>
+<div id="editProgress" hidden>
+  <div class="editProgressBox">
+    <div id="editProgressText">準備中…</div>
+    <div class="editProgressTrack"><div id="editProgressBar"></div></div>
+  </div>
+</div>
+
+<!-- CodeMirror 6（vendored；必須在 viewer bundle 之前載入） -->
+<script>/*__CM_BUNDLE__*/</script>
 <!--__BUILD_TIME__-->
 <script>/*__VIEWER_BUNDLE__*/</script>
 </body>

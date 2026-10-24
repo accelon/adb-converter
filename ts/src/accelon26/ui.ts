@@ -7,10 +7,10 @@
  */
 import { $, currentFile, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, session, setStatus, tokens, statusText } from './viewer';
 import { type AdbSource } from './adb';
-import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, fitDebugInfo, hardBreaksOn, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, readSideFont, pageMarksOn, renderDocTabs, renderRawOn, rerenderDoc, setDocFont, setHardBreaks, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
+import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, readSideFont, pageMarksOn, renderDocTabs, renderRawOn, rerenderDoc, setDocFont, setHardBreaks, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
 import { renderTextPane } from './text-pane';
 import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
-import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
+import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully } from './scopes';
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 import { backendKind, goQueryCount, lastGoAnswer } from './backend';
@@ -209,6 +209,7 @@ function showTab(name: string, col: 'left' | 'right' = 'left') {
   root.querySelectorAll('.tabPane').forEach((p) => p.classList.toggle('active', (p as HTMLElement).dataset.tab === name));
   // the right column's 文字內容 pane draws itself (text-pane owns that rendering)
   if (col === 'right' && name === 'text') void renderTextPane();
+  if (col === 'right' && name === 'revisions') void renderRevisions();
   // left panes are built on demand: each one walks its own tree/attribute table
   if (col === 'left') {
     if (name === 'freq') void renderFreq();
@@ -1170,15 +1171,24 @@ function boot() {
     void renderTextPane();
     setStatus(showHardBreaks.checked ? '原書分行：保留原書的硬換行' : '原書分行：關閉（文字連著排，只有標題與空行換段）', 'info');
   };
-  // 「顯示原始文件」（進階模式）：打開＝不渲染，預設關閉＝渲染成 HTML
-  const showRaw = $('#showRaw') as HTMLInputElement;
-  showRaw.checked = renderRawOn();
-  showRaw.onchange = () => {
-    setRenderRaw(showRaw.checked);
-    rerenderDoc();
-    void renderTextPane();
-    setStatus(showRaw.checked ? '顯示原始文件（不渲染標籤）' : '渲染標籤（預設）', 'info');
-  };  // 「不換行（自動字級）」按鈕已移除（作者 2026-10：讓讀者自己用上面的下拉調整字級）。
+  // 「原始文件」已取消（作者 2026-10-24），改成鉛筆：進入／離開這一頁的編輯態。
+  const editBtn = $('#editBtn') as HTMLButtonElement | null;
+  if (editBtn) editBtn.onclick = () => {
+    const s = docSession();
+    if (!s) return;
+    if (s.editing) exitEdit(s); else enterEdit(s);
+  };
+  // 設定／測試仍可能呼叫 raw；有舊元素才綁（新介面沒有）
+  const showRaw = $('#showRaw') as HTMLInputElement | null;
+  if (showRaw) {
+    showRaw.checked = renderRawOn();
+    showRaw.onchange = () => {
+      setRenderRaw(showRaw.checked);
+      rerenderDoc();
+      void renderTextPane();
+      setStatus(showRaw.checked ? '顯示原始文件（不渲染標籤）' : '渲染標籤（預設）', 'info');
+    };
+  }  // 「不換行（自動字級）」按鈕已移除（作者 2026-10：讓讀者自己用上面的下拉調整字級）。
   // autoFitFont() 仍留在 `window.__accelon26` 供診斷使用。
 
   // opening another database: the file picker before the first one, the Chinese
@@ -1214,6 +1224,44 @@ function boot() {
     });
   }
   setDbHooks({ refresh: refreshAll, clear: clearDbUi });
+
+  // dbChip 的「n 頁修訂」按鈕 → 產生新 ADB（file:// 版下載 blob）
+  window.addEventListener('accelon26:rebuild', (ev) => {
+    const id = Number((ev as CustomEvent).detail?.id ?? 0);
+    const slot = openDbs.find((d) => d.id === id);
+    if (!slot || !reader) return;
+    if (activeSlot()?.id !== id) switchTo(id);
+    flushEdit();
+    void rebuildAndDownload(reader, { id: slot.id, name: slot.name, file: slot.file }, {
+      status: (msg, kind) => setStatus(msg, kind ?? 'info'),
+      openFile: (f) => openFile(f),
+    });
+  });
+  // headless 測試／診斷：直接回傳重建結果（不觸發下載）
+  (window as any).__accelon26EditBuild = async () => {
+    const slot = activeSlot();
+    if (!reader || !slot) return null;
+    flushEdit();
+    const res = await runRebuild(reader, { id: slot.id, name: slot.name, file: slot.file }, { status: (m, k) => setStatus(m, k ?? 'info') });
+    return res ? { filename: res.filename, revisionId: res.revisionId, pages: res.pages, size: res.bytes.length } : null;
+  };
+  (window as any).__accelon26OpenBuilt = async () => {
+    const slot = activeSlot();
+    if (!reader || !slot) return null;
+    flushEdit();
+    const res = await runRebuild(reader, { id: slot.id, name: slot.name, file: slot.file }, { status: (m, k) => setStatus(m, k ?? 'info') });
+    if (!res) return null;
+    const file = new File([res.bytes as unknown as BlobPart], res.filename, { type: 'application/octet-stream', lastModified: Date.now() }) as unknown as AdbSource;
+    await openFile(file);
+    return { name: res.filename, size: res.bytes.length, revisionId: res.revisionId };
+  };
+  // 有未產生的修訂就攔一下關閉（瀏覽器只允許顯示制式訊息）
+  window.addEventListener('beforeunload', (ev) => {
+    const dirty = openDbs.some((d) => editCount(findSession(sourceKey(d.file))) > 0);
+    if (!dirty) return;
+    ev.preventDefault();
+    ev.returnValue = '';
+  });
 
   // live search: re-run on every keystroke (posting lists are cached per token)
   const query = $('#query') as HTMLInputElement;
@@ -1511,7 +1559,9 @@ export function installDebugApi(): void {
 
 import { loadTree } from './search';
 
-import { MAX_DBS, activeCatalogKey, catalogAdd, catalogAddFile, catalogEmpty, catalogState, dbLog, dbPickOpen, needsAddItem, openDbs, pickAddFile, renderDbPick, setDbHooks, setDbPickOpen } from './dbs';
+import { MAX_DBS, activeCatalogKey, activeSlot, catalogAdd, catalogAddFile, catalogEmpty, catalogState, dbLog, dbPickOpen, needsAddItem, openDbs, pickAddFile, renderDbPick, setDbHooks, setDbPickOpen, switchTo } from './dbs';
+import { editCount, findSession, sourceKey } from './edit-session';
+import { rebuildAndDownload, runRebuild } from './rebuild-ui';
 import { initTextPane, renderTextPane, resetTextPane, textState } from './text-pane';
 import { hasLogoResource, hideDocLogo, logoState, updateDocLogo } from './logo';
 import { desktopSources, hostState } from './host';

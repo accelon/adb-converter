@@ -37,6 +37,8 @@ export let tokens: TokenRow[] = [];
 export let docs: DocRow[] = [];
 /** 目前打開的 adb 檔名（settings.json 的 profiles.adb 鍵；作者 2026-10-22） */
 export let currentFile = '';
+/** 目前這份 adb 的 File/Blob 身分（file:// 版沒有 path，編輯工作階段靠它當 key） */
+export let currentSource: AdbSource | null = null;
 let blocksVirtual: number[] = [];
 let currentDoc: DocRow | null = null;
 /** true while a database load is in flight (guards a double `change` event) */
@@ -151,6 +153,8 @@ export async function openFile(file: AdbSource): Promise<'opened' | 'existing' |
   // state from its own load).
   saveLoaded();
   detachLoaded();          // the globals are nobody's until the new slot registers
+  // only now: snapshotDocPane above needed the OLD source to stage its editor
+  currentSource = file;
   // a new database invalidates every derived cache, tree, tab and cursor. Each
   // module owns its state, so it owns its reset too (imported bindings are live
   // and read-only from here).
@@ -302,7 +306,7 @@ export const mods = (ev?: { ctrlKey?: boolean; metaKey?: boolean }): { newTab?: 
 
 /** the viewer's own per-database state (each module snapshots its own) */
 export function snapshotCore() {
-  return { reader, mapper, session, tokens, docs, currentFile, blocksVirtual, currentDoc, lastOpen, lastTreeMs };
+  return { reader, mapper, session, tokens, docs, currentFile, currentSource, blocksVirtual, currentDoc, lastOpen, lastTreeMs };
 }
 export function restoreCore(s: any): void {
   reader = s.reader ?? null;
@@ -311,6 +315,7 @@ export function restoreCore(s: any): void {
   tokens = s.tokens ?? [];
   docs = s.docs ?? [];
   currentFile = s.currentFile ?? '';
+  currentSource = s.currentSource ?? null;
   setActiveDb(currentFile, reader?.header.dbcname || reader?.header.dbname || currentFile);
   blocksVirtual = s.blocksVirtual ?? [];
   currentDoc = s.currentDoc ?? null;

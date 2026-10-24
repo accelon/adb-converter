@@ -36,6 +36,13 @@ bun run test/index-match.ts # 反向索引認證
 
 舊版 CLI（結構分析/匯出）仍可用：`bun run src/cli.ts analyze|inspect|export|bench <adb>`
 
+## 網頁版編輯（2026-10-24）
+
+`build/accelon26.html` 現在可以在瀏覽器裡直接修錯字：按本文右上角的鉛筆進入編輯態，
+離開自動暫存，db 分頁會出現「n 頁修訂」；按存檔圖示重建並下載新的 `.adb`，
+修訂 diff 存在 adb 的 `revisions` 容器（舊 accelon3.exe 不會讀）。目前限制 50 MB 以下。
+詳見 [EDIT-MODE.md](EDIT-MODE.md)。
+
 ## 文件
 
 * **[ACCELON26-HANDOVER.md](ACCELON26-HANDOVER.md) — accelon26 應用（桌面版＋官網）的交接文件（先看開頭的「現況」，本輪細節在 §13）**

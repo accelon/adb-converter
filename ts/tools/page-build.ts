@@ -50,9 +50,18 @@ export async function buildSingleFileHtml(): Promise<{ html: string; jsKiB: stri
   }
   const js = await built.outputs[0].text();
   const template = readFileSync(resolve(here, '../src/accelon26/accelon26.template.html'), 'utf8');
+  // CodeMirror 6: vendored, loaded as a classic script before the viewer bundle.
+  let cm = '';
+  try {
+    cm = readFileSync(resolve(here, '../src/vendor/codemirror/codemirror.js'), 'utf8')
+      .replace(/<\/script/gi, '<\\/script');
+  } catch {
+    cm = '/* CodeMirror bundle not built: run tools/build-codemirror.ts */';
+  }
   const links = appIconLinks();
   const html = template
     .replace('/*__VIEWER_BUNDLE__*/', () => js)
+    .replace('/*__CM_BUNDLE__*/', () => cm)
     .replace('<!--__APPICON__-->', () => links)
     // 建置時間：About 頁顯示用（桌面版另外有宿主回報的 exe 時間，會蓋過這個）
     .replace('<!--__BUILD_TIME__-->', () => `<script>window.__ACCELON_BUILD__=${JSON.stringify(buildInfo())};</script>`);

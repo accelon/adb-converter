@@ -25,6 +25,14 @@ sourcecode/
 #   https://github.com/CNMan/Unicode/blob/master/Unihan/Unihan_Variants.txt
 # 產物 ts/src/accelon26/variant-data.ts 有 commit，建置不需要 vendor/
 vendor/
+# 編輯器與 bzip2 wasm 是單檔 HTML 的執行期檔案（不是開發草稿），要進版控
+!ts/src/vendor/
+ts/src/vendor/*
+!ts/src/vendor/bzip2.js
+!ts/src/vendor/codemirror/
+!ts/src/vendor/codemirror/**
+!ts/src/vendor/bzip2-wasm/
+!ts/src/vendor/bzip2-wasm/**
 
 # 匯出／測試產物
 *_small/

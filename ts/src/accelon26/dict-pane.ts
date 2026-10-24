@@ -263,6 +263,8 @@ export function initDictPane(): void {
     window.setTimeout(() => { lookupSelectedText(); }, 0);
   }, true);
   document.addEventListener('selectionchange', () => {
+    // 編輯態不要用選取文字查詞（使用者是在改字，不是在閱讀）
+    if (document.querySelector('.cm-editor')) return;
     window.clearTimeout(selectionTimer);
     if (!selectedDictText()) {
       resetSelectionLookup();
@@ -273,6 +275,7 @@ export function initDictPane(): void {
   });
   document.addEventListener('click', (ev) => {
     const target = ev.target as HTMLElement | null;
+    if (target?.closest?.('.cm-editor') || target?.closest?.('.editBar')) return;
     if (!target?.closest?.('#docText')) return;
     if (lookupSelectedText()) return;
     if (!autoDictOn()) return;

@@ -8,6 +8,7 @@
 import { $, displayName, docs, escapeHtml, fmtBytes, fmtInt, mapper, reader, setStatus, tokens } from './viewer';
 import { desktopExportTextImages, desktopHost, desktopRevealInFolder } from './host';
 import { revealHit, showLine } from './link';
+import { readRevisions } from './rebuild-browser';
 
 let showAllClasses = false;
 
@@ -368,6 +369,58 @@ async function vapaProbe(va: number): Promise<unknown> {
   return ctx ? { block: ctx.block, pa: ctx.pa, hit: ctx.text.slice(ctx.hitStart, ctx.hitEnd), kind: ctx.element?.kind, tag: ctx.element?.tag ?? null } : null;
 }
 
+/**
+ * 修訂頁（進階模式，作者 2026-10-24）：讀 adb 的 revisions 容器，
+ * 顯示每次 rebuild 的版本與「哪一頁、哪一行、哪個字」被改。
+ */
+export async function renderRevisions(): Promise<void> {
+  const pane = document.getElementById('revisionsPane');
+  if (!pane) return;
+  if (!reader) { pane.innerHTML = '<p class="revisionEmpty">尚未開啟資料庫。</p>'; return; }
+  const revs = await readRevisions(reader);
+  if (!revs.length) { pane.innerHTML = '<p class="revisionEmpty">這個 adb 還沒有修訂紀錄。</p>'; return; }
+  const short = (s: string, n = 120): string => {
+    const t = s.replace(/\n/g, ' ');
+    return t.length > n ? t.slice(0, n) + '…' : t;
+  };
+  const cards: string[] = [];
+  for (const rev of revs.slice().reverse()) {
+    let data: any = null;
+    try { data = JSON.parse(new TextDecoder().decode(rev.blob)); } catch { data = null; }
+    if (!data || data.format !== 'accelon26-revision/1') {
+      cards.push('<div class="revisionCard"><div class="revisionHead"><b>' + escapeHtml(rev.id) + '</b><span>無法解讀（' + rev.blob.length + ' bytes）</span></div></div>');
+      continue;
+    }
+    const when = data.createdAt ? new Date(data.createdAt).toLocaleString() : '';
+    const pages: any[] = Array.isArray(data.pages) ? data.pages : [];
+    const parts: string[] = [];
+    for (const p of pages) {
+      const changes: any[] = Array.isArray(p.changes) ? p.changes : [];
+      const rows: string[] = [];
+      for (const c of changes) {
+        const line = (Number(c.line) || 0) + 1;
+        const show = (s: any): string => (s ? escapeHtml(short(String(s))) : '（空）');
+        if (c.kind === 'replace') {
+          rows.push('<div class="revisionChange">行 ' + line + '：<span class="del">' + show(c.oldText) + '</span> → <span class="ins">' + show(c.newText) + '</span></div>');
+        } else if (c.kind === 'insert') {
+          rows.push('<div class="revisionChange">行 ' + line + '：新增 <span class="ins">' + escapeHtml(short(c.newLine ?? '')) + '</span></div>');
+        } else {
+          rows.push('<div class="revisionChange">行 ' + line + '：刪除 <span class="del">' + escapeHtml(short(c.oldLine ?? '')) + '</span></div>');
+        }
+      }
+      parts.push('<div class="revisionPage"><b>' + escapeHtml(p.doc || '本文') + ' · 行 '
+        + (Number(p.first) + 1) + '–' + (Number(p.last) + 1) + '</b>'
+        + ' <span class="dim">' + (p.oldLineCount ?? '?') + ' → ' + (p.newLineCount ?? '?') + ' 行</span>'
+        + (rows.length ? rows.join('') : '<div class="revisionChange">（無文字差異）</div>')
+        + '</div>');
+    }
+    cards.push('<div class="revisionCard"><div class="revisionHead"><b>' + escapeHtml(data.id || rev.id) + '</b>'
+      + '<span>' + escapeHtml(when) + '</span><span>' + pages.length + ' 頁</span>'
+      + '<span>基底 ' + fmtInt(data.base?.lineCount ?? 0) + ' 行</span></div>'
+      + (parts.join('') || '<div class="revisionChange">（沒有頁面紀錄）</div>') + '</div>');
+  }
+  pane.innerHTML = cards.join('');
+}
 import { AdbHeader, AdbReader, CLASS_LABELS, TokenRow } from './adb';
 
 function snapshotPanes() {

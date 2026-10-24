@@ -5,7 +5,7 @@
  * ./viewer and the other split modules as ESM live bindings; a module OWNS the
  * state it declares, and other modules get/set it through that module's exports.
  */
-import { $, displayName, docs, escapeHtml, fmtInt, mapper, reader, session, setStatus } from './viewer';
+import { $, currentFile, currentSource, displayName, docs, escapeHtml, fmtInt, mapper, reader, session, setStatus } from './viewer';
 import { PAGE } from './panes';
 import { cursorPending, hasRealmNeighbor, paintTreeActive, pinnedHit, revealHit, setCursorPending, setPinnedHit, stepRealm, syncCursorFromScroll } from './link';
 import { paintHit } from './paint';
@@ -15,6 +15,8 @@ import { tagColorOf } from './tag-style';
 import { kwMarks } from './kw-marks';
 import { displayConverter, type SimMode } from './lossless';
 import { isDictDb } from './db-kind';
+import { discardPage, hasEditsInRange, onEditsChange, pageEditAt, pageKey, sessionFor as editSessionFor, stagePage, type DbEditSession } from './edit-session';
+import { mountPageEditor, type PageEditor } from './editor';
 
 /**
  * 進階模式的「顯示原始文件」：打開＝不渲染（原始的 XML 文字），預設關閉＝渲染成 HTML。
@@ -139,6 +141,10 @@ interface DocSession {
   } | null;
   /** last rendered page (per session, so switching tabs does not re-read) */
   cache: { page: number; dt: Awaited<ReturnType<VaPaMapper['docText']>>; key: string } | null;
+  /** 這一頁正在編輯（CodeMirror） */
+  editing?: boolean;
+  /** 回到這一頁時自動進編輯態（使用者按「完成」後暫時關掉） */
+  autoEdit?: boolean;
 }
 
 let docTabs: DocSession[] = [];
@@ -296,6 +302,13 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
   }
   const b = pageBounds(s.realm, s.page);
   s.page = Math.max(0, Math.min(s.page, b.pages - 1));
+  // page (or tab/db) changed: keep what the user typed, then leave edit mode;
+  // the target page auto-enters edit mode below if it already has a revision.
+  if (activeEditor && (activeEditor.s !== s || activeEditor.first !== b.first || activeEditor.last !== b.last)) {
+    stageActiveEditor();
+    s.editing = false;
+    s.autoEdit = true;
+  }
   const key = s.doc.i + ':' + b.first + '-' + b.last;
   const t0 = performance.now();
   if (!s.cache || s.cache.key !== key) {
@@ -306,7 +319,11 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
   // by a line at a document boundary (fgdict), so snap the pinned line ONTO the
   // page it was followed to. This must NOT happen when the reader turns a page —
   // otherwise paging away from the pinned hit would drag the pane straight back.
-  const nums = s.cache.dt.lineNumbers;
+  const dtNow = s.cache.dt;
+  const rr = pageRangeOf(dtNow);
+  const es = editSessionOf();
+  if (!s.editing && s.autoEdit !== false && es && pageEditAt(es, rr.first, rr.last)) s.editing = true;
+  const nums = dtNow.lineNumbers;
   if (targetLine !== undefined && s.pinned && nums.length) {
     if (s.pinned.line < nums[0]) s.pinned.line = nums[0];
     else if (s.pinned.line > nums[nums.length - 1]) s.pinned.line = nums[nums.length - 1];
@@ -491,9 +508,186 @@ function wireTrail(): void {
   });
 }
 
+/**
+ * 編輯態（作者 2026-10-24）：目前頁面的 CodeMirror 實例。
+ *
+ * 只留一個：換頁／換分頁／換庫之前一定先 stageActiveEditor()，把內容寫回
+ * edit-session（記憶體），所以使用者不需要按「儲存」也不會丟。
+ */
+let activeEditor: {
+  ed: PageEditor;
+  first: number;
+  last: number;
+  oldLines: string[];
+  s: DocSession;
+  key: string;
+  docName: string;
+} | null = null;
+
+let stageTimer = 0;
+
+function editSessionOf(): DbEditSession | null {
+  return currentSource ? editSessionFor(currentSource, currentFile || currentSource.name) : null;
+}
+
+function pageRangeOf(dt: Awaited<ReturnType<VaPaMapper['docText']>>): { first: number; last: number } {
+  return { first: dt.lineNumbers[0] ?? 0, last: dt.lineNumbers[dt.lineNumbers.length - 1] ?? 0 };
+}
+
+function docNameOf(s: DocSession): string {
+  return s.doc?.name || s.name || '';
+}
+
+function setEditButton(s: DocSession | null): void {
+  const btn = document.getElementById('editBtn') as HTMLButtonElement | null;
+  if (!btn) return;
+  const on = !!s?.editing;
+  btn.classList.toggle('on', on);
+  btn.title = on ? '完成編輯（內容已自動暫存）' : '編輯這一頁（修錯字；離開會自動暫存）';
+}
+
+function noticeEditor(msg: string): void {
+  const el = document.getElementById('editNotice');
+  if (!el) return;
+  el.textContent = msg;
+  window.setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 2600);
+}
+
+/** Read the editor text into the session WITHOUT destroying the editor. */
+function saveActiveEditorText(): void {
+  const a = activeEditor;
+  if (!a) return;
+  const es = editSessionOf();
+  if (!es) return;
+  try {
+    stagePage(es, a.first, a.last, a.oldLines, a.ed.getLines(), a.docName);
+  } catch (e) {
+    setStatus('暫存失敗：' + (e as Error).message, 'err');
+  }
+}
+
+function destroyActiveEditor(): void {
+  const a = activeEditor;
+  activeEditor = null;
+  if (!a) { (window as any).__accelon26EditView = null; return; }
+  (window as any).__accelon26EditView = null;
+  try { a.ed.destroy(); } catch { /* already gone */ }
+}
+
+/** Stage and remove the editor (page/session/db is changing). */
+export function stageActiveEditor(): void {
+  if (!activeEditor) return;
+  saveActiveEditorText();
+  destroyActiveEditor();
+}
+
+/** Called by the db chip save button before a rebuild. */
+export function flushEdit(): void {
+  saveActiveEditorText();
+}
+
+export function enterEdit(s: DocSession): void {
+  if (!s || !s.cache?.dt) return;
+  if (reader && reader.header.size > 50 * 1024 * 1024) {
+    setStatus('這個 adb 超過 50 MB，網頁版暫不支援編輯（桌面版或 Go 版再處理）', 'err');
+    return;
+  }
+  if (s.cache.dt.lines.some((l) => l.includes('\n') || l.includes('\r'))) {
+    setStatus('這一頁的行內含換行字元，CodeMirror 會改變行界，暫不開放編輯', 'err');
+    return;
+  }
+  stageActiveEditor();
+  s.editing = true;
+  s.autoEdit = true;
+  renderDoc(s);
+}
+
+export function exitEdit(s: DocSession): void {
+  stageActiveEditor();
+  s.editing = false;
+  s.autoEdit = false;
+  renderDoc(s);
+}
+
+/** 取消本頁：丟掉這一頁的修訂，回到 base 內容。 */
+export function cancelPageEdit(s: DocSession): void {
+  const dt = s.cache?.dt;
+  if (!dt) return;
+  const r = pageRangeOf(dt);
+  const es = editSessionOf();
+  destroyActiveEditor();
+  if (es) discardPage(es, r.first, r.last);
+  s.editing = false;
+  s.autoEdit = false;
+  renderDoc(s);
+}
+
+function scheduleStage(): void {
+  window.clearTimeout(stageTimer);
+  stageTimer = window.setTimeout(() => saveActiveEditorText(), 420);
+}
+
+/** The editor view for one page (header + toolbar + CodeMirror). */
+function renderEditPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docText']>>): void {
+  const b = pageBounds(s.realm, s.page);
+  const r = pageRangeOf(dt);
+  const key = pageKey(r.first, r.last);
+  if (activeEditor && activeEditor.s === s && activeEditor.key === key
+    && document.body.contains(activeEditor.ed.view.dom)) {
+    renderDocTabs(s);
+    renderPager(s, b);
+    setEditButton(s);
+    return;
+  }
+  stageActiveEditor();
+  const nFirst = dt.lineNumbers[0] ?? 0;
+  const nLast = dt.lineNumbers[dt.lineNumbers.length - 1] ?? 0;
+  const es = editSessionOf();
+  const staged = es ? pageEditAt(es, r.first, r.last) : undefined;
+  const lines = staged ? staged.newLines : dt.lines;
+  $('#docText').innerHTML = '<div class="docTop">'
+    + (isDictDb(mapper)
+      ? ''
+      : '<div class="docHead">' + escapeHtml(displayName(s.name))
+        + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁 · 行 '
+        + fmtInt(nFirst) + '–' + fmtInt(nLast) + ' · <b style="color:var(--gold)">編輯中</b></span></div>')
+    + renderAncestorTrail(s)
+    + '</div>'
+    + '<div id="docEditor">'
+    + '<div class="editBar"><span class="grow">離開這一頁會自動暫存 · 選一段文字後貼上 tag 可包住它 · 刪除 &lt; 或 &gt; 會刪掉整個標籤</span>'
+    + '<button type="button" class="mini" id="editDone" title="完成這一頁（自動暫存）">完成</button>'
+    + '<button type="button" class="mini" id="editCancel" title="丟掉這一頁的修改">取消本頁</button>'
+    + '<span class="editNotice" id="editNotice"></span></div>'
+    + '<div class="cmHost" id="cmHost"></div>'
+    + '</div>';
+  renderDocTabs(s);
+  renderPager(s, b);
+  wireTrail();
+  setEditButton(s);
+  const host = document.getElementById('cmHost');
+  if (!host) return;
+  const ed = mountPageEditor(host, lines.slice(), { onChange: scheduleStage, onNotice: noticeEditor });
+  activeEditor = { ed, first: r.first, last: r.last, oldLines: dt.lines.slice(), s, key, docName: docNameOf(s) };
+  // diagnostics / headless tests
+  (window as any).__accelon26EditView = ed.view;
+  (document.getElementById('editDone') as HTMLButtonElement | null)?.addEventListener('click', () => exitEdit(s));
+  (document.getElementById('editCancel') as HTMLButtonElement | null)?.addEventListener('click', () => cancelPageEdit(s));
+  // the editor owns the keyboard; Esc = 完成
+  ed.view.dom.addEventListener('keydown', (ev: KeyboardEvent) => {
+    if (ev.key === 'Escape') { ev.preventDefault(); exitEdit(s); }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 's') {
+      ev.preventDefault();
+      saveActiveEditorText();
+      noticeEditor('已暫存');
+    }
+  });
+}
+
 /** render one page: tab strip, header, rows, pager. */
 function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   if (!dt) return;
+  setEditButton(s);
+  if (s.editing) { renderEditPage(s, dt); return; }
   lastDocLines = dt.lines;
   // The pinned line is marked HERE (synchronously) so the row exists with its
   // hitLine class the moment the page is in the DOM; paintHit only adds the mark.
@@ -566,10 +760,14 @@ function renderDocTabs(s: DocSession): void {
   // The strip shows as soon as one tab exists, so the ＋ (and therefore the
   // Ctrl+click alternative for a new tab) is always reachable.
   bar.hidden = docTabs.length < 1;
-  strip.innerHTML = docTabs.map((t, i) =>
-    '<span class="docTab' + (i === docActive ? ' active' : '') + '" data-i="' + i + '" title="' + escapeHtml(t.name) + '">'
-    + '<span class="docTabName">' + escapeHtml(shortLabel(t.name, 8)) + '</span>'
-    + '<span class="docTabClose" data-close="' + i + '" title="關閉分頁">✕</span></span>').join('');
+  const es = editSessionOf();
+  strip.innerHTML = docTabs.map((t, i) => {
+    const rb = boundsOfRealm(t.realm);
+    const dirty = hasEditsInRange(es, rb.first, rb.last);
+    return '<span class="docTab' + (i === docActive ? ' active' : '') + (dirty ? ' dirty' : '') + '" data-i="' + i + '" title="' + escapeHtml(t.name) + '">'
+      + '<span class="docTabName">' + escapeHtml(shortLabel(t.name, 8)) + '</span>'
+      + '<span class="docTabClose" data-close="' + i + '" title="關閉分頁">✕</span></span>';
+  }).join('');
   strip.querySelectorAll<HTMLElement>('.docTab').forEach((el) => {
     el.onclick = (ev) => {
       const close = (ev.target as HTMLElement | null)?.closest('.docTabClose') as HTMLElement | null;
@@ -591,6 +789,8 @@ function renderDocTabs(s: DocSession): void {
 async function switchDocTab(i: number): Promise<void> {
   const t = docTabs[i];
   if (!t) return;
+  stageActiveEditor();
+  t.autoEdit = true;
   docActive = i;
   setPinnedHit(t.pinned);
   if (t.cache) renderDoc(t);
@@ -601,6 +801,7 @@ async function switchDocTab(i: number): Promise<void> {
 /** close a tab; the remaining tabs keep their own page */
 function closeDocTab(i: number): void {
   if (i < 0 || i >= docTabs.length) return;
+  if (docTabs[i] && activeEditor?.s === docTabs[i]) stageActiveEditor();
   docTabs.splice(i, 1);
   if (!docTabs.length) {
     setPinnedHit(null);
@@ -952,6 +1153,7 @@ export const setDocFontSized = (b: boolean): void => { docFontSized = b; };
 
 /** a fresh database invalidates every open tab and every derived page cache */
 export function resetDocPane(): void {
+  destroyActiveEditor();
   docTabs = [];
   docActive = 0;
   docFontSized = false;
@@ -962,6 +1164,12 @@ export function resetDocPane(): void {
   pagerLog.length = 0;
 }
 
+// 修訂數變動：docTab 的紅底即時更新（dbChip 由 dbs.ts 自己訂閱）
+onEditsChange(() => {
+  const s = docSession();
+  if (s) renderDocTabs(s);
+});
+
 import { DocRow } from './adb';
 
 import { VaPaMapper } from './vapa';
@@ -969,9 +1177,12 @@ import { updateDocLogo } from './logo';
 
 /** everything the document pane keeps for ONE database */
 function snapshotDocPane() {
+  // the CodeMirror view is not serialisable; write its text into the session first
+  stageActiveEditor();
   return { docTabs, docActive, docSeq, lastDocLines, lastLink, lastFit };
 }
 function restoreDocPane(s: any): void {
+  destroyActiveEditor();
   docTabs = s.docTabs ?? [];
   docActive = s.docActive ?? 0;
   docSeq = s.docSeq ?? 0;

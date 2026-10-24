@@ -14,6 +14,7 @@
     "test:backend": "bun run test/backend-cases.test.ts",
     "test:go": "cd ../wails && go test ./...",
     "test:tour": "bun run test/tour.test.ts",
+    "test:edit": "bun run test/edit-session.test.ts && bun run test/rebuild-browser.test.ts",
     "test:tour-ui": "bun run tools/tour-test.ts",
     "build:tours": "bun run tools/build-tours.ts",
     "cases": "bun run tools/make-search-cases.ts",
