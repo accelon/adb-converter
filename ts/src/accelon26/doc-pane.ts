@@ -680,7 +680,8 @@ function pageRangeOf(dt: Awaited<ReturnType<VaPaMapper['docText']>>): { first: n
 }
 
 function docNameOf(s: DocSession): string {
-  return s.doc?.name || s.name || '';
+  // 目錄節點名稱（樹已依 s="$tag" / s="*tag" 的優先序解析）比 <檔> 檔名更適合當修訂清單
+  return s.name || s.doc?.name || '';
 }
 
 function setEditControls(s: DocSession | null): void {
@@ -759,21 +760,35 @@ export async function openHistoryPage(detail: { revisionId: string; page: any })
   const doc = docOfVa(va);
   const realm = { from: doc.vaStart, to: doc.vaEnd || reader.header.maxBlockOffset };
   stageActiveEditor();
-  const existing = docTabs.find((t) => t.history && t.history.revisionId === detail.revisionId && t.history.first === first);
-  if (existing) {
-    docActive = docTabs.indexOf(existing);
-    renderDoc(existing);
-    return;
-  }
   const label = (detail.revisionId ? detail.revisionId + ' · ' : '') + (p.doc || doc.name || '歷史');
-  const s = sessionFor(realm, label, true);
-  s.history = {
+  const history = {
     revisionId: detail.revisionId,
     first, last,
     doc: p.doc || doc.name || '',
     oldLines: Array.isArray(p.oldLines) ? p.oldLines : [],
     newLines: Array.isArray(p.newLines) ? p.newLines : [],
   };
+  // 歷史版本只留一個分頁：換頁／換版本都覆用同一個 docTab
+  const existing = docTabs.find((t) => t.history && t === docSession()) ?? docTabs.find((t) => t.history);
+  if (existing) {
+    existing.realm = realm;
+    existing.doc = doc;
+    existing.name = label;
+    existing.history = history;
+    existing.page = 0;
+    existing.cache = null;
+    existing.pinned = null;
+    existing.editing = false;
+    existing.showDiff = false;
+    existing.autoEdit = false;
+    docActive = docTabs.indexOf(existing);
+    setPinnedHit(null);
+    await ensurePage(existing, first);
+    paintTreeActive();
+    return;
+  }
+  const s = sessionFor(realm, label, true);
+  s.history = history;
   s.page = 0;
   s.editing = false;
   s.showDiff = false;
@@ -998,7 +1013,17 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
   wireTrail();
   setEditControls(s);
   const view = document.querySelector<HTMLElement>('.diffView');
-  if (view) view.scrollTop = 0;
+  if (view) {
+    // 跳到第一個差異（不是頁首）；history 也一樣
+    const firstChange = view.querySelector<HTMLElement>('.diffRow.char, .diffRow.del, .diffRow.ins');
+    if (firstChange) {
+      const vr = view.getBoundingClientRect();
+      const rr = firstChange.getBoundingClientRect();
+      view.scrollTop += rr.top - vr.top - Math.max(0, (view.clientHeight - rr.height) / 2);
+    } else {
+      view.scrollTop = 0;
+    }
+  }
 }
 
 /** render one page: tab strip, header, rows, pager. */

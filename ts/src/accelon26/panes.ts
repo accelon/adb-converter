@@ -9,7 +9,6 @@ import { $, displayName, docs, escapeHtml, fmtBytes, fmtInt, mapper, reader, set
 import { desktopExportTextImages, desktopHost, desktopRevealInFolder } from './host';
 import { revealHit, showLine } from './link';
 import { readRevisions } from './rebuild-browser';
-import { charDiff } from './char-diff';
 
 let showAllClasses = false;
 
@@ -380,10 +379,6 @@ export async function renderRevisions(): Promise<void> {
   if (!reader) { pane.innerHTML = '<p class="revisionEmpty">尚未開啟資料庫。</p>'; return; }
   const revs = await readRevisions(reader);
   if (!revs.length) { pane.innerHTML = '<p class="revisionEmpty">這個 adb 還沒有修訂紀錄。</p>'; return; }
-  const short = (s: string, n = 120): string => {
-    const t = s.replace(/\n/g, ' ');
-    return t.length > n ? t.slice(0, n) + '…' : t;
-  };
   const cards: string[] = [];
   const byId = new Map<string, any>();
   const latestId = revs[revs.length - 1]?.id;
@@ -401,37 +396,17 @@ export async function renderRevisions(): Promise<void> {
     const parts: string[] = [];
     for (let pi = 0; pi < pages.length; pi++) {
       const p = pages[pi];
-      const changes: any[] = Array.isArray(p.changes) ? p.changes : [];
-      const rows: string[] = [];
-      for (const c of changes) {
-        const line = (Number(c.line) || 0) + 1;
-        if (c.kind === 'replace') {
-          const seg = charDiff(String(c.oldLine ?? ''), String(c.newLine ?? '')).map((s) => {
-            if (s.kind === 'del') return '<span class="diff-del-inner">' + escapeHtml(s.text) + '</span>';
-            if (s.kind === 'ins') return '<span class="diff-ins-inner">' + escapeHtml(s.text) + '</span>';
-            return escapeHtml(s.text);
-          }).join('');
-          rows.push('<div class="revisionChange">行 ' + line + '：' + seg + '</div>');
-        } else if (c.kind === 'insert') {
-          rows.push('<div class="revisionChange">行 ' + line + '：新增 <span class="ins">' + escapeHtml(short(c.newLine ?? '')) + '</span></div>');
-        } else {
-          rows.push('<div class="revisionChange">行 ' + line + '：刪除 <span class="del">' + escapeHtml(short(c.oldLine ?? '')) + '</span></div>');
-        }
-      }
       parts.push('<div class="revisionPage" data-rev="' + escapeHtml(revId) + '" data-page="' + pi + '" title="點一下看這一頁的 diff">'
-        + '<b>' + escapeHtml(p.doc || '本文') + ' · 行 '
-        + (Number(p.first) + 1) + '–' + (Number(p.last) + 1) + '</b>'
-        + ' <span class="dim">' + (p.oldLineCount ?? '?') + ' → ' + (p.newLineCount ?? '?') + ' 行</span>'
+        + '<b>' + escapeHtml(p.doc || '本文') + '</b>'
         + '<span class="openHint">看 diff</span>'
-        + (rows.length ? rows.join('') : '<div class="revisionChange">（無文字差異）</div>')
         + '</div>');
     }
     const rollback = (data.id || rev.id) === latestId
       ? '<button type="button" class="mini" data-rollback="' + escapeHtml(data.id || rev.id) + '" title="下載這一版之前的 adb（內容回滾；目前檔案不變）">退回上一版</button>'
       : '';
     cards.push('<div class="revisionCard"><div class="revisionHead"><b>' + escapeHtml(data.id || rev.id) + '</b>'
-      + '<span>' + escapeHtml(when) + '</span><span>' + pages.length + ' 頁</span>'
-      + '<span>基底 ' + fmtInt(data.base?.lineCount ?? 0) + ' 行</span>' + rollback + '</div>'
+      + '<span>' + escapeHtml(when) + '</span><span>' + pages.length + ' 個節點</span>'
+      + rollback + '</div>'
       + (parts.join('') || '<div class="revisionChange">（沒有頁面紀錄）</div>') + '</div>');
   }
   pane.innerHTML = '<div class="revisionsSummary">共 <b>' + revs.length + '</b> 次 rebuild</div>' + cards.join('');
