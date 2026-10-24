@@ -305,6 +305,8 @@ export interface BuildOptions {
   edits: PageEdit[];
   key: string;
   revision?: RevisionRecord;
+  /** 回滾用：只保留前 N 個 revisions block（0 = 全部丟掉） */
+  keepRevisions?: number;
   progress?: BuildProgress;
 }
 
@@ -378,8 +380,12 @@ export async function buildAdb(opts: BuildOptions): Promise<Uint8Array> {
 
   // revisions: keep every earlier block, append this build's record
   const revisionsC = reader.containers.get('revisions');
-  const revBlocks = revisionsC ? await rawBlocks(reader, revisionsC) : [];
-  const revNames = revisionsC ? revisionsC.names.slice() : [];
+  let revBlocks = revisionsC ? await rawBlocks(reader, revisionsC) : [];
+  let revNames = revisionsC ? revisionsC.names.slice() : [];
+  if (opts.keepRevisions !== undefined) {
+    revBlocks = revBlocks.slice(0, Math.max(0, opts.keepRevisions));
+    revNames = revNames.slice(0, Math.max(0, opts.keepRevisions));
+  }
   if (opts.revision) {
     revNames.push(opts.revision.id);
     revBlocks.push(utf8Bytes(JSON.stringify(opts.revision)));
@@ -398,6 +404,8 @@ export async function buildAdb(opts: BuildOptions): Promise<Uint8Array> {
   // anything unknown but present in the original is preserved verbatim
   for (const name of outerNames) {
     if (parts.has(name)) continue;
+    // revisions is handled above; a dropped revision must not be copied back
+    if (name === 'revisions') continue;
     const copy = await copyContainer(reader, name);
     if (copy) parts.set(name, copy);
   }

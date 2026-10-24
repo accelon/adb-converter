@@ -242,6 +242,22 @@ export function diffPage(e: PageEdit): PageDiff {
   };
 }
 
+/**
+ * Reverse one stored revision on the current (merged) lines. Pages are restored
+ * bottom-up, using the recorded newLineCount as the length of the current page.
+ */
+export function revertRevision(current: readonly string[], rev: any): string[] {
+  const out = current.slice();
+  const pages = Array.isArray(rev?.pages) ? rev.pages.slice() : [];
+  pages.sort((a: any, b: any) => Number(b.first) - Number(a.first));
+  for (const p of pages) {
+    if (!Array.isArray(p.oldLines)) throw new Error('revision 缺少 oldLines，無法回滾');
+    const n = Number.isFinite(p.newLineCount) ? Number(p.newLineCount) : p.oldLines.length;
+    out.splice(Number(p.first), n, ...p.oldLines);
+  }
+  return out;
+}
+
 export interface RevisionRecord {
   format: 'accelon26-revision/1';
   id: string;

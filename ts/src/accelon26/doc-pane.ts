@@ -24,7 +24,9 @@ import { mountPageEditor, type PageEditor } from './editor';
  */
 const RAW_KEY = 'accelon26.showraw';
 
-let renderRaw = (() => { try { return localStorage.getItem(RAW_KEY) === '1'; } catch { return false; } })();
+// 「原始文件」已取消（2026-10-24，改成鉛筆編輯）；舊設定不再生效。
+let renderRaw = false;
+try { localStorage.removeItem(RAW_KEY); } catch { /* 私密模式 */ }
 
 export function renderRawOn(): boolean {
   return renderRaw;

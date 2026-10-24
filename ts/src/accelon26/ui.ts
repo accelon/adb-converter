@@ -1237,6 +1237,16 @@ function boot() {
       openFile: (f) => openFile(f),
     });
   });
+  // 修訂頁的「退回上一版」按鈕
+  window.addEventListener('accelon26:rollback', () => {
+    const slot = activeSlot();
+    if (!slot || !reader) return;
+    flushEdit();
+    void rollbackAndDownload(reader, { id: slot.id, name: slot.name, file: slot.file }, {
+      status: (msg, kind) => setStatus(msg, kind ?? 'info'),
+      openFile: (f) => openFile(f),
+    });
+  });
   // headless 測試／診斷：直接回傳重建結果（不觸發下載）
   (window as any).__accelon26EditBuild = async () => {
     const slot = activeSlot();
@@ -1561,7 +1571,7 @@ import { loadTree } from './search';
 
 import { MAX_DBS, activeCatalogKey, activeSlot, catalogAdd, catalogAddFile, catalogEmpty, catalogState, dbLog, dbPickOpen, needsAddItem, openDbs, pickAddFile, renderDbPick, setDbHooks, setDbPickOpen, switchTo } from './dbs';
 import { editCount, findSession, sourceKey } from './edit-session';
-import { rebuildAndDownload, runRebuild } from './rebuild-ui';
+import { rebuildAndDownload, rollbackAndDownload, runRebuild } from './rebuild-ui';
 import { initTextPane, renderTextPane, resetTextPane, textState } from './text-pane';
 import { hasLogoResource, hideDocLogo, logoState, updateDocLogo } from './logo';
 import { desktopSources, hostState } from './host';

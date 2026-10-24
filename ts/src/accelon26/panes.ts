@@ -384,6 +384,7 @@ export async function renderRevisions(): Promise<void> {
     return t.length > n ? t.slice(0, n) + '…' : t;
   };
   const cards: string[] = [];
+  const latestId = revs[revs.length - 1]?.id;
   for (const rev of revs.slice().reverse()) {
     let data: any = null;
     try { data = JSON.parse(new TextDecoder().decode(rev.blob)); } catch { data = null; }
@@ -414,12 +415,18 @@ export async function renderRevisions(): Promise<void> {
         + (rows.length ? rows.join('') : '<div class="revisionChange">（無文字差異）</div>')
         + '</div>');
     }
+    const rollback = (data.id || rev.id) === latestId
+      ? '<button type="button" class="mini" data-rollback="' + escapeHtml(data.id || rev.id) + '" title="下載這一版之前的 adb（內容回滾；目前檔案不變）">退回上一版</button>'
+      : '';
     cards.push('<div class="revisionCard"><div class="revisionHead"><b>' + escapeHtml(data.id || rev.id) + '</b>'
       + '<span>' + escapeHtml(when) + '</span><span>' + pages.length + ' 頁</span>'
-      + '<span>基底 ' + fmtInt(data.base?.lineCount ?? 0) + ' 行</span></div>'
+      + '<span>基底 ' + fmtInt(data.base?.lineCount ?? 0) + ' 行</span>' + rollback + '</div>'
       + (parts.join('') || '<div class="revisionChange">（沒有頁面紀錄）</div>') + '</div>');
   }
   pane.innerHTML = cards.join('');
+  pane.querySelectorAll<HTMLElement>('[data-rollback]').forEach((btn) => {
+    btn.onclick = () => window.dispatchEvent(new CustomEvent('accelon26:rollback', { detail: { id: btn.dataset.rollback } }));
+  });
 }
 import { AdbHeader, AdbReader, CLASS_LABELS, TokenRow } from './adb';
 

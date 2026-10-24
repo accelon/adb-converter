@@ -2,7 +2,7 @@
  * 「產生新 ADB」對話框與流程（file:// 版）。
  */
 import type { AdbReader, AdbSource } from './adb';
-import { applyEdits, diffPage, editCount, findSession, makeRevision, sourceKey, type DbEditSession } from './edit-session';
+import { applyEdits, diffPage, editCount, findSession, makeRevision, revertRevision, sourceKey, type DbEditSession } from './edit-session';
 import { buildAdb, readAllLines, readRevisions } from './rebuild-browser';
 
 export interface RebuildHooks {
@@ -22,6 +22,10 @@ function showModal(html: string, onGo: () => void): void {
   const box = el('editModal'); if (box) box.hidden = false;
   const go = el('editModalGo') as HTMLButtonElement | null;
   if (go) go.onclick = onGo;
+  const close = el('editModalClose'); if (close) close.onclick = closeModal;
+  const backdrop = el('editModalBackdrop'); if (backdrop) backdrop.onclick = closeModal;
+  const cancel = el('editModalCancel') as HTMLButtonElement | null;
+  if (cancel && !cancel.onclick) cancel.onclick = closeModal;
 }
 function closeModal(): void {
   const a = el('editModalBackdrop'); if (a) a.hidden = true;
@@ -76,6 +80,67 @@ export async function openRebuildDialog(reader: AdbReader, slot: RebuildSlot, on
   const close = el('editModalClose'); if (close) close.onclick = closeModal;
   const cancel = el('editModalCancel'); if (cancel) cancel.onclick = closeModal;
   const back = el('editModalBackdrop'); if (back) back.onclick = closeModal;
+}
+
+
+export interface RollbackResult { bytes: Uint8Array; filename: string; revisionId: string; }
+
+/** Rebuild the version BEFORE the latest revision (download only). */
+export async function rollbackLatest(reader: AdbReader, slot: RebuildSlot, hooks: RebuildHooks = {}): Promise<RollbackResult | null> {
+  if (reader.header.size > 50 * 1024 * 1024) {
+    hooks.status?.('這個 adb 超過 50 MB，網頁版暫不支援回滾', 'err');
+    return null;
+  }
+  const revs = await readRevisions(reader);
+  if (!revs.length) { hooks.status?.('這個 adb 沒有修訂紀錄', 'err'); return null; }
+  const latest = JSON.parse(new TextDecoder().decode(revs[revs.length - 1].blob));
+  if (latest?.format !== 'accelon26-revision/1') { hooks.status?.('最新的修訂紀錄格式不認得', 'err'); return null; }
+  const current = await readAllLines(reader);
+  const previous = revertRevision(current, latest);
+  const es = findSession(sourceKey(slot.file));
+  progress('回滾：重建上一版…', 0.02);
+  const bytes = await buildAdb({
+    reader, lines: previous, baseLines: current, edits: [],
+    key: (es?.key ?? 'rollback') + '#rollback:' + latest.id,
+    keepRevisions: revs.length - 1,
+    progress: (phase, done, total) => progress(phase + ' ' + done + '/' + total, total ? 0.02 + 0.9 * (done / total) : 0.5),
+  });
+  progressDone();
+  const filename = baseName(reader, slot) + '-rollback-' + latest.id + '.adb';
+  hooks.status?.('已產生回滾檔 ' + filename + '（' + (bytes.length / 1048576).toFixed(2) + ' MiB）', 'info');
+  return { bytes, filename, revisionId: latest.id };
+}
+
+export async function rollbackAndDownload(reader: AdbReader, slot: RebuildSlot, hooks: RebuildHooks = {}): Promise<void> {
+  const revs = await readRevisions(reader);
+  if (!revs.length) return;
+  const latest = revs[revs.length - 1];
+  if (!window.confirm('要退回 ' + latest.id + ' 之前的版本嗎？會下載一份回滾後的 adb（目前檔案不會被改動）。')) return;
+  progress('回滾：準備中…', 0.01);
+  try {
+    const res = await rollbackLatest(reader, slot, hooks);
+    if (!res) { progressDone(); return; }
+    const url = downloadAdb(res.bytes, res.filename);
+    showModal('<p class="big">✓ 已下載回滾檔 <b>' + esc(res.filename) + '</b></p>'
+      + '<p class="dim">內容已回到 ' + esc(res.revisionId) + ' 之前的版本；這個檔案不再包含那一筆修訂。</p>'
+      + '<p><a class="mini" href="' + url + '" download="' + esc(res.filename) + '">再下載一次</a></p>',
+      () => { closeModal(); });
+    const go = el('editModalGo') as HTMLButtonElement | null;
+    if (go) go.textContent = '關閉';
+    const cancel = el('editModalCancel') as HTMLButtonElement | null;
+    if (cancel) {
+      cancel.textContent = '開啟新檔';
+      cancel.onclick = () => {
+        closeModal();
+        const file = new File([res.bytes as unknown as BlobPart], res.filename, { type: 'application/octet-stream', lastModified: Date.now() }) as unknown as AdbSource;
+        void hooks.openFile?.(file);
+      };
+    }
+  } catch (e) {
+    progressDone();
+    hooks.status?.('回滾失敗：' + (e as Error).message, 'err');
+    showModal('<p style="color:var(--err)"><b>回滾失敗</b></p><p>' + esc((e as Error).message) + '</p>', closeModal);
+  }
 }
 
 export interface RunResult { bytes: Uint8Array; filename: string; revisionId: string; pages: number; }

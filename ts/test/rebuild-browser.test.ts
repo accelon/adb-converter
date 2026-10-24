@@ -11,7 +11,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AdbReader, BlobIO, SyncIO } from '../src/accelon26/adb';
 import { buildAdb, readAllLines, readRevisions } from '../src/accelon26/rebuild-browser';
-import { applyEdits, makeRevision, sessionFor, stagePage } from '../src/accelon26/edit-session';
+import { applyEdits, makeRevision, revertRevision, sessionFor, stagePage } from '../src/accelon26/edit-session';
 
 const args = process.argv.slice(2);
 const adbPath = args.includes('--adb') ? args[args.indexOf('--adb') + 1] : resolve(import.meta.dir, '../../13j.adb');
@@ -66,6 +66,16 @@ ok('revision format', record.format === 'accelon26-revision/1');
 ok('revision page', record.pages.length === 1 && record.pages[0].first === first && record.pages[0].last === last);
 ok('revision keeps old lines', Array.isArray(record.pages[0].oldLines) && record.pages[0].oldLines[target] === base[target]);
 ok('revision change line', record.pages[0].changes[0]?.line === target);
+
+// 3. rollback: reverse the stored revision and drop it from the container
+const prev = revertRevision(lines2, record);
+ok('rollback lines equal base', prev.length === base.length && prev.every((x, i) => x === base[i]), String(prev.length));
+const rb = await buildAdb({ reader: re, lines: prev, baseLines: lines2, edits: [], key: 'rollback:' + adbPath, keepRevisions: 0 });
+const re2 = await AdbReader.open(new BlobIO(new Blob([rb])));
+const lines3 = await readAllLines(re2);
+ok('rollback adb text equals base', lines3.length === base.length && lines3.every((x, i) => x === base[i]));
+ok('rollback drops the revision container', !re2.order.includes('revisions'));
+ok('rollback has no revisions', (await readRevisions(re2)).length === 0);
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exitCode = fail ? 1 : 0;
