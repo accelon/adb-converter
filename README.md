@@ -36,6 +36,12 @@ bun run test/index-match.ts # 反向索引認證
 
 舊版 CLI（結構分析/匯出）仍可用：`bun run src/cli.ts analyze|inspect|export|bench <adb>`
 
+## 閱讀位置（2026-10-25）
+
+每一份 adb（用檔名＋大小區分，所以 `13j.adb`、`13j-v1.adb` 各自記）會把**最後閱讀的
+節點與頁**存在 `localStorage`（`accelon26.lastRead.v1`）；重新開啟或更新 accelon26
+版本後仍會回到那一頁。
+
 ## 網頁版編輯（2026-10-24）
 
 `build/accelon26.html` 現在可以在瀏覽器裡直接修錯字：按本文右上角的鉛筆進入編輯態，

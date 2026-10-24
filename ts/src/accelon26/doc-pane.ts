@@ -334,6 +334,7 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
     else if (s.pinned.line > nums[nums.length - 1]) s.pinned.line = nums[nums.length - 1];
   }
   renderDoc(s);
+  saveLastReadNow();
   return { auto, ms: performance.now() - t0 };
 }
 
@@ -530,6 +531,85 @@ let activeEditor: {
 } | null = null;
 
 let stageTimer = 0;
+
+/* ---------------------------------------------------------------- last read
+ * 每一份 adb（用檔名＋大小當 key，所以 13j.adb 與 13j-v1.adb 各自記）記住最後
+ * 閱讀的節點／頁。localStorage 跟著 origin 走，換 accelon26 版本也還在。
+ */
+const LAST_READ_KEY = 'accelon26.lastRead.v1';
+
+interface LastRead {
+  name: string;
+  from: number;
+  to: number;
+  page: number;
+  /** 該頁第一行（base 行號），用來在行表有變時重新找頁 */
+  line: number;
+  at: number;
+}
+
+function lastReadKey(f: { name: string; size: number }): string {
+  return f.name + ':' + f.size;
+}
+
+function readLastRead(): Record<string, LastRead> {
+  try {
+    const raw = localStorage.getItem(LAST_READ_KEY);
+    const v = raw ? JSON.parse(raw) : {};
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLastRead(map: Record<string, LastRead>): void {
+  try {
+    const entries = Object.entries(map).sort((a, b) => (b[1]?.at ?? 0) - (a[1]?.at ?? 0)).slice(0, 300);
+    localStorage.setItem(LAST_READ_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch { /* 私密模式／配額 */ }
+}
+
+/** Save the active document tab + page. Safe to call often. */
+export function saveLastReadNow(): void {
+  const s = docSession();
+  if (!s || !currentSource) return;
+  try {
+    const b = pageBounds(s.realm, s.page);
+    const map = readLastRead();
+    map[lastReadKey(currentSource)] = {
+      name: s.name,
+      from: s.realm.from,
+      to: s.realm.to,
+      page: s.page,
+      line: b.first,
+      at: Date.now(),
+    };
+    writeLastRead(map);
+  } catch { /* 不要讓閱讀位置影響本文 */ }
+}
+
+/** Restore the last tab/page of this exact file (name + size), if any. */
+export async function restoreLastRead(file: { name: string; size: number }): Promise<boolean> {
+  if (!reader || docTabs.length) return false;
+  const rec = readLastRead()[lastReadKey(file)];
+  if (!rec) return false;
+  const max = reader.header.maxBlockOffset || 0;
+  if (!(Number.isFinite(rec.from) && Number.isFinite(rec.to) && rec.from >= 0 && rec.to > rec.from && rec.from <= max + 1)) return false;
+  try {
+    const s = sessionFor({ from: rec.from, to: rec.to }, rec.name || file.name);
+    s.page = Math.max(0, Number(rec.page) || 0);
+    s.autoEdit = true;
+    docActive = docTabs.indexOf(s);
+    setPinnedHit(null);
+    await ensurePage(s, Number.isFinite(rec.line) ? rec.line : undefined);
+    paintTreeActive();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+
 
 /** 進入編輯前在本文選取的文字（用來把 caret／選取區捲進視窗） */
 let pendingDocSelection: { startLine: number; endLine: number; text: string; startText: string } | null = null;
@@ -970,6 +1050,7 @@ async function switchDocTab(i: number): Promise<void> {
   if (t.cache) renderDoc(t);
   else await ensurePage(t);
   paintTreeActive();
+  saveLastReadNow();
 }
 
 /** close a tab; the remaining tabs keep their own page */
@@ -1353,6 +1434,7 @@ import { updateDocLogo } from './logo';
 function snapshotDocPane() {
   // the CodeMirror view is not serialisable; write its text into the session first
   stageActiveEditor();
+  saveLastReadNow();
   return { docTabs, docActive, docSeq, lastDocLines, lastLink, lastFit };
 }
 function restoreDocPane(s: any): void {

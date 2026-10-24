@@ -23,7 +23,7 @@ import { SNIPPET_LIMIT, lastResult, renderSnippets, resetSummary, runSearch, sea
 import { cursorNode, lastReveal, nodeLabelOf, paintTreeActive, pinnedHit, resetLink, revealCursorInTree, revealHit, showLine } from './link';
 import { resetTextPane } from './text-pane';
 import { setLogoBase, updateDocLogo } from './logo';
-import { DOCFS_DEFAULT, DOCFS_KEY, autoFitFont, boundsCache, boundsOfRealm, docActive, docFontSized, docOfVa, docSession, docTabs, ensurePage, fitDebugInfo, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, paintAsked, readDocFont, renderDocTabs, resetDocPane, sessionFor, setDocFont, wholeRealm } from './doc-pane';
+import { DOCFS_DEFAULT, DOCFS_KEY, autoFitFont, boundsCache, boundsOfRealm, docActive, docFontSized, docOfVa, docSession, docTabs, ensurePage, fitDebugInfo, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, paintAsked, readDocFont, renderDocTabs, resetDocPane, restoreLastRead, sessionFor, setDocFont, wholeRealm } from './doc-pane';
 import { paintHit } from './paint';
 import { resetEngineStats } from './engine-stats';
 import { setActiveDb } from './tag-style';
@@ -165,6 +165,7 @@ export async function openFile(file: AdbSource): Promise<'opened' | 'existing' |
   resetEngineStats();     // 標題上的「上一輪耗時」不跨資料庫
   const T0 = performance.now();
   const io = new BlobIO(file);
+  let opened = false;
   try {
     setStatus(`讀取 ${file.name} …`, 'busy');
     const t0 = performance.now();
@@ -263,11 +264,10 @@ export async function openFile(file: AdbSource): Promise<'opened' | 'existing' |
       setStatus(`${dbName}：${file.name} 取代了同名的庫（它的舊分頁已關閉）`, 'info');
     }
     void updateDocLogo();          // 本文區還空著 → 顯示這個庫自己的 logo
-    return 'opened';
+    opened = true;
   } catch (e) {
     setStatus('開啟失敗：' + (e as Error).message, 'err');
     console.error(e);
-    return 'refused';
   } finally {
     opening = false;
     const tabs = $('#docTabs') as HTMLElement | null;
@@ -277,6 +277,12 @@ export async function openFile(file: AdbSource): Promise<'opened' | 'existing' |
     const pager = $('#docPager') as HTMLElement | null;
     if (pager) pager.hidden = true;
   }
+  if (opened) {
+    // 最後閱讀頁：finally 清空 docTabs 之後才還原，否則會被 Hide 掉
+    try { await restoreLastRead(file); } catch { /* 壞資料就當作沒有 */ }
+    return 'opened';
+  }
+  return 'refused';
 }
 
 
