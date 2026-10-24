@@ -385,6 +385,7 @@ export async function renderRevisions(): Promise<void> {
     return t.length > n ? t.slice(0, n) + '…' : t;
   };
   const cards: string[] = [];
+  const byId = new Map<string, any>();
   const latestId = revs[revs.length - 1]?.id;
   for (const rev of revs.slice().reverse()) {
     let data: any = null;
@@ -395,8 +396,11 @@ export async function renderRevisions(): Promise<void> {
     }
     const when = data.createdAt ? new Date(data.createdAt).toLocaleString() : '';
     const pages: any[] = Array.isArray(data.pages) ? data.pages : [];
+    const revId = String(data.id || rev.id);
+    byId.set(revId, data);
     const parts: string[] = [];
-    for (const p of pages) {
+    for (let pi = 0; pi < pages.length; pi++) {
+      const p = pages[pi];
       const changes: any[] = Array.isArray(p.changes) ? p.changes : [];
       const rows: string[] = [];
       for (const c of changes) {
@@ -414,9 +418,11 @@ export async function renderRevisions(): Promise<void> {
           rows.push('<div class="revisionChange">行 ' + line + '：刪除 <span class="del">' + escapeHtml(short(c.oldLine ?? '')) + '</span></div>');
         }
       }
-      parts.push('<div class="revisionPage"><b>' + escapeHtml(p.doc || '本文') + ' · 行 '
+      parts.push('<div class="revisionPage" data-rev="' + escapeHtml(revId) + '" data-page="' + pi + '" title="點一下看這一頁的 diff">'
+        + '<b>' + escapeHtml(p.doc || '本文') + ' · 行 '
         + (Number(p.first) + 1) + '–' + (Number(p.last) + 1) + '</b>'
         + ' <span class="dim">' + (p.oldLineCount ?? '?') + ' → ' + (p.newLineCount ?? '?') + ' 行</span>'
+        + '<span class="openHint">看 diff</span>'
         + (rows.length ? rows.join('') : '<div class="revisionChange">（無文字差異）</div>')
         + '</div>');
     }
@@ -428,9 +434,16 @@ export async function renderRevisions(): Promise<void> {
       + '<span>基底 ' + fmtInt(data.base?.lineCount ?? 0) + ' 行</span>' + rollback + '</div>'
       + (parts.join('') || '<div class="revisionChange">（沒有頁面紀錄）</div>') + '</div>');
   }
-  pane.innerHTML = cards.join('');
+  pane.innerHTML = '<div class="revisionsSummary">共 <b>' + revs.length + '</b> 次 rebuild</div>' + cards.join('');
   pane.querySelectorAll<HTMLElement>('[data-rollback]').forEach((btn) => {
     btn.onclick = () => window.dispatchEvent(new CustomEvent('accelon26:rollback', { detail: { id: btn.dataset.rollback } }));
+  });
+  pane.querySelectorAll<HTMLElement>('.revisionPage[data-rev]').forEach((el) => {
+    el.onclick = () => {
+      const rev = byId.get(el.dataset.rev || '');
+      const page = rev?.pages?.[Number(el.dataset.page)];
+      if (page) window.dispatchEvent(new CustomEvent('accelon26:history', { detail: { revisionId: el.dataset.rev, page } }));
+    };
   });
 }
 import { AdbHeader, AdbReader, CLASS_LABELS, TokenRow } from './adb';

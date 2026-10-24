@@ -269,7 +269,7 @@ export interface RevisionRecord {
     lineCount: number;
     headerCrc: number;
   };
-  pages: Array<PageDiff & { oldLines: string[] }>;
+  pages: Array<PageDiff & { oldLines: string[]; newLines: string[] }>;
 }
 
 export function makeRevision(
@@ -278,7 +278,7 @@ export function makeRevision(
   id: string,
   parent: string | null,
 ): RevisionRecord {
-  const pages = sortedEdits(s).reverse().map((e) => ({ ...diffPage(e), oldLines: e.oldLines }));
+  const pages = sortedEdits(s).reverse().map((e) => ({ ...diffPage(e), oldLines: e.oldLines, newLines: e.newLines }));
   return {
     format: 'accelon26-revision/1',
     id,

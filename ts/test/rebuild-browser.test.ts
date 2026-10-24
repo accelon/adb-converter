@@ -65,6 +65,7 @@ const record = JSON.parse(new TextDecoder().decode(revs[0].blob));
 ok('revision format', record.format === 'accelon26-revision/1');
 ok('revision page', record.pages.length === 1 && record.pages[0].first === first && record.pages[0].last === last);
 ok('revision keeps old lines', Array.isArray(record.pages[0].oldLines) && record.pages[0].oldLines[target] === base[target]);
+ok('revision keeps new lines', Array.isArray(record.pages[0].newLines) && record.pages[0].newLines[target] === newLines[target]);
 ok('revision change line', record.pages[0].changes[0]?.line === target);
 
 // 3. rollback: reverse the stored revision and drop it from the container

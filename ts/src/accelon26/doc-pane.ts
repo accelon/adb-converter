@@ -150,6 +150,8 @@ interface DocSession {
   autoEdit?: boolean;
   /** 閱讀模式顯示這一頁的修訂 diff（新增綠、刪除紅） */
   showDiff?: boolean;
+  /** 正在看某一筆歷史版本（唯讀；不允許進入編輯） */
+  history?: { revisionId: string; first: number; last: number; doc: string; oldLines: string[]; newLines: string[] };
 }
 
 let docTabs: DocSession[] = [];
@@ -327,7 +329,7 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
   const dtNow = s.cache.dt;
   const rr = pageRangeOf(dtNow);
   const es = editSessionOf();
-  if (editAllowed() && !s.editing && s.autoEdit !== false && es && pageEditAt(es, rr.first, rr.last)) s.editing = true;
+  if (!s.history && editAllowed() && !s.editing && s.autoEdit !== false && es && pageEditAt(es, rr.first, rr.last)) s.editing = true;
   const nums = dtNow.lineNumbers;
   if (targetLine !== undefined && s.pinned && nums.length) {
     if (s.pinned.line < nums[0]) s.pinned.line = nums[0];
@@ -572,7 +574,7 @@ function writeLastRead(map: Record<string, LastRead>): void {
 /** Save the active document tab + page. Safe to call often. */
 export function saveLastReadNow(): void {
   const s = docSession();
-  if (!s || !currentSource) return;
+  if (!s || !currentSource || s.history) return;
   try {
     const b = pageBounds(s.realm, s.page);
     const map = readLastRead();
@@ -683,7 +685,9 @@ function docNameOf(s: DocSession): string {
 
 function setEditControls(s: DocSession | null): void {
   const btn = document.getElementById('editBtn') as HTMLButtonElement | null;
+  const history = !!s?.history;
   if (btn) {
+    btn.hidden = history;
     const on = !!s?.editing;
     btn.classList.toggle('on', on);
     btn.title = on ? '完成編輯（內容已自動暫存）' : '編輯這一頁（修錯字；離開會自動暫存）';
@@ -699,8 +703,8 @@ function setEditControls(s: DocSession | null): void {
       has = !!pageEditAt(es, r.first, r.last);
     }
   }
-  if (toggle) toggle.hidden = !has;
-  if (box) box.checked = has && !!s?.showDiff;
+  if (toggle) toggle.hidden = history || !has;
+  if (box) box.checked = !history && has && !!s?.showDiff;
 }
 
 function noticeEditor(msg: string): void {
@@ -743,7 +747,48 @@ export function flushEdit(): void {
   saveActiveEditorText();
 }
 
+
+/** Open one page of a historical revision as a read-only diff tab. */
+export async function openHistoryPage(detail: { revisionId: string; page: any }): Promise<void> {
+  if (!reader || !mapper) return;
+  const p = detail.page ?? {};
+  const first = Math.max(0, Number(p.first) || 0);
+  const last = Math.max(first, Number(p.last) || first);
+  const v = mapper.linesVirtual;
+  const va = first > 0 ? (v[first - 1] ?? 0) + 1 : 0;
+  const doc = docOfVa(va);
+  const realm = { from: doc.vaStart, to: doc.vaEnd || reader.header.maxBlockOffset };
+  stageActiveEditor();
+  const existing = docTabs.find((t) => t.history && t.history.revisionId === detail.revisionId && t.history.first === first);
+  if (existing) {
+    docActive = docTabs.indexOf(existing);
+    renderDoc(existing);
+    return;
+  }
+  const label = (detail.revisionId ? detail.revisionId + ' · ' : '') + (p.doc || doc.name || '歷史');
+  const s = sessionFor(realm, label, true);
+  s.history = {
+    revisionId: detail.revisionId,
+    first, last,
+    doc: p.doc || doc.name || '',
+    oldLines: Array.isArray(p.oldLines) ? p.oldLines : [],
+    newLines: Array.isArray(p.newLines) ? p.newLines : [],
+  };
+  s.page = 0;
+  s.editing = false;
+  s.showDiff = false;
+  s.autoEdit = false;
+  docActive = docTabs.indexOf(s);
+  setPinnedHit(null);
+  await ensurePage(s, first);
+  paintTreeActive();
+}
+
 export function enterEdit(s: DocSession, fromSelection = false): void {
+  if (s.history) {
+    setStatus('歷史版本只能檢視，不能編輯', 'err');
+    return;
+  }
   if (!editAllowed()) {
     setStatus('請先開啟進階模式才能編輯', 'err');
     return;
@@ -868,8 +913,22 @@ function diffRow(kind: 'context' | 'del' | 'ins' | 'char', no: string, sign: str
     + '</span><span class="diffSign">' + sign + '</span><span class="diffText">' + html + '</span></div>';
 }
 
+/** 歷史版本：自動顯示 diff，不需要（也不受）「顯示修訂」toggle。 */
+function renderHistoryPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docText']>>): void {
+  const h = s.history!;
+  const newLines = h.newLines.length ? h.newLines : dt.lines;
+  const edit: PageEdit = {
+    first: h.first,
+    last: h.last,
+    oldLines: h.oldLines.length ? h.oldLines : dt.lines,
+    newLines,
+    docName: h.doc,
+  };
+  renderDiffPage(s, dt, edit, { historyId: h.revisionId });
+}
+
 /** 閱讀模式的修訂檢視：新增綠、刪除紅，完全不呼叫 paintHit（不塗搜尋關鍵字）。 */
-function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docText']>>, edit: PageEdit): void {
+function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docText']>>, edit: PageEdit, opts?: { historyId?: string }): void {
   const b = pageBounds(s.realm, s.page);
   const nFirst = dt.lineNumbers[0] ?? 0;
   const nLast = dt.lineNumbers[dt.lineNumbers.length - 1] ?? 0;
@@ -879,6 +938,11 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
   let oi = 0;
   let ni = 0;
   const first = edit.first;
+  const hist = !!opts?.historyId;
+  // 歷史頁的 first/last 是 base 0-based；列表顯示 1-based，標題也一致
+  const shownFirst = hist ? edit.first + 1 : nFirst;
+  const shownLast = hist ? edit.last + 1 : nLast;
+  const badge = hist ? '歷史版本 ' + escapeHtml(opts!.historyId!) + ' · 唯讀' : '修訂檢視';
   const context = (text: string, no: number) => diffRow('context', String(no), ' ', escapeHtml(text));
   for (const c of changes) {
     const rel = Math.max(0, Math.min(edit.oldLines.length, c.line - first));
@@ -916,16 +980,21 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
       ? ''
       : '<div class="docHead">' + escapeHtml(displayName(s.name))
         + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁 · 行 '
-        + fmtInt(nFirst) + '–' + fmtInt(nLast) + ' · <b style="color:var(--warn)">修訂檢視</b></span></div>')
+        + fmtInt(shownFirst) + '–' + fmtInt(shownLast) + ' · <b style="color:' + (hist ? 'var(--history-fg)' : 'var(--warn)') + '">' + badge + '</b></span></div>')
     + renderAncestorTrail(s)
     + '</div>'
-    + '<div class="diffLegend">修訂檢視：<b class="add">新增 ' + added + ' 行</b> · '
+    + '<div class="diffLegend">' + (hist ? '歷史版本 diff' : '修訂檢視') + '：<b class="add">新增 ' + added + ' 行</b> · '
     + '<b class="del">刪除 ' + removed + ' 行</b> · 修改 ' + replaced + ' 處'
     + '<span class="dim">（搜尋塗紅已暫停）</span></div>'
     + '<div class="diffView">' + rows.join('') + '</div>';
   lastDocLines = dt.lines;
   renderDocTabs(s);
-  renderPager(s, b);
+  if (hist) {
+    const pager = document.getElementById('docPager');
+    if (pager) pager.hidden = true;
+  } else {
+    renderPager(s, b);
+  }
   wireTrail();
   setEditControls(s);
   const view = document.querySelector<HTMLElement>('.diffView');
@@ -938,6 +1007,7 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   if (s.editing && !editAllowed()) s.editing = false;
   setEditControls(s);
   if (s.editing) { renderEditPage(s, dt); return; }
+  if (s.history) { renderHistoryPage(s, dt); return; }
   const esNow = editSessionOf();
   const rrNow = pageRangeOf(dt);
   const pageEdit = esNow ? pageEditAt(esNow, rrNow.first, rrNow.last) : undefined;
@@ -1018,7 +1088,7 @@ function renderDocTabs(s: DocSession): void {
   strip.innerHTML = docTabs.map((t, i) => {
     const rb = boundsOfRealm(t.realm);
     const dirty = hasEditsInRange(es, rb.first, rb.last);
-    return '<span class="docTab' + (i === docActive ? ' active' : '') + (dirty ? ' dirty' : '') + '" data-i="' + i + '" title="' + escapeHtml(t.name) + '">'
+    return '<span class="docTab' + (i === docActive ? ' active' : '') + (dirty ? ' dirty' : '') + (t.history ? ' history' : '') + '" data-i="' + i + '" title="' + escapeHtml(t.name) + '">'
       + '<span class="docTabName">' + escapeHtml(shortLabel(t.name, 8)) + '</span>'
       + '<span class="docTabClose" data-close="' + i + '" title="關閉分頁">✕</span></span>';
   }).join('');
