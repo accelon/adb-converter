@@ -113,6 +113,8 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
     s = sessionFor(realm, name, false);
   }
 
+  // 從歷史版本分頁點目錄／TOC／任何連結：這個分頁回到正常內文（退出歷史）
+  if (s.history) { s.history = undefined; s.cache = null; }
   s.doc = doc;
   // A reused tab is renamed to what was just clicked: the pane now shows THAT node/
   // segment/page, and the label must say so (it used to keep the first link's name).
@@ -173,6 +175,7 @@ async function showLine(line: number, va: number, units?: number): Promise<void>
   const d = docOfVa(va);
   $('#docs').querySelectorAll('.docItem').forEach((el) => el.classList.toggle('active', Number((el as HTMLElement).dataset.i) === d.i));
   const s = sessionFor({ from: d.vaStart, to: d.vaEnd }, d.name, false);
+  if (s.history) { s.history = undefined; s.cache = null; }
   s.doc = d;
   s.pinned = { va, text: '', token: d.name, units: Math.max(1, units ?? 1), line };
   pinnedHit = s.pinned;

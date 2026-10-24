@@ -20,7 +20,8 @@ import { dictLookupAt, dictPaneState, initDictPane } from './dict-pane';
 import { listDicts, type DictListEntry } from './dict-lookup';
 import { autoDictOn, dictOrder, orderByFile, selectionDictOn, setAutoDict, setDictOrder, setSelectionDict } from './dict-settings';
 import { setDictHooks } from './dict-hooks';
-import { initTour, openTourMenu, play as playTour, stopTour, tourState } from './tour';
+import { initTour, openTourMenu, play as playTour, startTour, stopTour, tourState } from './tour';
+import { toggleInspect } from './inspect';
 import { desktopRevealInFolder } from './host';
 import {
   BODY_KEY, GROUP_ID, GROUP_TAGS, STRUCTURAL_TAGS, activeDb, bodyStyleOf, counts as tagStyleCounts,
@@ -1238,18 +1239,59 @@ function boot() {
   }
   setDbHooks({ refresh: refreshAll, clear: clearDbUi });
 
-  // dbChip 的「n 頁修訂」按鈕 → 產生新 ADB（file:// 版下載 blob）
-  window.addEventListener('accelon26:rebuild', (ev) => {
-    const id = Number((ev as CustomEvent).detail?.id ?? 0);
-    const slot = openDbs.find((d) => d.id === id);
-    if (!slot || !reader) return;
-    if (activeSlot()?.id !== id) switchTo(id);
+  // dbChip 的「n 頁修訂」按鈕 → 產生新 ADB（file:// 版下載 blob）；F2 也走這裡
+  const requestRebuild = (): void => {
+    const slot = activeSlot();
+    if (!reader || !slot) { setStatus('請先開啟 adb 再重建', 'err'); return; }
+    const modal = document.getElementById('editModal');
+    if (modal && !modal.hidden) return;   // 已經在重建／回滾流程
     flushEdit();
+    const es = findSession(sourceKey(slot.file));
+    if (!es || editCount(es) === 0) { setStatus('目前沒有未產生的修訂；請先編輯再用 F2', 'err'); return; }
     void rebuildAndDownload(reader, { id: slot.id, name: slot.name, file: slot.file }, {
       status: (msg, kind) => setStatus(msg, kind ?? 'info'),
       openFile: (f) => openFile(f),
     });
+  };
+  window.addEventListener('accelon26:rebuild', (ev) => {
+    const id = Number((ev as CustomEvent).detail?.id ?? 0);
+    const slot = openDbs.find((d) => d.id === id);
+    if (!slot) return;
+    if (activeSlot()?.id !== id) switchTo(id);
+    requestRebuild();
   });
+
+  // 功能鍵（作者 2026-10-25）：F1 導覽、F2 重建、F3 編輯、F9 元素檢查
+  const anyModalOpen = (): boolean => ['settingsBox', 'allSearchBox', 'aboutBox', 'editModal']
+    .some((id) => { const el = document.getElementById(id); return !!el && !el.hidden; });
+  const toggleEditHotkey = (): void => {
+    const s = docSession();
+    if (!s) { setStatus('目前沒有本文分頁', 'err'); return; }
+    if (s.history) { setStatus('歷史版本只能檢視，不能編輯', 'err'); return; }
+    if (s.editing) exitEdit(s);
+    else enterEdit(s);
+  };
+  window.addEventListener('keydown', (ev) => {
+    if (ev.defaultPrevented || ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    switch (ev.key) {
+      case 'F1':
+        ev.preventDefault();
+        startTour();
+        break;
+      case 'F2':
+        ev.preventDefault();
+        if (!anyModalOpen()) requestRebuild();
+        break;
+      case 'F3':
+        ev.preventDefault();
+        if (!anyModalOpen()) toggleEditHotkey();
+        break;
+      case 'F9':
+        ev.preventDefault();
+        toggleInspect((msg, kind) => setStatus(msg, kind ?? 'info'));
+        break;
+    }
+  }, true);
   // 修訂頁點某一頁：開一個歷史版本分頁，自動顯示 diff（唯讀）
   window.addEventListener('accelon26:history', (ev) => {
     const detail = (ev as CustomEvent).detail;

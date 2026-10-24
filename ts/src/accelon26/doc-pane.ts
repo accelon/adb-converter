@@ -960,8 +960,8 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
   const hist = !!opts?.historyId;
   const totalChanges = changes.length;
   const focus = Math.max(0, Math.min(totalChanges ? totalChanges - 1 : 0, Number(opts?.focus) || 0));
-  const counter = hist ? 'diff ' + (totalChanges ? focus + 1 : 0) + ' / ' + totalChanges : '共 ' + totalChanges + ' 處';
-  let added = 0, removed = 0, replaced = 0;
+  const info = hist ? '修改 ' + totalChanges + ' 處 · diff ' + (totalChanges ? focus + 1 : 0) + '/' + totalChanges : '';
+  let added = 0, removed = 0;
   const rows: string[] = [];
   let oi = 0;
   let ni = 0;
@@ -983,7 +983,6 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
       const oldLine = c.oldLine ?? edit.oldLines[oi] ?? '';
       const newLine = c.newLine ?? edit.newLines[ni] ?? '';
       rows.push(diffRow('char', String(first + oi + 1), '~', charDiffHtml(oldLine, newLine), changeIndex++));
-      replaced++;
       oi++;
       ni++;
     } else if (c.kind === 'delete') {
@@ -1009,12 +1008,15 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
       : '<div class="docHead">' + escapeHtml(displayName(s.name))
         + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁'
         + (hist ? '' : ' · 行 ' + fmtInt(shownFirst) + '–' + fmtInt(shownLast))
-        + ' · <b style="color:' + (hist ? 'var(--history-fg)' : 'var(--warn)') + '">' + badge + '</b></span></div>')
+        + ' · <b style="color:' + (hist ? 'var(--history-fg)' : 'var(--warn)') + '">' + badge + '</b>'
+        + (hist ? '<span class="diffHeaderInfo">' + info + '</span>' : '')
+        + '</span></div>')
     + renderAncestorTrail(s)
     + '</div>'
-    + '<div class="diffLegend">' + (hist ? '歷史版本 diff' : '修訂檢視') + '：<b class="add">新增 ' + added + ' 行</b> · '
-    + '<b class="del">刪除 ' + removed + ' 行</b> · 修改 ' + replaced + ' 處 · ' + counter
-    + '<span class="dim">（搜尋塗紅已暫停）</span></div>'
+    + (hist ? '' : '<div class="diffLegend">修訂檢視：'
+      + (added ? '<b class="add">新增 ' + added + ' 行</b> · ' : '')
+      + (removed ? '<b class="del">刪除 ' + removed + ' 行</b> · ' : '')
+      + '修改 ' + totalChanges + ' 處</div>')
     + '<div class="diffView">' + rows.join('') + '</div>';
   lastDocLines = dt.lines;
   renderDocTabs(s);
