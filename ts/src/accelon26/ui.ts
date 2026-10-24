@@ -18,7 +18,7 @@ import { isDictDb } from './db-kind';
 import { closeSearchAll, initSearchAll, openSearchAll, runSearchAll, searchAllState } from './allsearch';
 import { dictLookupAt, dictPaneState, initDictPane } from './dict-pane';
 import { listDicts, type DictListEntry } from './dict-lookup';
-import { autoDictOn, dictOrder, orderByFile, setAutoDict, setDictOrder } from './dict-settings';
+import { autoDictOn, dictOrder, orderByFile, selectionDictOn, setAutoDict, setDictOrder, setSelectionDict } from './dict-settings';
 import { setDictHooks } from './dict-hooks';
 import { initTour, openTourMenu, play as playTour, stopTour, tourState } from './tour';
 import { desktopRevealInFolder } from './host';
@@ -336,6 +336,8 @@ function updateSettingsUi(): void {
   }
   const dictAuto = $('#setDictAuto') as HTMLInputElement | null;
   if (dictAuto) dictAuto.checked = autoDictOn();
+  const dictSelection = $('#setDictSelection') as HTMLInputElement | null;
+  if (dictSelection) dictSelection.checked = selectionDictOn();
 }
 
 function showSettings(open: boolean): void {
@@ -514,7 +516,7 @@ function setSettingsPane(name: string): void {
   else if (settingsPane === 'ui') void renderDictOrder();
 }
 
-/* ---------------------------------------------------------- 點擊查字典（作者 2026-10-22）
+/* ---------------------------------------------------------- 查字典（作者 2026-10-22）
  *
  * 設置 → 介面：自動查字典的開關＋詞典順序。順序存**檔名**；清單只列目前
  * catalog 裡真的是詞典的 adb；找不到的檔名在查詢時直接略過（不警告）。
@@ -566,7 +568,12 @@ function wireDictOrder(): void {
   const auto = $('#setDictAuto') as HTMLInputElement | null;
   auto?.addEventListener('change', () => {
     setAutoDict(auto.checked);
-    setStatus(auto.checked ? '點擊查字典：開啟' : '點擊查字典：關閉', 'info');
+    setStatus(auto.checked ? '查字典：開啟' : '查字典：關閉', 'info');
+  });
+  const selection = $('#setDictSelection') as HTMLInputElement | null;
+  selection?.addEventListener('change', () => {
+    setSelectionDict(selection.checked);
+    setStatus(selection.checked ? '選取區自動查：開啟' : '選取區自動查：關閉', 'info');
   });
   $('#dictRefresh')?.addEventListener('click', () => { void renderDictOrder(true); });
   $('#dictOrderList')?.addEventListener('click', (ev) => {
@@ -1393,8 +1400,9 @@ export function installDebugApi(): void {
     tagStyles: tagStyleCounts(),
     settings: (() => { const l = settingsLocation(); return l ? { kind: l.kind, path: l.path } : null; })(),
     settingsError: settingsError(),
-    /** 點擊查字典（作者 2026-10-22） */
+    /** 查字典（作者 2026-10-22；2026-10-24 加選取自動查） */
     dictAuto: autoDictOn(),
+    dictSelection: selectionDictOn(),
     dictOrder: dictOrder(),
     dbLog,
     dbs: openDbs.map((d: any) => ({ name: d.name, tabs: d.docPane?.docTabs?.length ?? -1, docs: d.core?.docs?.length ?? -1 })),

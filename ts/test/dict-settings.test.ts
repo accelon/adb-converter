@@ -1,5 +1,5 @@
 /**
- * 「點擊查字典」偏好（dict-settings.ts）的單元測試。
+ * 「查字典」偏好（dict-settings.ts）的單元測試。
  *
  *   bun run test/dict-settings.test.ts
  */
@@ -13,7 +13,7 @@ const store = new Map<string, string>();
   get length() { return store.size; },
 } as Storage;
 
-import { autoDictOn, dictOrder, orderByFile, setAutoDict, setDictOrder } from '../src/accelon26/dict-settings';
+import { autoDictOn, dictOrder, orderByFile, selectionDictOn, setAutoDict, setDictOrder, setSelectionDict } from '../src/accelon26/dict-settings';
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail = '') => {
@@ -27,6 +27,14 @@ setAutoDict(false);
 ok('關閉後 autoDictOn=false、localStorage 是 0', autoDictOn() === false && store.get('accelon26.dict.auto') === '0');
 setAutoDict(true);
 ok('再打開 autoDictOn=true', autoDictOn() === true && store.get('accelon26.dict.auto') === '1');
+
+// ---- 選取區自動查開關 ------------------------------------------------------
+ok('預設開啟選取區自動查', selectionDictOn() === true);
+setSelectionDict(false);
+ok('關閉後 selectionDictOn=false、localStorage 是 0',
+  selectionDictOn() === false && store.get('accelon26.dict.selection') === '0');
+setSelectionDict(true);
+ok('再打開 selectionDictOn=true', selectionDictOn() === true && store.get('accelon26.dict.selection') === '1');
 
 // ---- 詞典順序（檔名） ------------------------------------------------------
 ok('預設沒有順序', dictOrder().length === 0);

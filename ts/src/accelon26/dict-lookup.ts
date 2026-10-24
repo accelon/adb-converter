@@ -272,7 +272,7 @@ export async function dictLookup(sentence: string): Promise<DictRow[]> {
   return rows;
 }
 
-/** 設定頁「點擊查字典」的清單：目前 catalog 裡真正是詞典的 adb（會建／用快取索引）。 */
+/** 設定頁「查字典」的清單：目前 catalog 裡真正是詞典的 adb（會建／用快取索引）。 */
 export interface DictListEntry {
   /** 穩定鍵：adb 檔名（和標籤樣式、settings.json 的 adb 鍵一致） */
   file: string;
