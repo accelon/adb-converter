@@ -1276,7 +1276,7 @@ function boot() {
     switch (ev.key) {
       case 'F1':
         ev.preventDefault();
-        startTour();
+        startTour(true);   // 熱鍵固定從導覽第一頁開始
         break;
       case 'F2':
         ev.preventDefault();
@@ -1334,15 +1334,55 @@ function boot() {
     ev.returnValue = '';
   });
 
+
+  // #行號（可帶 @db）＝跳到那一行；輸入時不搜尋，等 Enter（作者 2026-10-25）
+  const lineJumpTarget = (q: string): { line: number; db: string | null } | null => {
+    const m = /^#(?:L)?(\d+)(?:@([^\s@]+))?$/i.exec(q.trim());
+    return m ? { line: Number(m[1]), db: m[2] || null } : null;
+  };
+  const jumpToLine = async (target: { line: number; db: string | null }): Promise<void> => {
+    if (!reader || !mapper) { setStatus('請先開啟 adb', 'err'); return; }
+    const now = (reader.header.dbname || '').toLowerCase();
+    if (target.db && target.db.toLowerCase() !== now) {
+      setStatus('這一行屬於 ' + target.db + '；請先開啟或切換到那個庫', 'err');
+      return;
+    }
+    const v = mapper.linesVirtual;
+    if (target.line < 0 || target.line >= v.length) {
+      setStatus('沒有第 ' + fmtInt(target.line) + ' 行', 'err');
+      return;
+    }
+    // 目前分頁的 realm 已經包含這一行就留在原分頁，不要為此另開整個檔的分頁
+    const act = docSession();
+    if (act && !act.history) {
+      const b = boundsOfRealm(act.realm);
+      if (target.line >= b.first && target.line <= b.last) {
+        await ensurePage(act, target.line);
+        requestAnimationFrame(() => document.getElementById('L' + target.line)?.scrollIntoView({ block: 'center' }));
+        setStatus('跳到第 ' + fmtInt(target.line) + ' 行', 'info');
+        return;
+      }
+    }
+    await showLine(target.line, v[target.line]);
+    requestAnimationFrame(() => document.getElementById('L' + target.line)?.scrollIntoView({ block: 'center' }));
+    setStatus('跳到第 ' + fmtInt(target.line) + ' 行', 'info');
+  };
   // live search: re-run on every keystroke (posting lists are cached per token)
   const query = $('#query') as HTMLInputElement;
   let timer: number | undefined;
   query.oninput = () => {
     window.clearTimeout(timer);
+    // #行號：等 Enter，不要邊打邊查
+    if (lineJumpTarget(query.value)) return;
     timer = window.setTimeout(() => void runSearch(query.value), 120);
   };
   query.onkeydown = (ev) => {
-    if (ev.key === 'Enter') { window.clearTimeout(timer); void runSearch(query.value); }
+    if (ev.key === 'Enter') {
+      window.clearTimeout(timer);
+      const jump = lineJumpTarget(query.value);
+      if (jump) { ev.preventDefault(); void jumpToLine(jump); return; }
+      void runSearch(query.value);
+    }
     // Escape must NOT clear the box (author, 2026-10): the ✕ is the way to clear, and
     // Escape is how you leave the field without losing the query. `<input type="search">`
     // clears ITSELF on Escape (Chromium default action), so the event has to be stopped.

@@ -115,7 +115,10 @@ export function toggleInspect(status: InspectStatus): void {
   requestAnimationFrame(() => placeLabel(new DOMRect(box.left, box.top, box.width, box.height), label));
 
   const finish = (): void => {
-    const text = '#' + id;
+    // 本文行號 id：附上 @dbname，貼回搜尋框（#L12@yinshun）就能跳回這一行
+    const isLine = /^L\d+$/.test(id) && !!target.closest('#docText');
+    const db = isLine ? String((window as any).__accelon26?.state?.().db || '') : '';
+    const text = '#' + id + (db ? '@' + db : '');
     void copyText(text).then((ok) => status(ok ? '已複製 ' + text : '複製失敗：' + text, ok ? 'info' : 'err'));
     stopInspect();
   };

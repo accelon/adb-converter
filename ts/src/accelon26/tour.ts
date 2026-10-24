@@ -555,9 +555,9 @@ export function openTourMenu(): void {
  * 「關於」裡的「▶ 操作導覽」（作者 2026-10-18：入口從頂欄的 🎬 搬進來）。
  * 只有一份劇本就直接播（從上次看到的地方接），多份才開選單讓使用者挑。
  */
-export function startTour(): void {
+export function startTour(restart = false): void {
   const first = TOUR_INDEX[0];
-  if (TOUR_INDEX.length === 1 && first) void play(first.id);
+  if (TOUR_INDEX.length === 1 && first) void play(first.id, restart ? 0 : undefined);
   else openTourMenu();
 }
 

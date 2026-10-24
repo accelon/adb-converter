@@ -616,10 +616,14 @@ async function renderDirTree(): Promise<void> {
           // Alt：展開全部子孫（舊版是 Ctrl）；沒有子節點時退回一般開合
           if (hasKids) { openAll(); link(); return; }
         }
-        // 可開就開；已開就只關（收合整枝）。無論開或關，點的是節點本身，
-        // 都要聯動本文（點節點名／色塊／箭頭＝同一個「打開並聯動」動作）。
-        if (open) setOpen(false);
-        else if (hasKids) setOpen(true);
+        // 箭頭收合時只收合，不動本文；點名稱／色塊仍是「跳到這個節點」。
+        // 可開就開並聯動本文（作者 2026-10-25）。
+        if (open) {
+          if (t?.closest('.tTwisty')) { setOpen(false); return; }
+          link();
+          return;
+        }
+        if (hasKids) setOpen(true);
         link();
       };
     },
