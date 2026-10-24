@@ -357,7 +357,7 @@
   .setBtn { background: transparent; color: var(--fg); border: 1px solid var(--line); border-radius: 5px; font: inherit; font-size: 12px; padding: 3px 10px; cursor: pointer; }
   .setBtn:hover { border-color: var(--accent); }
   .setBtn:disabled { opacity: .5; cursor: default; }
-  /* 點擊查字典：詞典順序清單（作者 2026-10-22） */
+  /* 查字典：詞典順序清單（作者 2026-10-22） */
   .dictOrder { display: flex; flex-direction: column; gap: 5px; margin: 6px 0 2px; }
   .dictOrderRow {
     display: flex; align-items: center; gap: 8px; border: 1px solid var(--line);
@@ -1235,13 +1235,18 @@
           <span class="setHint">渲染 <code>&lt;頁&gt;</code>／<code>&lt;_頁&gt;</code>：原書分行時是右靠的頁分隔＋頁碼，連排時是行內的小頁碼；取消＝完全不出現</span>
         </label>
       </section>
-      <!-- 點擊查字典（作者 2026-10-22）：開關＋詞典順序（檔名；找不到的略過） -->
+      <!-- 查字典（作者 2026-10-22；2026-10-24 加選取自動查）：開關＋詞典順序（檔名；找不到的略過） -->
       <section class="setSection">
-        <h3>點擊查字典</h3>
+        <h3>查字典</h3>
         <label class="setRow" for="setDictAuto">
           <input type="checkbox" id="setDictAuto">
           <span>點本文就自動查詞典</span>
           <span class="setHint">關閉後點字不會自動查；右欄「詞典」分頁仍會保留上一次的結果</span>
+        </label>
+        <label class="setRow" for="setDictSelection">
+          <input type="checkbox" id="setDictSelection">
+          <span>選取區十字以下自動查</span>
+          <span class="setHint">在本文選取 10 個字以內，放開滑鼠就自動用選取文字查右側詞典；更長的選取不會查</span>
         </label>
         <div class="setRow">
           <span>詞典順序</span>
@@ -1366,7 +1371,7 @@
   <div id="tourList" class="tourList"></div>
 </div>
 
-<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-23T01:48:22.226Z","buildTimeText":"2026-10-23 09:48"};</script>
+<script>window.__ACCELON_BUILD__={"buildTime":"2026-10-24T04:52:12.137Z","buildTimeText":"2026-10-24 12:52"};</script>
 <script>(() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -7890,6 +7895,7 @@ designed by C.S.Yap`;
 
   // src/accelon26/dict-settings.ts
   var AUTO_KEY = "accelon26.dict.auto";
+  var SELECTION_KEY = "accelon26.dict.selection";
   var ORDER_KEY = "accelon26.dict.order";
   function autoDictOn() {
     try {
@@ -7901,6 +7907,18 @@ designed by C.S.Yap`;
   function setAutoDict(on) {
     try {
       localStorage.setItem(AUTO_KEY, on ? "1" : "0");
+    } catch {}
+  }
+  function selectionDictOn() {
+    try {
+      return localStorage.getItem(SELECTION_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  }
+  function setSelectionDict(on) {
+    try {
+      localStorage.setItem(SELECTION_KEY, on ? "1" : "0");
     } catch {}
   }
   function dictOrder() {
@@ -8253,6 +8271,43 @@ designed by C.S.Yap`;
     const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
     return sentencesAtElement(el, range.startOffset);
   }
+  var SELECTION_MAX = 10;
+  var lastSelectionText = "";
+  var selectionTimer = 0;
+  function selectedDictText() {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0)
+      return null;
+    const doc = document.getElementById("docText");
+    if (!doc)
+      return null;
+    const range = sel.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    if (!el || !doc.contains(el))
+      return null;
+    const text = sel.toString().replace(/\s+/g, " ").trim();
+    if (!text || [...text].length > SELECTION_MAX)
+      return null;
+    return text;
+  }
+  function lookupSelectedText() {
+    if (!selectionDictOn()) {
+      lastSelectionText = "";
+      return false;
+    }
+    const text = selectedDictText();
+    if (!text)
+      return false;
+    if (text === lastSelectionText)
+      return true;
+    lastSelectionText = text;
+    dictLookupAt(text);
+    return true;
+  }
+  function resetSelectionLookup() {
+    lastSelectionText = "";
+  }
   function renderList2() {
     const list = $("#dictList");
     if (!list)
@@ -8263,7 +8318,10 @@ designed by C.S.Yap`;
       return;
     }
     if (!rows.length) {
-      list.innerHTML = autoDictOn() ? '<div class="note">在本文點一個詞（例：比丘尼戒）——這裡會列出以它開頭的詞條。</div>' : '<div class="note">「點擊查字典」已關閉（設置 → 介面）。打開後點本文的詞，這裡會列出詞條。</div>';
+      const clickOn = autoDictOn();
+      const selOn = selectionDictOn();
+      const how = clickOn && selOn ? "在本文點一個詞，或選取 10 個字以內" : clickOn ? "在本文點一個詞" : selOn ? "在本文選取 10 個字以內" : "「查字典」已關閉（設置 → 介面）";
+      list.innerHTML = `<div class="note">${how}——這裡會列出以它開頭的詞條。</div>`;
       return;
     }
     const byDict = dictOrder().length > 0;
@@ -8348,11 +8406,29 @@ designed by C.S.Yap`;
     renderList2();
     const btn = document.querySelector('#colRight .tabBtn[data-tab="dict"]');
     btn?.addEventListener("click", () => renderList2());
-    document.addEventListener("click", (ev) => {
-      if (!autoDictOn())
+    document.addEventListener("mousedown", resetSelectionLookup, true);
+    document.addEventListener("mouseup", () => {
+      window.setTimeout(() => {
+        lookupSelectedText();
+      }, 0);
+    }, true);
+    document.addEventListener("selectionchange", () => {
+      window.clearTimeout(selectionTimer);
+      if (!selectedDictText()) {
+        resetSelectionLookup();
         return;
+      }
+      selectionTimer = window.setTimeout(() => {
+        lookupSelectedText();
+      }, 180);
+    });
+    document.addEventListener("click", (ev) => {
       const target = ev.target;
       if (!target?.closest?.("#docText"))
+        return;
+      if (lookupSelectedText())
+        return;
+      if (!autoDictOn())
         return;
       dictLookupAtPoint(ev);
     }, true);
@@ -10377,6 +10453,9 @@ designed by C.S.Yap`;
     const dictAuto = $("#setDictAuto");
     if (dictAuto)
       dictAuto.checked = autoDictOn();
+    const dictSelection = $("#setDictSelection");
+    if (dictSelection)
+      dictSelection.checked = selectionDictOn();
   }
   function showSettings(open2) {
     settingsOpen = open2;
@@ -10589,7 +10668,12 @@ designed by C.S.Yap`;
     const auto = $("#setDictAuto");
     auto?.addEventListener("change", () => {
       setAutoDict(auto.checked);
-      setStatus(auto.checked ? "點擊查字典：開啟" : "點擊查字典：關閉", "info");
+      setStatus(auto.checked ? "查字典：開啟" : "查字典：關閉", "info");
+    });
+    const selection = $("#setDictSelection");
+    selection?.addEventListener("change", () => {
+      setSelectionDict(selection.checked);
+      setStatus(selection.checked ? "選取區自動查：開啟" : "選取區自動查：關閉", "info");
     });
     $("#dictRefresh")?.addEventListener("click", () => {
       renderDictOrder(true);
@@ -11442,6 +11526,7 @@ designed by C.S.Yap`;
         })(),
         settingsError: settingsError(),
         dictAuto: autoDictOn(),
+        dictSelection: selectionDictOn(),
         dictOrder: dictOrder(),
         dbLog,
         dbs: openDbs.map((d) => ({ name: d.name, tabs: d.docPane?.docTabs?.length ?? -1, docs: d.core?.docs?.length ?? -1 })),
