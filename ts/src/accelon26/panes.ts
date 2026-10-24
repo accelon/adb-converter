@@ -396,8 +396,10 @@ export async function renderRevisions(): Promise<void> {
     const parts: string[] = [];
     for (let pi = 0; pi < pages.length; pi++) {
       const p = pages[pi];
-      parts.push('<div class="revisionPage" data-rev="' + escapeHtml(revId) + '" data-page="' + pi + '" title="點一下看這一頁的 diff">'
+      const count = Array.isArray(p.changes) ? p.changes.length : 0;
+      parts.push('<div class="revisionPage" data-rev="' + escapeHtml(revId) + '" data-page="' + pi + '" title="點一下看這一頁的 diff；再點跳到下一處">'
         + '<b>' + escapeHtml(p.doc || '本文') + '</b>'
+        + '<span class="revisionCount">' + count + ' 處</span>'
         + '<span class="openHint">看 diff</span>'
         + '</div>');
     }

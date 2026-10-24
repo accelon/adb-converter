@@ -151,7 +151,7 @@ interface DocSession {
   /** 閱讀模式顯示這一頁的修訂 diff（新增綠、刪除紅） */
   showDiff?: boolean;
   /** 正在看某一筆歷史版本（唯讀；不允許進入編輯） */
-  history?: { revisionId: string; first: number; last: number; doc: string; oldLines: string[]; newLines: string[] };
+  history?: { revisionId: string; first: number; last: number; doc: string; oldLines: string[]; newLines: string[]; focus?: number };
 }
 
 let docTabs: DocSession[] = [];
@@ -761,15 +761,23 @@ export async function openHistoryPage(detail: { revisionId: string; page: any })
   const realm = { from: doc.vaStart, to: doc.vaEnd || reader.header.maxBlockOffset };
   stageActiveEditor();
   const label = (detail.revisionId ? detail.revisionId + ' · ' : '') + (p.doc || doc.name || '歷史');
+  // 歷史版本只留一個分頁：換頁／換版本都覆用同一個 docTab
+  const existing = docTabs.find((t) => t.history && t === docSession()) ?? docTabs.find((t) => t.history);
+  const samePage = !!existing?.history
+    && existing.history.revisionId === detail.revisionId
+    && existing.history.first === first;
+  const totalChanges = Array.isArray(p.changes) ? p.changes.length : 0;
+  const focus = totalChanges
+    ? (samePage ? ((existing!.history!.focus ?? 0) + 1) % totalChanges : 0)
+    : 0;
   const history = {
     revisionId: detail.revisionId,
     first, last,
     doc: p.doc || doc.name || '',
     oldLines: Array.isArray(p.oldLines) ? p.oldLines : [],
     newLines: Array.isArray(p.newLines) ? p.newLines : [],
+    focus,
   };
-  // 歷史版本只留一個分頁：換頁／換版本都覆用同一個 docTab
-  const existing = docTabs.find((t) => t.history && t === docSession()) ?? docTabs.find((t) => t.history);
   if (existing) {
     existing.realm = realm;
     existing.doc = doc;
@@ -923,8 +931,9 @@ function charDiffHtml(oldLine: string, newLine: string): string {
   }).join('');
 }
 
-function diffRow(kind: 'context' | 'del' | 'ins' | 'char', no: string, sign: string, html: string): string {
-  return '<div class="diffRow ' + kind + '"><span class="diffNo">' + no
+function diffRow(kind: 'context' | 'del' | 'ins' | 'char', no: string, sign: string, html: string, change?: number): string {
+  const attr = change === undefined ? '' : ' data-change="' + change + '"';
+  return '<div class="diffRow ' + kind + '"' + attr + '><span class="diffNo">' + no
     + '</span><span class="diffSign">' + sign + '</span><span class="diffText">' + html + '</span></div>';
 }
 
@@ -939,21 +948,25 @@ function renderHistoryPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['doc
     newLines,
     docName: h.doc,
   };
-  renderDiffPage(s, dt, edit, { historyId: h.revisionId });
+  renderDiffPage(s, dt, edit, { historyId: h.revisionId, focus: h.focus ?? 0 });
 }
 
 /** 閱讀模式的修訂檢視：新增綠、刪除紅，完全不呼叫 paintHit（不塗搜尋關鍵字）。 */
-function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docText']>>, edit: PageEdit, opts?: { historyId?: string }): void {
+function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docText']>>, edit: PageEdit, opts?: { historyId?: string; focus?: number }): void {
   const b = pageBounds(s.realm, s.page);
   const nFirst = dt.lineNumbers[0] ?? 0;
   const nLast = dt.lineNumbers[dt.lineNumbers.length - 1] ?? 0;
   const changes = diffPage(edit).changes;
+  const hist = !!opts?.historyId;
+  const totalChanges = changes.length;
+  const focus = Math.max(0, Math.min(totalChanges ? totalChanges - 1 : 0, Number(opts?.focus) || 0));
+  const counter = hist ? 'diff ' + (totalChanges ? focus + 1 : 0) + ' / ' + totalChanges : '共 ' + totalChanges + ' 處';
   let added = 0, removed = 0, replaced = 0;
   const rows: string[] = [];
   let oi = 0;
   let ni = 0;
+  let changeIndex = 0;
   const first = edit.first;
-  const hist = !!opts?.historyId;
   // 歷史頁的 first/last 是 base 0-based；列表顯示 1-based，標題也一致
   const shownFirst = hist ? edit.first + 1 : nFirst;
   const shownLast = hist ? edit.last + 1 : nLast;
@@ -969,18 +982,18 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
     if (c.kind === 'replace') {
       const oldLine = c.oldLine ?? edit.oldLines[oi] ?? '';
       const newLine = c.newLine ?? edit.newLines[ni] ?? '';
-      rows.push(diffRow('char', String(first + oi + 1), '~', charDiffHtml(oldLine, newLine)));
+      rows.push(diffRow('char', String(first + oi + 1), '~', charDiffHtml(oldLine, newLine), changeIndex++));
       replaced++;
       oi++;
       ni++;
     } else if (c.kind === 'delete') {
       const oldLine = c.oldLine ?? edit.oldLines[oi] ?? '';
-      rows.push(diffRow('del', String(first + oi + 1), '-', escapeHtml(oldLine)));
+      rows.push(diffRow('del', String(first + oi + 1), '-', escapeHtml(oldLine), changeIndex++));
       removed++;
       oi++;
     } else {
       const newLine = c.newLine ?? edit.newLines[ni] ?? '';
-      rows.push(diffRow('ins', '', '+', escapeHtml(newLine)));
+      rows.push(diffRow('ins', '', '+', escapeHtml(newLine), changeIndex++));
       added++;
       ni++;
     }
@@ -1000,7 +1013,7 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
     + renderAncestorTrail(s)
     + '</div>'
     + '<div class="diffLegend">' + (hist ? '歷史版本 diff' : '修訂檢視') + '：<b class="add">新增 ' + added + ' 行</b> · '
-    + '<b class="del">刪除 ' + removed + ' 行</b> · 修改 ' + replaced + ' 處'
+    + '<b class="del">刪除 ' + removed + ' 行</b> · 修改 ' + replaced + ' 處 · ' + counter
     + '<span class="dim">（搜尋塗紅已暫停）</span></div>'
     + '<div class="diffView">' + rows.join('') + '</div>';
   lastDocLines = dt.lines;
@@ -1015,11 +1028,12 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
   setEditControls(s);
   const view = document.querySelector<HTMLElement>('.diffView');
   if (view) {
-    // 跳到第一個差異（不是頁首）；history 也一樣
-    const firstChange = view.querySelector<HTMLElement>('.diffRow.char, .diffRow.del, .diffRow.ins');
-    if (firstChange) {
+    // 一般修訂跳到第一個差異；歷史版本跳到 focus 指定的那一處
+    const target = view.querySelector<HTMLElement>('[data-change="' + (hist ? focus : 0) + '"]')
+      ?? view.querySelector<HTMLElement>('.diffRow.char, .diffRow.del, .diffRow.ins');
+    if (target) {
       const vr = view.getBoundingClientRect();
-      const rr = firstChange.getBoundingClientRect();
+      const rr = target.getBoundingClientRect();
       view.scrollTop += rr.top - vr.top - Math.max(0, (view.clientHeight - rr.height) / 2);
     } else {
       view.scrollTop = 0;
