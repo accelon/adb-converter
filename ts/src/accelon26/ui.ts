@@ -7,7 +7,7 @@
  */
 import { $, currentFile, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, session, setStatus, tokens, statusText } from './viewer';
 import { type AdbSource } from './adb';
-import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, readSideFont, pageMarksOn, renderDocTabs, renderRawOn, rerenderDoc, setDocFont, setHardBreaks, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
+import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, readSideFont, pageMarksOn, rememberDocSelection, renderDocTabs, renderRawOn, rerenderDoc, setDocFont, setHardBreaks, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
 import { renderTextPane } from './text-pane';
 import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
 import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
@@ -1173,11 +1173,15 @@ function boot() {
   };
   // 「原始文件」已取消（作者 2026-10-24），改成鉛筆：進入／離開這一頁的編輯態。
   const editBtn = $('#editBtn') as HTMLButtonElement | null;
-  if (editBtn) editBtn.onclick = () => {
-    const s = docSession();
-    if (!s) return;
-    if (s.editing) exitEdit(s); else enterEdit(s);
-  };
+  if (editBtn) {
+    // mousedown 在瀏覽器收合選取之前先記住本文選取，進編輯後才能捲到它
+    editBtn.addEventListener('mousedown', () => rememberDocSelection(), true);
+    editBtn.onclick = () => {
+      const s = docSession();
+      if (!s) return;
+      if (s.editing) exitEdit(s); else enterEdit(s, true);
+    };
+  }
   // 設定／測試仍可能呼叫 raw；有舊元素才綁（新介面沒有）
   const showRaw = $('#showRaw') as HTMLInputElement | null;
   if (showRaw) {

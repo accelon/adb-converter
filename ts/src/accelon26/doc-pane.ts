@@ -528,6 +528,60 @@ let activeEditor: {
 
 let stageTimer = 0;
 
+/** 進入編輯前在本文選取的文字（用來把 caret／選取區捲進視窗） */
+let pendingDocSelection: { startLine: number; endLine: number; text: string; startText: string } | null = null;
+let pendingSelectionUse = false;
+
+
+function lineElementOf(node: Node | null): HTMLElement | null {
+  const el = node && node.nodeType === 1 ? (node as Element) : (node?.parentElement ?? null);
+  return (el?.closest?.('.docLine[id^="L"]') as HTMLElement | null) ?? null;
+}
+
+/** 記住本文目前的選取（在按鉛筆之前），不用在 click 之後才抓（那時已經收合）。 */
+export function rememberDocSelection(): void {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+  const range = sel.getRangeAt(0);
+  const root = document.getElementById('docText');
+  if (!root || !root.contains(range.commonAncestorContainer)) return;
+  const startEl = lineElementOf(range.startContainer);
+  const endEl = lineElementOf(range.endContainer);
+  if (!startEl || !startEl.id.startsWith('L')) return;
+  const startLine = Number(startEl.id.slice(1));
+  const endLine = endEl && endEl.id.startsWith('L') ? Number(endEl.id.slice(1)) : startLine;
+  const startText = startEl.querySelector('.lineText')?.textContent ?? '';
+  pendingDocSelection = { startLine, endLine, text: range.toString(), startText };
+}
+
+/** 把 CodeMirror 的 caret／選取移到剛剛在本文選取的那一行，並置中。 */
+function scrollEditorToSelection(view: any, pageLines: number[], sel: { startLine: number; text: string; startText: string }): void {
+  const idx = pageLines.indexOf(sel.startLine);
+  if (idx < 0) return;
+  const doc = view.state.doc;
+  const line = doc.line(Math.max(1, Math.min(doc.lines, idx + 1)));
+  const first = (sel.text || '').split('\n')[0] || sel.startText || '';
+  let at = 0;
+  if (first) {
+    const p = line.text.indexOf(first);
+    if (p >= 0) at = p;
+  }
+  const anchor = line.from + at;
+  const head = Math.min(line.to, anchor + Math.max(1, first.length));
+  const CM = (globalThis as any).CM;
+  try {
+    view.dispatch({ selection: { anchor, head }, effects: CM.EditorView.scrollIntoView(anchor, { y: 'center' }) });
+  } catch {
+    view.dispatch({ selection: { anchor, head } });
+  }
+}
+
+// 選取時就記住（鉛筆的 mousedown 也會再抓一次，避免 click 前選取被收合）
+document.addEventListener('selectionchange', () => {
+  if (document.querySelector('.cm-editor')) return;
+  rememberDocSelection();
+});
+
 function editSessionOf(): DbEditSession | null {
   return currentSource ? editSessionFor(currentSource, currentFile || currentSource.name) : null;
 }
@@ -588,7 +642,7 @@ export function flushEdit(): void {
   saveActiveEditorText();
 }
 
-export function enterEdit(s: DocSession): void {
+export function enterEdit(s: DocSession, fromSelection = false): void {
   if (!s || !s.cache?.dt) return;
   if (reader && reader.header.size > 50 * 1024 * 1024) {
     setStatus('這個 adb 超過 50 MB，網頁版暫不支援編輯（桌面版或 Go 版再處理）', 'err');
@@ -599,6 +653,10 @@ export function enterEdit(s: DocSession): void {
     return;
   }
   stageActiveEditor();
+  if (fromSelection) {
+    if (!pendingDocSelection) rememberDocSelection();
+    pendingSelectionUse = !!pendingDocSelection;
+  }
   s.editing = true;
   s.autoEdit = true;
   renderDoc(s);
@@ -670,6 +728,12 @@ function renderEditPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
   if (!host) return;
   const ed = mountPageEditor(host, lines.slice(), { onChange: scheduleStage, onNotice: noticeEditor });
   activeEditor = { ed, first: r.first, last: r.last, oldLines: dt.lines.slice(), s, key, docName: docNameOf(s) };
+  if (pendingSelectionUse) {
+    const sel = pendingDocSelection;
+    pendingSelectionUse = false;
+    pendingDocSelection = null;
+    if (sel) scrollEditorToSelection(ed.view, dt.lineNumbers, sel);
+  }
   // diagnostics / headless tests
   (window as any).__accelon26EditView = ed.view;
   (document.getElementById('editDone') as HTMLButtonElement | null)?.addEventListener('click', () => exitEdit(s));

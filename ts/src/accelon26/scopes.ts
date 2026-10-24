@@ -5,7 +5,7 @@
  * ./viewer and the other split modules as ESM live bindings; a module OWNS the
  * state it declares, and other modules get/set it through that module's exports.
  */
-import { $, altKey, displayName, docs, escapeHtml, fmtBytes, fmtInt, mapper, mods, newTabKey, openFile, opening, reader, session, tokens } from './viewer';
+import { $, altKey, currentFile, currentSource, displayName, docs, escapeHtml, fmtBytes, fmtInt, mapper, mods, newTabKey, openFile, opening, reader, session, tokens } from './viewer';
 import { advanced, showTab } from './ui';
 import { showToken } from './panes';
 import { paintTreeActive, revealHit } from './link';
@@ -15,6 +15,26 @@ import { parseQuery, namePattern } from './query';
 import { variantNamePattern, variantSearchOn } from './variants';
 import { computeTierContext, setTierContext, tierContext } from './render_accelon3';
 import { tagColorOf } from './tag-style';
+import { findSession, onEditsChange, sourceKey } from './edit-session';
+
+
+function editSessionNow() {
+  return currentSource ? findSession(sourceKey(currentSource)) : undefined;
+}
+
+/** Does this tree node's realm contain a page that has a staged revision? */
+function nodeHasEdits(es: ReturnType<typeof editSessionNow>, n: TreeNode): boolean {
+  if (!es || !es.edits.size) return false;
+  const v = mapper?.linesVirtual;
+  if (!v || !v.length) return false;
+  const end = n.vaEnd || n.va + 1;
+  for (const e of es.edits.values()) {
+    const a = e.first > 0 ? (v[e.first - 1] ?? 0) + 1 : 0;
+    const b = (v[e.last] ?? 0) + 1;
+    if (a < end && b > n.va) return true;
+  }
+  return false;
+}
 
 /** directory tree state (one entry per `<樹>` declaration) */
 interface DirTree {
@@ -526,7 +546,8 @@ async function renderDirTree(): Promise<void> {
       } else if (r.hasChildren && !open) {
         badge = `<span class="tCount">${fmtInt(n.children.length)}</span>`;
       }
-      return `<div class="tRow" data-va="${n.va}">
+      const edited = nodeHasEdits(editSessionNow(), n);
+      return `<div class="tRow${edited ? ' edited' : ''}" data-va="${n.va}">
       <span class="tTwisty">${twisty}</span>
       <span class="tDot" style="background:${depthColor(n.depth, n.tag)}"></span>
       <span class="tTag">${escapeHtml(n.tag)}</span>
@@ -1372,6 +1393,15 @@ export function resetScopes(): void {
 
 import { SearchResult, SearchTree, TreeNode, buildTree, flattenTree, loadInstanceAttrs, loadTree, loadTrees, nodeOwningVa, parseScope } from './search';
 import { searchAutoVia } from './backend';
+
+// 修訂數變動：目錄樹已掛載的節點名稱即時轉紅（不重畫，保留捲動位置）
+onEditsChange(() => {
+  const es = editSessionNow();
+  document.querySelectorAll<HTMLElement>('#dirTree .tRow[data-va]').forEach((row) => {
+    const n = findNode(dirOrder, Number(row.dataset.va));
+    row.classList.toggle('edited', !!n && nodeHasEdits(es, n));
+  });
+});
 
 /** the trees of ONE database (labelTables is a pure cache: dropped on switch) */
 function snapshotScopes() {

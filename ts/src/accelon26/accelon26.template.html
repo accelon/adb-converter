@@ -24,6 +24,8 @@
   /* 字級按鈕那顆「小 T／大 T」的底色與字色（作者 2026-10 回報：亮色系／春綠下
      還是黑方塊，很突兀）。暗色系維持原本的黑底白字。 */
   --chip-bg: #000; --chip-fg: #fff;
+  /* 編輯器的 caret：和 accent（藍）相反的琥珀色，3px 粗（作者 2026-10-24） */
+  --caret: #ffb000;
   color-scheme: dark;
     --fs: 15px;               /* base font size */
     --left: 25fr;             /* column widths, draggable; 0fr = hidden */
@@ -67,6 +69,7 @@
     --hit-1: #d9534f; --hit-2: #cc3b36; --hit-3: #b52a20; --hit-4: #9c1a12;
     --ok: #2e7d32;
     --chip-bg: #f5f6f8; --chip-fg: #1f2328;
+    --caret: #c2410c;
     color-scheme: light;
     --tag-0: hsl(0 55% 42%); --tag-1: hsl(48 70% 34%); --tag-2: hsl(110 50% 34%);
     --tag-3: hsl(165 55% 30%); --tag-4: hsl(220 60% 46%); --tag-5: hsl(275 50% 44%);
@@ -87,6 +90,7 @@
     --hit-1: #a8433f; --hit-2: #96322e; --hit-3: #7f2622; --hit-4: #6b1c18;
     --ok: #3f7d4e;
     --chip-bg: #e6efdc; --chip-fg: #2c3a2a;
+    --caret: #a02060;
     color-scheme: light;
     --tag-0: hsl(0 45% 38%); --tag-1: hsl(48 60% 30%); --tag-2: hsl(110 40% 30%);
     --tag-3: hsl(165 45% 27%); --tag-4: hsl(220 45% 40%); --tag-5: hsl(275 40% 38%);
@@ -108,6 +112,7 @@
     --hit-1: #a8431f; --hit-2: #96351a; --hit-3: #7f2812; --hit-4: #6b1c0a;
     --ok: #5f7a2b;
     --chip-bg: #f1e3c6; --chip-fg: #3a2d1b;
+    --caret: #006b7a;
     color-scheme: light;
     --tag-0: hsl(20 60% 38%); --tag-1: hsl(45 70% 32%); --tag-2: hsl(75 45% 32%);
     --tag-3: hsl(150 35% 30%); --tag-4: hsl(205 45% 38%); --tag-5: hsl(280 35% 40%);
@@ -973,6 +978,15 @@
   #docEditor .cmHost { flex: 1 1 auto; min-height: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--bg); }
   #docEditor .cm-editor { height: 100%; }
   #docEditor .cm-scroller { overflow: auto; }
+  .cm-editor .cm-content { caret-color: var(--caret); }
+  /* drawSelection() 畫的是 .cm-cursor：3px 粗、用與 accent 相反的色 */
+  .cm-editor .cm-cursor, .cm-editor .cm-dropCursor {
+    border-left: 3px solid var(--caret) !important;
+    margin-left: -1px;
+    box-shadow: 0 0 3px var(--caret);
+  }
+  /* 目錄樹：有未產生修訂的節點，名稱塗紅（作者 2026-10-24） */
+  .tRow.edited .tName { color: var(--hit-2); font-weight: 600; }
   .cm-tag { color: #ff6b6b; font-weight: 600; }
   .cm-tag-close { color: #ff8f8f; }
   .cm-tag-self { color: #ffb15c; }
