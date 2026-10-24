@@ -26,6 +26,8 @@
   --chip-bg: #000; --chip-fg: #fff;
   /* 編輯器的 caret：和 accent（藍）相反的琥珀色，3px 粗（作者 2026-10-24） */
   --caret: #ffb000;
+  /* diff 用的紅綠（比 --hit-2／--ok 更亮，作者 2026-10-25） */
+  --diff-add: #7dff9e; --diff-del: #ff5252;
   color-scheme: dark;
     --fs: 15px;               /* base font size */
     --left: 25fr;             /* column widths, draggable; 0fr = hidden */
@@ -70,6 +72,7 @@
     --ok: #2e7d32;
     --chip-bg: #f5f6f8; --chip-fg: #1f2328;
     --caret: #c2410c;
+    --diff-add: #0a8f3c; --diff-del: #d92d20;
     color-scheme: light;
     --tag-0: hsl(0 55% 42%); --tag-1: hsl(48 70% 34%); --tag-2: hsl(110 50% 34%);
     --tag-3: hsl(165 55% 30%); --tag-4: hsl(220 60% 46%); --tag-5: hsl(275 50% 44%);
@@ -91,6 +94,7 @@
     --ok: #3f7d4e;
     --chip-bg: #e6efdc; --chip-fg: #2c3a2a;
     --caret: #a02060;
+    --diff-add: #087a2f; --diff-del: #c0262c;
     color-scheme: light;
     --tag-0: hsl(0 45% 38%); --tag-1: hsl(48 60% 30%); --tag-2: hsl(110 40% 30%);
     --tag-3: hsl(165 45% 27%); --tag-4: hsl(220 45% 40%); --tag-5: hsl(275 40% 38%);
@@ -113,6 +117,7 @@
     --ok: #5f7a2b;
     --chip-bg: #f1e3c6; --chip-fg: #3a2d1b;
     --caret: #006b7a;
+    --diff-add: #2e7d32; --diff-del: #c0392b;
     color-scheme: light;
     --tag-0: hsl(20 60% 38%); --tag-1: hsl(45 70% 32%); --tag-2: hsl(75 45% 32%);
     --tag-3: hsl(150 35% 30%); --tag-4: hsl(205 45% 38%); --tag-5: hsl(280 35% 40%);
@@ -990,8 +995,9 @@
   .diffToggle[hidden] { display: none; }
   .diffView {
     font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
-    font-size: 12.5px; line-height: 1.75; overflow: auto; min-height: 0; flex: 1 1 auto;
-    padding: 2px 0 30vh;
+    /* 和閱讀模式同一個字級變數（auto-fit 會改 --doc-body-size） */
+    font-size: var(--doc-body-size, var(--fsdoc, 16px)); line-height: 1.65;
+    overflow: auto; min-height: 0; flex: 1 1 auto; padding: 2px 0 30vh;
   }
   .diffRow { display: flex; gap: 8px; padding: 0 4px; border-radius: 3px; }
   .diffNo {
@@ -1001,16 +1007,16 @@
   .diffSign { width: 1.2em; flex: 0 0 auto; text-align: center; user-select: none; }
   .diffText { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; word-break: break-word; }
   .diffRow.context .diffText, .diffRow.char .diffText { color: var(--fg); }
-  .diffRow.del .diffText, .diffRow.del .diffSign { color: var(--hit-2); }
+  .diffRow.del .diffText, .diffRow.del .diffSign { color: var(--diff-del); }
   .diffRow.del .diffText { background: rgba(255,107,107,.10); }
-  .diffRow.ins .diffText, .diffRow.ins .diffSign { color: var(--ok); }
+  .diffRow.ins .diffText, .diffRow.ins .diffSign { color: var(--diff-add); }
   .diffRow.ins .diffText { background: rgba(80,200,120,.10); }
-  .diff-del-inner { background: rgba(255,80,80,.28); text-decoration: line-through; }
-  .diff-ins-inner { background: rgba(80,220,120,.28); }
+  .diff-del-inner { color: var(--diff-del); background: rgba(255,80,80,.28); text-decoration: line-through; }
+  .diff-ins-inner { color: var(--diff-add); background: rgba(80,220,120,.28); }
   .diffLegend { font-size: 12px; color: var(--dim); margin: 0 0 8px 4px; }
   .diffLegend b { font-weight: 600; }
-  .diffLegend .add { color: var(--ok); }
-  .diffLegend .del { color: var(--hit-2); }
+  .diffLegend .add { color: var(--diff-add); }
+  .diffLegend .del { color: var(--diff-del); }
   /* 目錄樹：有未產生修訂的節點，名稱塗紅（作者 2026-10-24） */
   .tRow.edited .tName { color: var(--hit-2); font-weight: 600; }
   .cm-tag { color: #ff6b6b; font-weight: 600; }
