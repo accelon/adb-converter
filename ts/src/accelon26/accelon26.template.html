@@ -596,6 +596,16 @@
      路徑接在後面；真的排不下時由路徑自己換行，不會把標題擠到另一列。 */
   .docTop { display: flex; align-items: baseline; gap: 14px; min-width: 0; margin-bottom: 8px; }
   .docTop .docHead { flex: 0 1 auto; min-width: 0; margin-bottom: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 閱讀標題的頁碼／行數資訊平時不佔空間；hover 時由 doc-pane 顯示浮層 */
+  .docHeadReading .docMeta { display: none; }
+  .docMetaTip {
+    position: fixed; z-index: 95; pointer-events: none;
+    max-width: min(620px, 90vw); padding: 7px 10px;
+    background: var(--popup-bg); color: var(--popup-fg); border: 1px solid var(--line);
+    border-radius: 7px; box-shadow: 0 12px 34px rgba(0,0,0,.55);
+    font-size: 12px; line-height: 1.65; white-space: normal;
+  }
+
   /* 標題後面那串統計（頁數／行號／source 區塊／字數）只在進階模式顯示（作者 2026-10） */
   body:not(.advanced) .docHead .dim { display: none; }
 

@@ -1043,6 +1043,41 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
   }
 }
 
+/** 標題的頁碼／行數／source 資訊：平時隱藏，hover 標題才用浮層顯示（不佔 breadcrumb 的寬度）。 */
+let docMetaTip: HTMLElement | null = null;
+function hideDocMetaTip(): void {
+  docMetaTip?.remove();
+  docMetaTip = null;
+}
+function wireDocMetaTips(): void {
+  hideDocMetaTip();
+  document.querySelectorAll<HTMLElement>('#docText .docHeadReading').forEach((head) => {
+    const meta = head.querySelector<HTMLElement>('.docMeta');
+    if (!meta) return;
+    head.addEventListener('mouseenter', () => {
+      if (!document.body.classList.contains('advanced')) return;
+      const text = (meta.textContent || '').trim();
+      if (!text) return;
+      hideDocMetaTip();
+      const tip = document.createElement('div');
+      tip.className = 'docMetaTip';
+      tip.textContent = text;
+      document.body.appendChild(tip);
+      const r = head.getBoundingClientRect();
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      const left = Math.min(Math.max(8, r.left), window.innerWidth - tw - 8);
+      let top = r.bottom + 6;
+      if (top + th > window.innerHeight - 8) top = Math.max(8, r.top - th - 6);
+      tip.style.left = Math.round(left) + 'px';
+      tip.style.top = Math.round(top) + 'px';
+      docMetaTip = tip;
+    });
+    head.addEventListener('mouseleave', hideDocMetaTip);
+  });
+}
+window.addEventListener('scroll', hideDocMetaTip, true);
+window.addEventListener('resize', hideDocMetaTip);
+
 /** render one page: tab strip, header, rows, pager. */
 function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   if (!dt) return;
@@ -1086,19 +1121,23 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   // 而第一個詞條字串通常就是命中、會被塗紅 —— 再放一次就變成同一個詞顯示三次。
   // 標題（.docHead）與 breadcrumb 排在同一行（作者 2026-10-18）：.docTop 是 flex row，
   // 標題保留原本的語意（h 區的 .docHead），路徑接在它後面、不另起一列。
+  const headTitle = displayName(s.name);
+  // 標題和分頁標籤一樣時就不必再顯示一次，把橫向空間留給 breadcrumb
+  const showHead = !isDictDb(mapper) && headTitle !== shortLabel(s.name);
   $('#docText').innerHTML = '<div class="docTop">'
-    + (isDictDb(mapper)
-      ? ''
-      : '<div class="docHead">' + escapeHtml(displayName(s.name))
-        + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁（每頁 ' + fmtInt(PAGE_LINES) + ' 行）'
+    + (showHead
+      ? '<div class="docHead docHeadReading">' + escapeHtml(headTitle)
+        + '<span class="dim docMeta">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁（每頁 ' + fmtInt(PAGE_LINES) + ' 行）'
         + ' · 行 ' + fmtInt(nFirst) + '–' + fmtInt(nLast) + ' / 此節點共 ' + fmtInt(b.total) + ' 行'
-        + ' · source 區塊 ' + dt.blockFirst + '–' + dt.blockLast + ' · ' + fmtInt(dt.text.length) + ' 字</span></div>')
+        + ' · source 區塊 ' + dt.blockFirst + '–' + dt.blockLast + ' · ' + fmtInt(dt.text.length) + ' 字</span></div>'
+      : '')
     + renderAncestorTrail(s)
     + '</div>'
     + '<div class="docBody' + (hardBreaks ? '' : ' reflow') + '">' + rows + '</div>';
   renderDocTabs(s);
   renderPager(s, b);
   wireTrail();
+  wireDocMetaTips();
   const body = document.querySelector<HTMLElement>('#docText .docBody');
   body?.scrollTo(0, 0);
   // the middle-line cursor follows the pane, so re-read it after every render and
