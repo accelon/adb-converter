@@ -1000,7 +1000,7 @@
   }
   .diffSign { width: 1.2em; flex: 0 0 auto; text-align: center; user-select: none; }
   .diffText { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; word-break: break-word; }
-  .diffRow.context .diffText { color: var(--fg); }
+  .diffRow.context .diffText, .diffRow.char .diffText { color: var(--fg); }
   .diffRow.del .diffText, .diffRow.del .diffSign { color: var(--hit-2); }
   .diffRow.del .diffText { background: rgba(255,107,107,.10); }
   .diffRow.ins .diffText, .diffRow.ins .diffSign { color: var(--ok); }

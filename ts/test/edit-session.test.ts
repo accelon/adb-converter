@@ -3,6 +3,7 @@
  *   bun run test/edit-session.test.ts
  */
 import { applyEdits, diffPage, discardAll, hasEditsInRange, makeRevision, pageEditAt, sessionFor, stagePage, type PageEdit } from '../src/accelon26/edit-session';
+import { charDiff } from '../src/accelon26/char-diff';
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail = '') => {
@@ -47,6 +48,15 @@ ok('revision old lines kept', JSON.stringify(rev.pages[0].oldLines) === JSON.str
 ok('revision parent', rev.parent === null);
 discardAll(s);
 ok('discardAll', !pageEditAt(s, 0, 3));
+
+// char-level diff
+const cd = (a: string, b: string) => charDiff(a, b).map((s) => s.kind + ':' + s.text).join('|');
+ok('char insert', cd('abc', 'abXc') === 'same:ab|ins:X|same:c', cd('abc', 'abXc'));
+ok('char delete', cd('abc', 'ac') === 'same:a|del:b|same:c', cd('abc', 'ac'));
+ok('char CJK insert', cd('乾', 'X乾') === 'ins:X|same:乾', cd('乾', 'X乾'));
+ok('char two edits', cd('abcdef', 'abXdeYf') === 'same:ab|del:c|ins:X|same:de|ins:Y|same:f', cd('abcdef', 'abXdeYf'));
+ok('char surrogate pair', cd('😀a', '😀b') === 'same:😀|del:a|ins:b', cd('😀a', '😀b'));
+
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exitCode = fail ? 1 : 0;

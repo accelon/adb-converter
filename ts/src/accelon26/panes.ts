@@ -9,6 +9,7 @@ import { $, displayName, docs, escapeHtml, fmtBytes, fmtInt, mapper, reader, set
 import { desktopExportTextImages, desktopHost, desktopRevealInFolder } from './host';
 import { revealHit, showLine } from './link';
 import { readRevisions } from './rebuild-browser';
+import { charDiff } from './char-diff';
 
 let showAllClasses = false;
 
@@ -400,9 +401,13 @@ export async function renderRevisions(): Promise<void> {
       const rows: string[] = [];
       for (const c of changes) {
         const line = (Number(c.line) || 0) + 1;
-        const show = (s: any): string => (s ? escapeHtml(short(String(s))) : '（空）');
         if (c.kind === 'replace') {
-          rows.push('<div class="revisionChange">行 ' + line + '：<span class="del">' + show(c.oldText) + '</span> → <span class="ins">' + show(c.newText) + '</span></div>');
+          const seg = charDiff(String(c.oldLine ?? ''), String(c.newLine ?? '')).map((s) => {
+            if (s.kind === 'del') return '<span class="diff-del-inner">' + escapeHtml(s.text) + '</span>';
+            if (s.kind === 'ins') return '<span class="diff-ins-inner">' + escapeHtml(s.text) + '</span>';
+            return escapeHtml(s.text);
+          }).join('');
+          rows.push('<div class="revisionChange">行 ' + line + '：' + seg + '</div>');
         } else if (c.kind === 'insert') {
           rows.push('<div class="revisionChange">行 ' + line + '：新增 <span class="ins">' + escapeHtml(short(c.newLine ?? '')) + '</span></div>');
         } else {

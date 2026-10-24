@@ -16,6 +16,7 @@ import { kwMarks } from './kw-marks';
 import { displayConverter, type SimMode } from './lossless';
 import { isDictDb } from './db-kind';
 import { diffPage, discardPage, hasEditsInRange, onEditsChange, pageEditAt, pageKey, sessionFor as editSessionFor, stagePage, type DbEditSession, type PageEdit } from './edit-session';
+import { charDiff } from './char-diff';
 import { mountPageEditor, type PageEditor } from './editor';
 
 /**
@@ -765,17 +766,16 @@ function renderEditPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
   });
 }
 
-/** 把一行中真正改動的那一段包成紅／綠；at 是共同前綴長度。 */
-function diffSegment(line: string, at: number, text: string, cls: string): string {
-  if (!text) return escapeHtml(line);
-  const cut = Math.max(0, Math.min(line.length, at));
-  const rest = Math.min(line.length, cut + text.length);
-  return escapeHtml(line.slice(0, cut))
-    + '<span class="' + cls + '">' + escapeHtml(text) + '</span>'
-    + escapeHtml(line.slice(rest));
+/** One changed line as a char-level run: same normal, removed red, added green. */
+function charDiffHtml(oldLine: string, newLine: string): string {
+  return charDiff(oldLine, newLine).map((s) => {
+    if (s.kind === 'del') return '<span class="diff-del-inner">' + escapeHtml(s.text) + '</span>';
+    if (s.kind === 'ins') return '<span class="diff-ins-inner">' + escapeHtml(s.text) + '</span>';
+    return escapeHtml(s.text);
+  }).join('');
 }
 
-function diffRow(kind: 'context' | 'del' | 'ins', no: string, sign: string, html: string): string {
+function diffRow(kind: 'context' | 'del' | 'ins' | 'char', no: string, sign: string, html: string): string {
   return '<div class="diffRow ' + kind + '"><span class="diffNo">' + no
     + '</span><span class="diffSign">' + sign + '</span><span class="diffText">' + html + '</span></div>';
 }
@@ -802,8 +802,7 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
     if (c.kind === 'replace') {
       const oldLine = c.oldLine ?? edit.oldLines[oi] ?? '';
       const newLine = c.newLine ?? edit.newLines[ni] ?? '';
-      rows.push(diffRow('del', String(first + oi + 1), '-', diffSegment(oldLine, c.at ?? 0, c.oldText ?? '', 'diff-del-inner')));
-      rows.push(diffRow('ins', '', '+', diffSegment(newLine, c.at ?? 0, c.newText ?? '', 'diff-ins-inner')));
+      rows.push(diffRow('char', String(first + oi + 1), '~', charDiffHtml(oldLine, newLine)));
       replaced++;
       oi++;
       ni++;
