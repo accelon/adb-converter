@@ -3,7 +3,9 @@
  */
 import type { AdbReader, AdbSource } from './adb';
 import { applyEdits, diffPage, editCount, findSession, makeRevision, revertRevision, sourceKey, type DbEditSession } from './edit-session';
-import { buildAdb, readAllLines, readRevisions } from './rebuild-browser';
+import { buildAdb, readAllLines } from './rebuild-browser';
+import { allRevisions, extraRevisions } from './revisions-store';
+import { sha256Hex } from './sha256';
 
 export interface RebuildHooks {
   status?: (msg: string, kind?: 'info' | 'err' | 'busy') => void;
@@ -66,11 +68,15 @@ function editSummary(es: DbEditSession): string {
 export async function openRebuildDialog(reader: AdbReader, slot: RebuildSlot, onGo: () => void): Promise<void> {
   const es = findSession(sourceKey(slot.file));
   const n = editCount(es);
-  if (!es || n === 0) { closeModal(); return; }
-  const revs = await readRevisions(reader);
-  const filename = baseName(reader, slot) + '-v' + (revs.length + 1) + '.adb';
-  showModal('<p class="big">共 <b>' + n + '</b> 頁修訂，將重建整份 adb 並下載。</p>'
-    + editSummary(es)
+  const imported = extraRevisions(reader).length;
+  if ((!es || n === 0) && imported === 0) { closeModal(); return; }
+  const revs = await allRevisions(reader);
+  const filename = baseName(reader, slot) + '-' + (n ? 'v' + (revs.length + 1) : 'imported') + '.adb';
+  const intro = n
+    ? '共 <b>' + n + '</b> 頁修訂，將重建整份 adb 並下載。'
+    : '匯入的 <b>' + imported + '</b> 筆 revisions 將寫入 adb（本文不變）並下載。';
+  showModal('<p class="big">' + intro + '</p>'
+    + (n ? editSummary(es) : '<p class="dim">沒有文字修訂；只把 revisions 容器寫進輸出檔。</p>')
     + '<p class="dim">輸出檔名：<b>' + esc(filename) + '</b>。標籤語法問題不會阻止重建（照原樣寫入）。</p>',
     () => { closeModal(); onGo(); });
   const go = el('editModalGo') as HTMLButtonElement | null;
@@ -91,7 +97,7 @@ export async function rollbackLatest(reader: AdbReader, slot: RebuildSlot, hooks
     hooks.status?.('這個 adb 超過 50 MB，網頁版暫不支援回滾', 'err');
     return null;
   }
-  const revs = await readRevisions(reader);
+  const revs = await allRevisions(reader);
   if (!revs.length) { hooks.status?.('這個 adb 沒有修訂紀錄', 'err'); return null; }
   const latest = JSON.parse(new TextDecoder().decode(revs[revs.length - 1].blob));
   if (latest?.format !== 'accelon26-revision/1') { hooks.status?.('最新的修訂紀錄格式不認得', 'err'); return null; }
@@ -102,6 +108,7 @@ export async function rollbackLatest(reader: AdbReader, slot: RebuildSlot, hooks
   const bytes = await buildAdb({
     reader, lines: previous, baseLines: current, edits: [],
     key: (es?.key ?? 'rollback') + '#rollback:' + latest.id,
+    extraRevisions: extraRevisions(reader),
     keepRevisions: revs.length - 1,
     progress: (phase, done, total) => progress(phase + ' ' + done + '/' + total, total ? 0.02 + 0.9 * (done / total) : 0.5),
   });
@@ -112,7 +119,7 @@ export async function rollbackLatest(reader: AdbReader, slot: RebuildSlot, hooks
 }
 
 export async function rollbackAndDownload(reader: AdbReader, slot: RebuildSlot, hooks: RebuildHooks = {}): Promise<void> {
-  const revs = await readRevisions(reader);
+  const revs = await allRevisions(reader);
   if (!revs.length) return;
   const latest = revs[revs.length - 1];
   if (!window.confirm('要退回 ' + latest.id + ' 之前的版本嗎？會下載一份回滾後的 adb（目前檔案不會被改動）。')) return;
@@ -152,32 +159,40 @@ export async function runRebuild(reader: AdbReader, slot: RebuildSlot, hooks: Re
     return null;
   }
   const es = findSession(sourceKey(slot.file));
-  if (!es || !es.edits.size) return null;
+  const imported = extraRevisions(reader);
+  const hasEdits = !!es && es.edits.size > 0;
+  if (!hasEdits && !imported.length) return null;
   const baseLines = await readAllLines(reader);
-  const merged = applyEdits(baseLines, es.edits.values());
-  const revs = await readRevisions(reader);
+  const merged = hasEdits ? applyEdits(baseLines, es!.edits.values()) : baseLines;
+  const revs = await allRevisions(reader);
   const parent = revs.length ? revs[revs.length - 1].id : null;
-  const id = 'v' + (revs.length + 1);
-  const revision = makeRevision(es, {
-    name: slot.name, size: slot.file.size, lineCount: baseLines.length, headerCrc: reader.header.crc32,
-  }, id, parent);
+  const id = hasEdits ? 'v' + (revs.length + 1) : (parent || 'imported');
+  let revision: ReturnType<typeof makeRevision> | undefined;
+  if (hasEdits) {
+    revision = makeRevision(es!, {
+      name: slot.name, size: slot.file.size, lineCount: baseLines.length, headerCrc: reader.header.crc32,
+    }, id, parent);
+    const digest = await sha256Hex(JSON.stringify(revision));
+    if (digest) revision.hash = 'sha256:' + digest;
+  }
   progress('重建：建立索引與內文…', 0.02);
   const bytes = await buildAdb({
-    reader, lines: merged, baseLines, edits: [...es.edits.values()], key: es.key, revision,
+    reader, lines: merged, baseLines, edits: hasEdits ? [...es!.edits.values()] : [], key: es?.key ?? ('import:' + sourceKey(slot.file)), revision,
+    extraRevisions: imported,
     progress: (phase, done, total) => progress(phase + ' ' + done + '/' + total, total ? 0.02 + 0.9 * (done / total) : 0.5),
   });
   progress('寫出檔案…', 0.97);
-  const filename = baseName(reader, slot) + '-' + id + '.adb';
-  es.revisions = revs.length + 1;
+  const filename = baseName(reader, slot) + '-' + (hasEdits ? id : 'imported') + '.adb';
+  if (es) es.revisions = revs.length + (hasEdits ? 1 : 0);
   progressDone();
-  hooks.status?.('已產生 ' + filename + '（' + (bytes.length / 1048576).toFixed(2) + ' MiB，' + es.edits.size + ' 頁修訂）', 'info');
-  return { bytes, filename, revisionId: id, pages: es.edits.size };
+  hooks.status?.('已產生 ' + filename + '（' + (bytes.length / 1048576).toFixed(2) + ' MiB，' + (hasEdits ? es!.edits.size + ' 頁修訂' : '只寫入匯入 revisions') + '）', 'info');
+  return { bytes, filename, revisionId: id, pages: hasEdits ? es!.edits.size : 0 };
 }
 
 /** The whole user-facing flow: confirm → build → download → offer to open. */
 export async function rebuildAndDownload(reader: AdbReader, slot: RebuildSlot, hooks: RebuildHooks = {}): Promise<void> {
   const es = findSession(sourceKey(slot.file));
-  if (!es || !es.edits.size) return;
+  if ((!es || !es.edits.size) && !extraRevisions(reader).length) return;
   await openRebuildDialog(reader, slot, async () => {
     progress('準備中…', 0.01);
     try {
@@ -186,7 +201,7 @@ export async function rebuildAndDownload(reader: AdbReader, slot: RebuildSlot, h
       const url = downloadAdb(res.bytes, res.filename);
       progressDone();
       showModal('<p class="big">✓ 已下載 <b>' + esc(res.filename) + '</b></p>'
-        + '<p class="dim">' + res.pages + ' 頁修訂已寫入 revisions 容器。原始庫仍保持原樣（修訂只是暫存在瀏覽器）。</p>'
+        + '<p class="dim">' + (res.pages ? res.pages + ' 頁修訂已寫入 revisions 容器。' : '匯入的 revisions 已寫入輸出檔。') + '原始庫仍保持原樣（修訂只是暫存在瀏覽器）。</p>'
         + '<p><a class="mini" href="' + url + '" download="' + esc(res.filename) + '">再下載一次</a></p>',
         () => { closeModal(); });
       const go = el('editModalGo') as HTMLButtonElement | null;

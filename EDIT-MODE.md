@@ -42,6 +42,13 @@
 - 搜尋框輸入 `#123` 或 `#L123`（可加 `@db`，例如 `#L123@yinshun`），按 **Enter** 跳到該行；輸入時不會邊打邊查。
 - F9 複製本文行號 id 時會自動附上 `@dbname`，貼回搜尋框即可跳回同一行。
 
+## 修訂者與 revisions
+
+- 「關於」頁可設定**修訂者 ID**；沒有 ID 不能進入編輯模式，也不會產生新修訂。
+- 每次 rebuild 的 revision 會記錄 `editor`，並對 revision 內容算 `sha256:`；修訂頁把滑鼠移到版本號上可看 hash。
+- 修訂頁的「匯出 revisions」只下載 JSON（含 editor／hash／pages），不是整個 adb。
+- 「匯入 revisions」讀 JSON，去重後暫存在記憶體；之後按 F2／重建會把這些 revisions 寫進新的 adb（也可以只匯入、不改文字直接重建）。
+
 ## 熱鍵
 
 - **F1**：從第一頁播放操作導覽（多份劇本時開選單）
@@ -72,6 +79,8 @@ revisions 的每個 block 是 UTF-8 JSON：
   "id": "v1",
   "parent": null,
   "createdAt": "2026-10-24T15:00:00.000Z",
+  "editor": "yinshun-editor",
+  "hash": "sha256:…",
   "base": { "name": "13j", "size": 2252537, "lineCount": 42173, "headerCrc": 123 },
   "pages": [{
     "first": 8, "last": 33, "doc": "13j",

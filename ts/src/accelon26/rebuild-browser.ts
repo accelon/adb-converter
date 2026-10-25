@@ -305,6 +305,8 @@ export interface BuildOptions {
   edits: PageEdit[];
   key: string;
   revision?: RevisionRecord;
+  /** 匯入的 revisions，一併寫入（不重複 id） */
+  extraRevisions?: RevisionInfo[];
   /** 回滾用：只保留前 N 個 revisions block（0 = 全部丟掉） */
   keepRevisions?: number;
   progress?: BuildProgress;
@@ -382,6 +384,11 @@ export async function buildAdb(opts: BuildOptions): Promise<Uint8Array> {
   const revisionsC = reader.containers.get('revisions');
   let revBlocks = revisionsC ? await rawBlocks(reader, revisionsC) : [];
   let revNames = revisionsC ? revisionsC.names.slice() : [];
+  for (const ex of opts.extraRevisions ?? []) {
+    if (revNames.includes(ex.id)) continue;
+    revNames.push(ex.id);
+    revBlocks.push(ex.blob);
+  }
   if (opts.keepRevisions !== undefined) {
     revBlocks = revBlocks.slice(0, Math.max(0, opts.keepRevisions));
     revNames = revNames.slice(0, Math.max(0, opts.keepRevisions));

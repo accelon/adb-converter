@@ -5,6 +5,7 @@
  * docTab 共用一份修訂；換庫、換分頁都不會丟。
  */
 import type { AdbSource } from './adb';
+import { getUserId } from './user-id';
 
 export interface PageEdit {
   /** base 版本的行號（0-based，含頭尾） */
@@ -25,6 +26,8 @@ export interface DbEditSession {
   edits: Map<string, PageEdit>;
   /** 已產生過的修訂數（從 adb 的 revisions 容器讀到的 + 本次） */
   revisions: number;
+  /** 測試／工具可指定；一般由 getUserId() 決定 */
+  editor?: string;
 }
 
 const sessions = new Map<string, DbEditSession>();
@@ -83,6 +86,7 @@ export function stagePage(
   docName: string,
 ): boolean {
   const key = pageKey(first, last);
+  if (!s.editor) s.editor = getUserId();   // 記下開始編輯時的修訂者
   const existing = s.edits.get(key);
   const base = existing ? existing.oldLines : oldLines;
   if (sameLines(base, newLines)) {
@@ -263,6 +267,10 @@ export interface RevisionRecord {
   id: string;
   parent: string | null;
   createdAt: string;
+  /** 修訂者 ID（About 頁設定；舊資料可能沒有） */
+  editor?: string;
+  /** 這一筆 revision 內容的 SHA-256（含 sha256: 前綴；舊資料可能沒有） */
+  hash?: string;
   base: {
     name: string;
     size: number;
@@ -284,6 +292,7 @@ export function makeRevision(
     id,
     parent,
     createdAt: new Date().toISOString(),
+    editor: s.editor || getUserId(),
     base,
     pages,
   };

@@ -8,7 +8,9 @@
 import { $, displayName, docs, escapeHtml, fmtBytes, fmtInt, mapper, reader, setStatus, tokens } from './viewer';
 import { desktopExportTextImages, desktopHost, desktopRevealInFolder } from './host';
 import { revealHit, showLine } from './link';
-import { readRevisions } from './rebuild-browser';
+import { allRevisions } from './revisions-store';
+import { exportRevisions, importRevisions } from './revisions-transfer';
+import { sha256Hex } from './sha256';
 
 let showAllClasses = false;
 
@@ -377,8 +379,31 @@ export async function renderRevisions(): Promise<void> {
   const pane = document.getElementById('revisionsPane');
   if (!pane) return;
   if (!reader) { pane.innerHTML = '<p class="revisionEmpty">尚未開啟資料庫。</p>'; return; }
-  const revs = await readRevisions(reader);
-  if (!revs.length) { pane.innerHTML = '<p class="revisionEmpty">這個 adb 還沒有修訂紀錄。</p>'; return; }
+  const revs = await allRevisions(reader);
+  const tools = '<div class="revisionsTools"><button type="button" class="mini" id="revExport"' + (revs.length ? '' : ' disabled') + '>匯出 revisions</button>'
+    + '<button type="button" class="mini" id="revImport">匯入 revisions</button>'
+    + '<input type="file" id="revFile" accept=".json,application/json" hidden></div>';
+  const wireTools = (): void => {
+    const file = pane.querySelector<HTMLInputElement>('#revFile');
+    pane.querySelector<HTMLButtonElement>('#revExport')?.addEventListener('click', () => {
+      void exportRevisions(reader).then((n) => setStatus('已匯出 ' + n + ' 筆 revisions', 'info')).catch((e) => setStatus('匯出失敗：' + (e as Error).message, 'err'));
+    });
+    pane.querySelector<HTMLButtonElement>('#revImport')?.addEventListener('click', () => file?.click());
+    if (file) file.onchange = async () => {
+      const f = file.files?.[0];
+      file.value = '';
+      if (!f) return;
+      const res = await importRevisions(reader, f);
+      if (res.error) { setStatus('匯入失敗：' + res.error, 'err'); return; }
+      setStatus('已匯入 ' + res.added + ' 筆 revisions' + (res.skipped ? '（略過 ' + res.skipped + ' 筆重複）' : '') + '；下次重建會寫入', 'info');
+      await renderRevisions();
+    };
+  };
+  if (!revs.length) {
+    pane.innerHTML = tools + '<div class="revisionsSummary">共 <b>0</b> 次 rebuild</div><p class="revisionEmpty">這個 adb 還沒有修訂紀錄。可匯入 revisions JSON。</p>';
+    wireTools();
+    return;
+  }
   const cards: string[] = [];
   const byId = new Map<string, any>();
   const latestId = revs[revs.length - 1]?.id;
@@ -393,6 +418,11 @@ export async function renderRevisions(): Promise<void> {
     const pages: any[] = Array.isArray(data.pages) ? data.pages : [];
     const revId = String(data.id || rev.id);
     byId.set(revId, data);
+    let hash = String(data.hash || '');
+    if (!hash) {
+      const h = await sha256Hex(rev.blob);
+      if (h) hash = 'sha256:' + h;
+    }
     const parts: string[] = [];
     for (let pi = 0; pi < pages.length; pi++) {
       const p = pages[pi];
@@ -406,12 +436,14 @@ export async function renderRevisions(): Promise<void> {
     const rollback = (data.id || rev.id) === latestId
       ? '<button type="button" class="mini" data-rollback="' + escapeHtml(data.id || rev.id) + '" title="下載這一版之前的 adb（內容回滾；目前檔案不變）">退回上一版</button>'
       : '';
-    cards.push('<div class="revisionCard"><div class="revisionHead"><b>' + escapeHtml(data.id || rev.id) + '</b>'
+    cards.push('<div class="revisionCard"><div class="revisionHead"><b title="' + escapeHtml(hash || '沒有 hash') + '">' + escapeHtml(data.id || rev.id) + '</b>'
       + '<span>' + escapeHtml(when) + '</span><span>' + pages.length + ' 個節點</span>'
+      + (data.editor ? '<span class="revisionEditor">ID：' + escapeHtml(String(data.editor)) + '</span>' : '')
       + rollback + '</div>'
       + (parts.join('') || '<div class="revisionChange">（沒有頁面紀錄）</div>') + '</div>');
   }
-  pane.innerHTML = '<div class="revisionsSummary">共 <b>' + revs.length + '</b> 次 rebuild</div>' + cards.join('');
+  pane.innerHTML = tools + '<div class="revisionsSummary">共 <b>' + revs.length + '</b> 次 rebuild</div>' + cards.join('');
+  wireTools();
   pane.querySelectorAll<HTMLElement>('[data-rollback]').forEach((btn) => {
     btn.onclick = () => window.dispatchEvent(new CustomEvent('accelon26:rollback', { detail: { id: btn.dataset.rollback } }));
   });

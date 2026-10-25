@@ -13,6 +13,7 @@ import { Accelon3Renderer, LEVEL_MAX_SCALE, LEVEL_STEP_PX, renderPageBlocks, tag
 import { ancestorTrail, currentNodeAt, siblingsOf } from './scopes';
 import { tagColorOf } from './tag-style';
 import { kwMarks } from './kw-marks';
+import { getUserId } from './user-id';
 import { displayConverter, type SimMode } from './lossless';
 import { isDictDb } from './db-kind';
 import { diffPage, discardPage, hasEditsInRange, onEditsChange, pageEditAt, pageKey, sessionFor as editSessionFor, stagePage, type DbEditSession, type PageEdit } from './edit-session';
@@ -668,7 +669,7 @@ document.addEventListener('selectionchange', () => {
 });
 
 function editAllowed(): boolean {
-  return document.body.classList.contains('advanced');
+  return document.body.classList.contains('advanced') && !!getUserId();
 }
 
 function editSessionOf(): DbEditSession | null {
@@ -691,7 +692,9 @@ function setEditControls(s: DocSession | null): void {
     btn.hidden = history;
     const on = !!s?.editing;
     btn.classList.toggle('on', on);
-    btn.title = on ? '完成編輯（內容已自動暫存）' : '編輯這一頁（修錯字；離開會自動暫存）';
+    btn.title = !getUserId()
+      ? '請先在「關於」設定修訂者 ID'
+      : (on ? '完成編輯（內容已自動暫存）' : '編輯這一頁（修錯字；離開會自動暫存）');
   }
   const toggle = document.getElementById('diffToggle') as HTMLElement | null;
   const box = document.getElementById('showDiff') as HTMLInputElement | null;
@@ -812,8 +815,12 @@ export function enterEdit(s: DocSession, fromSelection = false): void {
     setStatus('歷史版本只能檢視，不能編輯', 'err');
     return;
   }
-  if (!editAllowed()) {
+  if (!document.body.classList.contains('advanced')) {
     setStatus('請先開啟進階模式才能編輯', 'err');
+    return;
+  }
+  if (!getUserId()) {
+    setStatus('請先在「關於」設定修訂者 ID，才能編輯', 'err');
     return;
   }
   if (!s || !s.cache?.dt) return;
@@ -881,13 +888,13 @@ function renderEditPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
   $('#docText').innerHTML = '<div class="docTop">'
     + (isDictDb(mapper)
       ? ''
-      : '<div class="docHead">' + escapeHtml(displayName(s.name))
+      : '<div class="docHead docHeadEditing">' + escapeHtml(displayName(s.name))
         + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁 · 行 '
         + fmtInt(nFirst) + '–' + fmtInt(nLast) + ' · <b style="color:var(--gold)">編輯中</b></span></div>')
     + renderAncestorTrail(s)
     + '</div>'
     + '<div id="docEditor">'
-    + '<div class="editBar"><span class="grow">離開這一頁會自動暫存 · 選一段文字後貼上 tag 可包住它 · 刪除 &lt; 或 &gt; 會刪掉整個標籤</span>'
+    + '<div class="editBar">'
     + '<button type="button" class="mini" id="editDone" title="完成這一頁（自動暫存）">完成</button>'
     + '<button type="button" class="mini" id="editCancel" title="丟掉這一頁的修改">取消本頁</button>'
     + '<span class="editNotice" id="editNotice"></span></div>'

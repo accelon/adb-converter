@@ -22,6 +22,7 @@ import { autoDictOn, dictOrder, orderByFile, selectionDictOn, setAutoDict, setDi
 import { setDictHooks } from './dict-hooks';
 import { initTour, openTourMenu, play as playTour, startTour, stopTour, tourState } from './tour';
 import { toggleInspect } from './inspect';
+import { getUserId, setUserId } from './user-id';
 import { desktopRevealInFolder } from './host';
 import {
   BODY_KEY, GROUP_ID, GROUP_TAGS, STRUCTURAL_TAGS, activeDb, bodyStyleOf, counts as tagStyleCounts,
@@ -1247,7 +1248,10 @@ function boot() {
     if (modal && !modal.hidden) return;   // 已經在重建／回滾流程
     flushEdit();
     const es = findSession(sourceKey(slot.file));
-    if (!es || editCount(es) === 0) { setStatus('目前沒有未產生的修訂；請先編輯再用 F2', 'err'); return; }
+    if ((!es || editCount(es) === 0) && !extraRevisions(reader).length) {
+      setStatus('目前沒有未產生的修訂；請先編輯或匯入 revisions 再用 F2', 'err');
+      return;
+    }
     void rebuildAndDownload(reader, { id: slot.id, name: slot.name, file: slot.file }, {
       status: (msg, kind) => setStatus(msg, kind ?? 'info'),
       openFile: (f) => openFile(f),
@@ -1519,6 +1523,8 @@ export function installDebugApi(): void {
   openTourMenu, playTour: (id: string, from?: number) => playTour(id, from), stopTour, tourState,
   /** 軟件說明（About） */
   openAbout, closeAbout, aboutState,
+  /** 修訂者 ID（About 頁／測試） */
+  setUserId, userId: getUserId,
   cols: () => ({ ...readCols(), css: {
     left: document.documentElement.style.getPropertyValue('--left'),
     center: document.documentElement.style.getPropertyValue('--center'),
@@ -1672,6 +1678,7 @@ import { loadTree } from './search';
 
 import { MAX_DBS, activeCatalogKey, activeSlot, catalogAdd, catalogAddFile, catalogEmpty, catalogState, dbLog, dbPickOpen, needsAddItem, openDbs, pickAddFile, renderDbPick, setDbHooks, setDbPickOpen, switchTo } from './dbs';
 import { editCount, findSession, sourceKey } from './edit-session';
+import { extraRevisions } from './revisions-store';
 import { rebuildAndDownload, rollbackAndDownload, runRebuild } from './rebuild-ui';
 import { initTextPane, renderTextPane, resetTextPane, textState } from './text-pane';
 import { hasLogoResource, hideDocLogo, logoState, updateDocLogo } from './logo';

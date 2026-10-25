@@ -20,6 +20,7 @@ import { desktopAppInfo, desktopCheckUpdate, desktopInstallUpdate, desktopOpenEx
 import type { DesktopAppInfo } from './host';
 import { startTour } from './tour';
 import { exportSettingsFile, initSettings, settingsLocation, settingsVersion } from './settings';
+import { getUserId, setUserId } from './user-id';
 
 export const ABOUT_SITE = 'https://shutonggui.cn/accelon26/';
 
@@ -283,6 +284,25 @@ async function messagePageURL(): Promise<string> {
 
 /** 接上事件（boot 時呼叫一次） */
 export function initAbout(): void {
+  const uid = el<HTMLInputElement>('aboutUserId');
+  const uidNote = el<HTMLElement>('aboutUserIdNote');
+  const saveUid = (): void => {
+    const v = setUserId(uid?.value ?? '');
+    if (uid) uid.value = v;
+    if (uidNote) uidNote.textContent = v
+      ? '已儲存；產生的 revisions 會記錄這個 ID。'
+      : '沒有 ID 不能進入編輯模式。';
+  };
+  if (uid) {
+    uid.value = getUserId();
+    if (uidNote) uidNote.textContent = uid.value
+      ? '已儲存；產生的 revisions 會記錄這個 ID。'
+      : '沒有 ID 不能進入編輯模式。';
+    uid.addEventListener('input', saveUid);
+    uid.addEventListener('change', saveUid);
+    uid.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); saveUid(); } });
+  }
+  el<HTMLButtonElement>('aboutUserIdSave')?.addEventListener('click', saveUid);
   el<HTMLElement>('brand')?.addEventListener('click', () => { void openAbout(); });
   el<HTMLElement>('aboutClose')?.addEventListener('click', () => closeAbout());
   el<HTMLElement>('aboutBackdrop')?.addEventListener('click', () => closeAbout());
