@@ -400,7 +400,7 @@ export async function renderRevisions(): Promise<void> {
     };
   };
   if (!revs.length) {
-    pane.innerHTML = tools + '<div class="revisionsSummary">共 <b>0</b> 次 rebuild</div><p class="revisionEmpty">這個 adb 還沒有修訂紀錄。可匯入 revisions JSON。</p>';
+    pane.innerHTML = tools + '<p class="revisionEmpty">這個 adb 還沒有修訂紀錄。可匯入 revisions JSON。</p>';
     wireTools();
     return;
   }
@@ -442,7 +442,7 @@ export async function renderRevisions(): Promise<void> {
       + rollback + '</div>'
       + (parts.join('') || '<div class="revisionChange">（沒有頁面紀錄）</div>') + '</div>');
   }
-  pane.innerHTML = tools + '<div class="revisionsSummary">共 <b>' + revs.length + '</b> 次 rebuild</div>' + cards.join('');
+  pane.innerHTML = tools + cards.join('');
   wireTools();
   pane.querySelectorAll<HTMLElement>('[data-rollback]').forEach((btn) => {
     btn.onclick = () => window.dispatchEvent(new CustomEvent('accelon26:rollback', { detail: { id: btn.dataset.rollback } }));
