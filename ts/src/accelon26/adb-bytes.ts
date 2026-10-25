@@ -203,3 +203,62 @@ export function assembleAdb(header: Uint8Array, outer: Uint8Array): Uint8Array {
   if (header.length !== 256) throw new Error('header must be 256 bytes');
   return concatBytes([header, outer]);
 }
+
+/** The 48 byte signature every .adb carries at offset 32 (basetype.pas). */
+export const ADB_SIGNATURE = '\r\nAccelon Search Engine\r\ndesigned by C.S.Yap';
+
+export interface NewHeaderFields {
+  /** 32 bytes ASCII: the base name the reader shows and the default file name */
+  dbname: string;
+  /** display name, at most 31 characters */
+  dbcname: string;
+  linecount: number;
+  tagcount: number;
+  maxblockoffset: number;
+  /** bit 1 = dictionary, bit 4 = hidden; 0 for a book */
+  dbtype?: number;
+  features?: number;
+  andtagid?: number;
+  srcblocksize?: number;
+  version?: number;
+}
+
+/**
+ * A complete 256 byte header, written from scratch (no donor database).
+ *
+ * Mirrors `makeHeader()` in src/adbwrite.ts, which is the Node twin. Both must
+ * agree byte for byte: the desktop browser build authors databases and the CLI
+ * authors databases, and a reader cannot tell them apart.
+ */
+export function makeHeaderBytes(f: NewHeaderFields): Uint8Array {
+  const h = new Uint8Array(256);
+  const dv = new DataView(h.buffer);
+  const dbname = f.dbname.slice(0, 31);
+  for (let i = 0; i < dbname.length; i++) {
+    const c = dbname.charCodeAt(i);
+    if (c < 0x20 || c > 0x7e) throw new Error('dbname must be ASCII: ' + dbname);
+    h[i] = c;
+  }
+  for (let i = 0; i < ADB_SIGNATURE.length; i++) h[32 + i] = ADB_SIGNATURE.charCodeAt(i);
+  dv.setUint32(80, 0x1a1a1a1a, true);
+  dv.setInt32(84, f.version ?? 0, true);
+  dv.setInt32(88, 1, true);                       // compression: bzip2 source blocks
+  dv.setInt32(92, f.srcblocksize ?? 16384, true);
+  dv.setInt32(96, f.maxblockoffset, true);
+  dv.setInt32(100, f.andtagid ?? 0, true);
+  dv.setInt32(104, f.linecount, true);
+  dv.setInt32(108, f.dbtype ?? 0, true);
+  dv.setInt32(112, 0, true);                      // protection
+  dv.setInt32(116, f.tagcount, true);
+  dv.setInt32(120, f.features ?? 0, true);
+  // dbcname: 64 bytes of UTF-16LE, NUL padded, at most 31 characters + terminator
+  const name = f.dbcname.slice(0, 31);
+  for (let i = 0; i < name.length; i++) {
+    const c = name.charCodeAt(i);
+    h[128 + i * 2] = c & 0xff;
+    h[129 + i * 2] = c >>> 8;
+  }
+  dv.setUint32(252, 0, true);
+  dv.setUint32(252, crc32(h.subarray(0, 252)), true);
+  return h;
+}

@@ -40,9 +40,55 @@ export function setRenderRaw(on: boolean): void {
   try { localStorage.setItem(RAW_KEY, on ? '1' : '0'); } catch { /* 私密模式 */ }
 }
 
+/* ------------------------------------------------------------- inline images */
+/**
+ * `<圖 n="…"/>` → blob URL。
+ *
+ * 圖檔存在 adb 的 `resources` 容器（未壓縮，一張圖一個 block），所以一張圖只要
+ * 一次 `resourceBytes()` 就能換成 URL；同一頁重畫時直接用快取。換庫（reader 換人）
+ * 就整批撤銷 —— blob URL 不撤銷會一直佔著記憶體。
+ */
+const imageUrls = new Map<string, string>();
+let imageUrlsDb: unknown = null;
+let imageNameIndex: Map<string, number> | null = null;
+
+/** 這一頁用到的圖先解好；渲染本身是同步的，所以只能先做 */
+async function resolvePageImages(lines: readonly string[]): Promise<void> {
+  if (!reader) return;
+  if (imageUrlsDb !== reader) {
+    for (const url of imageUrls.values()) URL.revokeObjectURL(url);
+    imageUrls.clear();
+    imageNameIndex = null;
+    imageUrlsDb = reader;
+  }
+  const names = new Set<string>();
+  for (const line of lines) {
+    for (const m of line.matchAll(/<圖[^>]*?\bn\s*=\s*"([^"]*)"/g)) names.add(m[1]);
+  }
+  if (!names.size) return;
+  if (!imageNameIndex) {
+    const c = reader.containers.get('resources');
+    imageNameIndex = new Map();
+    for (let i = 0; i < (c?.count ?? 0); i++) imageNameIndex.set(c!.names[i], i);
+  }
+  for (const name of names) {
+    if (imageUrls.has(name)) continue;
+    const i = imageNameIndex.get(name);
+    if (i === undefined) continue;
+    const { bytes } = await reader.resourceBytes(i);
+    const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
+    const type = ext === 'svg' ? 'image/svg+xml' : ext === 'jpg' ? 'image/jpeg' : `image/${ext || 'png'}`;
+    imageUrls.set(name, URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type })));
+  }
+}
+
+/** 給渲染器的查表函式（渲染是同步的，查不到就畫佔位方塊） */
+function imageUrlOf(name: string): string | null {
+  return imageUrls.get(name) ?? null;
+}
+
 /** 重畫目前這一頁（切換渲染模式用） */
-export function rerenderDoc(): void {
-  const s = docSession();
+export function rerenderDoc(): void {  const s = docSession();
   if (s) renderDoc(s);
 }
 
@@ -336,6 +382,8 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
     if (s.pinned.line < nums[0]) s.pinned.line = nums[0];
     else if (s.pinned.line > nums[nums.length - 1]) s.pinned.line = nums[nums.length - 1];
   }
+  // `<圖>` 要用的圖檔先解成 blob URL（渲染是同步的，見 resolvePageImages）
+  await resolvePageImages(dtNow.lines);
   renderDoc(s);
   saveLastReadNow();
   return { auto, ms: performance.now() - t0 };
@@ -1118,6 +1166,7 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
     ? viewDt.lines.map((line, k) => ({ kind: 'line' as const, lines: [{ no: viewDt.lineNumbers[k], html: escapeHtml(simConverter() ? simConverter()!(line) : line), raw: line, visible: true, heading: false }] }))
     : renderPageBlocks(viewDt.lines, viewDt.lineNumbers, {
       hardBreaks, marks: hardBreaks ? [] : kwMarks(), convert: simConverter(), pageMarks: pageMarksOn(),
+      imageUrl: imageUrlOf,
     });
   const rows = renderBlocks(blocks, s);
   const b = pageBounds(s.realm, s.page);

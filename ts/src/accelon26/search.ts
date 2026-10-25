@@ -1515,6 +1515,44 @@ export class SearchSession {
 }
 
 /**
+ * `indexOf`, ignoring matches that sit INSIDE a tag (`<聯 n="仁">`).
+ *
+ * A database may carry dense inline markup — the 論語 vault has one `<聯 n=…>`
+ * around almost every 原文 character — and then both the naive `indexOf` and a
+ * fixed ±30 character window cut through a tag. The snippet then showed
+ * `聯 n="令">令色` as if it were text.
+ */
+function indexOfOutsideTags(text: string, phrase: string, from = 0): number {
+  let at = text.indexOf(phrase, from);
+  while (at >= 0) {
+    if (!insideTag(text, at)) return at;
+    at = text.indexOf(phrase, at + 1);
+  }
+  return -1;
+}
+
+/** true when position i sits between a '<' and its '>' */
+function insideTag(text: string, i: number): boolean {
+  const lt = text.lastIndexOf('<', i);
+  if (lt < 0) return false;
+  const gt = text.indexOf('>', lt);
+  return gt >= 0 && gt > i;
+}
+
+/** Move a window's edges out of tags so neither end slices a tag in half. */
+function snapOutsideTags(text: string, from: number, to: number): { from: number; to: number } {
+  let a = from;
+  let b = to;
+  if (a > 0 && insideTag(text, a)) a = text.lastIndexOf('<', a);
+  if (b > 0 && b < text.length && insideTag(text, b - 1)) {
+    const lt = text.lastIndexOf('<', b - 1);
+    const gt = text.indexOf('>', lt);
+    b = gt < 0 ? text.length : gt + 1;
+  }
+  return { from: Math.max(0, a), to: Math.min(text.length, b) };
+}
+
+/**
  * Search summary: the text around a hit, bounded by punctuation (or a length
  * cap), with the matched range marked. Reads at most two source blocks.
  */
@@ -1531,12 +1569,11 @@ export async function searchSummary(
   if (opts.phrase) {
     const line = await mapper.lineOfVa(va);
     const lineText = await mapper.lineText(line);
-    const at = lineText ? lineText.indexOf(opts.phrase) : -1;
+    const at = lineText ? indexOfOutsideTags(lineText, opts.phrase) : -1;
     if (at >= 0) {
       const pad = 30;
-      const from = Math.max(0, at - pad);
-      const to = Math.min(lineText.length, at + opts.phrase.length + pad);
-      return { text: lineText.slice(from, to), start: at - from, end: at - from + opts.phrase.length, line };
+      const win = snapOutsideTags(lineText, Math.max(0, at - pad), Math.min(lineText.length, at + opts.phrase.length + pad));
+      return { text: lineText.slice(win.from, win.to), start: at - win.from, end: at - win.from + opts.phrase.length, line };
     }
   }
   const el = await mapper.elementAt(va);
@@ -1568,6 +1605,9 @@ export async function searchSummary(
     a--;
     steps++;
   }
+  const win = snapOutsideTags(read, a, b);
+  a = win.from;
+  b = win.to;
   let text = read.slice(a, b);
   // trim leading/trailing whitespace without shifting the mark
   let lead = 0;

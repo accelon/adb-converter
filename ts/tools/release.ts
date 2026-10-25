@@ -22,6 +22,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, statSync, c
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { README_SIMPLIFIED, README_TRADITIONAL, writeTextFileBom } from './readme-text';
+import { peSubsystem, subsystemLabel } from './pe-subsystem';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d = '') => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : d; };
@@ -104,6 +105,22 @@ console.log('[2/3] 建置 exe（內嵌 HTML ＋ 注入建置時間' + (args.incl
 const ldflags = '-X main.buildTime=' + buildTime + (args.includes('--console') ? '' : ' -H windowsgui');
 prepareIcon();
 run(['go', 'build', '-ldflags', ldflags, '-o', EXE, '.'], WAILS, 'go build');
+
+// 2.5) 子系統檢查（作者 2026-10-25）：使用者雙擊 exe 不該看到命令列視窗。
+//      `go build` 預設是 console（3）；只有 -H windowsgui 才是 GUI（2）。
+//      沒有這道檢查時，一次漏掉 flag 的本機重建就會把「黑視窗」版本發出去。
+{
+  const want = args.includes('--console') ? 3 : 2;
+  const got = peSubsystem(EXE);
+  console.log(`  子系統 ${got}（${subsystemLabel(got)}）`);
+  if (got !== want) {
+    console.error(
+      `\n✗ exe 子系統是 ${got}，預期 ${want}（2=GUI、3=console）。` +
+        (want === 2 ? '使用者會看到命令列視窗——請確認 -ldflags 含 -H windowsgui。' : ''),
+    );
+    process.exit(1);
+  }
+}
 
 // 3) 驗證 exe 裡的建置時間
 console.log('[3/3] 驗證 exe');

@@ -1060,10 +1060,8 @@ async function bootDesktop(): Promise<void> {
   // 網頁版沒有宿主，initDesktopBrand 直接返回（左上角就只是一行標題）。
   void initDesktopBrand((msg, kind) => setStatus(msg, kind ?? 'info'));
   void initDesktopWindowKeys();   // F11 全螢幕／Esc 回視窗（全螢幕時沒有標題列）
-  const srcs = await desktopSources();
+  const srcs = await refreshHostDbs();
   if (!srcs.length) return;
-  for (const s of srcs) catalogAdd(s, s.name);
-  renderDbPick();
   if (!openDbs.length) await openPicked([await pickStartupDb(srcs)]);
 }
 
@@ -1144,6 +1142,8 @@ function boot() {
   initTour(TOUR_APP);
   // 軟件說明（About）：點左上角 accelon26 開啟，順便檢查更新
   initAbout();
+  // 加入 Obsidian（作者 2026-10-25）：vault → adb，選單與兩個隱藏 input 都在這裡接線
+  initVaultImport();
   // 🪾 left of the 文件內容 title: only on demand does the tree open up to the node
   // the document pane is sitting on, and scroll it into view
   const treeReveal = $('#treeReveal') as HTMLButtonElement | null;
@@ -1521,6 +1521,8 @@ export function installDebugApi(): void {
   dictLookupAt, dictPaneState,
   /** 操作導覽（🎬）：劇本 → 宏 → 播放器 */
   openTourMenu, playTour: (id: string, from?: number) => playTour(id, from), stopTour, tourState,
+  /** 加入 Obsidian（vault → adb）：診斷／測試用（最近一次的檔名、大小、sha256） */
+  vaultImport: vaultImportState,
   /** 軟件說明（About） */
   openAbout, closeAbout, aboutState,
   /** 修訂者 ID（About 頁／測試） */
@@ -1676,13 +1678,14 @@ export function installDebugApi(): void {
 
 import { loadTree } from './search';
 
-import { MAX_DBS, activeCatalogKey, activeSlot, catalogAdd, catalogAddFile, catalogEmpty, catalogState, dbLog, dbPickOpen, needsAddItem, openDbs, pickAddFile, renderDbPick, setDbHooks, setDbPickOpen, switchTo } from './dbs';
+import { MAX_DBS, activeCatalogKey, activeSlot, catalogAdd, catalogAddFile, catalogEmpty, catalogState, dbLog, dbPickOpen, needsAddItem, openDbs, pickAddFile, refreshHostDbs, renderDbPick, setDbHooks, setDbPickOpen, switchTo } from './dbs';
 import { editCount, findSession, sourceKey } from './edit-session';
 import { extraRevisions } from './revisions-store';
 import { rebuildAndDownload, rollbackAndDownload, runRebuild } from './rebuild-ui';
 import { initTextPane, renderTextPane, resetTextPane, textState } from './text-pane';
+import { initVaultImport, vaultImportState } from './vault-import';
 import { hasLogoResource, hideDocLogo, logoState, updateDocLogo } from './logo';
-import { desktopSources, hostState } from './host';
+import { hostState } from './host';
 import { setVariantSearch, variantSearchOn } from './variants';
 import { aboutState, closeAbout, initAbout, openAbout, showAboutOnStartup } from './about';
 import { initTheme, THEME_LABEL, themeOf } from './theme';
@@ -1741,3 +1744,4 @@ function clearDbUi(): void {
   ($('#docTabs') as HTMLElement | null)!.hidden = true;
   setStatus('已關閉資料庫', 'info');
 }
+

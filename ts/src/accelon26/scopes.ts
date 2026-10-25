@@ -219,6 +219,11 @@ async function loadDirectoryTrees() {
         if (firstVas[i] === node.va && firstNames[i]) node.label = firstNames[i];
       }
     }
+    // 更深層的名字：breadcrumb 與「同層」選單會用到**還沒畫到**的節點，空名字
+    // 會顯示成 `#136`（論語的 570 個「字」就是這樣）。`caches/<tag>` 是索引器
+    // 已經存好的字串表，一次容器解析就能補滿；沒有表（名稱要回讀內文）就跳過，
+    // 免得為了沒人看到的節點去解 source。上限 5000 筆，大庫不受影響。
+    await fillCachedLabels(roots);
     // share the labels with the search grouping, so a book has one name
     const byTag = new Map<string, string[]>();
     for (const node of iterNodes(roots)) {
@@ -256,8 +261,46 @@ async function loadDirectoryTrees() {
   treePhases = phase;
 }
 
-function countNodes(ns: TreeNode[]): number {
-  let n = 0;
+/**
+ * 用 `caches/<tag>`（索引器存好的字串表）補齊還沒解名字的節點。
+ *
+ * 目錄樹只先解第一層（`entryLabelsOnly`），深層的名字等畫到那一列才解。可是
+ * breadcrumb、「同層」選單與搜尋分組都會碰到沒畫到的節點，那時標籤就是空的
+ * （顯示成 `#136`）。有快取表就一次補滿：一個容器解析換 570 個名字，比回讀
+ * source 便宜得多。沒有表就維持惰性解名。
+ */
+async function fillCachedLabels(roots: TreeNode[]): Promise<void> {
+  if (!reader) return;
+  const byTag = new Map<string, TreeNode[]>();
+  let missing = 0;
+  for (const node of iterNodes(roots)) {
+    if (!node.label) missing++;
+    const list = byTag.get(node.tag);
+    if (list) list.push(node);
+    else byTag.set(node.tag, [node]);
+  }
+  if (!missing) return;
+  for (const [tag, nodes] of byTag) {
+    if (!nodes.some((n) => !n.label)) continue;
+    if (nodes.length > 5000) continue;           // 大庫不為了沒人看的節點花這個記憶體
+    let names: string[];
+    let vas: number[];
+    try {
+      names = await reader.cachedStrings(tag);
+      vas = await tagVas(tag);
+    } catch {
+      continue;
+    }
+    if (!names.length || names.length !== vas.length) continue;
+    for (const node of nodes) {
+      if (node.label) continue;
+      const i = lowerBound(vas, node.va);
+      if (vas[i] === node.va && names[i]) node.label = names[i];
+    }
+  }
+}
+
+function countNodes(ns: TreeNode[]): number {  let n = 0;
   for (const x of ns) n += 1 + countNodes(x.children);
   return n;
 }

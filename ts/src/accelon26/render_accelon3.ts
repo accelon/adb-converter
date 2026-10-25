@@ -38,6 +38,9 @@ export const PAGE_TAGS = new Set(['頁', '_頁', '頁元']);
 /** 段落標記 */
 export const PARA_TAGS = new Set(['段']);
 
+/** 正文插圖（Accelon3：`圖` 是單張圖，`嵌圖`／`圖片` 是其他寫法的別名） */
+export const IMAGE_TAGS = new Set(['圖', '嵌圖', '圖片']);
+
 /** 內容要整段隱藏的標籤（建庫／目錄宣告用，不是內文） */
 export const HIDDEN_TAGS = new Set(['樹', '隱']);
 
@@ -149,6 +152,12 @@ export interface RenderOptions {
    * 沒有給就用舊行為（資料庫的絕對深度）。
    */
   depthSteps?: Map<number, number>;
+  /**
+   * `<圖 n="…"/>` → 可用的圖檔 URL（`resources` 容器裡的 blob URL）。
+   * 回 null／沒有給這個回呼時畫一個小方塊佔位：圖片是正文的一部分（字形的
+   * 古文字形往往就嵌在句子中間），但不該因為讀不到就讓整行消失。
+   */
+  imageUrl?: ((name: string) => string | null) | null;
 }
 
 /** 一行的渲染結果（給分塊用） */
@@ -190,6 +199,7 @@ export class Accelon3Renderer {
     convert: ((s: string) => string) | null;
     primary: string;
     depthSteps: Map<number, number> | null;
+    imageUrl: ((name: string) => string | null) | null;
   };
 
   constructor(private ctx: RenderContext = current, opts: RenderOptions = {}) {
@@ -202,6 +212,7 @@ export class Accelon3Renderer {
       marks: [...(opts.marks ?? [])].filter((m) => m.text).sort((a, b) => b.text.length - a.text.length),
       convert: opts.convert ?? null,
       primary: opts.primary ?? '',
+      imageUrl: opts.imageUrl ?? null,
     };
   }
 
@@ -317,6 +328,19 @@ export class Accelon3Renderer {
         } else if (target && !selfClose) {
           html += `<a class="entryLink" href="#" data-entry="${esc(target)}" title="${esc(target)}">`;
           this.entryLinks++;
+        }
+        continue;
+      }
+      // `<圖 n="x.png"/>`：正文裡的插圖（字形、圖版）。圖檔在 `resources` 容器，
+      // URL 由呼叫端先解好 —— 渲染本身是同步的。讀不到就畫一個小方塊：字形圖
+      // 常常嵌在句子中間，整行消失會讓句子讀不通。
+      if (IMAGE_TAGS.has(name)) {
+        if (!closing) {
+          const src = attrValue(attrs, 'n') || attrValue(attrs, 'id');
+          const url = src ? this.opts.imageUrl?.(src) ?? null : null;
+          if (url) html += `<img class="inlineImg" src="${esc(url)}" alt="${esc(src)}" title="${esc(src)}">`;
+          else html += `<span class="inlineImgMissing" title="${esc(src || '圖')}">▢</span>`;
+          this.sawText = true;
         }
         continue;
       }

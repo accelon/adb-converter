@@ -521,7 +521,9 @@ try {
       const openedHidden = menu.hidden;
       const items = [...menu.querySelectorAll('.dbPickItem')];
       const addItem = items.filter((i) => i.hasAttribute('data-add'));
-      const options = items.filter((i) => !i.hasAttribute('data-add'))
+      // 資料庫列＝有 .dbPickName 的那些；「加入 adb」與「加入 Obsidian」都是動作列
+      // （2026-10-25 多了兩個 Obsidian 入口，它們不該被算成資料庫）
+      const options = items.filter((i) => !i.hasAttribute('data-add') && i.querySelector('.dbPickName'))
         .map((i) => i.querySelector('.dbPickName')?.textContent ?? '');
       const selected = menu.querySelector('.dbPickItem.active .dbPickName')?.textContent ?? '';
       // 要在同一輪裡比較：後面再按一下／Esc 會重畫選單，節點就換人了

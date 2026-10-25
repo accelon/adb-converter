@@ -2156,4 +2156,76 @@ breadcrumb 說在華雨集第一。
 * 標籤示範的 auto 大小用 `autoSizePct(depth)`（100 + 12.5%/層）近似；實際 renderer 用
   頁面相對層級的 `font-size:min(calc(1em + n*2px), 1.8em)`。
 * 主題 `eye` 的值保留（舊的 localStorage 不會失效），只改顯示名稱為「春綠」。
+---
 
+## 18. 2026-10-25：「加入 Obsidian」（Obsidian vault → adb，在頁面內轉換）
+
+作者需求（原話）：「加入 adb 旁邊加上『加入 Obsidian』功能。http 版產生到 下載。
+桌面版放在執行檔文件夾。記得更新 adb 清單。」還有「小圖也打包進去」。
+
+### 18.1 介面
+
+📁 選單（`renderDbPick`）在「加入 adb」下面多兩列：`加入 Obsidian（資料夾）`、
+`加入 Obsidian（.zip）`。為什麼兩列：`<input type=file>` 的 `webkitdirectory` 與
+普通檔案選擇不能共用同一個 input。兩列都只在 `vault-import.ts` 註冊了 handler 之後才畫
+（`setVaultAddHandlers`，避免 dbs ↔ vault-import 成環）。
+
+右欄／本文都不用改：完成後直接 `openFile(file)`，走的就是一般的開庫路徑。
+
+選完 vault 會先**問檔名**（`askVaultName`）：`lunyu` 與 `lunyu.adb` 都收，中文檔名也可以，
+`\ / : * ? " < > |` 會清掉、前後的點與空白會修掉。adb 檔頭的 `dbname` 只能 ASCII，所以
+中文檔名會記成 `adb`（畫面上的庫名仍是 dbcname＝書名），對話框的即時提示會寫出來。
+規則在 `src/vault-name.ts`（DOM-free，`test/vault-name.test.ts` 8 項）。
+
+### 18.2 轉換（頁面內，無 Bun）
+
+```
+FileList/zip → vault-plan.ts（★與 CLI 共用）→ XML 行 + 圖片
+            → author-core.ts（★與 CLI 共用）→ 容器/檔頭
+            → bzip2-wasm（既有）→ Uint8Array
+```
+
+* `src/vault-plan.ts`：資料夾＝篇、`NN-MM標題.md`＝章、根目錄單字檔＝字、`[[…]]`→`<聯>`、
+  `![[圖]]`／data-URI→`<圖>`。**預設打包 vault 裡每一張圖**（作者：「小圖也打包進去」）。
+* `src/author-core.ts`：`buildIndex` → source/tokens/tags/tables/attributes/caches/resources
+  → 檔頭；壓縮器由呼叫端注入（Node 用 libbz2、瀏覽器用 wasm）。
+* `src/accelon26/adb-bytes.ts`：加 `makeHeaderBytes`（從零寫 256 byte 檔頭）。
+* `src/inflate.ts`：自寫 RFC 1951 inflate。原因：`DecompressionStream('deflate-raw')`
+  一條一個 stream，1,300 個條目要 ~2 分鐘；自寫版 78 ms（與 zlib 逐位元組相同）。
+
+**對拍**：同一份 vault，CLI 與瀏覽器產生的 adb sha256 相同（`8a4ba9f2…`，3,871,803 B）。
+
+### 18.3 出口
+
+| 環境 | 寫到哪 | 清單 |
+|---|---|---|
+| 網頁版 | `<a download>` → 瀏覽器下載資料夾 | 同一份加入 catalog 並開啟 |
+| 桌面版 | `main.AdbHost.SaveAdb` → exe 旁（不可寫才退下載） | `ListAdbs` 重掃（`refreshHostDbs`） |
+
+Go（`wails/import.go` 新）：`SaveAdb` 驗簽名 → 清理檔名（ASCII、`.adb`）→ 寫 exe 旁；
+`wails/adbhost.go`：`seedDirs()`（cwd ＋ exe 目錄）、`ListAdbs` 掃兩處去重、`resolve()`
+白名單加上 exe 目錄（捷徑的開始位置不一定等於 exe 資料夾）。
+
+### 18.4 測試
+
+* `test/inflate.test.ts` 4 項（含真 vault 1,299 條目對拍 zlib）。
+* `test/adbauthor.test.ts` 8 項；`wails/import_test.go` 5 項。
+* `tools/probe-vault-import.ts`：網頁版端到端（選單 → 選 zip → 建庫 → 下載 → 開庫 → 清單）。
+* `tools/probe-desktop-import.ts`：桌面版端到端（exe 複製到暫存資料夾 → 寫在 exe 旁 → 開庫 → 清單）。
+* `tools/file-protocol-test.ts --adb 13j.adb`：73 pass / 2 fail（與改動前同樣兩項）；
+  選單那項測試改成「有 `.dbPickName` 的才是資料庫列」。
+
+### 18.5 已知限制
+
+* 檔名由使用者輸入（`.adb` 可省略、中文可以）；adb 檔頭的 dbname 只能 ASCII，
+  中文檔名會記成 `adb`（畫面顯示的庫名是書名）。
+* 資料夾選取沒有自動化測試（CDP 無法設定 `webkitRelativePath`）。
+* zip64／加密 zip 不支援。
+
+### 18.6 相關文件
+
+`OBSIDIAN-TO-ADB.md`（§1–§10 第一輪的 CLI 方案、§11 第二輪的頁面內轉換）。
+`www/adb/index.txt` / `index.html` 已加入 `lunyu.adb`（尚未部署）。
+
+> 本地重建 exe 時務必照 `release.ts` 的旗標（含 GUI 子系統），否則雙擊會跳命令列視窗；
+> 建完用 `bun run tools/pe-subsystem.ts <exe>` 確認 `subsystem=2`（作者 2026-10-25 加的守門）。

@@ -20,7 +20,7 @@ import { restoreSummary, snapshotSummary } from './summary';
 import { restoreLink, snapshotLink } from './link';
 import { restoreTextPane, snapshotTextPane } from './text-pane';
 import { backendKind } from './backend';
-import { hostState } from './host';
+import { desktopSources, hostState } from './host';
 import { discardAll, editCount, findSession, hasEdits, onEditsChange, sourceKey } from './edit-session';
 
 export const MAX_DBS = 5;
@@ -252,6 +252,14 @@ export function renderDbPick(): void {
     const addItem = needsAddItem()
       ? '<tr class="dbPickItem dbPickAdd" data-add="1" tabindex="0" title="開啟 .adb（最多同時 5 個）"><td colspan="4">＋ 加入 adb</td></tr>'
       : '';
+    // 「加入 Obsidian」（作者 2026-10-25）：vault → adb，就在這裡轉。網頁版下載到
+    // 「下載」資料夾，桌面版寫到執行檔旁邊；兩邊完成後都會更新下面的清單。
+    const obsidianRows = vaultAddHandlers
+      ? '<tr class="dbPickItem dbPickAdd" data-vault="dir" tabindex="0"'
+        + ' title="把一個 Obsidian vault（整個資料夾）轉成 .adb"><td colspan="4">＋ 加入 Obsidian（資料夾）</td></tr>'
+        + '<tr class="dbPickItem dbPickAdd" data-vault="zip" tabindex="0"'
+        + ' title="把 Obsidian vault 的 .zip 轉成 .adb"><td colspan="4">＋ 加入 Obsidian（.zip）</td></tr>'
+      : '';
     const rows = shown.map((e) => {
       const s = slotOf(e);
       // 「adb 名」＝檔名去掉 .adb。桌面宿主的 AdbSource.name 是庫名，真正的檔名在 path。
@@ -269,14 +277,22 @@ export function renderDbPick(): void {
     menu.innerHTML = shown.length
       ? '<table class="dbPickTable"><thead><tr><th>檔名</th><th>庫名</th>' +
         '<th title="取自 adb 檔頭的 max VA（最大的文字位置），是近似值">字數</th><th>建置日期</th></tr></thead>'
-        + '<tbody>' + addItem + rows + '</tbody></table>'
-      : (addItem
-        ? '<table class="dbPickTable"><tbody>' + addItem + '</tbody></table>'
+        + '<tbody>' + addItem + obsidianRows + rows + '</tbody></table>'
+      : (addItem || obsidianRows
+        ? '<table class="dbPickTable"><tbody>' + addItem + obsidianRows + '</tbody></table>'
         : '<div class="dbPickEmpty">（這個資料夾沒有 .adb）</div>');
     menu.querySelectorAll<HTMLElement>('.dbPickItem[data-add]').forEach((el) => {
       el.onclick = (ev) => {
         ev.stopPropagation();
         pickAddFile();
+      };
+    });
+    menu.querySelectorAll<HTMLElement>('.dbPickItem[data-vault]').forEach((el) => {
+      el.onclick = (ev) => {
+        ev.stopPropagation();
+        setDbPickOpen(false);
+        const kind = el.dataset.vault === 'zip' ? 'zip' : 'dir';
+        vaultAddHandlers?.[kind]?.();
       };
     });
     menu.querySelectorAll<HTMLElement>('.dbPickItem[data-key]').forEach((el) => {
@@ -327,6 +343,31 @@ export function needsAddItem(): boolean {
 /** catalog 是不是空的（還沒開過任何 adb）——file:// 版第一次按 📁 就直接開檔案挑選。 */
 export function catalogEmpty(): boolean {
   return catalog.length === 0;
+}
+
+/**
+ * 「加入 Obsidian」的兩個入口（資料夾／.zip）由 vault-import.ts 註冊。
+ *
+ * 這裡只放註冊表、不 import 那支模組：dbPick 的選單歸 dbs.ts 畫，而轉檔要用到
+ * viewer／openFile，直接互相 import 會成環。選單按下時呼叫註冊進來的函式。
+ */
+export interface VaultAddHandlers {
+  dir: () => void;
+  zip: () => void;
+}
+let vaultAddHandlers: VaultAddHandlers | null = null;
+export function setVaultAddHandlers(h: VaultAddHandlers | null): void { vaultAddHandlers = h; }
+export const vaultAddReady = (): boolean => !!vaultAddHandlers;
+
+/**
+ * 重新列一次桌面宿主工作目錄裡的 .adb（「加入 Obsidian」寫完檔案後要更新清單）。
+ * 網頁版沒有宿主，回空陣列。
+ */
+export async function refreshHostDbs(): Promise<AdbSource[]> {
+  const srcs = await desktopSources();
+  for (const s of srcs) catalogAdd(s, s.name);
+  renderDbPick();
+  return srcs;
 }
 
 /**

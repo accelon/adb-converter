@@ -394,6 +394,33 @@
     font: inherit; font-size: 13px; padding: 5px 16px; cursor: pointer;
   }
   /* ---- About（軟件說明；點左上角 accelon26 開啟） ---- */
+  /* 「加入 Obsidian」的檔名輸入（作者 2026-10-25）：與 About 同一套外觀 */
+  #vaultNameBackdrop { position: fixed; inset: 0; z-index: 84; background: rgba(0,0,0,.55); }
+  #vaultNameBackdrop[hidden], #vaultNameBox[hidden] { display: none; }
+  #vaultNameBox {
+    position: fixed; z-index: 85; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(480px, 92vw);
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.65); padding: 16px 18px 14px;
+  }
+  #vaultNameTitle { margin: 0 0 6px; font-size: 17px; font-weight: 700; }
+  #vaultNameBox p { margin: 0 0 10px; color: var(--dim); font-size: 12.5px; line-height: 1.6; }
+  #vaultNameRow { display: flex; gap: 8px; align-items: center; }
+  #vaultNameInput {
+    flex: 1 1 auto; min-width: 0; font: inherit; font-size: 15px; padding: 7px 9px;
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 7px;
+  }
+  #vaultNameInput:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  #vaultNameSuffix { color: var(--dim); font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  #vaultNameHint { min-height: 1.5em; margin: 8px 0 2px; font-size: 12px; }
+  #vaultNameHint.err { color: var(--hit-2); }
+  #vaultNameActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+  .vnBtn {
+    font: inherit; font-size: 13px; padding: 6px 15px; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--panel2); color: var(--fg); cursor: pointer;
+  }
+  .vnBtn.primary { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600; }
+
   #aboutBackdrop { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.55); }
   #aboutBackdrop[hidden], #aboutBox[hidden] { display: none; }
   #aboutBox {
@@ -780,6 +807,19 @@
   .lineText .pageBreak .pageId { font-variant-numeric: tabular-nums; }
   /* <段/> → <br class="para"> ＋ 兩個全形空格 */
   .lineText br.para { line-height: inherit; }
+  /* <圖 n="…"/>：正文插圖。字形圖（金文、小篆）常常就嵌在句子中間，所以
+     尺寸跟著行高走、垂直置中，不撐開行距；點一下開原尺寸。 */
+  .lineText img.inlineImg {
+    height: 1.5em; width: auto; vertical-align: -.35em;
+    margin: 0 1px; border-radius: 2px;
+    /* 字形圖是透明背景＋黑墨，深色主題會看不見：一律鋪白紙底（像貼上的字卡） */
+    background: #fff; padding: 1px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .10);
+  }
+  .lineText img.inlineImg:hover { outline: 1px solid var(--accent); height: 2.2em; }
+  .lineText .inlineImgMissing {
+    display: inline-block; min-width: 1em; text-align: center;
+    border: 1px dashed var(--line); border-radius: 2px; color: var(--dim);
+  }
   /* 命中／關鍵字塗色：色相由 --hue 決定（多詞組查詢每個詞組一個 HSV 色相）。
      單詞組時 --hue 是 0（紅色），與以前的樣式一致。 */
   mark.docHit, mark.kw {
@@ -1158,6 +1198,10 @@
     <div class="dbPickMenu" id="dbPickMenu" hidden></div>
   </span>
   <input type="file" id="file" accept=".adb" multiple>
+  <!-- 「加入 Obsidian」（作者 2026-10-25）：資料夾用 webkitdirectory，.zip 用一般檔案選擇。
+       兩者都由 vault-import.ts 接線，選完就轉成 .adb。 -->
+  <input type="file" id="vaultDir" webkitdirectory multiple hidden>
+  <input type="file" id="vaultZip" accept=".zip,application/zip" hidden>
   <button class="dbAdd dbAll" id="searchAllBtn" title="搜尋所有 adb：輪流查每一個庫的命中數，再決定要不要打開">🔍</button>
   <span class="dbHint" id="dbHint">← 開啟資料庫</span>
   <span class="dbTabs" id="dbTabs"></span>
@@ -1480,6 +1524,21 @@
 </div>
 
 <!-- About（點左上角 accelon26 開啟；作者 2026-10） -->
+<!-- 「加入 Obsidian」的檔名輸入（作者 2026-10-25）：讀完 vault 才問名字，.adb 可省略 -->
+<div id="vaultNameBackdrop" hidden></div>
+<div id="vaultNameBox" role="dialog" aria-modal="true" aria-labelledby="vaultNameTitle" hidden>
+  <h2 id="vaultNameTitle">加入 Obsidian</h2>
+  <p id="vaultNameIntro">請輸入檔名（<code>.adb</code> 可省略）。</p>
+  <div id="vaultNameRow">
+    <input id="vaultNameInput" type="text" autocomplete="off" spellcheck="false" placeholder="例如 lunyu">
+    <span id="vaultNameSuffix">.adb</span>
+  </div>
+  <p id="vaultNameHint"></p>
+  <div id="vaultNameActions">
+    <button type="button" class="vnBtn" id="vaultNameCancel">取消</button>
+    <button type="button" class="vnBtn primary" id="vaultNameOk">建立</button>
+  </div>
+</div>
 <div id="aboutBackdrop" hidden></div>
 <div id="aboutBox" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" hidden>
   <div class="aboutTop">
@@ -1589,3 +1648,4 @@
 <script>/*__VIEWER_BUNDLE__*/</script>
 </body>
 </html>
+

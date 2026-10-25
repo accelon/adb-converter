@@ -252,9 +252,47 @@ export async function desktopExportTextImages(path: string): Promise<DesktopExpo
   }
 }
 
-/** 在系統的檔案管理員裡顯示剛導出的檔案（導出後那顆「在資料夾中顯示」）。 */
-export async function desktopRevealInFolder(path: string): Promise<boolean> {
+/** 「加入 Obsidian」在桌面版的結果（wails/import.go 的 SaveAdbResult）。 */
+export interface DesktopSaveResult {
+  ok: boolean;
+  /** 實際寫入的完整路徑 */
+  path?: string;
+  error?: string;
+  /** 例如「執行檔旁寫不進去，改存到下載資料夾」 */
+  note?: string;
+}
+
+/** bytes → base64（宿主只收 base64：位元組陣列走 JSON 會膨脹 6 倍） */
+function encodeBase64(bytes: Uint8Array): string {
+  const api = (Uint8Array as unknown as { toBase64?: (b: Uint8Array) => string }).toBase64;
+  if (api) return api(bytes);
+  let bin = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk) as unknown as number[]);
+  }
+  return btoa(bin);
+}
+
+/**
+ * 把剛建好的 adb 存到**執行檔旁邊**（「加入 Obsidian」的桌面版出口）。
+ *
+ * 寫在 exe 旁的理由：exe 啟動時就掃自己目錄的 *.adb，存進去等於「加入清單」。
+ * 目錄不可寫（例如放在 Program Files）時由 Go 層退回下載資料夾並回報 note。
+ * 實作在 wails/import.go。
+ */
+export async function desktopSaveAdb(name: string, bytes: Uint8Array): Promise<DesktopSaveResult | null> {
   const c = await hostCall();
+  if (!c) return null;
+  try {
+    return await c.ByName('main.AdbHost.SaveAdb', name, encodeBase64(bytes)) as DesktopSaveResult;
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
+}
+
+/** 在系統的檔案管理員裡顯示剛導出的檔案（導出後那顆「在資料夾中顯示」）。 */
+export async function desktopRevealInFolder(path: string): Promise<boolean> {  const c = await hostCall();
   if (!c) return false;
   try {
     return !!(await c.ByName('main.AdbHost.RevealInFolder', path));

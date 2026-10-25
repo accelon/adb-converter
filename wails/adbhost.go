@@ -150,7 +150,9 @@ func (h *AdbHost) WindowInfo() map[string]any {
 }
 
 // resolve 把前端傳來的 path 規範化，並做嚴格的白名單驗證：
-// 必須是 .adb 結尾，且必須位於當前工作目錄之內。本地閱讀器，從嚴即可。
+// 必須是 .adb 結尾，且必須位於當前工作目錄（或執行檔所在目錄）之內。
+// 本地閱讀器，從嚴即可；執行檔目錄是 2026-10-25 加的，因為「加入 Obsidian」把
+// 新建的 adb 寫在 exe 旁邊，而捷徑的「開始位置」不一定等於 exe 所在的資料夾。
 func (h *AdbHost) resolve(path string) (string, error) {
 	if path == "" {
 		return "", errors.New("empty path")
@@ -167,7 +169,13 @@ func (h *AdbHost) resolve(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !insideDir(cwd, abs) {
+	allowed := insideDir(cwd, abs)
+	if !allowed {
+		if exe, err := os.Executable(); err == nil {
+			allowed = insideDir(filepath.Dir(exe), abs)
+		}
+	}
+	if !allowed {
 		return "", fmt.Errorf("path outside working directory: %s", abs)
 	}
 	return abs, nil
@@ -293,29 +301,44 @@ func (h *AdbHost) infoFor(m *mapped) AdbInfo {
 
 // ---- 暴露給 webview 的方法 ----------------------------------------------------
 
-// ListAdbs 列出當前工作目錄裡所有 *.adb（大小寫不敏感），
-// 每個檔案只讀前 256 位元組檔頭，加上 Size / Modified(UnixMilli)。
+// ListAdbs 列出 *.adb（大小寫不敏感）：工作目錄與執行檔所在目錄（作者 2026-10-25
+// 加入「加入 Obsidian」後，adb 會寫在 exe 旁邊，而 exe 的「開始位置」不一定等於它
+// 所在的資料夾）。同一個絕對路徑只列一次。每個檔案只讀前 256 位元組檔頭。
 func (h *AdbHost) ListAdbs() ([]AdbInfo, error) {
-	entries, err := os.ReadDir(".")
-	if err != nil {
-		return nil, err
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]AdbInfo, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".adb") {
-			continue
-		}
-		m, err := h.acquire(filepath.Join(cwd, e.Name()))
+	dirs := seedDirs()
+	seen := map[string]bool{}
+	out := make([]AdbInfo, 0, 16)
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			continue // 讀不了的檔案跳過，不阻塞整個列表
+			continue // 目錄不存在／不可讀：跳過它，不要讓整個列表失敗
 		}
-		info := h.infoFor(m)
-		h.release(m)
-		out = append(out, info)
+		for _, e := range entries {
+			if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".adb") {
+				continue
+			}
+			path := filepath.Join(dir, e.Name())
+			if abs, err := filepath.Abs(path); err == nil {
+				path = abs
+			}
+			if seen[strings.ToLower(path)] {
+				continue
+			}
+			seen[strings.ToLower(path)] = true
+			m, err := h.acquire(path)
+			if err != nil {
+				continue // 讀不了的檔案跳過，不阻塞整個列表
+			}
+			info := h.infoFor(m)
+			h.release(m)
+			out = append(out, info)
+		}
+	}
+	if len(out) == 0 {
+		// 保留原本的錯誤語意：連工作目錄都讀不到時回報錯誤
+		if _, err := os.ReadDir("."); err != nil {
+			return nil, err
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil

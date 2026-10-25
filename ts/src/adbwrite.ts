@@ -108,6 +108,59 @@ export interface HeaderFields {
   };
 }
 
+/** The 48 byte signature every .adb carries at offset 32 (basetype.pas). */
+export const ADB_SIGNATURE = '\r\nAccelon Search Engine\r\ndesigned by C.S.Yap';
+
+export interface NewHeaderFields {
+  /** 32 bytes, ASCII: the base name the reader shows and the default file name */
+  dbname: string;
+  /** 64 bytes of UTF-16LE (32 chars): the display name */
+  dbcname: string;
+  linecount: number;
+  tagcount: number;
+  maxblockoffset: number;
+  /** bit 1 = dictionary, bit 4 = hidden (kangxi is 6); 0 for a book */
+  dbtype?: number;
+  features?: number;
+  /** block index of the page tag in the `tags` container */
+  andtagid?: number;
+  srcblocksize?: number;
+  version?: number;
+}
+
+/**
+ * Build a 256 byte file header from scratch.
+ *
+ * Every field the reader looks at is written explicitly instead of copying a
+ * donor header, so a database authored here does not inherit a stranger's
+ * serial, protection flags or display name. The trailing crc32 covers the
+ * first 252 bytes (same rule as `patchHeader`).
+ */
+export function makeHeader(f: NewHeaderFields): Buffer {
+  const h = Buffer.alloc(FILE_HEADER_SIZE);
+  const dbname = f.dbname.slice(0, 31);
+  if (!/^[\x20-\x7e]*$/.test(dbname)) throw new Error(`dbname must be ASCII: ${dbname}`);
+  h.write(dbname, 0, 'ascii');
+  h.write(ADB_SIGNATURE, 32, 'ascii');
+  h.writeUInt32LE(0x1a1a1a1a, 80);          // textterminator (constant, unused)
+  h.writeInt32LE(f.version ?? 0, 84);
+  h.writeInt32LE(1, 88);                    // compression: source blocks are bzip2
+  h.writeInt32LE(f.srcblocksize ?? 16384, 92);
+  h.writeInt32LE(f.maxblockoffset, 96);
+  h.writeInt32LE(f.andtagid ?? 0, 100);
+  h.writeInt32LE(f.linecount, 104);
+  h.writeInt32LE(f.dbtype ?? 0, 108);
+  h.writeInt32LE(0, 112);                   // protection
+  h.writeInt32LE(f.tagcount, 116);
+  h.writeInt32LE(f.features ?? 0, 120);
+  // dbcname: 64 bytes of UTF-16LE, NUL padded, at most 31 characters + terminator
+  const name = Buffer.from(f.dbcname.slice(0, 31), 'utf16le');
+  name.copy(h, 128, 0, Math.min(name.length, 62));
+  h.writeUInt32LE(0, FILE_HEADER_SIZE - 4);
+  h.writeUInt32LE(crc32(h.subarray(0, FILE_HEADER_SIZE - 4)), FILE_HEADER_SIZE - 4);
+  return h;
+}
+
 /** Copy a header, patch the given fields and recompute the stored crc32. */
 export function patchHeader(
   raw: Buffer,

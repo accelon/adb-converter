@@ -42,6 +42,14 @@ bun run test/index-match.ts # 反向索引認證
 節點與頁**存在 `localStorage`（`accelon26.lastRead.v1`）；重新開啟或更新 accelon26
 版本後仍會回到那一頁。
 
+## 加入 Obsidian（2026-10-25）
+
+📁（adb 選單）多了「加入 Obsidian（資料夾／.zip）」：選一個 Obsidian vault，**輸入檔名**（`.adb` 可省略，中文也可以），當場轉成 `.adb`。
+網頁版把建好的 adb **下載**到「下載」資料夾；桌面版寫到**執行檔旁邊**（捷徑的開始位置
+不同也找得到）。兩邊都會更新 adb 清單並開啟新庫。轉換在頁面裡完成（Bun 不參與），
+與 CLI `bun run md2adb` 產生的檔案**逐位元組相同**。詳見
+[OBSIDIAN-TO-ADB.md](OBSIDIAN-TO-ADB.md) §11。
+
 ## 網頁版編輯（2026-10-24）
 
 `build/accelon26.html` 現在可以在瀏覽器裡直接修錯字：按本文右上角的鉛筆進入編輯態，
