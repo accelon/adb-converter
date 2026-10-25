@@ -3,6 +3,10 @@
  *
  *   cd ts && bun run tools/release.ts --items-file notes.txt [--console] [--out <目錄>]
  *   cd ts && bun run tools/release.ts --items "ASCII only;第二項" [--title "…"] [--url https://…] [--no-build]
+ *   cd ts && bun run tools/release.ts --build-time 2026-10-25T03:20:00Z
+ *
+ * `--build-time` 是「同一天重發同一版」用的：版號／標題不變，只換程序與修訂記錄。
+ * 改版說明最後一筆的 buildTime 要一起改成同一個值，更新後才看得到這次的說明。
  *
  * ⚠ Windows 的 PowerShell 會把中文命令列參數弄成亂碼（實際踩過：release_notes.json 變成
  *   亂碼並被 commit）。所以中文一律用 --items-file，檔案由編輯器／工具以 UTF-8 寫入。
@@ -48,7 +52,13 @@ if (!items.length && !args.includes('--no-build')) {
 }
 
 // 1) 改版說明
-const buildTime = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+const pinnedBuildTime = opt('build-time');
+if (pinnedBuildTime && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(pinnedBuildTime)) {
+  console.error('✗ --build-time 要用 RFC3339 UTC，例如 2026-10-25T03:20:00Z');
+  process.exit(1);
+}
+const buildTime = pinnedBuildTime || new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+if (pinnedBuildTime) console.log('建置時間固定為 ' + buildTime + '（同一天重發同一版）');
 const notes = existsSync(NOTES) ? JSON.parse(readFileSync(NOTES, 'utf8')) : [];
 if (items.length) {
   notes.push({ buildTime, title: title || `accelon26 ${buildTime.slice(0, 10)}`, items });
