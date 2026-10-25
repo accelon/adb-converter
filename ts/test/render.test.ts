@@ -76,6 +76,17 @@ ok('跨行標題：收掉之後不再是標題',
 const esc = r.line('a < b & c', 12);
 ok('文字有轉義', esc === 'a &lt; b &amp; c', esc);
 
+// 作者 2026-10-25：Obsidian 筆記會有 `<br>`、`A & B`。adb 裡存成 XML 實體，
+// 畫面要還原成原字，而且解出來的 `<` 不能再被當成標籤。
+const ent = r.line('&lt;br&gt; &amp; more', 13);
+ok('XML 實體：&lt; 顯示為 <，不會變成標籤', ent === '&lt;br&gt; &amp; more', ent);
+const entOnce = r.line('&amp;lt;', 14);
+ok('XML 實體只解一層：&amp;lt; 是文字 &lt;', entOnce === '&amp;lt;', entOnce);
+const entAttr = r.line('<聯 n="A&amp;B">A &amp; B</聯>', 15);
+ok('連結的屬性與文字都解實體',
+  entAttr.startsWith('<a class="entryLink" href="#" data-entry="A&amp;B" title="A&amp;B">')
+  && entAttr.endsWith('>A &amp; B</a>'), entAttr);
+
 // 很深的樹（yinshun 可以有十幾層）：每層 +2px，但 CSS 上限 200%（min() 交給瀏覽器）
 const deep = new Accelon3Renderer({ depthOf: new Map([['書', 0], ['章', 1], ['文', 17]]), levels: 19 });
 const deepH = deep.line('<章>經文</章>', 13);

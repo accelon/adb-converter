@@ -18,6 +18,7 @@
  */
 import { bzip2 } from '../vendor/bzip2.js';
 import { isAllHan } from '../han.js';
+import { decodeXmlEntities } from '../xml-entities';
 
 export const FILE_HEADER_SIZE = 256;
 export const ROMBLOCK_HEADER_SIZE = 16;
@@ -691,7 +692,9 @@ export class AdbReader {
     const ci = caches?.names.indexOf(key) ?? -1;
     if (!caches || ci < 0) return [];
     const inner = await this.innerContainer('caches', ci);
-    return this.innerStrings(inner);
+    // 名稱表是給人看的標籤（詞條、書名、頁碼），作者可能為了 `<`／`&` 寫了實體。
+    const names = await this.innerStrings(inner);
+    return names.map(decodeXmlEntities);
   }
 
   /** A block that is itself a container (attributes/*, caches/*). */
@@ -768,7 +771,7 @@ export class AdbReader {
     const open = text.indexOf('"', idx);
     if (open < 0) return '';
     const close = text.indexOf('"', open + 1);
-    return close < 0 ? text.slice(idx) : text.slice(open + 1, close);
+    return decodeXmlEntities(close < 0 ? text.slice(idx) : text.slice(open + 1, close));
   }
 
   /** Document text: decode only the source blocks the VA range spans. */

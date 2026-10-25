@@ -26,7 +26,12 @@
  * `<隱><樹 s="*" t="篇">目錄</樹></隱>` creates the 目錄 pane; the `t=` on 篇/字
  * both declares the child tier and (in Accelon3) registers those tags as *cached*,
  * which is where the tree rows get their labels from without re-reading the text.
+ *
+ * Markdown is prose, so it can contain characters that are structural in Accelon3
+ * markup (`<`, `>`, `&`). They are written as XML entities (`&lt;`, `&gt;`,
+ * `&amp;`) — the format's own escape — instead of rejecting the whole vault.
  */
+import { encodeXmlAttr, encodeXmlText } from './xml-entities';
 
 export interface VaultFile {
   /** path inside the vault, '/' separated, no leading slash */
@@ -83,9 +88,6 @@ export function cnNum(n: number): string {
   return CN_DIGITS[tens] + '十' + (ones ? CN_DIGITS[ones] : '');
 }
 
-/** characters that would change the meaning of the Accelon3 markup */
-const HOSTILE = /[<>&]/;
-
 function baseName(p: string): string {
   const at = p.lastIndexOf('/');
   return at < 0 ? p : p.slice(at + 1);
@@ -140,55 +142,84 @@ interface ImageBag {
   dataUriSeq: number;
 }
 
-function dataUriImages(text: string, stem: string, bag: ImageBag): string {
-  return text.replace(
-    /!\[[^\]]*\]\((data:image\/([a-z+]+);base64,)([A-Za-z0-9+/=\s]+)\)/g,
-    (_m, _p, kind: string, b64: string) => {
-      const ext = kind === 'svg+xml' ? 'svg' : kind === 'jpeg' ? 'jpg' : kind;
-      const name = `${stem}-img${String(bag.dataUriSeq++).padStart(2, '0')}.${ext}`;
-      bag.all.set(name, base64ToBytes(b64));
-      bag.used.add(name);
-      return `<圖 n="${name}"/>`;
-    },
-  );
+/**
+ * The inline constructs the planner understands, in priority order:
+ *   ![[image]] …   attachment (before the generic markdown image)
+ *   ![](url) …     markdown image / data URI
+ *   [[entry]] …    entry link (not preceded by `!`)
+ * Everything between matches is plain text and gets XML-escaped.
+ */
+const INLINE_RE = /!\[\[([^\]|]+)(?:\|([^\]]*))?\]\]|!\[[^\]]*\]\(([^)]+)\)|(?<!!)\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]/g;
+
+/** `![](data:image/png;base64,…)` → a packed `<圖>` */
+function dataUriImage(target: string, stem: string, bag: ImageBag): string | null {
+  const m = /^data:image\/([a-z+]+);base64,([\s\S]*)$/i.exec(target);
+  if (!m) return null;
+  const kind = m[1].toLowerCase();
+  const ext = kind === 'svg+xml' ? 'svg' : kind === 'jpeg' ? 'jpg' : kind;
+  const name = `${stem}-img${String(bag.dataUriSeq++).padStart(2, '0')}.${ext}`;
+  bag.all.set(name, base64ToBytes(m[2]));
+  bag.used.add(name);
+  return `<圖 n="${encodeXmlAttr(name)}"/>`;
 }
 
 function inline(line: string, stem: string, bag: ImageBag, warnings: string[]): string {
-  if (HOSTILE.test(line)) {
-    throw new Error(`line contains <, > or & (would corrupt the markup): ${line.slice(0, 60)}`);
+  let out = '';
+  let last = 0;
+  INLINE_RE.lastIndex = 0;
+  for (const m of line.matchAll(INLINE_RE)) {
+    out += encodeXmlText(line.slice(last, m.index));
+    last = m.index + m[0].length;
+
+    // attachments: ![[name.png]] / ![[name.png|alt]]
+    if (m[1] !== undefined) {
+      const p = m[1].trim();
+      if (!IMAGE_EXT.has(extName(p))) {
+        warnings.push(`![[${p}]] is not an image, left as text`);
+        out += encodeXmlText(m[0]);
+      } else {
+        const name = baseName(p);
+        bag.used.add(name);
+        out += `<圖 n="${encodeXmlAttr(name)}"/>`;
+      }
+      continue;
+    }
+
+    // markdown image links: data URIs and files that really are in the vault
+    if (m[3] !== undefined) {
+      let p = m[3].trim().replace(/^<|>$/g, '');
+      const data = dataUriImage(p, stem, bag);
+      if (data) {
+        out += data;
+        continue;
+      }
+      try {
+        p = decodeURIComponent(p);
+      } catch {
+        /* keep the raw text */
+      }
+      if (!IMAGE_EXT.has(extName(p))) {
+        out += encodeXmlText(m[0]);
+      } else {
+        const name = baseName(p);
+        bag.used.add(name);
+        out += `<圖 n="${encodeXmlAttr(name)}"/>`;
+      }
+      continue;
+    }
+
+    // entry links: [[字]] / [[字|顯示]] / [[字#anchor]]
+    if (m[4] !== undefined) {
+      const t = m[4].trim();
+      const shown = (m[5] ?? t).trim();
+      out += `<聯 n="${encodeXmlAttr(t)}">${encodeXmlText(shown)}</聯>`;
+      continue;
+    }
+
+    out += encodeXmlText(m[0]);
   }
-  let s = dataUriImages(line, stem, bag);
-  // attachments: ![[name.png]] / ![[name.png|alt]]
-  s = s.replace(/!\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g, (m, target: string) => {
-    const p = target.trim();
-    if (!IMAGE_EXT.has(extName(p))) {
-      warnings.push(`![[${p}]] is not an image, left as text`);
-      return m;
-    }
-    const name = baseName(p);
-    bag.used.add(name);
-    return `<圖 n="${name}"/>`;
-  });
-  // markdown image links pointing at a real file
-  s = s.replace(/!\[[^\]]*\]\(([^)]+)\)/g, (m, target: string) => {
-    let p = target.trim().replace(/^<|>$/g, '');
-    try {
-      p = decodeURIComponent(p);
-    } catch {
-      /* keep the raw text */
-    }
-    if (!IMAGE_EXT.has(extName(p))) return m;
-    const name = baseName(p);
-    bag.used.add(name);
-    return `<圖 n="${name}"/>`;
-  });
-  // entry links: [[字]] / [[字|顯示]] / [[字#anchor]]
-  s = s.replace(/(?<!!)\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]/g, (_m, target: string, label?: string) => {
-    const t = target.trim();
-    const shown = (label ?? t).trim();
-    return `<聯 n="${t}">${shown}</聯>`;
-  });
-  return s.replace(/[ \t]+$/, '');
+  out += encodeXmlText(line.slice(last));
+  return out.replace(/[ \t]+$/, '');
 }
 
 function noteLines(text: string, stem: string, bag: ImageBag, warnings: string[]): string[] {
@@ -202,8 +233,9 @@ function noteLines(text: string, stem: string, bag: ImageBag, warnings: string[]
 /**
  * Turn the vault's files into database lines + the pictures to pack.
  *
- * Throws only for markup-breaking text (`<`, `>`, `&`); everything else that
+ * Throws only when the vault has no markdown notes at all; everything else that
  * cannot be mapped becomes a warning so a whole vault never fails on one note.
+ * Markup characters in prose are XML-escaped, not rejected.
  */
 export function planVault(files: readonly VaultFile[], opts: VaultOptions = {}): VaultPlan {
   const warnings: string[] = [];
@@ -250,17 +282,17 @@ export function planVault(files: readonly VaultFile[], opts: VaultOptions = {}):
   const title = opts.title?.trim() || 'Obsidian 筆記';
 
   const lines: string[] = [];
-  lines.push(`<集 t="集">${title}</集>`);
+  lines.push(`<集 t="集">${encodeXmlText(title)}</集>`);
   lines.push(`<隱><樹 s="*" t="篇">目錄</樹></隱>`);
 
   let lastPian = -1;
   for (const c of chapters) {
     if (c.pianIndex !== lastPian) {
       if (lastPian >= 0) lines.push('');
-      lines.push(`<篇 t="章">${c.pian}第${cnNum(c.pianIndex)}</篇>`);
+      lines.push(`<篇 t="章">${encodeXmlText(c.pian)}第${cnNum(c.pianIndex)}</篇>`);
       lastPian = c.pianIndex;
     }
-    lines.push(`<章>${c.chapterLabel}</章>`);
+    lines.push(`<章>${encodeXmlText(c.chapterLabel)}</章>`);
     for (const l of c.lines) lines.push(l);
   }
 
@@ -268,7 +300,7 @@ export function planVault(files: readonly VaultFile[], opts: VaultOptions = {}):
     lines.push('');
     lines.push(`<篇 t="字">字詞</篇>`);
     for (const e of entries) {
-      lines.push(`<字>${e.label}</字>`);
+      lines.push(`<字>${encodeXmlText(e.label)}</字>`);
       for (const l of e.lines) lines.push(l);
     }
   }

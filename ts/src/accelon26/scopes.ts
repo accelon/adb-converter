@@ -16,6 +16,7 @@ import { variantNamePattern, variantSearchOn } from './variants';
 import { computeTierContext, setTierContext, tierContext } from './render_accelon3';
 import { tagColorOf } from './tag-style';
 import { diffPage, findSession, onEditsChange, sourceKey } from './edit-session';
+import { decodeXmlEntities } from '../xml-entities';
 
 
 function editSessionNow() {
@@ -1090,7 +1091,8 @@ async function wrappedText(tag: string, va: number, tagVasList: number[], maxCha
     end = text.indexOf(close, at);
   }
   if (end < 0) return '';
-  return text.slice(at, end).replace(/^<[^>]*>/, '').replace(/<[^>]*>/g, '').trim().slice(0, maxChars);
+  const plain = text.slice(at, end).replace(/^<[^>]*>/, '').replace(/<[^>]*>/g, '').trim();
+  return decodeXmlEntities(plain).slice(0, maxChars);
 }
 
 /** hits per segment (segments are VA-ascending and disjoint) */

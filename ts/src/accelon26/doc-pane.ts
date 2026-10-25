@@ -18,6 +18,7 @@ import { displayConverter, type SimMode } from './lossless';
 import { isDictDb } from './db-kind';
 import { diffPage, discardPage, hasEditsInRange, onEditsChange, pageEditAt, pageKey, sessionFor as editSessionFor, stagePage, type DbEditSession, type PageEdit } from './edit-session';
 import { charDiff } from './char-diff';
+import { decodeXmlEntities } from '../xml-entities';
 import { mountPageEditor, type PageEditor } from './editor';
 
 /**
@@ -63,7 +64,7 @@ async function resolvePageImages(lines: readonly string[]): Promise<void> {
   }
   const names = new Set<string>();
   for (const line of lines) {
-    for (const m of line.matchAll(/<圖[^>]*?\bn\s*=\s*"([^"]*)"/g)) names.add(m[1]);
+    for (const m of line.matchAll(/<圖[^>]*?\bn\s*=\s*"([^"]*)"/g)) names.add(decodeXmlEntities(m[1]));
   }
   if (!names.size) return;
   if (!imageNameIndex) {

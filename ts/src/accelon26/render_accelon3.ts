@@ -15,6 +15,7 @@
  */
 import type { TreeNode } from './search';
 import { defaultFontOf, fontFamilyOf, tagStyleOf } from './tag-style';
+import { decodeXmlEntities } from '../xml-entities';
 
 export interface RenderContext {
   /** 標籤 → 它在樹裡的深度（0＝最上層） */
@@ -111,7 +112,7 @@ function esc(s: string): string {
 
 function attrValue(attrs: string, name: string): string {
   const m = new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`).exec(attrs) ?? new RegExp(`\\b${name}\\s*=\\s*'([^']*)'`).exec(attrs);
-  return m ? m[1] : '';
+  return m ? decodeXmlEntities(m[1]) : '';
 }
 
 /** 渲染選項 */
@@ -221,22 +222,29 @@ export class Accelon3Renderer {
     return this.opts.convert ? this.opts.convert(text) : text;
   }
 
-  /** 文字輸出：先轉換（顯示模式）→ 跳脫 → 把關鍵字包成 <mark class="kw">（渲染前塗紅） */
+  /**
+   * 文字輸出：先解 XML 實體（`&lt;` 是作者寫的 `<`）→ 轉換（顯示模式）→ 跳脫
+   * → 把關鍵字包成 `<mark class="kw">`（渲染前塗紅）。
+   *
+   * 解實體一定在跳脫之前、且只解一層：`&amp;lt;` 代表文字 `&lt;`，不能再變成 `<`。
+   * `text` 已經被 lineInfo 切成「不是標籤」的片段，所以在這裡解 `<` 不會被當成標籤。
+   */
   private emit(text: string): string {
-    if (!text) return '';
-    if (!this.opts.marks.length) return esc(this.conv(text));
+    const decoded = decodeXmlEntities(text);
+    if (!decoded) return '';
+    if (!this.opts.marks.length) return esc(this.conv(decoded));
     let out = '';
     let i = 0;
-    while (i < text.length) {
+    while (i < decoded.length) {
       let bestAt = -1;
       let best: { text: string; hue: number } | null = null;
       for (const m of this.opts.marks) {
-        const at = text.indexOf(m.text, i);
+        const at = decoded.indexOf(m.text, i);
         if (at < 0) continue;
         if (bestAt < 0 || at < bestAt) { bestAt = at; best = m; }
       }
-      if (bestAt < 0 || !best) { out += esc(this.conv(text.slice(i))); break; }
-      out += esc(this.conv(text.slice(i, bestAt)));
+      if (bestAt < 0 || !best) { out += esc(this.conv(decoded.slice(i))); break; }
+      out += esc(this.conv(decoded.slice(i, bestAt)));
       const cur = this.opts.primary && best.text === this.opts.primary ? ' cur' : '';
       out += `<mark class="kw${cur}" style="--hue:${best.hue}">${esc(this.conv(best.text))}</mark>`;
       i = bestAt + best.text.length;

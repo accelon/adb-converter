@@ -2187,6 +2187,11 @@ FileList/zip → vault-plan.ts（★與 CLI 共用）→ XML 行 + 圖片
 
 * `src/vault-plan.ts`：資料夾＝篇、`NN-MM標題.md`＝章、根目錄單字檔＝字、`[[…]]`→`<聯>`、
   `![[圖]]`／data-URI→`<圖>`。**預設打包 vault 裡每一張圖**（作者：「小圖也打包進去」）。
+* **筆記裡的 `<`、`>`、`&` 不再讓整個匯入失敗**（作者 2026-10-25 的錯誤回報）：adb 是
+  XML 方言，`vault-plan.ts` 把這些字寫成 `&lt;`／`&gt;`／`&amp;`（屬性另加 `&quot;`），
+  顯示時由 `src/xml-entities.ts` 解回原字。解碼只做一層（`&amp;lt;` 是文字 `&lt;`，不是 `<`），
+  用在本文渲染、目錄／詞典標籤（`cachedStrings`、`nodeLabel`、`wrappedText`）與 `<圖>`
+  的檔名。測試 `test/vault-plan.test.ts` 12 項（含真的建 adb 後讀回 `caches/字`）。
 * `src/author-core.ts`：`buildIndex` → source/tokens/tags/tables/attributes/caches/resources
   → 檔頭；壓縮器由呼叫端注入（Node 用 libbz2、瀏覽器用 wasm）。
 * `src/accelon26/adb-bytes.ts`：加 `makeHeaderBytes`（從零寫 256 byte 檔頭）。
@@ -2209,6 +2214,7 @@ Go（`wails/import.go` 新）：`SaveAdb` 驗簽名 → 清理檔名（ASCII、`
 ### 18.4 測試
 
 * `test/inflate.test.ts` 4 項（含真 vault 1,299 條目對拍 zlib）。
+* `test/vault-plan.test.ts` 12 項（`<`／`>`／`&`、連結、圖檔名、真的建 adb 後 `caches/字` 解回原字）。
 * `test/adbauthor.test.ts` 8 項；`wails/import_test.go` 5 項。
 * `tools/probe-vault-import.ts`：網頁版端到端（選單 → 選 zip → 建庫 → 下載 → 開庫 → 清單）。
 * `tools/probe-desktop-import.ts`：桌面版端到端（exe 複製到暫存資料夾 → 寫在 exe 旁 → 開庫 → 清單）。

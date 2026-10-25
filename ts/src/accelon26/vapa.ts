@@ -28,6 +28,7 @@
  */
 import { AdbReader, binarySearchLE, type Container } from './adb';
 import { Tokenizer, isSkipTag, normalize } from '../tokenize';
+import { decodeXmlEntities } from '../xml-entities';
 import { tntTrim } from '../unicode';
 
 export const TAGLENGTH = 4;
@@ -772,9 +773,9 @@ export class VaPaMapper {
           continue;
         }
         const named = pickName(parseAttrs(e.text));
-        if (named && !childName) childName = named;
+        if (named && !childName) childName = decodeXmlEntities(named);
       } else if (e.kind === 'token' || e.kind === 'blank') {
-        parts.push(e.kind === 'token' ? (e.normalized ?? e.text) : e.text);
+        parts.push(decodeXmlEntities(e.kind === 'token' ? (e.normalized ?? e.text) : e.text));
         if (parts.join('').length >= 24) break;
       }
       cur = e.va + Math.max(1, e.vaUnits);
@@ -788,7 +789,7 @@ export class VaPaMapper {
     if (trimmed) return trimmed;
     if (childName) return childName;
     // last resort: an attribute on the tier tag itself (`l`/`u`/`n`)
-    return pickName(ownAttrs).slice(0, 24);
+    return decodeXmlEntities(pickName(ownAttrs)).slice(0, 24);
   }
 
   /**
