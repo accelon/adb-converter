@@ -853,7 +853,7 @@ try {
         && !document.querySelector('#dictOrderList .note'); i++) await sleep(150);
       const dictRowEls = () => [...document.querySelectorAll('#dictOrderList .dictOrderRow')];
       const dictFiles = dictRowEls().map((r) => r.querySelector('.df')?.textContent ?? '');
-      // 只列出 c="isdict"：只影響清單；留下的每一列都要有 isdict 標記
+      // 只列出 c="isdict"：清單與查詢都只留 isdict 的辭典；留下的每一列都要有 isdict 標記
       onlyBox.checked = true; onlyBox.dispatchEvent(new Event('change'));
       await sleep(200);
       const onlyFiles = dictRowEls().map((r) => r.querySelector('.df')?.textContent ?? '');

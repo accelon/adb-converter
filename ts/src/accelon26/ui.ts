@@ -525,7 +525,7 @@ function setSettingsPane(name: string): void {
  *
  * 設置 → 介面：自動查字典的兩個開關；設置 → 辭典順序（作者 2026-10-26 獨立成頁）：
  * 順序清單。順序存**檔名**；清單只列目前 catalog 裡真的是詞典的 adb；找不到的檔名
- * 在查詢時直接略過（不警告）。勾「只列出 c="isdict"」只影響清單顯示，不影響查詢。
+ * 在查詢時直接略過（不警告）。勾「只列出 c="isdict"」時，清單與查詢都只留 isdict 的辭典。
  */
 let dictRows: DictListEntry[] = [];
 let dictSeq = 0;
@@ -599,12 +599,12 @@ function wireDictOrder(): void {
     setStatus(selection.checked ? '選取區自動查：開啟' : '選取區自動查：關閉', 'info');
   });
   $('#dictRefresh')?.addEventListener('click', () => { void renderDictOrder(true); });
-  // 只列出 c="isdict"（作者 2026-10-26）：只過濾清單，不動查詢順序
+  // 只列出 c="isdict"（作者 2026-10-26）：清單與查詢一起過濾（dictLookup 也看這個旗標）
   const only = $('#dictOnlyIsdict') as HTMLInputElement | null;
   only?.addEventListener('change', () => {
     setDictOnlyIsdict(only.checked);
     paintDictOrder();
-    setStatus(only.checked ? '辭典順序：只列出 c="isdict"' : '辭典順序：列出全部辭典', 'info');
+    setStatus(only.checked ? '辭典順序：只列出並只查 c="isdict"' : '辭典順序：列出並查全部辭典', 'info');
   });
   $('#dictOrderList')?.addEventListener('click', (ev) => {
     const b = (ev.target as HTMLElement)?.closest('button[data-dict-up],button[data-dict-down]') as HTMLButtonElement | null;

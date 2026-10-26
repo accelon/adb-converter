@@ -8,8 +8,9 @@
  *   * 詞典順序：儲存的是**adb 檔名**（例如 `fgdict.adb`），不是 catalog 的 key
  *     ——key 含 size/mtime，重建 adb 就變了；檔名和標籤樣式的 adb 鍵一致。
  *     下回啟動時，找不到的檔名直接略過，**不警告**（作者指定）。
- *   * 只列出 c="isdict"（作者 2026-10-26）：詞典順序清單只留 `<集 c="… isdict …">`
- *     的庫。預設關（顯示全部詞典型 adb，含沒標 isdict 的佛光大辭典）。
+ *   * 只列出 c="isdict"（作者 2026-10-26）：辭典順序清單只留 `<集 c="… isdict …">`
+ *     的庫，查詢（點字、選取）也只查這些。預設關（顯示並查全部詞典型 adb，
+ *     含沒標 isdict 的佛光大辭典）。
  *
  * 這是「這台電腦」的介面偏好，和主題／繁簡一樣存 localStorage；不放 settings.json
  * （settings.json v1 只放可分享的標籤樣式）。
@@ -82,8 +83,9 @@ export function setDictOrder(files: string[]): void {
 }
 
 /**
- * 詞典順序清單只列出 `<集 c="… isdict …">` 的庫？（預設關）
- * 只是顯示過濾：查詢仍照完整順序，過濾期間的上下移動也只在看得到的列之間交換。
+ * 只列出（也只查）`<集 c="… isdict …">` 的庫？（預設關）
+ * 勾選時：辭典順序清單只留有 isdict 標記的辭典，點字／選取查詢也只查這些；
+ * 過濾期間的上下移動仍只在看得到的列之間交換。
  */
 export function dictOnlyIsdict(): boolean {
   try {

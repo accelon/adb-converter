@@ -2108,7 +2108,8 @@ breadcrumb 說在華雨集第一。
 * **只列出 `c="isdict"`**：設定頁新勾選框 `#dictOnlyIsdict`，存
   `accelon26.dict.isdictonly`（預設 `'0'`＝全部）。勾選後清單只留
   `<集 c="… isdict …">` 的庫；每個有標記的列顯示小 `isdict` 徽章。
-  **只過濾顯示**：`dictLookup()` 的查詢順序不變；`saveDictOrder()` 仍存完整清單。
+  **清單與查詢一起過濾**（作者 2026-10-26 晚間更正）：`dictLookup()` 直接跳過
+  沒有 isdict 的辭典（點字、選取都不查）；`saveDictOrder()` 仍存完整清單。
 * **判定**：`db-kind.ts` 拆出 `detectIsdict()`（只看 `<集 c>` 的 isdict，不看 `$詞` 樹）；
   `dict-lookup.ts` 的 `DictIndex`／`DictListEntry` 多一個 `isdict` 欄位。
   實測：hanyu／hanyu3／kangxi／swjz 有 isdict，fgdict／gjhy／hcy 等沒有。
@@ -2272,7 +2273,8 @@ Go（`wails/import.go` 新）：`SaveAdb` 驗簽名 → 清理檔名（ASCII、`
   `<集 c="… isdict …">` 的庫，有標記的列顯示小 `isdict` 徽章。
 * `db-kind.ts` 拆出 `detectIsdict()`（只看 `<集 c>`）；`DictIndex`／`DictListEntry` 多 `isdict`。
   實測 hanyu／hanyu3／kangxi／swjz 有，fgdict／gjhy／hcy 沒有。
-* **只過濾顯示**：`dictLookup()` 順序不變、`saveDictOrder()` 仍存完整清單；↑↓ 只在看得到的
+* **清單與查詢一起過濾**（作者 2026-10-26 晚間更正）：勾選後 `dictLookup()` 直接跳過
+  沒有 isdict 的辭典（點字、選取都不查）；`saveDictOrder()` 仍存完整清單；↑↓ 只在看得到的
   列之間交換（換的是完整清單的兩個索引）。
 * 驗證：`dict-settings` 16/16；file://（fgdict）182/182。
 
@@ -2294,11 +2296,12 @@ Go（`wails/import.go` 新）：`SaveAdb` 驗簽名 → 清理檔名（ASCII、`
 
 ### 19.3 2026-10-26 版（Windows）
 
-* `release.ts --items-file`：buildTime `2026-10-26T14:13:48Z`、size `17965056`、
-  sha256 `c0986178a9603d130a258e73197fe3b36c67843730d2bebf676553713ed8a7e3`。
+* 同一個版號 `2026-10-26` 當天重發三次（作者要求小改不另開版號）：14:13（辭典順序）→
+  14:42（補圖片放大）→ 14:47（「只列出 c="isdict"」改成連查詢一起過濾）。
+* **最終上線**：buildTime `2026-10-26T14:47:00Z`、size `17974272`、
+  sha256 `14bf99c26025fc7ac4e9736cbfd23bf899b77caa6b554c1b917040ac93b30ae1`。
 * `deploy.ts --site` 上線；線上 versions.json／exe sha／7z sha／changelog／首頁
-  `verNo` 都核對過。`wails/*.prev` 留在伺服器可回滾。
-* 公告信寄到 `adb.dao@gmail.com`（用 `.local/smtp.json` 的 QQ SMTP；主旨
-  「accelon26 2026-10-26 更新：辭典順序獨立成頁」）。
-* 這版**不含** 19.2 的圖片放大（發佈後才做）；圖片放大目前只在 HTML／
-  `wails/assets`，等下一次發佈。
+  `verNo` 都核對過。伺服器上的 `accelon26.exe.prev` 是 14:42 的版本，可回滾。
+* 公告信寄到 `adb.dao@gmail.com` 兩次：14:13 版（辭典順序）、14:47 最終版
+  （圖片放大＋isdict 連查詢一起過濾；主旨「accelon26 2026-10-26 更新：圖片放大、辭典只查 isdict」）。
+* 最終 exe 已含 19.1（isdict 查詢過濾）與 19.2（圖片放大）。

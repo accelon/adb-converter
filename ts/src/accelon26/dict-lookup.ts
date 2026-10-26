@@ -17,7 +17,7 @@ import { AdbReader, BlobIO, type AdbSource } from './adb';
 import { VaPaMapper } from './vapa';
 import { catalog } from './dbs';
 import { renderPageBlocks } from './render_accelon3';
-import { dictOrder, orderByFile } from './dict-settings';
+import { dictOnlyIsdict, dictOrder, orderByFile } from './dict-settings';
 import { detectIsdict } from './db-kind';
 
 export interface DictRow {
@@ -251,16 +251,20 @@ export function relativesOf(
 
 /** 對所有 catalog 裡的詞典型 adb 一起查（多個詞典同時使用時會全部列出）。
  *  作者 2026-10-22：有存「詞典順序」時，先照順序分組，同一個詞典內長的在前；
- *  存了但這台電腦沒有的檔名直接略過（不警告）。 */
+ *  存了但這台電腦沒有的檔名直接略過（不警告）。
+ *  作者 2026-10-26：勾了「只列出 c="isdict"」時，沒有 isdict 標記的辭典**不查**
+ *  （點字、選取都不會出現它們的詞條）。 */
 export async function dictLookup(sentence: string): Promise<DictRow[]> {
   const rows: DictRow[] = [];
   const order = dictOrder();
+  const onlyIsdict = dictOnlyIsdict();
   const ordered = orderByFile(catalog.map((e) => ({ file: e.file.name, entry: e })));
   const rank = new Map(ordered.map((p, i) => [p.entry.key, i]));
   for (const { entry } of ordered) {
     try {
       const idx = await dictIndexOf(entry.key);
       if (!idx) continue;
+      if (onlyIsdict && !idx.isdict) continue;
       rows.push(...(await lookupInIndex(idx, sentence)));
     } catch {
       // 某個 adb 壞掉／讀不到：略過它，其他詞典照查（作者 2026-10-22：不警告）
