@@ -238,6 +238,16 @@ async function renderResources() {
     if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
       const url = URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type: 'image/' + (ext === 'svg' ? 'svg+xml' : ext) }));
       cell.innerHTML = `<img src="${url}" alt="">`;
+      // 點縮圖 → 大圖（作者 2026-10-26）
+      cell.classList.add('thumbImg');
+      cell.tabIndex = 0;
+      cell.setAttribute('role', 'button');
+      cell.setAttribute('aria-label', `看大圖：${name}`);
+      const open = () => openImageView(name, url, bytes);
+      cell.addEventListener('click', open);
+      cell.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); }
+      });
     } else {
       cell.innerHTML = `<div class="dim">${escapeHtml(ext || '?')}</div>`;
     }
@@ -248,7 +258,168 @@ async function renderResources() {
     if ((i & 15) === 15) await new Promise((r) => setTimeout(r, 0));
   }
   const note = $('#thumbNote');
-  if (note) note.textContent = c.count > n ? `已載入前 ${n} 張（共 ${c.count}）` : `已載入 ${n} 張`;
+  if (note) note.textContent = (c.count > n ? `已載入前 ${n} 張（共 ${c.count}）` : `已載入 ${n} 張`) + '；點縮圖看大圖';
+}
+
+/* ---------------------------------------------------------- 圖片放大（作者 2026-10-26）
+ *
+ * 右欄「圖片」的縮圖點一下 → 全螢幕看大圖：滾輪或 ＋/− 縮放（100%＝原始像素）、
+ * 拖曳平移、0 適合視窗、1 原始大小、Esc 關閉；「存檔」用 adb 裡的檔名下載。
+ */
+let ivBound = false;
+let ivScale = 1;
+let ivName = '';
+let ivUrl = '';
+let ivBytes: Uint8Array | null = null;
+
+function ivImg(): HTMLImageElement | null { return $('#imgViewImg') as HTMLImageElement | null; }
+function ivStage(): HTMLElement | null { return $('#imgStage') as HTMLElement | null; }
+
+function ivApplyScale(next: number): void {
+  const img = ivImg();
+  if (!img) return;
+  ivScale = Math.min(8, Math.max(0.05, next));
+  const w = img.naturalWidth || 800;
+  img.style.width = (w * ivScale) + 'px';
+  img.style.height = 'auto';
+  const pct = $('#imgZoomPct');
+  if (pct) pct.textContent = Math.round(ivScale * 100) + '%';
+}
+
+/** 以游標（或視窗中心）為錨點縮放 */
+function ivZoomBy(factor: number, clientX?: number, clientY?: number): void {
+  const stage = ivStage();
+  if (!stage) return;
+  const old = ivScale;
+  const rect = stage.getBoundingClientRect();
+  const left = clientX === undefined ? stage.clientWidth / 2 : clientX - rect.left;
+  const top = clientY === undefined ? stage.clientHeight / 2 : clientY - rect.top;
+  const ax = stage.scrollLeft + left;
+  const ay = stage.scrollTop + top;
+  ivApplyScale(old * factor);
+  const k = ivScale / old;
+  stage.scrollLeft = ax * k - left;
+  stage.scrollTop = ay * k - top;
+}
+
+function ivFit(): void {
+  const img = ivImg();
+  const stage = ivStage();
+  if (!img || !stage) return;
+  const w = img.naturalWidth || 800;
+  const h = img.naturalHeight || 600;
+  const sw = Math.max(80, stage.clientWidth - 28);
+  const sh = Math.max(80, stage.clientHeight - 28);
+  ivApplyScale(Math.min(1, sw / w, sh / h));
+}
+
+function openImageView(name: string, url: string, bytes: Uint8Array): void {
+  const box = $('#imgView') as HTMLElement | null;
+  const back = $('#imgViewBackdrop') as HTMLElement | null;
+  const img = ivImg();
+  if (!box || !back || !img) return;
+  if (!ivBound) ivBind();
+  ivName = name;
+  ivUrl = url;
+  ivBytes = bytes;
+  img.onload = () => { ivFit(); };
+  img.src = url;
+  img.alt = name;
+  const label = $('#imgViewName');
+  if (label) { label.textContent = name; label.title = name; }
+  const base = name.split('/').pop() || name;
+  const save = $('#imgSave');
+  if (save) {
+    save.title = `存檔：${base}`;
+    save.textContent = '存檔';
+  }
+  box.hidden = false;
+  back.hidden = false;
+  if (img.complete && img.naturalWidth) ivFit();
+  else ivApplyScale(1);
+  ($('#imgViewClose') as HTMLElement | null)?.focus();
+}
+
+function closeImageView(): void {
+  const box = $('#imgView') as HTMLElement | null;
+  const back = $('#imgViewBackdrop') as HTMLElement | null;
+  if (!box || box.hidden) return;
+  box.hidden = true;
+  if (back) back.hidden = true;
+  const img = ivImg();
+  if (img) { img.onload = null; img.removeAttribute('src'); img.style.width = ''; }
+  ivBytes = null;
+  ivUrl = '';
+  ivName = '';
+}
+
+/** 存檔：檔名用 adb 裡的資源名（去掉目錄，瀏覽器不接受路徑） */
+function ivSaveImage(): void {
+  if (!ivUrl) return;
+  const base = ivName.split('/').pop() || ivName || 'image';
+  const a = document.createElement('a');
+  a.href = ivUrl;
+  a.download = base;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setStatus('圖片已存檔：' + base, 'info');
+  // 狀態列只顯示錯誤／忙碌，存檔這種成功訊息在按鈕上回饋
+  const btn = $('#imgSave') as HTMLButtonElement | null;
+  if (!btn) return;
+  const label = btn.textContent || '存檔';
+  btn.textContent = '已存檔 ✓';
+  window.setTimeout(() => { btn.textContent = label; }, 1400);
+}
+
+function ivBind(): void {
+  ivBound = true;
+  const stage = ivStage();
+  if (!stage) return;
+  $('#imgViewClose')?.addEventListener('click', closeImageView);
+  $('#imgViewBackdrop')?.addEventListener('click', closeImageView);
+  $('#imgZoomIn')?.addEventListener('click', () => ivZoomBy(1.25));
+  $('#imgZoomOut')?.addEventListener('click', () => ivZoomBy(1 / 1.25));
+  $('#imgZoomFit')?.addEventListener('click', ivFit);
+  $('#imgZoomOne')?.addEventListener('click', () => ivApplyScale(1));
+  $('#imgSave')?.addEventListener('click', ivSaveImage);
+  stage.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    ivZoomBy(ev.deltaY < 0 ? 1.15 : 1 / 1.15, ev.clientX, ev.clientY);
+  }, { passive: false });
+  // 拖曳平移（圖比視窗大時）
+  let drag: { x: number; y: number; l: number; t: number } | null = null;
+  stage.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    drag = { x: ev.clientX, y: ev.clientY, l: stage.scrollLeft, t: stage.scrollTop };
+    stage.classList.add('dragging');
+    try { stage.setPointerCapture(ev.pointerId); } catch { /* 舊瀏覽器 */ }
+  });
+  stage.addEventListener('pointermove', (ev) => {
+    if (!drag) return;
+    stage.scrollLeft = drag.l - (ev.clientX - drag.x);
+    stage.scrollTop = drag.t - (ev.clientY - drag.y);
+  });
+  const endDrag = (ev: PointerEvent) => {
+    if (!drag) return;
+    drag = null;
+    stage.classList.remove('dragging');
+    try { stage.releasePointerCapture(ev.pointerId); } catch { /* 同上 */ }
+  };
+  stage.addEventListener('pointerup', endDrag);
+  stage.addEventListener('pointercancel', endDrag);
+  // 鍵盤：Esc 關閉、+/- 縮放、0 適合、1 原始大小
+  document.addEventListener('keydown', (ev) => {
+    const box = $('#imgView') as HTMLElement | null;
+    if (!box || box.hidden) return;
+    if (ev.key === 'Escape') { ev.stopImmediatePropagation(); closeImageView(); }
+    else if (ev.key === '+' || ev.key === '=') ivZoomBy(1.25);
+    else if (ev.key === '-') ivZoomBy(1 / 1.25);
+    else if (ev.key === '0') ivFit();
+    else if (ev.key === '1') ivApplyScale(1);
+    else return;
+    ev.preventDefault();
+  }, true);
 }
 
 // ------------------------------------------------------------------ documents

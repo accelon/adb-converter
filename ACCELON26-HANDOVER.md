@@ -2256,3 +2256,49 @@ Go（`wails/import.go` 新）：`SaveAdb` 驗簽名 → 清理檔名（ASCII、`
 
 > 本地重建 exe 時務必照 `release.ts` 的旗標（含 GUI 子系統），否則雙擊會跳命令列視窗；
 > 建完用 `bun run tools/pe-subsystem.ts <exe>` 確認 `subsystem=2`（作者 2026-10-25 加的守門）。
+
+## 19. 2026-10-26（晚間）：辭典順序分頁、圖片放大、2026-10-26 版發佈
+
+作者需求（兩輪）：
+
+1. 「辭典順序選項獨立成頁，加上『只列出 c="isdict"』的選項。」
+2. 「右欄圖片，點一下看大圖，並能縮放、有存檔按鈕（文件名同 adb 圖片名）。」
+
+### 19.1 辭典順序獨立成頁（詳見 §16.6）
+
+* 設置的分頁變成 **介面｜辭典順序｜標籤樣式｜繁簡**；「介面」只留「查字典」的兩個開關。
+  清單、↑↓、重新整理都搬到 `data-setpane="dict"`；`setSettingsPane('dict')` 才掃 catalog。
+* 新勾選框 `#dictOnlyIsdict`（`accelon26.dict.isdictonly`，預設 0＝全部）：只列
+  `<集 c="… isdict …">` 的庫，有標記的列顯示小 `isdict` 徽章。
+* `db-kind.ts` 拆出 `detectIsdict()`（只看 `<集 c>`）；`DictIndex`／`DictListEntry` 多 `isdict`。
+  實測 hanyu／hanyu3／kangxi／swjz 有，fgdict／gjhy／hcy 沒有。
+* **只過濾顯示**：`dictLookup()` 順序不變、`saveDictOrder()` 仍存完整清單；↑↓ 只在看得到的
+  列之間交換（換的是完整清單的兩個索引）。
+* 驗證：`dict-settings` 16/16；file://（fgdict）182/182。
+
+### 19.2 右欄圖片：點縮圖看大圖（`panes.ts` / template）
+
+* 右欄「圖片」（進階模式）的縮圖加 `thumbImg`：滑鼠變成放大鏡、可 Tab 聚焦、Enter／空白開啟。
+* 全螢幕 `#imgView`（z-index 96/97）：檔名、`−`／`＋`／`適合`／`1:1`、`存檔`、`✕`。
+  * **縮放**：以游標為錨點（滾輪）或視窗中心（按鈕）；比例 5%–800%，100%＝原始像素。
+  * **平移**：圖比視窗大時可拖曳；`適合` 依 stage 大小算 fit（小圖不放大，維持 100%）。
+  * **鍵盤**：`Esc` 關閉、`+`／`-` 縮放、`0` 適合、`1` 原始大小。
+  * **存檔**：`<a download>` 走 blob（和設定匯出一樣）；檔名取資源名的**去目錄檔名**
+    （例如 `images/mc0198.png` → `mc0198.png`；瀏覽器不接受路徑）。按鈕會短暫顯示
+    「已存檔 ✓」（狀態列只顯示錯誤／忙碌，成功訊息看不到）。
+* 只列前 48 張縮圖是原本的限制（`THUMB_LIMIT`），這次沒動；提示加「點縮圖看大圖」。
+* 驗證：headless yinshun（456 個資源）點第一張 → 100%（64px）→ 125%（80px）、
+  Esc 關閉、下載檔名 `mc0198.png`；另用 2000×3000 的 canvas 驗 fit（25%，500px）。
+  file:// 全套（yinshun）192 passed／2 failed——兩個失敗都是既有的 `docHead` 斷言
+  （`docHead 0 個`，與這次改動無關，fgdict 全套 182/182 不受影響）。
+
+### 19.3 2026-10-26 版（Windows）
+
+* `release.ts --items-file`：buildTime `2026-10-26T14:13:48Z`、size `17965056`、
+  sha256 `c0986178a9603d130a258e73197fe3b36c67843730d2bebf676553713ed8a7e3`。
+* `deploy.ts --site` 上線；線上 versions.json／exe sha／7z sha／changelog／首頁
+  `verNo` 都核對過。`wails/*.prev` 留在伺服器可回滾。
+* 公告信寄到 `adb.dao@gmail.com`（用 `.local/smtp.json` 的 QQ SMTP；主旨
+  「accelon26 2026-10-26 更新：辭典順序獨立成頁」）。
+* 這版**不含** 19.2 的圖片放大（發佈後才做）；圖片放大目前只在 HTML／
+  `wails/assets`，等下一次發佈。

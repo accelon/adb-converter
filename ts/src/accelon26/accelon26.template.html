@@ -843,7 +843,32 @@
   .thumb { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 4px; text-align: center; }
   .thumb img { max-width: 100%; max-height: 62px; display: block; margin: 0 auto 2px; }
   .thumb span { font-size: .769em; color: var(--dim); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thumb.thumbImg { cursor: zoom-in; }
+  .thumb.thumbImg:hover, .thumb.thumbImg:focus-visible { border-color: var(--accent); outline: none; }
   input[type=file] { color: var(--fg); font: inherit; font-size: 13px; }
+
+  /* ---- 圖片放大（作者 2026-10-26） ---- */
+  #imgViewBackdrop { position: fixed; inset: 0; z-index: 96; background: rgba(0,0,0,.72); }
+  #imgViewBackdrop[hidden], #imgView[hidden] { display: none; }
+  #imgView {
+    position: fixed; z-index: 97; inset: 18px; display: flex; flex-direction: column;
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 10px; box-shadow: 0 18px 60px rgba(0,0,0,.65); overflow: hidden;
+  }
+  .ivHead { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+  .ivName { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ivTools { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+  .ivBtn, .ivSave {
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
+    font: inherit; font-size: 12.5px; padding: 3px 10px; cursor: pointer;
+  }
+  .ivBtn:hover, .ivSave:hover { border-color: var(--accent); }
+  .ivSave { background: var(--accent); color: var(--ink-on-accent); border-color: var(--accent); font-weight: 600; }
+  .ivPct { min-width: 3.6em; text-align: center; color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .ivStage { flex: 1 1 auto; overflow: auto; padding: 14px; background: var(--bg); cursor: grab; touch-action: none; }
+  .ivStage.dragging { cursor: grabbing; }
+  .ivCanvas { min-width: 100%; min-height: 100%; display: flex; align-items: center; justify-content: center; }
+  #imgViewImg { display: block; max-width: none; user-select: none; -webkit-user-drag: none; }
 
   /* full text search */
   .searchBar { display: flex; gap: 6px; margin-bottom: 8px; }
@@ -1554,6 +1579,23 @@
     <button type="button" class="vnBtn" id="vaultNameCancel">取消</button>
     <button type="button" class="vnBtn primary" id="vaultNameOk">建立</button>
   </div>
+</div>
+<!-- 圖片放大（作者 2026-10-26）：右欄「圖片」點縮圖 → 大圖、縮放、存檔（檔名同 adb 資源名） -->
+<div id="imgViewBackdrop" hidden></div>
+<div id="imgView" role="dialog" aria-modal="true" aria-labelledby="imgViewName" hidden>
+  <div class="ivHead">
+    <span id="imgViewName" class="ivName">—</span>
+    <span class="ivTools">
+      <button type="button" class="ivBtn" id="imgZoomOut" title="縮小（-）">−</button>
+      <span class="ivPct" id="imgZoomPct">100%</span>
+      <button type="button" class="ivBtn" id="imgZoomIn" title="放大（+）">＋</button>
+      <button type="button" class="ivBtn" id="imgZoomFit" title="適合視窗（0）">適合</button>
+      <button type="button" class="ivBtn" id="imgZoomOne" title="原始大小（1）">1:1</button>
+      <button type="button" class="ivSave" id="imgSave" title="存檔">存檔</button>
+      <button type="button" class="aboutClose" id="imgViewClose" title="關閉（Esc）">✕</button>
+    </span>
+  </div>
+  <div class="ivStage" id="imgStage"><div class="ivCanvas"><img id="imgViewImg" alt=""></div></div>
 </div>
 <div id="aboutBackdrop" hidden></div>
 <div id="aboutBox" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" hidden>

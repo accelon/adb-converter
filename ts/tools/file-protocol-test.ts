@@ -3245,6 +3245,63 @@ try {
   const res = await cdp.eval<string>(`document.querySelector('#resources').textContent.replace(/\\s+/g,' ').trim().slice(0, 70)`);
   ok('resources pane reports state on file://', res.length > 0, res);
 
+  // 圖片放大（作者 2026-10-26）：右欄「圖片」點縮圖 → 大圖、縮放、存檔（檔名同 adb 資源名）。
+  // 只有帶 resources 的庫（yinshun／taisho）才有縮圖；測試完把進階模式與分頁還原。
+  const imgView = await cdp.eval<any>(`
+    (async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const restore = async () => {
+        document.querySelector('#colRight .tabBtn[data-tab="sum"]')?.click();
+        window.__accelon26.setAdvanced(false);
+        await sleep(300);
+      };
+      window.__accelon26.setAdvanced(true);
+      await sleep(350);
+      document.querySelector('#colRight .tabBtn[data-tab="images"]').click();
+      for (let i = 0; i < 80 && !document.querySelector('#resources .thumbImg'); i++) await sleep(200);
+      const first = document.querySelector('#resources .thumbImg');
+      if (!first) { await restore(); return { skip: true }; }
+      const thumbName = first.title;
+      first.click();
+      for (let i = 0; i < 50 && document.querySelector('#imgView').hidden; i++) await sleep(100);
+      const img = document.querySelector('#imgViewImg');
+      for (let i = 0; i < 50 && !img.naturalWidth; i++) await sleep(100);
+      await sleep(300);
+      const pct0 = document.querySelector('#imgZoomPct').textContent;
+      const w0 = Math.round(img.getBoundingClientRect().width);
+      document.querySelector('#imgZoomIn').click();
+      await sleep(150);
+      const pct1 = document.querySelector('#imgZoomPct').textContent;
+      const w1 = Math.round(img.getBoundingClientRect().width);
+      document.querySelector('#imgZoomFit').click();
+      await sleep(150);
+      const pctFit = document.querySelector('#imgZoomPct').textContent;
+      // 存檔：攔住 <a download> 的 click，記錄檔名（不真的下載）
+      let dl = '';
+      const orig = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () { dl = this.download; };
+      document.querySelector('#imgSave').click();
+      HTMLAnchorElement.prototype.click = orig;
+      await sleep(200);
+      const saveLabel = document.querySelector('#imgSave').textContent;
+      const name = document.querySelector('#imgViewName').textContent;
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await sleep(200);
+      const closed = document.querySelector('#imgView').hidden;
+      await restore();
+      return { skip: false, thumbName, name, pct0, pct1, pctFit, w0, w1, dl, saveLabel, closed };
+    })()
+  `);
+  if (!imgView.skip) {
+    ok('右欄圖片：點縮圖開大圖、可放大、Esc 關閉',
+      imgView.closed === true && imgView.w1 > imgView.w0 && imgView.pct1 !== imgView.pct0
+      && imgView.name === imgView.thumbName,
+      `${imgView.name}：${imgView.pct0}（${imgView.w0}px）→ ${imgView.pct1}（${imgView.w1}px）；關閉=${imgView.closed}`);
+    ok('圖片存檔：檔名同 adb 資源名（去掉目錄）',
+      imgView.dl === String(imgView.name).split('/').pop() && /^已存檔/.test(imgView.saveLabel || ''),
+      `下載檔名 ${imgView.dl}、按鈕「${imgView.saveLabel}」`);
+  }
+
   // ---- 多庫：從 adb 下拉選一個 → 它跳到 dbTabs 最左；點 chip 切換則完全不動 -------
   // 造一個「庫名不同」的複本當第二個庫（只改 header 的 dbname／dbcname；viewer 不看 crc32）
   const COPY = resolve(import.meta.dir, '../../build/tmp-copy.adb');
