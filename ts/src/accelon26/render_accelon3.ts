@@ -42,6 +42,16 @@ export const PARA_TAGS = new Set(['段']);
 /** 正文插圖（Accelon3：`圖` 是單張圖，`嵌圖`／`圖片` 是其他寫法的別名） */
 export const IMAGE_TAGS = new Set(['圖', '嵌圖', '圖片']);
 
+/**
+ * 腳注（作者 2026-10-26）：`<註 n="1"/>` 是正文裡的引用標記，`<釋 n="1">…</釋>`
+ * 是注文；兩者用 `n` 對應，像 Markdown 的腳注。注文有兩種寫法：
+ *   * `manual.adb`：`<釋 n="1">…多行…</釋>`
+ *   * `thonzu.adb`：`<釋 n="1"/>　注文就在標籤後面》（一行一條）
+ * 這裡只長出錨點與樣式；hover 顯示／點擊跳轉在 notes.ts。
+ */
+export const NOTE_REF_TAGS = new Set(['註']);
+export const NOTE_BODY_TAGS = new Set(['釋']);
+
 /** 內容要整段隱藏的標籤（建庫／目錄宣告用，不是內文） */
 export const HIDDEN_TAGS = new Set(['樹', '隱']);
 
@@ -190,6 +200,8 @@ export class Accelon3Renderer {
   private hidden = 0;
   /** 目前還開著的 `<聯>` 錨點數（沒有 n= 的聯不長錨點；收尾時不能多吐 </a>） */
   private entryLinks = 0;
+  /** 目前還開著的 `<釋>`（跨行；`line:true` 表示自閉合、只包到本行尾） */
+  private notes: { n: string; line: boolean }[] = [];
   /** 這個頁面上的頁碼計數（沒有 n= 時拿它當 id） */
   private pageSeq = 0;
   /** 這一行有沒有可見文字／標題（lineInfo 回報用） */
@@ -273,6 +285,16 @@ export class Accelon3Renderer {
     return `<span class="h" data-tag="${esc(tag)}" data-up="${up}" data-depth="${depth}" style="${size}${font}--tagtext:${color}">`;
   }
 
+  /** `<釋 n="X">` 的注文外框（notes.ts 靠 `data-note` 找它） */
+  private noteSpan(n: string): string {
+    return `<span class="noteBody" data-note="${esc(n)}">`;
+  }
+
+  /** 注文開頭的編號（點它回到 `<註>`） */
+  private noteBack(n: string): string {
+    return `<a class="noteBack" data-note="${esc(n)}" href="#" title="回到註 ${esc(n)}">[${esc(n)}]</a>`;
+  }
+
   /** `<頁>`：原書分行時是右靠的分隔；不保留硬換行時是行內的小字頁碼 */
   private pageMark(attrs: string): string {
     this.pageSeq++;
@@ -290,6 +312,8 @@ export class Accelon3Renderer {
     let html = '';
     // 跨行的標題：這一行開頭先把還開著的補回來（行尾會全部收掉）
     for (const s of this.stack) html += this.openSpan(s.tag, s.depth);
+    // 跨行的 <釋>：同理，每行重新開（不自閉合、而且真的有 n= 的才開）
+    for (const note of this.notes) if (!note.line && note.n) html += this.noteSpan(note.n);
 
     let i = 0;
     while (i < text.length) {
@@ -352,6 +376,31 @@ export class Accelon3Renderer {
         }
         continue;
       }
+      // `<註 n="1"/>`：腳注引用。沒有 n= 的註照舊當一般文字（沒有可對應的釋）。
+      if (NOTE_REF_TAGS.has(name)) {
+        const n = attrValue(attrs, 'n');
+        if (!closing && n) {
+          html += `<a class="noteRef" data-note="${esc(n)}" href="#" title="註 ${esc(n)}">[${esc(n)}]</a>`;
+          this.sawText = true;
+        }
+        continue;
+      }
+      // `<釋 n="1">…</釋>` 或 `<釋 n="1"/>注文`：注文。沒有 n= 的釋（hcy 的
+      // 「意思是…」）不是腳注，標籤丟掉、文字照常顯示；但仍要在堆疊裡佔一格，
+      // 收尾時才不會誤關上一個腳注（作者 2026-10-26 踩過：`</釋>` 沒有 n=）。
+      if (NOTE_BODY_TAGS.has(name)) {
+        if (closing) {
+          const last = this.notes.pop();
+          if (last?.n) html += '</span>';
+          continue;
+        }
+        const n = attrValue(attrs, 'n');
+        this.notes.push({ n, line: selfClose });
+        if (!n) continue;
+        html += this.noteSpan(n) + this.noteBack(n);
+        this.sawText = true;
+        continue;
+      }
       if (PARA_TAGS.has(name)) {
         // <段/> 或 <段>：都當段落分隔（最簡做法：<br> ＋ 兩個全形空格）。
         // 縮排放在自己的 span 裡：塗紅在做「文字位移對應」時會跳過它，
@@ -379,10 +428,16 @@ export class Accelon3Renderer {
       }
     }
 
-    // 行尾把這一行還開著的標題收掉（下一行會重新開；HTML 才是平衡的）
-    html += '</span>'.repeat(this.stack.length);
+    // 行尾把行內開著的東西收掉（下一行會重新開；HTML 才是平衡的）：
+    // 錨點 → 只到本行的釋 → 跨行的釋 → 標題（由內而外）。
     // `<聯>` 錨點同樣在行尾收掉；跨行的聯不重新開（條目連結都是行內）
     if (this.entryLinks) { html += '</a>'.repeat(this.entryLinks); this.entryLinks = 0; }
+    while (this.notes.length && this.notes[this.notes.length - 1].line) {
+      const top = this.notes.pop()!;
+      if (top.n) html += '</span>';
+    }
+    html += '</span>'.repeat(this.notes.filter((x) => x.n).length);
+    html += '</span>'.repeat(this.stack.length);
     return { no: lineNo, html, raw: text, visible: this.sawText, heading: this.sawHeading };
   }
 

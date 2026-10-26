@@ -87,6 +87,30 @@ ok('連結的屬性與文字都解實體',
   entAttr.startsWith('<a class="entryLink" href="#" data-entry="A&amp;B" title="A&amp;B">')
   && entAttr.endsWith('>A &amp; B</a>'), entAttr);
 
+// 作者 2026-10-26：<註 n> ↔ <釋 n> 腳注（manual／thonzu 兩種寫法）
+const noteRef = r.line('本軟體為綠色軟體<註 n="1"/>，可以直接執行', 16);
+ok('註：變成 noteRef 錨點（data-note、上標 [1]）',
+  noteRef.includes('<a class="noteRef" data-note="1" href="#" title="註 1">[1]</a>')
+  && noteRef.startsWith('本軟體為綠色軟體') && noteRef.endsWith('，可以直接執行'), noteRef);
+const noteOne = r.line('<釋 n="1">綠色軟體：免安裝。</釋>', 17);
+ok('釋（包住型）：長出 noteBody 與回跳編號，文字留在裡面',
+  noteOne.includes('<span class="noteBody" data-note="1">')
+  && noteOne.includes('<a class="noteBack" data-note="1" href="#" title="回到註 1">[1]</a>')
+  && noteOne.includes('綠色軟體：免安裝。') && noteOne.endsWith('</span>'), noteOne);
+const noteOpen = r.line('<釋 n="2">第一行', 18);
+const noteMid = r.line('第二行', 19);
+const noteClose = r.line('第三行</釋>之後', 20);
+ok('釋（跨行）：每行重新開、收掉後不再是注文',
+  noteOpen.includes('data-note="2"') && noteMid.includes('data-note="2"')
+  && noteClose.includes('</span>之後')
+  && !r.line('後面的正文', 21).includes('noteBody'), [noteOpen, noteMid, noteClose].join(' ｜ '));
+const noteSelf = r.line('<釋 n="3"/>　宿慧──早先熟悉的技能。', 22);
+ok('釋（自閉合）：注文在標籤後面，整行都包在 noteBody 裡',
+  noteSelf.startsWith('<span class="noteBody" data-note="3"><a class="noteBack" data-note="3"')
+  && noteSelf.includes('宿慧──早先熟悉的技能。') && noteSelf.endsWith('</span>'), noteSelf);
+const notePlain = r.line('<釋>意思是，不干則已。</釋>', 23);
+ok('沒有 n 的釋（hcy）：不是腳注，只丟標籤', notePlain === '意思是，不干則已。', notePlain);
+
 // 很深的樹（yinshun 可以有十幾層）：每層 +2px，但 CSS 上限 200%（min() 交給瀏覽器）
 const deep = new Accelon3Renderer({ depthOf: new Map([['書', 0], ['章', 1], ['文', 17]]), levels: 19 });
 const deepH = deep.line('<章>經文</章>', 13);

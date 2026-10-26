@@ -807,6 +807,22 @@
   /* <聯 n="詞">：詞條連結（別名、參見）。目標由 link.ts 的 linkToEntry 解析 */
   .lineText .entryLink { color: #2e7a80; text-decoration: none; border-bottom: 1px dotted currentColor; cursor: pointer; }
   .lineText .entryLink:hover { color: #b26949; text-decoration: underline; }
+  /* <註 n="…"/> ↔ <釋 n="…">：像 Markdown 腳注（作者 2026-10-26）。
+     註是上標的小連結，hover 顯示釋文；點註跳到釋、點釋（或它的編號）跳回註。 */
+  .lineText .noteRef {
+    color: var(--link); text-decoration: none; font-size: .72em;
+    vertical-align: super; padding: 0 1px; cursor: pointer;
+  }
+  .lineText .noteRef:hover { color: var(--accent); text-decoration: underline; }
+  .lineText .noteBack { color: var(--gold); text-decoration: none; font-size: .8em; padding: 0 3px 0 0; cursor: pointer; }
+  .lineText .noteBack:hover { text-decoration: underline; }
+  .lineText .noteBody { cursor: pointer; }
+  #noteTip {
+    position: fixed; z-index: 94; max-width: min(480px, 82vw); max-height: 45vh; overflow: auto;
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .55); padding: 8px 11px;
+    font-size: 13px; line-height: 1.6; white-space: pre-wrap;
+  }
   .lineText .pageBreak::before { content: ""; flex: 1 1 auto; border-top: 1px dashed var(--line); }
   .lineText .pageBreak .pageId { font-variant-numeric: tabular-nums; }
   /* <段/> → <br class="para"> ＋ 兩個全形空格 */
@@ -1597,6 +1613,8 @@
   </div>
   <div class="ivStage" id="imgStage"><div class="ivCanvas"><img id="imgViewImg" alt=""></div></div>
 </div>
+<!-- 腳注提示（作者 2026-10-26）：hover <註> 時顯示對應 <釋> 的文字 -->
+<div id="noteTip" hidden></div>
 <div id="aboutBackdrop" hidden></div>
 <div id="aboutBox" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" hidden>
   <div class="aboutTop">

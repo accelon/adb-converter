@@ -2305,3 +2305,24 @@ Go（`wails/import.go` 新）：`SaveAdb` 驗簽名 → 清理檔名（ASCII、`
 * 公告信寄到 `adb.dao@gmail.com` 兩次：14:13 版（辭典順序）、14:47 最終版
   （圖片放大＋isdict 連查詢一起過濾；主旨「accelon26 2026-10-26 更新：圖片放大、辭典只查 isdict」）。
 * 最終 exe 已含 19.1（isdict 查詢過濾）與 19.2（圖片放大）。
+
+### 19.4 腳注：`<註 n>` ↔ `<釋 n>`（作者 2026-10-26 晚間）
+
+作者需求：「`<註>` 與 `<釋>` 是有連動關係的（attribute n），hover `<註>` 會顯示 `<釋>`
+包住的信息。點 `<註>` 捲到 `<釋>`，點 `<釋>` 捲回 `<註>`，就像 md 的腳注。」
+
+* **渲染**（`render_accelon3.ts`）：`<註 n="1"/>` → `noteRef` 上標錨點；
+  `<釋 n="1">…</釋>`（manual.adb，可跨行）與 `<釋 n="1"/>注文`（thonzu.adb，注文在
+  標籤後面）都變成 `noteBody` ＋ 開頭的回跳編號 `noteBack`。跨行的釋每行重新開、
+  行尾收（和跨行標題同一套）；**沒有 n 的釋**（hcy 的「意思是…」）只丟標籤，不當腳注。
+* **互動**（`notes.ts`，新）：hover 註 → `#noteTip` 顯示釋文（可捲動）；點註 →
+  `revealDocLine(釋的行)`；點釋（或它開頭的編號）→ 回註。找對應的釋／註是**由近而遠**
+  掃來源行（先往後找注文、先往前找引用），所以同一本書每章重新編號（n=1 很多次）
+  也不會抓錯；結果用 WeakMap 依 reader 快取。
+* **捲動**（`doc-pane.ts`）：新增 `revealDocLine(line)`（不塗紅、不釘選）。注意
+  **不能拿 `lineStartOf()` 的 VA 去 `docOfVa()`**：manual 的 tags VA 與行表 VA 不在
+  同一空間（`<檔>` VA 4082／行表 VA 10992），會挑錯檔；改用行號找 `<檔>`。
+* **驗證**：`render` 30/30（新增 6 條腳注）；manual.adb（包住多行）hover 顯示全文、
+  點註 scrollTop 0→536、點回 97；thonzu.adb（自閉合）hover「宿慧──早先熟悉的技能或
+  知識」、點註 scroll 0→1357、點回 0。截圖 `build/note-tip.png`。
+* 這版還沒發佈；`release_notes.draft.txt` 已記一條。

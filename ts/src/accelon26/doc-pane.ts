@@ -225,6 +225,34 @@ const pagerLog: string[] = [];
 
 const docSession = (): DocSession | null => docTabs[docActive] ?? null;
 
+/**
+ * 滾到某一行（腳注連動用，作者 2026-10-26）：不塗紅、不釘選。
+ * 行號不屬於目前分頁的 `<檔>` 時，用**行號**找那個檔（不能拿 lineStartOf 的 VA 去
+ * 比 docOfVa：manual 這種庫的 tags VA 與行表 VA 不在同一個空間，會挑錯檔）。
+ */
+export async function revealDocLine(line: number): Promise<void> {
+  if (!mapper || !reader) return;
+  const cur = docSession();
+  const curB = cur ? boundsOfRealm(cur.realm) : null;
+  let s = cur;
+  if (!s || !curB || line < curB.first || line > curB.last) {
+    const hit = docs.find((d, i) => {
+      const first = mapper!.lineOfVa(d.vaStart);
+      const last = i + 1 < docs.length ? mapper!.lineOfVa(docs[i + 1].vaStart) - 1 : reader!.header.lineCount - 1;
+      return line >= first && line <= last;
+    });
+    if (hit) s = sessionFor({ from: hit.vaStart, to: hit.vaEnd }, hit.name, false);
+  }
+  if (!s) return;
+  s.pinned = null;
+  setPinnedHit(null);
+  setDocActive(docTabs.indexOf(s));
+  const b = boundsOfRealm(s.realm);
+  const target = Math.max(b.first, Math.min(b.last, line));
+  await ensurePage(s, target);
+  requestAnimationFrame(() => document.getElementById('L' + target)?.scrollIntoView({ block: 'center' }));
+}
+
 /** the whole-database realm (used when no document row owns the VA) */
 function wholeRealm(): { from: number; to: number } {
   return { from: 0, to: reader?.header.maxBlockOffset ?? 0 };

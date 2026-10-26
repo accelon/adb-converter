@@ -10,6 +10,7 @@ import { type AdbSource } from './adb';
 import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, readSideFont, openHistoryPage, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, saveLastReadNow, setDocFont, setHardBreaks, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
 import { renderTextPane } from './text-pane';
 import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
+import { initNoteLinks } from './notes';
 import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully } from './scopes';
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
@@ -1168,6 +1169,8 @@ function boot() {
   initDictPane();
   // 本文的 `<聯 n="詞">`（別名／參見）點擊後聯動到該詞條（作者 2026-10）
   initEntryLinks();
+  // 本文的 `<註 n>` ↔ `<釋 n>` 腳注連動（作者 2026-10-26）
+  initNoteLinks();
   setDictHooks.current = () => { setSide('right', true); showTab('dict', 'right'); };
   // 操作導覽（🎬）：劇本 → 宏 → 播放器，見 tour.ts 與 ts/tour/*.tour
   initTour(TOUR_APP);

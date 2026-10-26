@@ -162,7 +162,7 @@ wails/*.go                    ← 宿主：ListAdbs / ReadBase64 / Postings / De
 | `dict-lookup.ts` / `dict-pane.ts` | 詞典索引與右欄詞典分頁 |
 | `allsearch.ts` | 搜尋所有 adb |
 | `tour-format.ts` / `tour.ts` / `tour-data.ts` | 操作導覽：宏的編解碼、播放器、內嵌的宏（由 `tools/build-tours.ts` 產生） |
-| `render_accelon3.ts` | 標籤→HTML（標題／色彩／硬換行） |
+| `render_accelon3.ts` | 標籤→HTML（標題／色彩／硬換行）＋ `<註>`／`<釋>` 腳注標記（`notes.ts` 接手互動） |
 | `panes.ts` / `lazy-list.ts` | 分頁切換；分批掛載 DOM |
 | `viewer.ts` | 全域 `reader/mapper/session`、`openFile`、狀態列、設定遷移 |
 
