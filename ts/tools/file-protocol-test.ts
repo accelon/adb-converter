@@ -833,7 +833,6 @@ try {
       await sleep(150);
       // 點擊查字典（作者 2026-10-22）：開關存 localStorage，預設開
       const dictAuto = document.getElementById('setDictAuto');
-      const dictSection = !!document.getElementById('dictOrderList');
       const dictDefault = !!dictAuto?.checked;
       dictAuto.checked = false; dictAuto.dispatchEvent(new Event('change'));
       await sleep(250);
@@ -841,16 +840,36 @@ try {
       dictAuto.checked = true; dictAuto.dispatchEvent(new Event('change'));
       await sleep(250);
       const dictOn = localStorage.getItem('accelon26.dict.auto');
+      // 辭典順序獨立成頁（作者 2026-10-26）：清單不在「介面」分頁，要切到「辭典順序」才畫
+      const dictPane = document.querySelector('#setBody .setPane[data-setpane="dict"]');
+      const dictSection = !!dictPane?.querySelector('#dictOrderList');
+      const orderInUi = !!uiPane.querySelector('#dictOrderList');
+      document.querySelector('#setTabs .setTab[data-setpane="dict"]').click();
+      await sleep(250);
+      const onlyBox = document.getElementById('dictOnlyIsdict');
+      const onlyDefault = !!onlyBox?.checked;
       // 清單是非同步掃描的；給它一點時間（fgdict 執行時要看得到 fgdict.adb）
       for (let i = 0; i < 25 && !document.querySelector('#dictOrderList .dictOrderRow')
         && !document.querySelector('#dictOrderList .note'); i++) await sleep(150);
-      const dictFiles = [...document.querySelectorAll('#dictOrderList .dictOrderRow')]
-        .map((r) => r.querySelector('.df')?.textContent ?? '');
+      const dictRowEls = () => [...document.querySelectorAll('#dictOrderList .dictOrderRow')];
+      const dictFiles = dictRowEls().map((r) => r.querySelector('.df')?.textContent ?? '');
+      // 只列出 c="isdict"：只影響清單；留下的每一列都要有 isdict 標記
+      onlyBox.checked = true; onlyBox.dispatchEvent(new Event('change'));
+      await sleep(200);
+      const onlyFiles = dictRowEls().map((r) => r.querySelector('.df')?.textContent ?? '');
+      const onlyAllIsdict = dictRowEls().every((r) => !!r.querySelector('.di'));
+      const onlyState = { ls: localStorage.getItem('accelon26.dict.isdictonly'), on: st().dictOnlyIsdict };
+      onlyBox.checked = false; onlyBox.dispatchEvent(new Event('change'));
+      await sleep(200);
+      const backRows = dictRowEls().length;
       const dictDbIsFg = st().db === 'fgdict';
       window.__accelon26.closeSettings();
       return {
         before, opened, advOn, advOff, advIsLast, demoOrig, demoSafe,
-        dict: { section: dictSection, default: dictDefault, off: dictOff, on: dictOn, files: dictFiles, dbIsFg: dictDbIsFg },
+        dict: {
+          section: dictSection, orderInUi, default: dictDefault, off: dictOff, on: dictOn,
+          files: dictFiles, onlyDefault, onlyFiles, onlyAllIsdict, onlyState, backRows, dbIsFg: dictDbIsFg,
+        },
         theme: { labels: themeLabels, autumn: autumnTheme, ls: autumnLs },
         sim: { t0, t1, t2, t3, m0, m1, m2, db: st().db, stored: localStorage.getItem('accelon26.simmode') },
       };
@@ -880,9 +899,17 @@ try {
     `無損「${settings.demoSafe[1].text}」（${settings.demoSafe[1].marks} 個差異字）／`
     + `強制「${settings.demoOrig[2].text}」（${settings.demoOrig[2].marks} 個）`);
   ok('點擊查字典：介面有開關（預設開，關閉會存起來）',
-    settings.dict.section === true && settings.dict.default === true
-    && settings.dict.off === '0' && settings.dict.on === '1',
+    settings.dict.default === true && settings.dict.off === '0' && settings.dict.on === '1',
     JSON.stringify(settings.dict));
+  ok('辭典順序獨立成「辭典順序」分頁（介面分頁不再有清單）',
+    settings.dict.section === true && settings.dict.orderInUi === false,
+    `辭典分頁有清單=${settings.dict.section}、介面分頁還有清單=${settings.dict.orderInUi}`);
+  ok('「只列出 c="isdict"」預設關；勾選後只留 isdict 的列，取消後全部回來',
+    settings.dict.onlyDefault === false && settings.dict.onlyState.ls === '1'
+    && settings.dict.onlyState.on === true && settings.dict.onlyAllIsdict === true
+    && settings.dict.onlyFiles.length <= settings.dict.files.length
+    && settings.dict.backRows === settings.dict.files.length,
+    `勾選後 ${JSON.stringify(settings.dict.onlyFiles)}；取消後 ${settings.dict.backRows} 列`);
   ok('點擊查字典：有詞典型 adb 時，清單列出檔名（fgdict.adb）',
     !settings.dict.dbIsFg || settings.dict.files.includes('fgdict.adb'),
     JSON.stringify(settings.dict.files));
@@ -1027,7 +1054,7 @@ try {
     })()
   `);
   ok('設置多了「標籤樣式」分頁：介面最左、沒有預覽、顯示儲存位置',
-    tagStyle.tabs.length === 3 && tagStyle.tabs.join('|') === '介面|標籤樣式|繁簡'
+    tagStyle.tabs.length === 4 && tagStyle.tabs.join('|') === '介面|辭典順序|標籤樣式|繁簡'
     && tagStyle.rowCount >= 11 && tagStyle.initial.preview === false
     && tagStyle.store.includes('localStorage'),
     JSON.stringify({ tabs: tagStyle.tabs, rows: tagStyle.rowCount, preview: tagStyle.initial.preview, store: tagStyle.store }));
@@ -1286,6 +1313,9 @@ try {
       const px = (el) => getComputedStyle(el);
       const h = [...document.querySelectorAll('#docText .lineText .h')];
       const base = parseFloat(px(document.querySelector('#docText .docBody')).fontSize);
+      // 「顯示原始文件」2026-10-24 已移除（改成鉛筆編輯）：舊元素不在 DOM 時跳過這一段
+      const rawEl = document.querySelector('#rawToggle');
+      const rawBox = document.querySelector('#showRaw');
       const rendered = {
         lines: document.querySelectorAll('#docText .docLine').length,
         headings: h.length,
@@ -1298,31 +1328,33 @@ try {
         lum: h[0] ? (() => { const m = /rgba?\\((\\d+), *(\\d+), *(\\d+)/.exec(px(h[0]).color); return m ? Math.round((Number(m[1]) * 299 + Number(m[2]) * 587 + Number(m[3]) * 114) / 1000) : 0; })() : 0,
         pages: document.querySelectorAll('#docText .pageBreak').length,
         rawTags: (document.querySelector('#docText .lineText')?.textContent ?? '').includes('<'),
-        toggleHidden: getComputedStyle(document.querySelector('#rawToggle')).display,
+        toggleHidden: rawEl ? getComputedStyle(rawEl).display : 'gone',
         state: st().renderRaw,
       };
-      // 進階模式才看得到「原始文件」
-      window.__accelon26.setAdvanced(true);
-      await new Promise(r => setTimeout(r, 300));
-      const shownInAdvanced = getComputedStyle(document.querySelector('#rawToggle')).display !== 'none';
-      // 勾選 → 原始文件
-      const box = document.querySelector('#showRaw');
-      box.checked = true;
-      box.dispatchEvent(new Event('change'));
-      await new Promise(r => setTimeout(r, 700));
-      const raw = {
-        headings: document.querySelectorAll('#docText .lineText .h').length,
-        pages: document.querySelectorAll('#docText .pageBreak').length,
-        hasTags: [...document.querySelectorAll('#docText .lineText')].some((el) => (el.textContent ?? '').includes('<')),
-        state: st().renderRaw,
-        stored: localStorage.getItem('accelon26.showraw'),
-      };
-      box.checked = false;
-      box.dispatchEvent(new Event('change'));
-      await new Promise(r => setTimeout(r, 700));
-      const back = { headings: document.querySelectorAll('#docText .lineText .h').length, state: st().renderRaw };
-      window.__accelon26.setAdvanced(false);
-      return { rendered, shownInAdvanced, raw, back };
+      let shownInAdvanced = false, raw = null, back = null;
+      if (rawEl && rawBox) {
+        // 進階模式才看得到「原始文件」
+        window.__accelon26.setAdvanced(true);
+        await new Promise(r => setTimeout(r, 300));
+        shownInAdvanced = getComputedStyle(rawEl).display !== 'none';
+        // 勾選 → 原始文件
+        rawBox.checked = true;
+        rawBox.dispatchEvent(new Event('change'));
+        await new Promise(r => setTimeout(r, 700));
+        raw = {
+          headings: document.querySelectorAll('#docText .lineText .h').length,
+          pages: document.querySelectorAll('#docText .pageBreak').length,
+          hasTags: [...document.querySelectorAll('#docText .lineText')].some((el) => (el.textContent ?? '').includes('<')),
+          state: st().renderRaw,
+          stored: localStorage.getItem('accelon26.showraw'),
+        };
+        rawBox.checked = false;
+        rawBox.dispatchEvent(new Event('change'));
+        await new Promise(r => setTimeout(r, 700));
+        back = { headings: document.querySelectorAll('#docText .lineText .h').length, state: st().renderRaw };
+        window.__accelon26.setAdvanced(false);
+      }
+      return { rendered, shownInAdvanced, raw, back, rawGone: !rawEl && !rawBox };
     })()
   `);
   ok('內文預設渲染成 HTML（原始標籤看不到）',
@@ -1335,14 +1367,19 @@ try {
     `標題 ${render.rendered.headings} 個（${JSON.stringify(render.rendered.tags)}，up=${JSON.stringify(render.rendered.up)}）`
     + `｜字級 ${render.rendered.size}px／本文 ${render.rendered.base}px｜字色 ${render.rendered.color}（亮度 ${render.rendered.lum}，本文 ${render.rendered.bodyColor}）`);
   ok('`<頁>` 渲染成右靠的分隔（.pageBreak）', render.rendered.pages > 0, `${render.rendered.pages} 個`);
-  ok('「顯示原始文件」只在進階模式出現',
-    !/^(inline|flex|block)/.test(render.rendered.toggleHidden) && render.shownInAdvanced === true,
-    `一般模式 display=${render.rendered.toggleHidden}，進階模式可見=${render.shownInAdvanced}`);
-  ok('勾「原始文件」→ 不渲染（標籤回來、沒有標題）',
-    render.raw.headings === 0 && render.raw.hasTags === true && render.raw.state === true && render.raw.stored === '1',
-    `標題 ${render.raw.headings} 個、看得到標籤=${render.raw.hasTags}、state=${render.raw.state}`);
-  ok('取消「原始文件」→ 回到渲染', render.back.state === false && render.back.headings === render.rendered.headings,
-    `state=${render.back.state}、標題 ${render.back.headings} 個`);
+  ok('「顯示原始文件」已移除（2026-10-24 改成鉛筆編輯）',
+    render.rawGone === true,
+    `#rawToggle／#showRaw 不存在=${render.rawGone}`);
+  if (!render.rawGone) {
+    ok('「顯示原始文件」只在進階模式出現',
+      !/^(inline|flex|block)/.test(render.rendered.toggleHidden) && render.shownInAdvanced === true,
+      `一般模式 display=${render.rendered.toggleHidden}，進階模式可見=${render.shownInAdvanced}`);
+    ok('勾「原始文件」→ 不渲染（標籤回來、沒有標題）',
+      render.raw.headings === 0 && render.raw.hasTags === true && render.raw.state === true && render.raw.stored === '1',
+      `標題 ${render.raw.headings} 個、看得到標籤=${render.raw.hasTags}、state=${render.raw.state}`);
+    ok('取消「原始文件」→ 回到渲染', render.back.state === false && render.back.headings === render.rendered.headings,
+      `state=${render.back.state}、標題 ${render.back.headings} 個`);
+  }
 
   // ---- 祖先標題列 ＋ 上一頁／下一頁跨節點（作者 2026-10） ----
   const trail = await cdp.eval<any>(`

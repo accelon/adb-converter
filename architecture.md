@@ -155,7 +155,7 @@ wails/*.go                    ← 宿主：ListAdbs / ReadBase64 / Postings / De
 | `backend.ts` | **唯一**查詢入口：TS／Go 分派、繁簡通檢分組 |
 | `host.ts` | **唯一**宿主入口：探測、`ListAdbs`、IO、查詢、AppInfo、視窗 |
 | `dbs.ts` | slot（最多 5 個）、catalog、📁 下拉、snapshot/restore |
-| `db-kind.ts` | 詞典型 adb 判定（有 `$詞` 就算；`isdict` 只是補充） |
+| `db-kind.ts` | 詞典型 adb 判定（有 `$詞` 就算；`isdict` 只是補充）＋ `detectIsdict()`（設定頁過濾用） |
 | `doc-pane.ts` | 本文分頁、分頁載入、字級、原書頁碼 |
 | `scopes.ts` | 目錄／名詞／頻次／原書分頁／西文 |
 | `summary.ts` / `paint.ts` / `link.ts` | 摘要卡片、塗紅、跳頁 |

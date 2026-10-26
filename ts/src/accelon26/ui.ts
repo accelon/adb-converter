@@ -18,7 +18,7 @@ import { isDictDb } from './db-kind';
 import { closeSearchAll, initSearchAll, openSearchAll, runSearchAll, searchAllState } from './allsearch';
 import { dictLookupAt, dictPaneState, initDictPane } from './dict-pane';
 import { listDicts, type DictListEntry } from './dict-lookup';
-import { autoDictOn, dictOrder, orderByFile, selectionDictOn, setAutoDict, setDictOrder, setSelectionDict } from './dict-settings';
+import { autoDictOn, dictOnlyIsdict, dictOrder, orderByFile, selectionDictOn, setAutoDict, setDictOnlyIsdict, setDictOrder, setSelectionDict } from './dict-settings';
 import { setDictHooks } from './dict-hooks';
 import { initTour, openTourMenu, play as playTour, startTour, stopTour, tourState } from './tour';
 import { toggleInspect } from './inspect';
@@ -341,6 +341,8 @@ function updateSettingsUi(): void {
   if (dictAuto) dictAuto.checked = autoDictOn();
   const dictSelection = $('#setDictSelection') as HTMLInputElement | null;
   if (dictSelection) dictSelection.checked = selectionDictOn();
+  const dictOnly = $('#dictOnlyIsdict') as HTMLInputElement | null;
+  if (dictOnly) dictOnly.checked = dictOnlyIsdict();
 }
 
 function showSettings(open: boolean): void {
@@ -516,16 +518,25 @@ function setSettingsPane(name: string): void {
   tagAll('#setTabs .setTab').forEach((b) => b.classList.toggle('active', b.dataset.setpane === settingsPane));
   tagAll('#setBody .setPane').forEach((p) => { (p as HTMLElement).hidden = p.dataset.setpane !== settingsPane; });
   if (settingsPane === 'tags') renderTagStylePane();
-  else if (settingsPane === 'ui') void renderDictOrder();
+  else if (settingsPane === 'dict') void renderDictOrder();
 }
 
 /* ---------------------------------------------------------- 查字典（作者 2026-10-22）
  *
- * 設置 → 介面：自動查字典的開關＋詞典順序。順序存**檔名**；清單只列目前
- * catalog 裡真的是詞典的 adb；找不到的檔名在查詢時直接略過（不警告）。
+ * 設置 → 介面：自動查字典的兩個開關；設置 → 辭典順序（作者 2026-10-26 獨立成頁）：
+ * 順序清單。順序存**檔名**；清單只列目前 catalog 裡真的是詞典的 adb；找不到的檔名
+ * 在查詢時直接略過（不警告）。勾「只列出 c="isdict"」只影響清單顯示，不影響查詢。
  */
 let dictRows: DictListEntry[] = [];
 let dictSeq = 0;
+
+/** 目前清單裡看得到的列（「只列出 c="isdict"」時濾掉沒有標記的） */
+function visibleDictRows(): number[] {
+  const only = dictOnlyIsdict();
+  const out: number[] = [];
+  dictRows.forEach((d, i) => { if (!only || d.isdict) out.push(i); });
+  return out;
+}
 
 function paintDictOrder(): void {
   const box = $('#dictOrderList');
@@ -534,16 +545,25 @@ function paintDictOrder(): void {
     box.innerHTML = '<div class="note">目前沒有詞典型 adb（有 <code>&lt;樹 s="$詞"&gt;</code> 宣告的庫）。</div>';
     return;
   }
-  box.innerHTML = dictRows.map((d, i) => `<div class="dictOrderRow" data-dict-file="${escHtml(d.file)}">
-    <span class="idx">${i + 1}</span>
+  const shown = visibleDictRows();
+  if (!shown.length) {
+    box.innerHTML = '<div class="note">沒有 <code>c="isdict"</code> 的詞典；取消勾選可看到全部。</div>';
+    return;
+  }
+  box.innerHTML = shown.map((i, k) => {
+    const d = dictRows[i];
+    return `<div class="dictOrderRow" data-dict-file="${escHtml(d.file)}">
+    <span class="idx">${k + 1}</span>
     <span class="dn">${escHtml(d.name)}</span>
     <span class="df">${escHtml(d.file)}</span>
+    ${d.isdict ? '<span class="di" title="集 c 有 isdict">isdict</span>' : ''}
     <span class="de">${fmtInt(d.entries)} 條</span>
     <span class="dictMoves">
-      <button type="button" class="setBtn" data-dict-up="${i}" title="往上移（先查）"${i === 0 ? ' disabled' : ''}>↑</button>
-      <button type="button" class="setBtn" data-dict-down="${i}" title="往下移（後查）"${i === dictRows.length - 1 ? ' disabled' : ''}>↓</button>
+      <button type="button" class="setBtn" data-dict-up="${i}" title="往上移（先查）"${k === 0 ? ' disabled' : ''}>↑</button>
+      <button type="button" class="setBtn" data-dict-down="${i}" title="往下移（後查）"${k === shown.length - 1 ? ' disabled' : ''}>↓</button>
     </span>
-  </div>`).join('');
+  </div>`;
+  }).join('');
 }
 
 /** 存目前清單的順序；這一輪沒找到的舊檔名留在最後（查詢時略過，不警告） */
@@ -579,17 +599,28 @@ function wireDictOrder(): void {
     setStatus(selection.checked ? '選取區自動查：開啟' : '選取區自動查：關閉', 'info');
   });
   $('#dictRefresh')?.addEventListener('click', () => { void renderDictOrder(true); });
+  // 只列出 c="isdict"（作者 2026-10-26）：只過濾清單，不動查詢順序
+  const only = $('#dictOnlyIsdict') as HTMLInputElement | null;
+  only?.addEventListener('change', () => {
+    setDictOnlyIsdict(only.checked);
+    paintDictOrder();
+    setStatus(only.checked ? '辭典順序：只列出 c="isdict"' : '辭典順序：列出全部辭典', 'info');
+  });
   $('#dictOrderList')?.addEventListener('click', (ev) => {
     const b = (ev.target as HTMLElement)?.closest('button[data-dict-up],button[data-dict-down]') as HTMLButtonElement | null;
     if (!b) return;
     const up = b.dataset.dictUp !== undefined;
     const i = Number(up ? b.dataset.dictUp : b.dataset.dictDown);
-    const j = up ? i - 1 : i + 1;
-    if (!Number.isInteger(i) || j < 0 || j >= dictRows.length) return;
+    if (!Number.isInteger(i) || i < 0 || i >= dictRows.length) return;
+    // 只在「看得到的列」之間交換：勾了 isdict 時，沒列出的辭典位置不動
+    const shown = visibleDictRows();
+    const at = shown.indexOf(i);
+    const j = at < 0 ? undefined : shown[at + (up ? -1 : 1)];
+    if (j === undefined) return;
     [dictRows[i], dictRows[j]] = [dictRows[j], dictRows[i]];
     saveDictOrder();
     paintDictOrder();
-    setStatus('詞典順序已更新', 'info');
+    setStatus('辭典順序已更新', 'info');
   });
 }
 
@@ -1571,6 +1602,7 @@ export function installDebugApi(): void {
     dictAuto: autoDictOn(),
     dictSelection: selectionDictOn(),
     dictOrder: dictOrder(),
+    dictOnlyIsdict: dictOnlyIsdict(),
     dbLog,
     dbs: openDbs.map((d: any) => ({ name: d.name, tabs: d.docPane?.docTabs?.length ?? -1, docs: d.core?.docs?.length ?? -1 })),
     tokens: tokens.length,

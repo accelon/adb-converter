@@ -18,6 +18,7 @@ import { VaPaMapper } from './vapa';
 import { catalog } from './dbs';
 import { renderPageBlocks } from './render_accelon3';
 import { dictOrder, orderByFile } from './dict-settings';
+import { detectIsdict } from './db-kind';
 
 export interface DictRow {
   /** catalog key：同一份檔案只建一次索引 */
@@ -34,6 +35,8 @@ interface DictIndex {
   tag: string;
   reader: AdbReader;
   mapper: VaPaMapper;
+  /** `<集 c="… isdict …">`（設定頁的「只列出 c="isdict"」用） */
+  isdict: boolean;
   /** 依 label 排序（UTF-16 code unit；JS `<` 就是這個順序） */
   rows: { label: string; va: number; vaEnd: number }[];
 }
@@ -112,13 +115,14 @@ async function buildIndex(key: string, db: string, file: AdbSource): Promise<Dic
     return null;
   }
   const { tag, names, vas } = found;
+  const isdict = await detectIsdict(mapper);
   const rows = names.map((label, i) => ({
     label,
     va: vas[i],
     vaEnd: i + 1 < vas.length ? vas[i + 1] : Math.min(reader.header.maxBlockOffset, vas[i] + 4000),
   }));
   rows.sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : a.va - b.va));
-  return { key, db, tag, reader, mapper, rows };
+  return { key, db, tag, reader, mapper, rows, isdict };
 }
 
 /** 取得（必要時建立）某個 catalog entry 的詞典索引；不是詞典回 null */
@@ -279,6 +283,8 @@ export interface DictListEntry {
   name: string;
   db: string;
   entries: number;
+  /** `<集 c="… isdict …">`：設定頁可只列出有這個標記的庫（作者 2026-10-26） */
+  isdict: boolean;
   /** catalog 的 key（同一份檔案只建一次索引用；不要存起來） */
   key: string;
 }
@@ -289,7 +295,10 @@ export async function listDicts(): Promise<DictListEntry[]> {
     try {
       const idx = await dictIndexOf(e.key);
       if (!idx) continue;
-      out.push({ file: e.file.name, name: e.name || idx.db, db: idx.db, entries: idx.rows.length, key: e.key });
+      out.push({
+        file: e.file.name, name: e.name || idx.db, db: idx.db,
+        entries: idx.rows.length, isdict: idx.isdict, key: e.key,
+      });
     } catch {
       // 壞掉／讀不到的 adb：當作不是詞典，略過
     }

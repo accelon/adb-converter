@@ -386,6 +386,10 @@
   .dictOrderRow .idx { color: var(--dim); font-size: 11px; width: 1.5em; text-align: right; }
   .dictOrderRow .dn { font-weight: 600; }
   .dictOrderRow .df { color: var(--dim); font-size: 11.5px; }
+  .dictOrderRow .di {
+    color: var(--gold); font-size: 10.5px; border: 1px solid var(--line); border-radius: 4px;
+    padding: 0 4px; line-height: 1.5;
+  }
   .dictOrderRow .de { color: var(--dim); font-size: 11px; margin-left: auto; }
   .dictOrderRow .dictMoves { display: flex; gap: 2px; }
   .dictOrderRow .dictMoves .setBtn { min-width: 26px; padding: 1px 4px; }
@@ -1407,6 +1411,7 @@
   </div>
   <div class="setTabs" id="setTabs" role="tablist">
     <button class="setTab active" data-setpane="ui" role="tab">介面</button>
+    <button class="setTab" data-setpane="dict" role="tab">辭典順序</button>
     <button class="setTab" data-setpane="tags" role="tab">標籤樣式</button>
     <button class="setTab" data-setpane="sim" role="tab">繁簡</button>
   </div>
@@ -1464,7 +1469,8 @@
           <span class="setHint">渲染 <code>&lt;頁&gt;</code>／<code>&lt;_頁&gt;</code>：原書分行時是右靠的頁分隔＋頁碼，連排時是行內的小頁碼；取消＝完全不出現</span>
         </label>
       </section>
-      <!-- 查字典（作者 2026-10-22；2026-10-24 加選取自動查）：開關＋詞典順序（檔名；找不到的略過） -->
+      <!-- 查字典（作者 2026-10-22；2026-10-24 加選取自動查）：兩個開關。
+           辭典順序在 2026-10-26 獨立成「辭典順序」分頁。 -->
       <section class="setSection">
         <h3>查字典</h3>
         <label class="setRow" for="setDictAuto">
@@ -1477,14 +1483,6 @@
           <span>選取區十字以下自動查</span>
           <span class="setHint">在本文選取 10 個字以內，放開滑鼠就自動用選取文字查右側詞典；更長的選取不會查</span>
         </label>
-        <div class="setRow">
-          <span>詞典順序</span>
-          <span class="setHint">依序查；找不到的詞典會自動略過，不警告；新加入的詞典排在最後。</span>
-          <span style="flex:1"></span>
-          <button type="button" class="setBtn" id="dictRefresh">重新整理</button>
-        </div>
-        <div class="dictOrder" id="dictOrderList"><div class="note">讀取詞典中…</div></div>
-        <p class="setHint">只列出目前可用的詞典型 adb（有 <code>&lt;樹 s="$詞"&gt;</code> 的庫）；順序存在這台電腦。</p>
       </section>
       <section class="setSection">
         <h3>進階</h3>
@@ -1493,6 +1491,24 @@
           <span>進階模式</span>
           <span class="setHint">顯示 token 瀏覽、META／容量／文件／圖片分頁，以及「顯示原始文件」</span>
         </label>
+      </section>
+    </div>
+    <!-- ---- 辭典順序（作者 2026-10-26：從「介面」獨立成頁；可只列 c="isdict"） ---- -->
+    <div class="setPane" data-setpane="dict" hidden>
+      <section class="setSection">
+        <h3>辭典順序</h3>
+        <div class="setRow">
+          <span class="setHint">依序查；找不到的辭典會自動略過，不警告；新加入的辭典排在最後。</span>
+          <span style="flex:1"></span>
+          <button type="button" class="setBtn" id="dictRefresh">重新整理</button>
+        </div>
+        <label class="setRow" for="dictOnlyIsdict">
+          <input type="checkbox" id="dictOnlyIsdict">
+          <span>只列出 <code>c="isdict"</code></span>
+          <span class="setHint">只留 <code>&lt;集 c="… isdict …"&gt;</code> 的庫；佛光大辭典這類沒標記的會藏起來。查詢不受影響。</span>
+        </label>
+        <div class="dictOrder" id="dictOrderList"><div class="note">讀取辭典中…</div></div>
+        <p class="setHint">只列出目前可用的詞典型 adb（有 <code>&lt;樹 s="$詞"&gt;</code> 的庫）；順序存在這台電腦。</p>
       </section>
     </div>
     <!-- ---- 繁簡 ---- -->

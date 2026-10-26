@@ -2037,7 +2037,8 @@ breadcrumb 說在華雨集第一。
 
 * **開關**：預設開。關閉後，本文的捕捉階段 click handler 直接 return，不會查、也不會
   切右欄；右欄「詞典」分頁保留上一次的結果，空白時提示「查字典已關閉」。
-* **詞典清單**：設置 → 介面。打開時（`setSettingsPane('ui')`）非同步 `listDicts()` 掃
+* **詞典清單**：設置 → 辭典順序（2026-10-26 起獨立成分頁；原在「介面」）。打開分頁時
+  （`setSettingsPane('dict')`）非同步 `listDicts()` 掃
   catalog，用 `dictIndexOf()` 判斷真正是詞典型 adb 的（有 `$詞`／名稱表）；列出
   名稱、檔名與詞條數，↑↓ 調整順序。第一次列出就存。
 * **儲存**（這台電腦；和主題／繁簡一樣走 localStorage）：
@@ -2060,7 +2061,7 @@ breadcrumb 說在華雨集第一。
 | `ts/src/accelon26/dict-settings.ts`（新） | 開關、檔名順序、`orderByFile()`（略過找不到的） |
 | `ts/src/accelon26/dict-lookup.ts` | `listDicts()`；`dictLookup()` 照順序分組 |
 | `ts/src/accelon26/dict-pane.ts` | 自動查字典的開關 gate；選取 10 字以內自動查；空白時的提示 |
-| `ts/src/accelon26/ui.ts`／template | 介面分頁的「查字典」區塊、清單、↑↓、重新整理 |
+| `ts/src/accelon26/ui.ts`／template | 「辭典順序」分頁的清單、↑↓、重新整理、`isdict` 過濾（2026-10-26） |
 | `ts/test/dict-settings.test.ts`（新） | 開關／順序／略過缺失／壞 JSON |
 
 ### 16.3 驗證
@@ -2096,6 +2097,26 @@ breadcrumb 說在華雨集第一。
   「查字典已關閉」。
 * **驗證**：`dict-settings` 13/13；headless 實測短選取（般若）→ 右欄更新、
   11 字選取 → 不更新、關閉選取自動查後選「菩薩」→ 右欄仍停在般若。
+
+### 16.6 2026-10-26：辭典順序獨立成頁、只列出 c="isdict"
+
+作者需求：辭典順序選項從「介面」獨立成頁；清單可勾「只列出 `c="isdict"`」。
+
+* **分頁**：設置多了「辭典順序」分頁（`data-setpane="dict"`，排在介面之後）。
+  清單、↑↓、重新整理、說明都搬過去；「介面」只留「查字典」的兩個開關。
+  `setSettingsPane('dict')` 才掃 catalog（原本是 `'ui'`）。
+* **只列出 `c="isdict"`**：設定頁新勾選框 `#dictOnlyIsdict`，存
+  `accelon26.dict.isdictonly`（預設 `'0'`＝全部）。勾選後清單只留
+  `<集 c="… isdict …">` 的庫；每個有標記的列顯示小 `isdict` 徽章。
+  **只過濾顯示**：`dictLookup()` 的查詢順序不變；`saveDictOrder()` 仍存完整清單。
+* **判定**：`db-kind.ts` 拆出 `detectIsdict()`（只看 `<集 c>` 的 isdict，不看 `$詞` 樹）；
+  `dict-lookup.ts` 的 `DictIndex`／`DictListEntry` 多一個 `isdict` 欄位。
+  實測：hanyu／hanyu3／kangxi／swjz 有 isdict，fgdict／gjhy／hcy 等沒有。
+* **↑↓ 與過濾**：只在「看得到的列」之間交換；沒列出的辭典位置不動（換的是完整清單的
+  兩個索引，隱藏的列留在原位）。
+* **驗證**：`dict-settings` 16/16；headless 開 kangxi＋fgdict → 分頁順序
+  `介面|辭典順序|標籤樣式|繁簡`、全部 2 列（只有 kangxi 有 `isdict` 徽章）、
+  勾選後只剩 kangxi 且 ↑↓ 都 disabled、localStorage `'1'`；取消後 2 列回來。
 
 ## 17. 2026-10-22（第二輪）：本文列、pt、移除預覽、內置標籤、秋黃
 

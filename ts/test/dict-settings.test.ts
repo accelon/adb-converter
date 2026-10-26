@@ -13,7 +13,7 @@ const store = new Map<string, string>();
   get length() { return store.size; },
 } as Storage;
 
-import { autoDictOn, dictOrder, orderByFile, selectionDictOn, setAutoDict, setDictOrder, setSelectionDict } from '../src/accelon26/dict-settings';
+import { autoDictOn, dictOnlyIsdict, dictOrder, orderByFile, selectionDictOn, setAutoDict, setDictOnlyIsdict, setDictOrder, setSelectionDict } from '../src/accelon26/dict-settings';
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail = '') => {
@@ -35,6 +35,15 @@ ok('關閉後 selectionDictOn=false、localStorage 是 0',
   selectionDictOn() === false && store.get('accelon26.dict.selection') === '0');
 setSelectionDict(true);
 ok('再打開 selectionDictOn=true', selectionDictOn() === true && store.get('accelon26.dict.selection') === '1');
+
+// ---- 只列出 c="isdict"（顯示過濾；作者 2026-10-26） --------------------------
+ok('預設列出全部：dictOnlyIsdict=false', dictOnlyIsdict() === false);
+setDictOnlyIsdict(true);
+ok('勾選後 dictOnlyIsdict=true、localStorage 是 1',
+  dictOnlyIsdict() === true && store.get('accelon26.dict.isdictonly') === '1');
+setDictOnlyIsdict(false);
+ok('取消後 dictOnlyIsdict=false、localStorage 是 0',
+  dictOnlyIsdict() === false && store.get('accelon26.dict.isdictonly') === '0');
 
 // ---- 詞典順序（檔名） ------------------------------------------------------
 ok('預設沒有順序', dictOrder().length === 0);
