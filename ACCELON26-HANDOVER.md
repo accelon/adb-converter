@@ -2368,3 +2368,31 @@ Go（`wails/import.go` 新）：`SaveAdb` 驗簽名 → 清理檔名（ASCII、`
   附官網連結，請他用 yinshun 搜「不斷」再試。
 * 注意：`build/accelon26-2026-10-27-RC1.7z`（03:10 版）與線上（03:31）不是同一顆；
   線上以 `versions.json` 的 sha 為準。
+
+## 21. 2026-10-27 RC2：桌面版修改 ADB 後覆蓋原檔（mmap 鎖檔）
+
+作者回報：桌面版修改 ADB 之後，覆蓋原來的檔案會寫不進去，程式接著要求使用者
+提供另外一個資料夾。
+
+* **原因**：桌面版開 adb 是 mmap（`wails/sys_windows.go`）。Windows 上被映射的
+  檔案不能 rename／覆寫，WebView 的「另存新檔」如果選原檔就會失敗，只能換資料夾。
+* **後端**（`wails/import.go`）：新增 `OverwriteAdb(path, b64)`：
+  1. 驗 base64／adb 簽名；
+  2. `h.Close(path)` 先解除 mmap（含 search 快取）；
+  3. 同目錄寫暫存檔 → `os.Rename` 原子換檔（被最後一個 reader 卡住時重試約 2 秒）；
+  4. rename 真的不行才退回直接 `WriteFile`；回 `SaveAdbResult`。
+  `wails/overwrite_test.go` 用**已映射**的檔案驗證（`TestOverwriteAdbReplacesMappedFile`），
+  這是這個 bug 的回歸測試。
+* **前端**：
+  * `host.ts` 新增 `desktopOverwriteAdb(path, bytes)`。
+  * `rebuild-ui.ts`：`slot.file.path` 存在（桌面版）時，對話框改成「覆蓋原檔」；
+    成功後 `discardAll(es)`（修訂已寫入，別再問關閉會丟失）＋ `hooks.reloadPath()`；
+    只有覆寫失敗才退回原本的下載（提示另存到別的資料夾）。
+  * `ui.ts` 的 `reloadPath`：`closeDb(slot.id)` → `desktopSources()` 找同一路徑的新檔頭
+    → `openFile(fresh)`，使用者不必手動重開。
+* **驗證**：`go test ./...` 全綠（含新的 overwrite 測試）；真的 exe 透過 Wails bridge
+  對一個已 mmap 的 `test.adb` 呼叫 `OverwriteAdb` → `ok:true`、檔案 hash 改變、
+  `ReadBase64` 重讀正常；file:// 版沒有 `path`，仍走原本的下載流程。
+* **上線**：2026-10-27 RC2，buildTime `2026-10-27T04:25:00Z`、size `17,994,240`、
+  sha256 `80304f1e9c530183ab61f4e4e9faf1c5f82a826d599ce15922544fcc98493b72`；
+  `deploy --site` 後線上 versions.json／exe／7z／changelog 都核對過。

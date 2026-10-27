@@ -24,7 +24,7 @@ import { setDictHooks } from './dict-hooks';
 import { initTour, openTourMenu, play as playTour, startTour, stopTour, tourState } from './tour';
 import { toggleInspect } from './inspect';
 import { getUserId, setUserId } from './user-id';
-import { desktopRevealInFolder } from './host';
+import { desktopRevealInFolder, desktopSources } from './host';
 import {
   BODY_KEY, GROUP_ID, GROUP_TAGS, STRUCTURAL_TAGS, activeDb, bodyStyleOf, counts as tagStyleCounts,
   defaultFontOf, entryOf, fontFamilyOf, memberIndex, notifyTagStyles, onActiveDbChange,
@@ -1289,6 +1289,14 @@ function boot() {
     void rebuildAndDownload(reader, { id: slot.id, name: slot.name, file: slot.file }, {
       status: (msg, kind) => setStatus(msg, kind ?? 'info'),
       openFile: (f) => openFile(f),
+      // 桌面版覆蓋原檔後：關掉舊的庫，用宿主的新檔頭重新開啟（作者 2026-10-27）
+      reloadPath: async (path) => {
+        closeDb(slot.id);
+        const fresh = (await desktopSources()).find((s) => s.path === path);
+        if (!fresh) return false;
+        await openFile(fresh);
+        return true;
+      },
     });
   };
   window.addEventListener('accelon26:rebuild', (ev) => {
@@ -1713,7 +1721,7 @@ export function installDebugApi(): void {
 
 import { loadTree } from './search';
 
-import { MAX_DBS, activeCatalogKey, activeSlot, catalogAdd, catalogAddFile, catalogEmpty, catalogState, dbLog, dbPickOpen, needsAddItem, openDbs, pickAddFile, refreshHostDbs, renderDbPick, setDbHooks, setDbPickOpen, switchTo } from './dbs';
+import { MAX_DBS, activeCatalogKey, activeSlot, catalogAdd, catalogAddFile, catalogEmpty, catalogState, closeDb, dbLog, dbPickOpen, needsAddItem, openDbs, pickAddFile, refreshHostDbs, renderDbPick, setDbHooks, setDbPickOpen, switchTo } from './dbs';
 import { editCount, findSession, sourceKey } from './edit-session';
 import { extraRevisions } from './revisions-store';
 import { rebuildAndDownload, rollbackAndDownload, runRebuild } from './rebuild-ui';

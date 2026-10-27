@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // SaveAdbResult 是「加入 Obsidian」在桌面版的結果（UI 直接顯示這幾個欄位）。
@@ -96,6 +97,78 @@ func (h *AdbHost) SaveAdb(name string, b64 string) SaveAdbResult {
 		res.Note = noteIfMoved(res.Path)
 	}
 	return res
+}
+
+// OverwriteAdb 把重建好的 adb 覆寫回**原來的那個檔案**（作者 2026-10-27）。
+//
+// 為什麼不讓 WebView 用「下載」覆蓋：目前開啟的 adb 由宿主 mmap 著，Windows 上
+// 被映射的檔案不能 rename／覆寫，WebView 的另存新檔會失敗並要使用者換資料夾。
+// 這裡先 Close 解除映射，再寫同目錄暫存檔、rename 蓋回去（rename 失敗會重試，
+// 讓最後一個還在讀的 ReadBase64 先退出）。
+//
+// 成功後宿主不再持有舊映射；前端要立刻重新開啟這個檔（見 rebuild-ui.ts 的 reloadPath）。
+func (h *AdbHost) OverwriteAdb(path string, b64 string) SaveAdbResult {
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return SaveAdbResult{Error: "資料解碼失敗：" + err.Error()}
+	}
+	if !validAdbHeader(data) {
+		return SaveAdbResult{Error: "這不是 .adb 檔（檔頭簽名不符）"}
+	}
+	abs, err := filepath.Abs(strings.TrimSpace(path))
+	if err != nil || abs == "" {
+		return SaveAdbResult{Error: "檔案路徑不合法"}
+	}
+	fi, err := os.Stat(abs)
+	if err != nil {
+		return SaveAdbResult{Error: "找不到要覆蓋的檔案：" + err.Error()}
+	}
+	if fi.IsDir() || !strings.EqualFold(filepath.Ext(abs), ".adb") {
+		return SaveAdbResult{Error: "只能覆蓋 .adb 檔"}
+	}
+
+	// 1) 解除 mmap（Windows 上這是能不能 rename 的關鍵）
+	_ = h.Close(abs)
+
+	// 2) 同目錄暫存檔 → rename（同一檔案系統才是原子替換）
+	tmp, err := os.CreateTemp(filepath.Dir(abs), ".accelon26-*.tmp")
+	if err != nil {
+		return SaveAdbResult{Error: "無法在原檔旁建立暫存檔：" + err.Error()}
+	}
+	tmpName := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpName) }
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		cleanup()
+		return SaveAdbResult{Error: "寫入暫存檔失敗：" + err.Error()}
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		cleanup()
+		return SaveAdbResult{Error: "暫存檔同步失敗：" + err.Error()}
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return SaveAdbResult{Error: "關閉暫存檔失敗：" + err.Error()}
+	}
+	if err := os.Chmod(tmpName, fi.Mode().Perm()); err != nil {
+		_ = err // 權限複製失敗不致命，rename 後仍是原檔權限
+	}
+
+	var renameErr error
+	for i := 0; i < 40; i++ { // 最多約 2 秒：等最後一個 reader 放掉映射
+		if renameErr = os.Rename(tmpName, abs); renameErr == nil {
+			return SaveAdbResult{OK: true, Path: abs}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	// rename 真的不行（例如被其他程式鎖住）：退一步直接覆寫
+	if err := os.WriteFile(abs, data, fi.Mode().Perm()); err == nil {
+		cleanup()
+		return SaveAdbResult{OK: true, Path: abs}
+	}
+	cleanup()
+	return SaveAdbResult{Error: "無法覆蓋原檔（可能被其他程式鎖住）：" + renameErr.Error()}
 }
 
 // saveAdbInto 依序把 data 寫成 dirs 裡的 <name>，回傳第一個成功的位置。

@@ -291,6 +291,20 @@ export async function desktopSaveAdb(name: string, bytes: Uint8Array): Promise<D
   }
 }
 
+/**
+ * 覆寫目前開啟的 adb（作者 2026-10-27）：宿主先解除 mmap 再原子換檔。
+ * 沒有這個方法時，WebView 的下載會因為檔案被映射而寫不進去，只能另存到別的資料夾。
+ */
+export async function desktopOverwriteAdb(path: string, bytes: Uint8Array): Promise<DesktopSaveResult | null> {
+  const c = await hostCall();
+  if (!c) return null;
+  try {
+    return await c.ByName('main.AdbHost.OverwriteAdb', path, encodeBase64(bytes)) as DesktopSaveResult;
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
+}
+
 /** 在系統的檔案管理員裡顯示剛導出的檔案（導出後那顆「在資料夾中顯示」）。 */
 export async function desktopRevealInFolder(path: string): Promise<boolean> {  const c = await hostCall();
   if (!c) return false;

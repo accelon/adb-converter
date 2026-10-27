@@ -2,14 +2,20 @@
  * 「產生新 ADB」對話框與流程（file:// 版）。
  */
 import type { AdbReader, AdbSource } from './adb';
-import { applyEdits, diffPage, editCount, findSession, makeRevision, revertRevision, sourceKey, type DbEditSession } from './edit-session';
+import { applyEdits, diffPage, discardAll, editCount, findSession, makeRevision, revertRevision, sourceKey, type DbEditSession } from './edit-session';
 import { buildAdb, readAllLines } from './rebuild-browser';
 import { allRevisions, extraRevisions } from './revisions-store';
+import { desktopHost, desktopOverwriteAdb } from './host';
 import { sha256Hex } from './sha256';
 
 export interface RebuildHooks {
   status?: (msg: string, kind?: 'info' | 'err' | 'busy') => void;
   openFile?: (file: AdbSource) => void | Promise<void>;
+  /**
+   * 桌面版覆蓋原檔之後，重新開啟那個檔案（作者 2026-10-27）。
+   * 回傳 false 表示沒有重新載入（UI 要提示使用者自己重開）。
+   */
+  reloadPath?: (path: string) => Promise<boolean> | boolean;
 }
 
 export interface RebuildSlot { id: number; name: string; file: AdbSource; }
@@ -71,16 +77,19 @@ export async function openRebuildDialog(reader: AdbReader, slot: RebuildSlot, on
   const imported = extraRevisions(reader).length;
   if ((!es || n === 0) && imported === 0) { closeModal(); return; }
   const revs = await allRevisions(reader);
+  const desktopPath = slot.file.path && (await desktopHost()) ? slot.file.path : '';
   const filename = baseName(reader, slot) + '-' + (n ? 'v' + (revs.length + 1) : 'imported') + '.adb';
   const intro = n
-    ? '共 <b>' + n + '</b> 頁修訂，將重建整份 adb 並下載。'
-    : '匯入的 <b>' + imported + '</b> 筆 revisions 將寫入 adb（本文不變）並下載。';
+    ? '共 <b>' + n + '</b> 頁修訂，將重建整份 adb 並' + (desktopPath ? '<b>覆蓋原檔</b>。' : '下載。')
+    : '匯入的 <b>' + imported + '</b> 筆 revisions 將寫入 adb（本文不變）並' + (desktopPath ? '<b>覆蓋原檔</b>。' : '下載。');
   showModal('<p class="big">' + intro + '</p>'
     + (n ? editSummary(es) : '<p class="dim">沒有文字修訂；只把 revisions 容器寫進輸出檔。</p>')
-    + '<p class="dim">輸出檔名：<b>' + esc(filename) + '</b>。標籤語法問題不會阻止重建（照原樣寫入）。</p>',
+    + (desktopPath
+      ? '<p class="dim">原檔：<b>' + esc(desktopPath) + '</b>。重建後直接覆蓋這個檔案（不是另存新檔）。</p>'
+      : '<p class="dim">輸出檔名：<b>' + esc(filename) + '</b>。標籤語法問題不會阻止重建（照原樣寫入）。</p>'),
     () => { closeModal(); onGo(); });
   const go = el('editModalGo') as HTMLButtonElement | null;
-  if (go) go.textContent = '產生並下載';
+  if (go) go.textContent = desktopPath ? '覆蓋原檔' : '產生並下載';
   const cancelText = el('editModalCancel') as HTMLButtonElement | null;
   if (cancelText) cancelText.textContent = '取消';
   const close = el('editModalClose'); if (close) close.onclick = closeModal;
@@ -198,6 +207,41 @@ export async function rebuildAndDownload(reader: AdbReader, slot: RebuildSlot, h
     try {
       const res = await runRebuild(reader, slot, hooks);
       if (!res) { progressDone(); return; }
+      // 桌面版：直接覆蓋原檔（作者 2026-10-27）。宿主先解除 mmap，才不會像
+      // WebView 下載那樣「檔案被鎖住 → 要使用者換資料夾」。
+      const path = slot.file.path;
+      if (path && await desktopHost()) {
+        const w = await desktopOverwriteAdb(path, res.bytes);
+        progressDone();
+        if (w?.ok) {
+          const es2 = findSession(sourceKey(slot.file));
+          if (es2) discardAll(es2);            // 修訂已寫進新檔，別讓 closeDb 再問一次
+          const reloaded = await hooks.reloadPath?.(w.path ?? path);
+          const name = (w.path ?? path).split(/[\\/]/).pop() || res.filename;
+          showModal('<p class="big">✓ 已覆蓋 <b>' + esc(name) + '</b></p>'
+            + '<p class="dim">' + (res.pages ? res.pages + ' 頁修訂已寫入 revisions 容器。' : '匯入的 revisions 已寫入原檔。') + '</p>'
+            + (reloaded
+              ? '<p class="dim">已重新載入新檔。</p>'
+              : '<p class="dim">請重新開啟這個 adb，才會看到新內容。</p>'),
+            () => { closeModal(); });
+          const go = el('editModalGo') as HTMLButtonElement | null;
+          if (go) go.textContent = '關閉';
+          const cancel = el('editModalCancel') as HTMLButtonElement | null;
+          if (cancel) { cancel.textContent = '關閉'; cancel.onclick = closeModal; }
+          return;
+        }
+        const why = w?.error ?? '宿主沒有回應';
+        const url = downloadAdb(res.bytes, res.filename);
+        showModal('<p style="color:var(--err)"><b>無法覆蓋原檔</b></p><p>' + esc(why) + '</p>'
+          + '<p>修訂已重建完成，已改為下載；請另存到別的資料夾。</p>'
+          + '<p><a class="mini" href="' + url + '" download="' + esc(res.filename) + '">再下載一次</a></p>',
+          () => { closeModal(); });
+        const go = el('editModalGo') as HTMLButtonElement | null;
+        if (go) go.textContent = '關閉';
+        const cancel = el('editModalCancel') as HTMLButtonElement | null;
+        if (cancel) { cancel.textContent = '關閉'; cancel.onclick = closeModal; }
+        return;
+      }
       const url = downloadAdb(res.bytes, res.filename);
       progressDone();
       showModal('<p class="big">✓ 已下載 <b>' + esc(res.filename) + '</b></p>'
