@@ -2346,17 +2346,21 @@ Go（`wails/import.go` 新）：`SaveAdb` 驗簽名 → 清理檔名（ASCII、`
   `file:// fgdict` 182/182、`render` 30/30、`search` 38/38。
 * 尚未發佈；`release_notes.draft.txt` 已記一條。
 
-### 20.1 2026-10-27 RC1（只給回報者，不部署）
+### 20.1 2026-10-27 RC1（Gmail 擋附件 → 改發官網）
 
 作者要求：編一個 exe 壓成 7z 寄給 `hunxian@gmail.com`、感謝他回報這個 bug，先不要部署；
-版號用今天日期＋RC1。
+版號用今天日期＋RC1。**後來 Gmail 擋掉含 exe 的附件**，作者改口：「發一個版本到網站」，
+所以 RC1 直接上線，再寄下載連結給回報者。
 
-* 建置：`release.ts --build-time 2026-10-27T03:10:00Z`（沒有加 release notes 條目）；
-  exe build `2026-10-27 11:10`、size `17,985,024`、
-  sha256 `dbeaacfac2e3fdfe9804c473b4f8f4425e2d842b6edce4051555b17bcc296ee3`。
-* 7z：`build/accelon26-2026-10-27-RC1.7z`（`7,684,714` bytes，內含 exe ＋ 兩份 README）。
-* 已用 `.local/smtp.json` 的帳號把 7z 當附件寄到 `hunxian@gmail.com`（主旨
-  「accelon26 2026-10-27 RC1 測試版：搜尋摘要與本文著色修正」）。
-* **沒有**跑 `deploy.ts`；線上仍是 `2026-10-26T15:02:00Z`／`6e47c239…`。
-  注意：本機 `accelon3/versions.json` 與 `www/accelon26.7z` 已經是 RC1，下次真正發佈前
-  要重新 `release.ts`，不要直接 deploy 這份。
+* 中間版本（附件用）：`2026-10-27T03:10:00Z`、exe sha `dbeaacfa…`、7z
+  `build/accelon26-2026-10-27-RC1.7z`（7,684,714 bytes，內含 exe ＋ 兩份 README）。
+* **正式上線版**：`release.ts --items-file --title "accelon26 2026-10-27 RC1"
+  --build-time 2026-10-27T03:31:00Z` → build `2026-10-27 11:31`、size `17,985,536`、
+  sha256 `33f309848286d2e5493d7f28d4064ae1b06d2306519ed2c02207843e76e4935f`。
+  `release_notes` 多了第 9 版（2026-10-27 RC1，一條：摘要與本文著色對齊）。
+* `deploy.ts --site` 上線；線上 versions.json／exe sha／7z sha／changelog／首頁
+  `verNo`（2026-10-27）都核對過。
+* 通知 `hunxian@gmail.com`：主旨「accelon26 2026-10-27 RC1 已放上官網（搜尋著色修正）」，
+  附官網連結，請他用 yinshun 搜「不斷」再試。
+* 注意：`build/accelon26-2026-10-27-RC1.7z`（03:10 版）與線上（03:31）不是同一顆；
+  線上以 `versions.json` 的 sha 為準。
