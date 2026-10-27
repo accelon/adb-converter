@@ -2345,3 +2345,18 @@ Go（`wails/import.go` 新）：`SaveAdb` 驗簽名 → 清理檔名（ASCII、`
   3 張卡各有 2 個著色點；點任一張，本文同一行 2 個著色點（修正前只有 1 個）。
   `file:// fgdict` 182/182、`render` 30/30、`search` 38/38。
 * 尚未發佈；`release_notes.draft.txt` 已記一條。
+
+### 20.1 2026-10-27 RC1（只給回報者，不部署）
+
+作者要求：編一個 exe 壓成 7z 寄給 `hunxian@gmail.com`、感謝他回報這個 bug，先不要部署；
+版號用今天日期＋RC1。
+
+* 建置：`release.ts --build-time 2026-10-27T03:10:00Z`（沒有加 release notes 條目）；
+  exe build `2026-10-27 11:10`、size `17,985,024`、
+  sha256 `dbeaacfac2e3fdfe9804c473b4f8f4425e2d842b6edce4051555b17bcc296ee3`。
+* 7z：`build/accelon26-2026-10-27-RC1.7z`（`7,684,714` bytes，內含 exe ＋ 兩份 README）。
+* 已用 `.local/smtp.json` 的帳號把 7z 當附件寄到 `hunxian@gmail.com`（主旨
+  「accelon26 2026-10-27 RC1 測試版：搜尋摘要與本文著色修正」）。
+* **沒有**跑 `deploy.ts`；線上仍是 `2026-10-26T15:02:00Z`／`6e47c239…`。
+  注意：本機 `accelon3/versions.json` 與 `www/accelon26.7z` 已經是 RC1，下次真正發佈前
+  要重新 `release.ts`，不要直接 deploy 這份。
