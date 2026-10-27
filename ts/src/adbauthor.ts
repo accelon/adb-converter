@@ -31,6 +31,7 @@ export interface AuthorInput {
   /** single characters to drop from the token index (build time punctuation filter) */
   dropPunct?: string;
   log?: (msg: string) => void;
+  extraContainers?: Record<string, Uint8Array>;
 }
 
 export interface AuthorResult {
@@ -61,6 +62,7 @@ export async function authorAdb(input: AuthorInput): Promise<AuthorResult> {
       features: input.features,
       srcBlockSize: input.srcBlockSize,
       dropPunct: input.dropPunct,
+      extraContainers: input.extraContainers,
       compress: (block) => encoder.encode(block),
       onProgress: (phase, done, total) => {
         if (phase === '壓縮內文' && done === total && total > 0) {
@@ -87,3 +89,4 @@ export async function authorAdb(input: AuthorInput): Promise<AuthorResult> {
     encoder.close();
   }
 }
+

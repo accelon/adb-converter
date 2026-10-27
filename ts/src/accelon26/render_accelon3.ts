@@ -200,6 +200,8 @@ export class Accelon3Renderer {
   private hidden = 0;
   /** 目前還開著的 `<聯>` 錨點數（沒有 n= 的聯不長錨點；收尾時不能多吐 </a>） */
   private entryLinks = 0;
+  /** 跨庫／跨頁錨點（<聯 i=…>）目前開著的數量 */
+  private xrefLinks = 0;
   /** 目前還開著的 `<釋>`（跨行；`line:true` 表示自閉合、只包到本行尾） */
   private notes: { n: string; line: boolean }[] = [];
   /** 這個頁面上的頁碼計數（沒有 n= 時拿它當 id） */
@@ -353,10 +355,17 @@ export class Accelon3Renderer {
       }
       // `<聯 n="詞條">`：Accelon 的條目連結（LINK，pair，SKIP）。本文只負責長出
       // 可點的錨點；目標怎麼解析成 VA 由 link.ts 的 linkToEntry 做。
+      // `<聯 i="taisho?51p185b">`：跨庫／跨頁錨點（作者 2026-10），點擊由 xref.ts 處理。
       if (name === '聯' || name === '_聯') {
         const target = attrValue(attrs, 'n');
+        const xref = attrValue(attrs, 'i');
+        const xq = attrValue(attrs, 'q');
         if (closing) {
-          if (this.entryLinks > 0) { html += '</a>'; this.entryLinks--; }
+          if (this.xrefLinks > 0) { html += '</a>'; this.xrefLinks--; }
+          else if (this.entryLinks > 0) { html += '</a>'; this.entryLinks--; }
+        } else if (xref && !selfClose) {
+          html += `<a class="entryLink xrefLink" href="#" data-xref="${esc(xref)}"` + (xq ? ` data-q="${esc(xq)}"` : '') + ` title="${esc(xref)}">`;
+          this.xrefLinks++;
         } else if (target && !selfClose) {
           html += `<a class="entryLink" href="#" data-entry="${esc(target)}" title="${esc(target)}">`;
           this.entryLinks++;
@@ -431,6 +440,7 @@ export class Accelon3Renderer {
     // 行尾把行內開著的東西收掉（下一行會重新開；HTML 才是平衡的）：
     // 錨點 → 只到本行的釋 → 跨行的釋 → 標題（由內而外）。
     // `<聯>` 錨點同樣在行尾收掉；跨行的聯不重新開（條目連結都是行內）
+    if (this.xrefLinks) { html += '</a>'.repeat(this.xrefLinks); this.xrefLinks = 0; }
     if (this.entryLinks) { html += '</a>'.repeat(this.entryLinks); this.entryLinks = 0; }
     while (this.notes.length && this.notes[this.notes.length - 1].line) {
       const top = this.notes.pop()!;

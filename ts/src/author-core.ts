@@ -47,6 +47,8 @@ export interface AuthorInput {
   compress: (block: Uint8Array) => Promise<Uint8Array> | Uint8Array;
   /** coarse progress for the UI; may be called many times */
   onProgress?: (phase: string, done: number, total: number) => void;
+  /** extra outer containers (name → already-built container bytes), placed after resources */
+  extraContainers?: Record<string, Uint8Array>;
 }
 
 export interface AuthorOutcome {
@@ -217,8 +219,11 @@ export async function authorAdbBytes(input: AuthorInput): Promise<AuthorOutcome>
     progress?.('打包圖片', 1, 1);
   }
 
-  const outerNames = ['source', 'tokens', 'tags', 'tables', 'attributes', 'attributes.sorted', 'caches', 'resources']
-    .filter((n) => parts.has(n));
+  for (const [name, bytes] of Object.entries(input.extraContainers ?? {})) parts.set(name, bytes);
+  const outerNames = [
+    'source', 'tokens', 'tags', 'tables', 'attributes', 'attributes.sorted', 'caches', 'resources',
+    ...Object.keys(input.extraContainers ?? {}),
+  ].filter((n) => parts.has(n));
   const outer = buildContainer({
     feature: BO_NAMED,
     blocks: outerNames.map((n) => parts.get(n)!),
@@ -256,3 +261,4 @@ export async function authorAdbBytes(input: AuthorInput): Promise<AuthorOutcome>
     resourceBytes: resources.reduce((a, r) => a + r.bytes.length, 0),
   };
 }
+

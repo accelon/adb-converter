@@ -10,6 +10,7 @@ import { type AdbSource } from './adb';
 import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, readSideFont, openHistoryPage, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, saveLastReadNow, setDocFont, setHardBreaks, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
 import { renderTextPane } from './text-pane';
 import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
+import { loadPosMap, parseAddress, formatAddress, type PosMap } from './posmap';
 import { initNoteLinks } from './notes';
 import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully } from './scopes';
@@ -1272,7 +1273,7 @@ function boot() {
       if (ev.key === 'Escape' && dbPickOpen()) setDbPickOpen(false);
     });
   }
-  setDbHooks({ refresh: refreshAll, clear: clearDbUi });
+  setDbHooks({ refresh: () => { refreshAll(); void refreshReverse(); }, clear: clearDbUi });
 
   // dbChip 的「n 頁修訂」按鈕 → 產生新 ADB（file:// 版下載 blob）；F2 也走這裡
   const requestRebuild = (): void => {
@@ -1527,6 +1528,8 @@ function boot() {
     if (f) void openFile(f);
   });
   initTextPane();   // Ctrl+點樹節點／本文分頁 → 右欄文字內容
+  initXref();       // <聯 i="db?anchor"> 跨庫錨點（本文 ⇄ 右欄）
+  setEnsureRight(() => setSide('right', true));
   renderDbPick();   // 下拉第一項是「加入 adb」（file:// 版）
   void bootDesktop();   // desktop build: catalogue + open the adbs next to the exe
   setStatus('請選擇或拖入 .adb 檔案（13j / yinshun 皆可直接開啟）', 'info');
@@ -1538,10 +1541,46 @@ function boot() {
 
 document.addEventListener('DOMContentLoaded', boot);
 
+let posmapCache: { r: unknown; pm: PosMap } | null = null;
+
+/** 目前這個庫的對照表（只有 goryeo.adb 有 align 容器；換庫後自動重載）。 */
+async function posmapOf(): Promise<PosMap | null> {
+  if (!reader) return null;
+  if (posmapCache && posmapCache.r === reader) return posmapCache.pm;
+  if (!reader.containers.get('align')) return null;
+  const pm = await loadPosMap(reader);
+  posmapCache = { r: reader, pm };
+  return pm;
+}
+
 /** Test seam: the same functions the UI calls, reachable from DevTools. */
 export function installDebugApi(): void {
 (window as unknown as Record<string, unknown>).__accelon26 = {
   openFile, showLine, showToken, revealHit, vapaProbe, showTab, toggleSide,
+  /** 大正藏 ⇄ 高麗藏 換址（需要開著帶 align 的 goryeo.adb） */
+  /** 跨庫錨點：模擬點 <聯 i="db?anchor">（測試／診斷用） */
+  xrefJump: async (v: string, fromRight = false, newTab = false, quote = '') => { await xrefJump(v, fromRight, newTab, quote); return true; },
+  xrefDebug: () => xrefDebug(),
+  xrefProbe: (db: string, a: string) => xrefProbe(db, a),
+  xrefPreview: (db: string, a: string, q?: string) => previewForeign(db, a, q),
+  posmapConvert: async (addr: string) => {
+    const pm = await posmapOf();
+    if (!pm) return { error: '此庫沒有對照表（請先開 goryeo.adb）' };
+    const a = parseAddress(addr);
+    if (!a) return { error: '位址格式錯誤：' + addr };
+    const r = pm.convert(a);
+    return { ...r, from: formatAddress(a), to: r.ok ? formatAddress(a.side === 'T' ? r.k! : r.t!) : '' };
+  },
+  /** adb 行號 → 位址 → 換址（han = 游標前的漢字數） */
+  posmapAtLine: async (line: number, han = 0, side?: 'T' | 'K') => {
+    const pm = await posmapOf();
+    if (!pm) return { error: '此庫沒有對照表（請先開 goryeo.adb）' };
+    const s = side ?? (reader?.header.dbname === 'goryeo' ? 'K' : 'T');
+    const at = pm.addressOfLine(s, line, han);
+    if (!at) return { error: `第 ${line} 行不在對照範圍` };
+    const r = pm.convert(at.addr);
+    return { ...r, from: formatAddress(at.addr), to: r.ok ? formatAddress(s === 'T' ? r.k! : r.t!) : '' };
+  },
   setSide, resetCols: () => saveCols(DEFAULT_COLS.left, DEFAULT_COLS.right),
   setCols: (left: number, right: number) => saveCols(left, right),
   /** 繁簡通檢：回傳切換後的值 */
@@ -1725,7 +1764,8 @@ import { MAX_DBS, activeCatalogKey, activeSlot, catalogAdd, catalogAddFile, cata
 import { editCount, findSession, sourceKey } from './edit-session';
 import { extraRevisions } from './revisions-store';
 import { rebuildAndDownload, rollbackAndDownload, runRebuild } from './rebuild-ui';
-import { initTextPane, renderTextPane, resetTextPane, textState } from './text-pane';
+import { initTextPane, renderTextPane, resetTextPane, setEnsureRight, textState } from './text-pane';
+import { initXref, previewForeign, refreshReverse, xrefDebug, xrefJump, xrefProbe } from './xref';
 import { initVaultImport, vaultImportState } from './vault-import';
 import { hasLogoResource, hideDocLogo, logoState, updateDocLogo } from './logo';
 import { hostState } from './host';

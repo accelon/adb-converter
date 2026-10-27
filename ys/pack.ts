@@ -1,0 +1,11 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+import { authorAdb } from '../ts/src/adbauthor';
+const text = readFileSync('D:/2026/adb-converter/build/ys-linked.txt', 'utf8');
+const lines = text.split('\n');
+if (lines[lines.length - 1] === '') lines.pop();
+const logo = readFileSync('D:/2026/adb-converter/logo/ys_logo.png');
+const out = await authorAdb({ dbname: 'ys', dbcname: '印順法師佛學著作集', dbtype: 0, lines, resources: [{ name: 'ys_logo.png', bytes: logo }], log: (m) => console.error(m) });
+const buf = Buffer.from(out.file); buf.writeUInt32LE(0, 100);
+writeFileSync('D:/2026/adb-converter/build/ys-linked.adb', buf);
+writeFileSync('D:/accelon3/ys.adb', buf);
+console.log('wrote ys.adb', (buf.length / 1048576).toFixed(1), 'MiB, lines', lines.length);

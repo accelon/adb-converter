@@ -15,7 +15,20 @@ import { renderPageBlocks } from './render_accelon3';
 import { isDictDb } from './db-kind';
 import { dirActive, dirTrees, findNode } from './scopes';
 
-export interface TextTab { id: number; label: string; realm: { from: number; to: number }; page: number }
+export interface TextTab {
+  id: number; label: string; realm: { from: number; to: number }; page: number;
+  /** 跨庫內容（<聯 i="db?anchor">）：這一個分頁畫的是別庫的某個 VA */
+  foreign?: { db: string; va: number; anchor?: string; quote?: string };
+}
+
+/** 由 xref.ts 注入：把別庫的 VA 畫成 HTML（避免 text-pane 依賴 AdbReader） */
+export type ForeignRender = (db: string, va: number, anchor?: string, quote?: string) => Promise<{ html: string; title: string }>;
+let foreignRender: ForeignRender | null = null;
+let ensureRight: (() => void) | null = null;
+/** 由 ui.ts 注入：把右欄打開（點聯時如果側欄收起來了） */
+export function setEnsureRight(fn: () => void): void { ensureRight = fn; }
+export function ensureRightPane(): void { ensureRight?.(); }
+export function setForeignRender(fn: ForeignRender): void { foreignRender = fn; }
 
 let textTabs: TextTab[] = [];
 let textActive = 0;
@@ -39,7 +52,7 @@ function syncTextTab(): void {
   if (!strip) return;
   strip.innerHTML = textTabs.map((t, i) =>
     '<span class="docTab' + (i === textActive ? ' active' : '') + '" data-i="' + i + '" title="' + escapeHtml(t.label) + '">'
-    + '<span class="docTabName">' + escapeHtml(shorten(t.label)) + '</span>'
+    + '<span class="docTabName">' + escapeHtml(shorten(t.label, t.foreign ? 16 : 8)) + '</span>'
     + '<span class="docTabClose" data-close="' + i + '" title="關閉">✕</span></span>').join('');
   strip.querySelectorAll<HTMLElement>('.docTab').forEach((el) => {
     el.onclick = (ev) => {
@@ -57,6 +70,7 @@ function syncTextTab(): void {
  */
 export async function openTextTab(realm: { from: number; to: number }, label: string): Promise<void> {
   if (!reader || !mapper) return;
+  ensureRightPane();
   const at = textTabs.findIndex((t) => realmKey(t.realm) === realmKey(realm));
   if (at >= 0) textActive = at;
   else { textTabs.push({ id: ++seq, label, realm, page: 0 }); textActive = textTabs.length - 1; }
@@ -65,6 +79,30 @@ export async function openTextTab(realm: { from: number; to: number }, label: st
   // clicking the tab is what switches the right column (boot() wired it to showTab)
   if (btn) { btn.hidden = false; btn.click(); }
   else await renderTextPane();
+}
+
+/**
+ * 把別庫的一段文字放進右欄（<聯 i="db?anchor">）。
+ * newTab=false 時沿用既有的跨庫分頁；true（Ctrl）就再開一個。
+ */
+export function openForeignTab(db: string, va: number, label: string, newTab = false, anchor?: string, quote?: string): void {
+  ensureRightPane();
+  if (!newTab) {
+    const at = textTabs.findIndex((t) => t.foreign);
+    if (at >= 0) {
+      textTabs[at] = { ...textTabs[at], label, foreign: { db, va, anchor, quote } };
+      textActive = at;
+      syncTextTab();
+      const btn0 = $('#colRight .tabBtn[data-tab="text"]') as HTMLButtonElement | null;
+      if (btn0) { btn0.hidden = false; btn0.click(); } else void renderTextPane();
+      return;
+    }
+  }
+  textTabs.push({ id: ++seq, label, realm: { from: 0, to: 0 }, page: 0, foreign: { db, va, anchor, quote } });
+  textActive = textTabs.length - 1;
+  syncTextTab();
+  const btn = $('#colRight .tabBtn[data-tab="text"]') as HTMLButtonElement | null;
+  if (btn) { btn.hidden = false; btn.click(); } else void renderTextPane();
 }
 
 export function closeTextTab(i: number): void {
@@ -93,6 +131,19 @@ export async function renderTextPane(): Promise<void> {
   if (!body) return;
   syncTextTab();
   const t = textTabs[textActive];
+  if (t?.foreign) {
+    if (!foreignRender) { body.innerHTML = EMPTY; return; }
+    body.innerHTML = '<p class="dim">載入中…</p>';
+    const fr = await foreignRender(t.foreign.db, t.foreign.va, t.foreign.anchor, t.foreign.quote);
+    body.innerHTML = fr.html;
+    const pager0 = $('#textPager') as HTMLElement | null;
+    if (pager0) pager0.hidden = true;
+    // 有塗紅就把那一段捲到視窗中央（回印順時直接看到引註）
+    const hit = body.querySelector('mark.xrefHit') as HTMLElement | null;
+    if (hit) hit.scrollIntoView({ block: 'center' });
+    else body.scrollTo(0, 0);
+    return;
+  }
   if (!t || !mapper || !reader) { body.innerHTML = EMPTY; return; }
   const b = boundsOfRealm(t.realm);
   const pb = pageBounds(t.realm, t.page);

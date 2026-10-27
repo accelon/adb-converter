@@ -807,6 +807,10 @@
   /* <聯 n="詞">：詞條連結（別名、參見）。目標由 link.ts 的 linkToEntry 解析 */
   .lineText .entryLink { color: #2e7a80; text-decoration: none; border-bottom: 1px dotted currentColor; cursor: pointer; }
   .lineText .entryLink:hover { color: #b26949; text-decoration: underline; }
+  /* 引文塗紅（<mark class="xrefHit">）：跨庫引文在目標頁上的位置 */
+  mark.xrefHit { background: #ffd166; color: #1a1a1a; border-radius: 2px; padding: 0 1px; }
+  .xrefRevBar { margin: 6px 0 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .xrefRev { font-size: 12px; }
   /* <註 n="…"/> ↔ <釋 n="…">：像 Markdown 腳注（作者 2026-10-26）。
      註是上標的小連結，hover 顯示釋文；點註跳到釋、點釋（或它的編號）跳回註。 */
   .lineText .noteRef {
