@@ -14,6 +14,10 @@
 > * **發佈節奏（作者 2026-10 的規矩）**：平常改 UI 只跑 `bun run tools/build-viewer.ts`；
 >   改動一句一句寫進 `wails/release_notes.draft.txt`；**等作者說「發佈新版」**才跑
 >   `release.ts` ＋ `deploy.ts`（見 §13.6）。不要自己發佈。
+> * **Release candidate（作者 2026-10-27 指定）**：一天內可能修好幾個 bug，**每修好一批就出
+>   一個 RC**：`2026-10-27 RC1`、`RC2`…。每個 RC 都更新 `versions.json` 的 buildTime 並
+>   部署（使用者線上更新）；同一天 `release_notes.json` 只保留**一個**當天條目，原地改
+>   buildTime 與 items，標題寫 `accelon26 2026-10-27 RCn`。詳見 `DEPLOY.md` §2.3。
 > * **測試現況**：`go test ./...` 全綠、`tools/desktop-test.ts --gui --quick` **38/38**、
 >   `test/render.test.ts` **22**、`test/tree.test.ts` **40**、`test/search.test.ts` **38**。
 > * **下次開工建議**：§13.8 的清單（換庫時分頁殘留、導出要不要去掉 `<檔>` 外框、

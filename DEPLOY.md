@@ -105,6 +105,28 @@ cd accelon3
 .\accelon26.exe -export 13j.adb # 導出文字與圖片（與「進階 → 容量 → 導出」同一條路），印出 JSON
 ```
 
+### 2.3 一天多個修正：release candidate（作者 2026-10-27 指定）
+
+一天內可能修好幾個 bug，**不要為每個修正另開日期版號**；每修好一批就出一個 RC：
+
+* 版號／標題：`2026-10-27 RC1`、`RC2`…（同一天一直往上編）。
+* 指令（`--title` 要自己帶，否則會變成沒有 RC 的 `accelon26 2026-10-27`）：
+
+  ```powershell
+  cd ts
+  bun run tools/release.ts --items-file ../wails/release_notes.draft.txt `
+    --title "accelon26 2026-10-27 RC2" --build-time 2026-10-27T05:10:00Z
+  bun run tools/deploy.ts --site
+  ```
+
+* `release_notes.json` **同一天只保留一個條目**：把上一筆同一天條目的 `buildTime` 改成這次的，
+  `items` 就地增補（不要把 RC1、RC2… 留成一串）。這樣使用者更新後看到的永遠是最新一份。
+* 每個 RC 都上線（`versions.json` 的 buildTime 遞增），使用者才會收到線上更新；當天最後
+  一個 RC 就是當天的正式版（標題保留 `RCn` 沒關係，下一個正式版再改）。
+* 下載檔名：`build/accelon26-2026-10-27-RCn.7z`。
+* 實例：2026-10-27 RC1 → buildTime `2026-10-27T03:31:00Z`、標題
+  「accelon26 2026-10-27 RC1」、sha256 `33f309848286…`。
+
 ## 清 build/（會長到幾 GB）
 
 `build/` 是產出物＋探針的暫存：Chrome/Edge 的 profile、一次性的比較輸出、bench 語料、
