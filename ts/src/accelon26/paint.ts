@@ -87,21 +87,35 @@ function markRange(nodes: Text[], start: number, end: number, va: number, hue: n
   return first;
 }
 
-function markPhraseInLine(line: number | undefined, phrase: string | undefined, va: number, hue = 0): HTMLElement | null {
+/**
+ * 把一行裡的 `phrase` 包成 mark。`all=true` 時**同一行的每一次出現都包**
+ * （作者 2026-10-27：摘要一張卡有兩個著色點，本文卻只塗第一個）。
+ * 由後往前包，前面節點的位移才不會被影響。
+ */
+function markPhraseInLine(line: number | undefined, phrase: string | undefined, va: number, hue = 0, all = false): HTMLElement | null {
   if (line === undefined || !phrase) return null;
   // 顯示模式（無損／強制簡體）下畫面上的字已經轉過，比對的字串也要跟著轉
   const conv = simConverter();
   const needle = conv ? conv(phrase) : phrase;
   const box = document.getElementById('L' + line)?.querySelector<HTMLElement>('.lineText');
   if (!box) return null;
-  const nodes = textNodesOf(box);
-  const text = lineTextOf(nodes);
-  const at = text.indexOf(needle);
-  if (at < 0) return null;
-  const mark = markRange(nodes, at, at + needle.length, va, hue);
-  if (!mark) return null;
-  mark.scrollIntoView({ block: 'center' });
-  return mark;
+  const text = lineTextOf(textNodesOf(box));
+  const at: number[] = [];
+  let from = 0;
+  while ((from = text.indexOf(needle, from)) >= 0) {
+    at.push(from);
+    from += needle.length;
+    if (!all) break;
+  }
+  if (!at.length) return null;
+  let first: HTMLElement | null = null;
+  for (let k = at.length - 1; k >= 0; k--) {
+    const mark = markRange(textNodesOf(box), at[k], at[k] + needle.length, va, hue);
+    if (mark && !first) first = mark;
+  }
+  if (!first) return null;
+  first.scrollIntoView({ block: 'center' });
+  return first;
 }
 
 /**
@@ -118,8 +132,8 @@ function markPhraseOnPage(phrase: string | undefined, va: number, fromLine: numb
   if (!rows.length) return false;
   const lineOf = (el: HTMLElement) => Number((el.id || '').replace(/^L/, ''));
   const start = Math.max(0, rows.findIndex((r) => lineOf(r) === fromLine));
-  for (let i = start; i < rows.length; i++) if (markPhraseInLine(lineOf(rows[i]), phrase, va, hue)) return true;
-  for (let i = 0; i < start; i++) if (markPhraseInLine(lineOf(rows[i]), phrase, va, hue)) return true;
+  for (let i = start; i < rows.length; i++) if (markPhraseInLine(lineOf(rows[i]), phrase, va, hue, true)) return true;
+  for (let i = 0; i < start; i++) if (markPhraseInLine(lineOf(rows[i]), phrase, va, hue, true)) return true;
   return false;
 }
 
@@ -199,7 +213,7 @@ async function paintHit(va: number, units?: number): Promise<void> {
   const hue = kwHue(s.pinned?.phrase ?? s.pinned?.token);
   if (s.pinned?.exact) {
     const phrase = s.pinned.phrase ?? s.pinned.token;
-    const done = !!markPhraseInLine(s.pinned.line, phrase, va, hue)
+    const done = !!markPhraseInLine(s.pinned.line, phrase, va, hue, true)
       || markPhraseOnPage(phrase, va, s.pinned.line, hue);
     // 多詞組查詢：其他關鍵字在同一頁也要有顏色（自己的那個已經畫好了）
     paintKeywordMarks();
@@ -222,7 +236,7 @@ async function paintHit(va: number, units?: number): Promise<void> {
     // so its element lookup returns the wrong text). The reader was sent to the
     // table line, so mark the searched phrase inside THAT line instead.
     const readerSent = s.pinned?.phrase ?? s.pinned?.token;
-    markPhraseInLine(s.pinned?.line, readerSent, va, hue);
+    markPhraseInLine(s.pinned?.line, readerSent, va, hue, true);
     paintKeywordMarks();
     return;
   }
@@ -239,7 +253,9 @@ async function paintHit(va: number, units?: number): Promise<void> {
       const raw = src.slice(sp.start, sp.end);
       const conv = simConverter();
       const phrase = conv ? conv(raw) : raw;
-      if (phrase) mark = markPhraseInLine(sp.line, phrase, va, hue);
+      // 這一行裡的所有出現都塗（作者 2026-10-27：摘要同一張卡有兩個著色點，
+      // 本文卻只塗第一個）。指定那一個已經在裡面，重包時只會補 class。
+      if (phrase) mark = markPhraseInLine(sp.line, phrase, va, hue, true);
     }
     if (!mark) {
       const nodes = textNodesOf(box);

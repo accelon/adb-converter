@@ -2327,3 +2327,21 @@ Go（`wails/import.go` 新）：`SaveAdb` 驗簽名 → 清理檔名（ASCII、`
   點註 scrollTop 0→536、點回 97；thonzu.adb（自閉合）hover「宿慧──早先熟悉的技能或
   知識」、點註 scroll 0→1357、點回 0。截圖 `build/note-tip.png`。
 * 已併入 2026-10-26 最後一次同版重發（15:02，作者：「合併到今天的版本。發布。」）。
+
+## 20. 2026-10-27：摘要與本文的著色一致（yinshun「不斷」）
+
+作者回報：yinshun 搜「不斷」，摘要同一張卡有**兩個**著色點，點進本文卻只有**一個**；
+同一段有多個命中時摘要重複出現，好像都跳到第一個著色點。
+
+* **原因**：單一詞組搜尋時 `kwMarks` 是空的（只有 `res.multi` 才 `setKwMarks`），
+  `paintHit` 走 span 路徑只塗 pinned 的那一個 span；摘要則是拿查詢字在整段文字裡
+  比對、每個出現都上色。所以兩邊不一致，而且同段的多個 hit 各成一張卡。
+* **修正**：
+  * `paint.ts`：`markPhraseInLine(..., all=true)` 由後往前包同一行的**所有**出現；
+    exact 分支、`markPhraseOnPage` fallback、span 分支（用 `data-src` 的實際字）都用它。
+  * `summary.ts`：單一詞組時同一行（`searchSummary` 回傳的 `line`）只列一張卡，
+    「更多」標示「同段只列一次」；多詞組不動（每個詞組要自己的 `cur`）。
+* **驗證**：yinshun 搜「不斷」→ 摘要 27 張卡（前 30 筆命中、3 組同段合併）、
+  3 張卡各有 2 個著色點；點任一張，本文同一行 2 個著色點（修正前只有 1 個）。
+  `file:// fgdict` 182/182、`render` 30/30、`search` 38/38。
+* 尚未發佈；`release_notes.draft.txt` 已記一條。

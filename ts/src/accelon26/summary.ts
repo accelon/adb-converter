@@ -219,6 +219,10 @@ async function renderSnippets(seq: number) {
   const show = pool.slice(0, snippetShown);
   const multi = res.multi;
   const cards: string[] = [];
+  // 同一段（同一行）有多個命中時，摘要只列一張卡（作者 2026-10-27）：卡片文字
+  // 一樣、著色也一樣，重複只會佔掉 30 張的額度。多詞組不動（每個詞組要自己的 cur）。
+  const seenLines = new Set<number>();
+  let merged = 0;
   for (const hit of show) {
     if (multi) {
       // 多詞組：這個命中屬於哪一個詞組，就用那個詞組的顏色；其餘詞組在同一段
@@ -248,6 +252,8 @@ async function renderSnippets(seq: number) {
     const s = await searchSummary(mapper, hit.va, hit.units, { phrase: res.query });
     if (seq !== searchSeq) return;        // superseded while building snippets
     if (!s) { cards.push(`<div class="snippet"><div class="snippetHead">VA ${fmtInt(hit.va)}：無法定位</div></div>`); continue; }
+    if (seenLines.has(s.line)) { merged++; continue; }
+    seenLines.add(s.line);
     const mid = s.text.slice(s.start, s.end);
     const body = snippetHtml(s.text, [{ text: mid, hue: 0 }], mid);
     cards.push(`<div class="snippet" data-va="${hit.va}" data-units="${hit.units}">
@@ -274,8 +280,8 @@ async function renderSnippets(seq: number) {
   const more = $('#searchMore');
   const scopeNote = snippetScope ? `「${displayName(snippetScope.label)}」內 ` : (activeGroup >= 0 ? '此群 ' : '');
   more.textContent = pool.length > show.length
-    ? `顯示前 ${fmtInt(show.length)} 筆（${scopeNote}共 ${fmtInt(pool.length)} 筆）；捲到底載入更多`
-    : `${scopeNote}共 ${fmtInt(pool.length)} 筆`;
+    ? `顯示前 ${fmtInt(show.length)} 筆（${scopeNote}共 ${fmtInt(pool.length)} 筆${merged ? '；同段只列一次' : ''}）；捲到底載入更多`
+    : `${scopeNote}共 ${fmtInt(pool.length)} 筆${merged ? '；同段只列一次' : ''}`;
   // No auto-jump: the document is linked by an explicit click (requirement 一).
 }
 
