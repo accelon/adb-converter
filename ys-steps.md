@@ -217,7 +217,7 @@ bun run ys/pack.ts
 - 打包後把 header 的 `andtagid` 設回 0（與 `yinshun.adb` 一致）
 - 輸出 `build/ys.adb`，並複製到 `D:\accelon3\ys.adb`
 
-預期：`dbname ys`、`linecount 305562`、`25.1 MiB`、`resources 1`。
+預期：`dbname ys`、`linecount 305551`、`25.1 MiB`、`resources 1`。
 
 ---
 
@@ -228,7 +228,7 @@ go run ./cmd/abx inspect 'D:\accelon3\ys.adb'
 bun run ts/tools/probe-adb.ts --adb 'D:\accelon3\ys.adb' --query 涅槃
 ```
 
-應看到：`dbname "ys"`、`linecount 305562`、`andtagid 0`，
+應看到：`dbname "ys"`、`linecount 305551`、`andtagid 0`，
 檢索有結果且 `consoleErrors: null`。
 
 目錄第一項是「印順法師著作全集 2026 年 AI 版序」，最後一項是「附錄（舊版卷首資料）」。
