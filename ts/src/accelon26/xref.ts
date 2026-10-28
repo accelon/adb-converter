@@ -816,8 +816,16 @@ export function initXref(): void {
       ev.stopPropagation();
       const [db, vaStr] = (rev.dataset.rrev ?? '').split('|');
       if (!db || !vaStr) return;
+      const va = Number(vaStr);
+      // 回連結指回「主庫」（例如中間讀印順、右欄讀大正，按鈕指回印順的另一個地方）：
+      // 直接在中間開一個新分頁，不必按 Ctrl（作者 2026-10-28）。指到別的庫才放右欄。
+      if (reader && db === reader.header.dbname) {
+        const label = rev.dataset.rrevLabel ?? '';
+        void linkTo(va, label, 1, { newTab: true, exact: false, name: label, noMark: false, phrase: rev.dataset.rquote || undefined });
+        return;
+      }
       ensureRightPane();
-      openForeignTab(db, Number(vaStr), rev.dataset.rrevLabel ?? db, ev.ctrlKey || ev.metaKey, rev.dataset.rpage || undefined, rev.dataset.rcite || rev.dataset.rquote || undefined);
+      openForeignTab(db, va, rev.dataset.rrevLabel ?? db, ev.ctrlKey || ev.metaKey, rev.dataset.rpage || undefined, rev.dataset.rcite || rev.dataset.rquote || undefined);
       return;
     }
     const a = (ev.target as Element | null)?.closest?.('a[data-xref]') as HTMLElement | null;
