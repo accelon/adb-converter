@@ -1,5 +1,5 @@
 13j.adb
 fgdict.adb
-taixu.adb
+tx.adb	tx.html
 yulinpo.adb
 ys.adb	ys.html
