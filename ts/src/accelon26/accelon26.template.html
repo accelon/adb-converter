@@ -1648,6 +1648,14 @@
     </div>
     <button id="aboutClose" class="aboutClose" title="關閉（Esc）">✕</button>
   </div>
+  <!-- 操作導覽的入口（作者 2026-10-18：從頂欄的 🎬 搬進來；2026-10-28 移到官網下面、
+       版本上面——這兩個入口比版本資訊更常按）。這頁預設「啟動時顯示」。 -->
+  <div class="aboutActions">
+    <button id="aboutTour" class="primary" title="一步一步教你用：開庫、查詞、看本文、目錄、設置、詞典">▶ 操作導覽</button>
+    <label class="aboutToggle" for="aboutStartup">
+      <input type="checkbox" id="aboutStartup"> <span>啟動時顯示本頁面</span>
+    </label>
+  </div>
   <div class="aboutMeta">
     <div><span>版本</span><b id="aboutBuild">—</b></div>
     <div><span>執行環境</span><b id="aboutMode">—</b></div>
@@ -1675,14 +1683,7 @@
     <span id="aboutUpdateMsg">檢查更新中…</span>
     <button id="aboutInstall" hidden>下載更新</button>
   </div>
-  <!-- 操作導覽的入口（作者 2026-10-18：從頂欄的 🎬 搬進來）。
-       這頁預設「啟動時顯示」，所以第一次打開就會看到它。 -->
-  <div class="aboutActions">
-    <button id="aboutTour" class="primary" title="一步一步教你用：開庫、查詞、看本文、目錄、設置、詞典">▶ 操作導覽</button>
-    <label class="aboutToggle" for="aboutStartup">
-      <input type="checkbox" id="aboutStartup"> <span>啟動時顯示本頁面</span>
-    </label>
-  </div>
+  <!-- 操作導覽的入口已移到官網下面（見上方 .aboutActions） -->
   <p class="aboutFoot">原始碼與操作說明見官網；有問題請在官網回報。</p>
 </div>
 
