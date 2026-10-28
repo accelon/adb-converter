@@ -1260,27 +1260,65 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
 const docScrollWired = new WeakSet<Element>();
 
 /**
- * 中間的「回連結」：**嵌在經文裡**，就放在那一頁的 `<頁>` 分隔後面（作者 2026-10-28）。
+ * 中間的「回連結」：**嵌在經文裡被引用的那一行**（作者 2026-10-28）。
  *
- * 頁碼取這一段第一個 `<頁>` 分隔上的 data-page——不是釘選那一頁，所以翻頁、跳段之後
- * 按鈕都跟著眼前的頁走。頁碼分隔被關掉（設定裡不顯示原書頁碼）時，退回標題下面。
+ * 同一頁可能被引用好幾次，每一條都知道大正藏原文（`聯.q`）；把那段原文在這一頁的
+ * 行文裡找出來，按鈕就貼在那一行的行首。找不到原文的（或頁面上根本沒有那一段）
+ * 退回頁首的 `<頁>` 分隔後面，一條都不會丟。
  */
 async function paintReverseBar(): Promise<void> {
   const pb = document.querySelector<HTMLElement>('#docText .docBody .pageBreak[data-page], #docText .docBody .pageMark[data-page]');
   const pageId = pb?.dataset.page ?? '';
-  document.querySelectorAll('#docText .xrefRevInline, #docText .xrefRevBar').forEach((el) => el.remove());
-  let html = '';
+  const body = document.querySelector<HTMLElement>('#docText .docBody');
+  if (!body || !pageId) return;
+  document.querySelectorAll('#docText .xrefRevInline').forEach((el) => el.remove());
+  let items: RevItem[] = [];
   try {
-    html = await reverseInlineForPage(pageId);
+    items = await reverseItemsOf(pageId);
   } catch { return; }
-  if (!html) return;
-  // 同一個 id 的頁分隔可能不只一個（重複渲染）；插在第一個後面
-  const mark = pageId
-    ? document.querySelector<HTMLElement>(`#docText .docBody .pageBreak[data-page="${pageId}"], #docText .docBody .pageMark[data-page="${pageId}"]`)
-    : null;
-  if (mark) { mark.insertAdjacentHTML('afterend', html); return; }
-  const host = document.querySelector<HTMLElement>('#docText .docTop');
-  host?.insertAdjacentHTML('afterend', html);
+  if (!items.length || !body.isConnected) return;
+  // 行文（去掉標籤、只留漢字）→ 每一行在整頁字串裡的起點
+  const lines = [...body.querySelectorAll<HTMLElement>('.docLine')];
+  const keys = lines.map((el) => cjkOnly(el.dataset.src ?? el.textContent ?? ''));
+  const text = keys.join('');
+  const starts: number[] = [];
+  for (let i = 0, at = 0; i < keys.length; i++) { starts.push(at); at += keys[i].length; }
+  const lineAt = (pos: number): number => {
+    let lo = 0, hi = starts.length - 1, k = 0;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (starts[m] <= pos) { k = m; lo = m + 1; } else hi = m - 1; }
+    return k;
+  };
+  const hits = new Map<number, RevItem[]>();   // 行索引 → 按鈕
+  const rest: RevItem[] = [];
+  for (const it of items) {
+    const q = cjkOnly(it.tq);
+    let at = -1;
+    for (const n of [14, 10, 8]) {
+      if (q.length < n) continue;
+      at = text.indexOf(q.slice(0, n));
+      if (at >= 0) break;
+    }
+    if (at < 0) { rest.push(it); continue; }
+    const li = lineAt(at);
+    const arr = hits.get(li);
+    if (arr) arr.push(it); else hits.set(li, [it]);
+  }
+  for (const [li, list] of hits) {
+    const host = lines[li]?.querySelector('.lineText') ?? lines[li];
+    host?.insertAdjacentHTML('afterbegin', '<span class="xrefRevInline">' + list.map(revButtonHtml).join('') + '</span>');
+  }
+  if (rest.length) {
+    const mark = document.querySelector<HTMLElement>(`#docText .docBody .pageBreak[data-page="${pageId}"], #docText .docBody .pageMark[data-page="${pageId}"]`);
+    const html = '<span class="xrefRevInline" title="這一頁的引用（未能定位到某一行）">回連結：'
+      + rest.map(revButtonHtml).join('') + '</span>';
+    if (mark) mark.insertAdjacentHTML('afterend', html);
+    else document.querySelector<HTMLElement>('#docText .docTop')?.insertAdjacentHTML('afterend', html);
+  }
+}
+
+/** 只留漢字（與 `<聯 q="…">` 的比對基礎一致） */
+function cjkOnly(s: string): string {
+  return s.replace(/<[^>]*>/g, '').replace(/[^\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/g, '');
 }
 
 function scheduleCursorSync(): void {
@@ -1722,7 +1760,7 @@ import { DocRow } from './adb';
 
 import { VaPaMapper } from './vapa';
 import { updateDocLogo } from './logo';
-import { reverseInlineForPage } from './xref';
+import { RevItem, revButtonHtml, reverseItemsOf } from './xref';
 import { inJumpRange, jumpRange, setJumpRange } from './jump-band';
 
 /** everything the document pane keeps for ONE database */
