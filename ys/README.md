@@ -58,7 +58,7 @@ pwsh D:\2026\adb-converter\ys\build.ps1
 ## 建置結果（2026-10-28）
 
 ```text
-linecount 307133
+linecount 307137
 卷 462、書 44（CBETA）＋書 99（附錄）＋書 100（後記）
 頁 17516、頁元 75
 <聯> 25920
