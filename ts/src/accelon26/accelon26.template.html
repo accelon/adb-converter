@@ -490,18 +490,14 @@
   .aboutFoot { margin: 10px 0 0; font-size: 12px; color: var(--dim); }
   .aboutKeys { margin: 8px 0 0; font-size: 12px; color: var(--dim); }
   .aboutKeys b { color: var(--fg); font-variant-numeric: tabular-nums; }
-  /* 「⌨ 快速鍵」：About 的入口（作者 2026-10-29）。所有快速鍵集中在一張卡片，見 shortcuts.ts */
+  /* 「快速鍵」：About 的入口（作者 2026-10-29）。所有快速鍵集中在一張卡片，見 shortcuts.ts。
+     按鈕上不要放「F1」——F1 是操作導覽的鍵，放在這裡會讓人以為它是開卡片的鍵
+     （作者 2026-10-29 指出）。 */
   #aboutKeys {
     background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 7px;
     font: inherit; font-size: 14px; font-weight: 600; padding: 6px 14px; cursor: pointer;
   }
   #aboutKeys:hover { border-color: var(--accent); color: var(--accent); }
-  /* 按鈕上的「F1」小鍵帽：不用 ⌨（U+2328）這種要有字型才畫得出來的符號，
-     與卡片裡的 <kbd> 同一個樣子 */
-  .aboutKbd {
-    font: inherit; font-size: 11px; line-height: 1.4; padding: 0 5px; margin-right: 2px;
-    border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--dim);
-  }
   #shortcutBackdrop { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); }
   #shortcutBackdrop[hidden], #shortcutBox[hidden] { display: none; }
   #shortcutBox {
@@ -1901,7 +1897,7 @@
        版本上面——這兩個入口比版本資訊更常按）。這頁預設「啟動時顯示」。 -->
   <div class="aboutActions">
     <button id="aboutTour" class="primary" title="一步一步教你用：開庫、查詞、看本文、目錄、設置、詞典">▶ 操作導覽</button>
-    <button id="aboutKeys" type="button" title="所有快速鍵一覽（一張卡片，Esc 關閉）"><kbd class="aboutKbd">F1</kbd> 快速鍵</button>
+    <button id="aboutKeys" type="button" title="所有快速鍵一覽（一張卡片，Esc 關閉）">快速鍵</button>
     <label class="aboutToggle" for="aboutStartup">
       <input type="checkbox" id="aboutStartup"> <span>啟動時顯示本頁面</span>
     </label>
