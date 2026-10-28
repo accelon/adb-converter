@@ -679,18 +679,35 @@ export function parseTaishoCite(raw: string): TaishoCite | null {
   }
   // ② 大正 style：大正2，206a15-b13
   const m = /^(?:大正|T)?([0-9]+|[一二三四五六七八九十百〇零]+)[,，](\d+)([abc])(\d{1,2})(?:[-–—~至](?:(\d+)?([abc])(\d{1,2})|(\d{1,2})))?$/i.exec(s);
-  if (!m) return null;
-  const vol = numOf(m[1]);
-  if (vol == null) return null;
-  return {
-    vol,
-    page: m[2],
-    col: m[3].toLowerCase(),
-    line: Number(m[4]),
-    endPage: m[5] ?? undefined,
-    endCol: m[6]?.toLowerCase(),
-    endLine: m[6] ? Number(m[7]) : (m[8] ? Number(m[8]) : undefined),
-  };
+  if (m) {
+    const vol = numOf(m[1]);
+    if (vol != null) {
+      return {
+        vol,
+        page: m[2],
+        col: m[3].toLowerCase(),
+        line: Number(m[4]),
+        endPage: m[5] ?? undefined,
+        endCol: m[6]?.toLowerCase(),
+        endLine: m[6] ? Number(m[7]) : (m[8] ? Number(m[8]) : undefined),
+      };
+    }
+  }
+  // ③ 頁 id 直接加行號：`2p1a7`＝第 2 冊 1 頁 a 欄第 7 行（與庫裡的頁 id `2p1a` 同一種寫法）。
+  //    沒有尾隨行號的 `49p15a`、`20p0065a` 不匹配，仍走頁 id 清單那條路。
+  const m3 = /^(\d{1,2})p(\d+)([abc])(\d{1,2})(?:[-–—~至](?:(\d{1,2})p)?(\d+)?([abc])(\d{1,2}))?$/i.exec(s);
+  if (m3) {
+    return {
+      vol: Number(m3[1]),
+      page: m3[2],
+      col: m3[3].toLowerCase(),
+      line: Number(m3[4]),
+      endPage: m3[6] ?? undefined,
+      endCol: m3[7]?.toLowerCase(),
+      endLine: m3[7] ? Number(m3[8]) : undefined,
+    };
+  }
+  return null;
 }
 
 const taishoDbSlot = () => openDbs.find((d) => d.name.includes('大正') || /^taisho/i.test(d.file.name));
