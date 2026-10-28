@@ -129,7 +129,8 @@ bun run ys/prep.ts
 3. 授權與致謝（開發者葉健欣、基金會授權、2026 年 AI 版主要測試者陳裕文、
    增值部分 CC BY）
 4. 無名者的光（常明法師逐字錄入七百萬字、德志法師組織第一版光碟與招募開發者、
-   2017 年三十幾位福嚴推廣班學員查找引文在大正藏的精確位置——名字已不可考）
+   厚觀法師——印順導師關門弟子，二十多年維護系統、以學術學養逐字校勘；
+   2017 年他號召三十幾位福嚴佛學院師生與推廣班學員查找引文在大正藏的精確位置——名字已不可考）
 5. 感謝這個時代（DeepSeek、祖國的數字基建與生活環境、文化自信）
 6. 回連結是怎麼做到的（給一般讀者的白話說明：每個字編門牌號碼、
    把「這裡就是大正某頁某欄」寫在號碼旁、另做一份按「被引用的一方」排好的倒過來目錄）
@@ -246,7 +247,7 @@ bun run ys/pack.ts
 - 打包前檢查每一行 ≤ 4,096 字（Accelon3 `MAXLINELEN`），超過直接報錯
 - 輸出 `build/ys.adb`，並複製到 `D:\accelon3\ys.adb`
 
-預期：`dbname ys`、`linecount 307137`、`25.2 MiB`、`resources 2`。
+預期：`dbname ys`、`linecount 307141`、`25.2 MiB`、`resources 2`。
 
 ---
 
@@ -257,7 +258,7 @@ go run ./cmd/abx inspect 'D:\accelon3\ys.adb'
 bun run ts/tools/probe-adb.ts --adb 'D:\accelon3\ys.adb' --query 涅槃
 ```
 
-應看到：`dbname "ys"`、`linecount 307137`、`andtagid 0`，
+應看到：`dbname "ys"`、`linecount 307141`、`andtagid 0`，
 檢索有結果且 `consoleErrors: null`。
 
 目錄第一項是「般若經講記」，最後一項是「2026年AI版後記」（章名「後記」）。
