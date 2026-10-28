@@ -1,0 +1,2398 @@
+# accelon26 交接文件（2026-02 起，逐輪累積）
+
+> ## 現況（2026-10-18 收工，**先讀這一塊**）
+>
+> * **線上版本**：`2026-10-18 21:57`（`buildTime 2026-10-18T13:57:44Z`、
+>   exe `sha256 844b23fd233e…`、17,216,512 bytes）。官網 <https://shutonggui.cn/accelon26/>。
+>   macOS 兩份 zip 是同一天 CI（tag `mac-2026-10-18-2215`）的產物。
+> * **本輪（今天）做了什麼**：見 §13。摘要 ——
+>   資料庫清單字數改讀檔頭 max VA（15 庫 58 ms）、jc 目錄樹修復、
+>   進階多了「檔頭」分頁、進階 → 容量多了「導出文字與圖片」（一篇一個 xml、保留硬換行）、
+>   官網多了「公開數據庫」頁、`build/` 清掉 5 GB、發佈新版（Windows ＋ macOS）。
+> * **repo**：`b56dfaa`（`git status` 乾淨、`ahead 0`）。單檔 HTML＝`build/accelon26.html`；
+>   桌面 exe＝`accelon3/accelon26.exe`（同一次 release 建置）。
+> * **發佈節奏（作者 2026-10 的規矩）**：平常改 UI 只跑 `bun run tools/build-viewer.ts`；
+>   改動一句一句寫進 `wails/release_notes.draft.txt`；**等作者說「發佈新版」**才跑
+>   `release.ts` ＋ `deploy.ts`（見 §13.6）。不要自己發佈。
+> * **Release candidate（作者 2026-10-27 指定）**：一天內可能修好幾個 bug，**每修好一批就出
+>   一個 RC**：`2026-10-27 RC1`、`RC2`…。每個 RC 都更新 `versions.json` 的 buildTime 並
+>   部署（使用者線上更新）；同一天 `release_notes.json` 只保留**一個**當天條目，原地改
+>   buildTime 與 items，標題寫 `accelon26 2026-10-27 RCn`。詳見 `DEPLOY.md` §2.3。
+> * **測試現況**：`go test ./...` 全綠、`tools/desktop-test.ts --gui --quick` **38/38**、
+>   `test/render.test.ts` **22**、`test/tree.test.ts` **40**、`test/search.test.ts` **38**。
+> * **下次開工建議**：§13.8 的清單（換庫時分頁殘留、導出要不要去掉 `<檔>` 外框、
+>   `build/macos` 的 zip 要重下）。
+
+> **先讀 [`architecture.md`](./architecture.md)**：那裡有一頁式的分層圖，以及
+> 「哪個 UI 動作觸發哪些非同步資料抓取」的對照表（file:// 與 Wails3 兩種模式）。
+> 本文件是逐輪的規格與踩坑紀錄，architecture.md 是現況地圖。
+>
+> 桌面版（Wails3）的共通坑見 [wails3-pitfalls.md](./wails3-pitfalls.md)；Windows／漢字／UI 的共通實踐見 [yap-software-practice.md](./yap-software-practice.md)。
+>
+> **改名（2026-10）**：模組已從 `adbview` 全面改名為 `accelon26` ——
+> 目錄 `ts/src/accelon26/`、模板 `accelon26.template.html`、示意圖 `accelon26-map.html`、
+> 除錯 API `window.__accelon26`、設定鍵 `accelon26.*`（改名前的 `adbview.*` 沒有做遷移：
+> 作者說除了他之外沒人跑過，舊鍵直接忽略即可）。
+
+純瀏覽器 `.adb` 檢視器原型。**單檔 HTML，可從 `file://` 雙擊開啟**，無伺服器、無 sidecar、無 npm 依賴。
+所有資料來自 `Blob.slice().arrayBuffer()` 隨機讀取。
+
+> 本輪（2026-02 後半）依作者指示改了目錄區與本文區的行為，並修好三個資料庫的
+> 瀏覽器測試。三項需求的規格寫在 §2，實作重點與踩到的坑在 §8。
+>
+> **狀態：暫停等作者測試回報。** 目前 13j 64/64、yinshun 68/68、fgdict 68/68
+> （最後一輪只驗 fgdict，依作者指示）。可用版本＝ `build/accelon26.html`（單檔，
+> 雙擊開啟即可）。fgdict 已確認：名詞頁（快取字串表＋開頭／中間／結尾）、
+> 全文頁、原書分頁（6,959 頁碼）、詞條聯動跳行與塗紅、本文分頁標籤顯示詞名。
+> **尚未回歸驗證**：13j／yinshun 在最後幾項修改後沒有重跑（作者要求先集中 fgdict）。
+>
+> **fgdict 報告（本輪）**：目錄樹改由容器取名（`caches/<tag>`、`<tag>.n`，不再逐節點走內文）
+> ＋隱藏的目錄面板不渲染 → 背景樹 **6,400 ms → 390 ms**，名詞分頁開啟即出現（字串表 0 ms）；
+> 左欄分頁改由 `<樹>` 宣告即時決定，不等樹。全文面板：筆數與段名**同一行**（分級紅字徽章）、
+> 頁籤名＝段名、摘要聯動該段。原書分頁：頁籤名＝頁碼、**不塗紅**、把 `<_頁>` 捲進畫面、
+> 連點不重複開分頁。**尚未修好 1 項**：全文面板點段名後，內文塗紅的是段首 token 而非查詢詞
+> （已修好）。
+>
+> **yinshun 報告（同輪）**：目錄樹**只先做第一層標籤**，其餘等畫到那一列才解（`entryLabelsOnly`
+> ＋`renderDirTree` 逐列解），名字改由行表取 → 背景樹 **4,030 ms → 51 ms**（13j 7 ms）。
+> 命中徽章改在 `lastResult` 更新**之後**重繪（`refreshTreeHits`），輸入一改就重畫、清空即收起。
+> Ctrl/Cmd 點節點**一律**開新分頁（原本只在當前分頁不涵蓋時才開）。
+> **最後兩項「bug」其實是測試的問題，不是程式的**：
+> (a) `Ctrl+點節點開新分頁` 讀的是一次連結後的固定 1400 ms，但那是最後一本書、第一頁要解 24 MB 檔尾的區塊，
+> 連結晚到（實測 >1.4 s，且在下一個步驟才落地）→ 改成輪詢分頁數。
+> (b) `全文：內文把查詢詞塗紅` 的前一個測試區塊已輸入過「大乘」，我的新區塊輸入「法王」後只等 `.tCount.hit`
+> （舊的徽章已存在）→ 拿到**上一次 render** 的列與其 handler（`pinned.token` 是「大乘」）→ 改成等
+> `#freqMeta` 出現新詞再點。
+>
+> **最終**：13j **67/67**、yinshun **75/75**、fgdict **78/78**。
+
+> **本輪（2026-10 後半，多庫之後）依作者五點回報改了：** §3.4／§3.5 有完整說明。
+> 一）**切換資料庫變快**：yinshun→fgdict 的同步成本 **381–445 ms → 4 ms**（fgdict→yinshun 34–44 → 3 ms），
+> 原因是右欄切分頁時重建了（左欄的）6,966 列目錄樹 —— 修好觸發點＋列改成**分批掛上 DOM**（`lazy-list.ts`），
+> 目錄樹／名詞／頻次／原書分頁／西文都只在需要時掛一屏。
+> 二）**切換 adb 時樹的狀態不丟**：展開集合與標籤住在 `DirTree`（隨 slot 保存），DOM 只是它的投影；
+> probe 實測 yinshun 展開一本書（44→47 列）→ 切到 fgdict → 切回來仍是 47 列且同一個節點開著。
+> 三）**本文區空白時顯示資料庫自己的 logo**：從 adb 的 `resources` 取 `<dbname>_logo.*`（yinshun 有，
+> 320×480；13j／fgdict 沒有就不顯示）。
+> 四）**右欄「文字內容」分頁**（新模組 `text-pane.ts`）：Ctrl+點樹節點＝把該段文字送到右欄（中間不動）、
+> Ctrl+點本文分頁＝複製到右欄、Shift+點＝搬到右欄；**右欄純參考，不連動左樹**。
+> 五）文字內容頁刻意獨立成模組 —— 下一步要改的是「把行內 XML 標籤變成 HTML」，只會動 `renderTextPane()`。
+>
+> **測試**：13j **153/153**、yinshun **166/166**、fgdict **167/167**；`check-map-ids.ts` **119/119**；
+> 多詞組引擎 `test/multi-search.test.ts` **39/39**（yinshun）；繁簡通檢 `test/variants.test.ts` **13/13**；
+> 後端共用測試集 `test/backend-cases.test.ts` **180/180**（含 18 個通檢案例）、架構守門 `test/backend-layout.test.ts` **11/11**；
+> Go 端 `wails/query_cases_test.go`（同一份 cases，含 `TestSearchQueryVariants`）與 `go test ./...` 全綠。
+>
+> **測試策略（作者 2026-10）**：**主要先在 HTML 測好**（`tools/file-protocol-test.ts`
+> ＋ `check-map-ids.ts`，快）；**桌面版（Wails3）只在「發布」時才跑**完整
+> `tools/desktop-test.ts --gui`（慢：開視窗、下載 16 MB、跑好幾次）。平常真的要看視窗，
+> 用 `--gui --quick`（跳過更新／改版說明那幾段）。改完程式碼**不要**習慣性跑 desktop test。
+>
+> **同月再加一輪：桌面版（Wails3）**，見 §10。`wails/` 是獨立的 Go 模組（極薄：只有 mmap 讀取與
+> 列工作目錄的 `*.adb`），UI 仍是同一份 TypeScript 單檔 HTML，**只有 `host.ts` 知道宿主存在**。
+> 實測：exe 在倉庫根目錄啟動 → 自動列出 13j／fgdict／yinshun（只讀檔頭），下拉可切換、mmap 讀內文；
+> `tools/desktop-test.ts --gui` 11/11。**除非作者說要造 exe 或「準備發佈」，預設只產生 HTML。**
+>
+> **再後一輪（同月，作者四點＋兩個 bug 回報）**：
+> 一）**純文字檔統一 LF**（`.gitattributes`：`* text=auto eol=lf`；當時只有 4 個檔還帶 CRLF）。
+> 二）**沒有 `s="*"` 就完全不建目錄樹**：`loadDirectoryTrees()` 只建正好 `s="*"` 的那棵（fgdict 0 實例／0 ms，
+> yinshun 只建 `*` 那棵＝8,513 實例）；`groupNames()` 改讀 adb 自己的 `caches/<標籤>`（三庫都對得上），
+> 搜尋分組不再依賴 `treeLabels`。
+> 三）**狀態列只顯示錯誤與「讀取中」**：`setStatus(info)` 不寫 DOM（訊息仍留在 `__accelon26.status()`）。
+> 四）**右上 adb 清單**（現為黃色資料夾按鈕 `#dbPickBtn` ＋ `#dbPickMenu`）：列出這次工作階段選過／拖過的每個 adb
+> （只讀 header，未載入的也在），選一個就加入 `dbTabs` 並跳到最左；`dbTabs` 只保留最後使用的 5 個
+> （滿了踢最久沒用的）；**點 chip 切換永不重排**。
+> 五）**Escape 不再清輸入**：五個輸入框都是 `<input type="search">`，Chromium 內建 Escape 清空 ——
+> keydown 必須 `preventDefault()`；測試改用 CDP `Input.dispatchKeyEvent` 送真按鍵（合成事件測不到預設動作）。
+> 六）**摘要的「只看該節點」約束屬於產生結果的那個查詢**（`lastQuery`）——重打一個詞就取消，
+> 不會因為新查詢還在飛時按了命中數而黏住。
+
+---
+
+## 0. 設計原則：先查 adb 內已有的資料，不要硬幹（遇到新需求先讀這節）
+
+`.adb` 是**光盤（CD-ROM）時代**的格式：那時 random seek 很貴（一次尋道數十至數百毫秒、且無法遮蔽），
+順序讀便宜。所以格式的每一個決定都在服務同一件事——**seek 越少越好：一次 seek 就拿到要的東西，之後盡量順序讀**。
+這解釋了為什麼：
+
+* 整個資料庫是**一個檔**（header → 容器頭 → 資料區 → 長度表），開檔只要一次 seek；
+* `source` 的每一塊是**獨立 bzip2 流且連續存放**：要一塊只讀一段連續位元組；要全文就是一次順序讀
+  （整個 source 資料區本身就是合法的 multi-stream bzip2，[FORMAT.md](../adb/FORMAT.md) §4 已驗證）；
+* 行表 `tables/lines.physical`／`lines.virtual` 是**累積**表：行 i 的位址二搜尋就有，不必掃描；
+* **索引與文字分開存**，而且索引把答案**先算好**（見下）。
+
+**所以：作者要新功能時，先問「adb 內是不是已經有這份資料」，不要用內文硬算。**
+回讀內文解壓是最後手段——Pascal 原始碼自己就把它註解成 `retrieve from source, Slow!`（`adb.pas: getnNodeValue`）。
+
+### 0.1 先查清單
+
+| 需求 | 先查這個 | 不要這樣做 |
+|---|---|---|
+| 節點／條目名稱 | `caches/<標籤>`（`AdbReader.cachedStrings`）：字串表，順序＝實例序 | 逐塊 bunzip 切 innerText（慢且容易取錯） |
+| 實例屬性（`n` `l` `t` `s` `id`…） | `attributes/<標籤>.<屬性>` 的 values ＋ pointers（低位 24 bits ＝ 1-based 實例序） | 掃內文找屬性字串 |
+| 某標籤有哪些實例、各在第幾 | `tags` 容器的命中表 | 掃內文比對標籤文字 |
+| 命中數／命中範圍 | `tokens`／`tags` 命中表 ＋ 二分搜尋 | 逐行掃描內文 |
+| 行號／頁碼 | `tables/lines.virtual`、`lines.physical`、`blocks.virtual`、`doclengths` | 解壓全文再數行 |
+| 某一行／某頁的文字 | 只解該行跨越的 source 塊（`Blob.slice()` ＋ 128 KiB 快取） | 解壓整個 `source` |
+| 文件清單／檔名 | `caches/檔`（`documents()`）或 `檔.n` | 走內文找 `<檔>` |
+| 全庫有哪些標籤 | `tags` 容器的名稱表（＝建庫時宣告集） | — |
+
+### 0.2 案例（都是「硬幹」被糾正後才對的）
+
+* **fgdict 名詞清單**：第一版對每個碰到的區塊 bunzip 算 `<詞>` innerText → 慢、又容易取錯。
+  作者指出 adb 內就有存 `<詞>` innerText 的 string array，改用 `caches/詞`
+  （一次容器解析、22,648 筆、與 `tags` 實例同序）才對。
+* **fgdict 書名（P0）**：`檔.n` 屬性值是空字串，`loadTree` 的 20,000 標籤預算又切掉後兩本；
+  正解是 `caches/書`（7 個書名）補第一層，不是想辦法從內文撈。
+* **節點名稱**：能用屬性／快取就別走內文；目前還有兩處會走內文（見 §7 P1 第 6 項）。
+
+---
+## 1. 建置與測試指令
+
+```powershell
+cd D:\2026\adb-converter\ts
+
+# 建置（產出 ../build/accelon26.html，約 275 KiB 單檔）
+bun run tools/build-viewer.ts
+
+# 瀏覽器端（file:// 真實測試；--port 每次換一個避免殘留）
+bun run tools/file-protocol-test.ts --adb ..\13j.adb --port 9601
+bun run tools/file-protocol-test.ts --adb D:\accelon3\yinshun\yinshun.adb --port 9602
+bun run tools/file-protocol-test.ts --adb D:\accelon3\fgdict.adb --port 9603
+bun run tools/browser-test.ts --adb D:\accelon3\yinshun\yinshun.adb --port 9604   # http 來源
+
+# 截圖（開檔→搜尋→點節點→Ctrl 開第二個本文分頁→存 PNG）
+bun run tools/shot.ts --adb ..\13j.adb --out ..\build\shot-13j.png
+
+# 單元測試（Bun，不需瀏覽器）
+bun run test/vapa.test.ts --adb ..\13j.adb
+bun run test/accelon26.test.ts --adb ..\13j.adb
+bun run test/search.test.ts --adb ..\13j.adb
+bun run test/search.test.ts --adb D:\accelon3\yinshun\yinshun.adb
+bun run test/tree.test.ts                     # 13j + yinshun 兩庫
+bun run test/multi-search.test.ts             # 多詞組 + BM25（預設 yinshun）
+bun run test/variants.test.ts                 # 繁簡通檢（表 ＋ 引擎；預設 yinshun）
+bun run test/render.test.ts                   # 內文渲染（標題／頁／段／未知標籤）
+bun run tools/tag-stats.ts --adb ..\13j.adb   # 內文標籤盤點（哪些有 t=、哪些沒處理）
+bun run tools/gen-variants.ts                 # 從 vendor/Unihan_Variants.txt 重產對照表
+                                              #   vendor/ 不進 git：先手動下載
+                                              #   https://github.com/CNMan/Unicode/blob/master/Unihan/Unihan_Variants.txt
+bun run tools/gen-variants.ts --check         # 只檢查產物是否最新（CI 用，不需要 vendor 以外的東西）
+bun run tools/gen-lossless.ts                 # 從 vendor/Unihan_Variants.txt 重產「無損簡體」表
+bun run tools/gen-lossless.ts --check         # 只檢查簡體表是否最新
+bun run test/multi-search.test.ts --adb ..\13j.adb --query "象曰 潛龍"   # s="*"（分群書）
+bun run tools/verify-vapa.ts --adb ..\13j.adb --max-hits 2   # VA 對帳（13j 需 100%）
+
+# 後端（作者 2026-10）：Go／TS 共用測試集；只改 UI 時不必跑這些
+bun run cases                                 # 重產 test/shared/search-cases.json（以 TS 後端為答案）
+bun run test:backend                          # TS 側跑共用測試集 ＋ 後端分界映射
+bun run test:go                               # Go 側跑同一份測試集（= cd ../wails && go test ./...）
+bun run test/backend-layout.test.ts           # 架構守門：後端不可 import UI
+
+# 操作導覽（作者 2026-10）：劇本 ts/tour/*.tour → 宏 tour-data.ts → 內建的播放器
+bun run build:tours                           # 編譯劇本（錯誤帶檔名與行號）；--check 只驗證有沒有過期
+bun run test:tour                             # 劇本⇄宏 的編解碼與剖析器（30）
+bun run test:tour-ui                          # 真瀏覽器從頭播到尾（24）；--adb 換庫，13j／yinshun／fgdict 各跑一次
+```
+
+**每次跑瀏覽器測試前必須清場**，否則 CDP websocket 會 `ws error`：
+
+```powershell
+Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
+Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorAction SilentlyContinue
+```
+
+## 2. 目錄區／本文區行為規格（本輪實作）
+
+一）**聯動行為**：點 `tTwisty`／`tDot`／`tName` 任何一處 →
+  可以打開就打開，**並且聯動本文**；已經開著就只收合（也聯動本文到該節點）；
+  葉節點直接聯動。點 `tCount`（命中數）→ 右欄「摘要」切成**該節點範圍內的命中**，
+  本文只移動到該節點開頭（不改變摘要以外的狀態）。
+  **輸入區更新時不聯動本文**，只更新摘要（一次顯示最前 30 筆）；要看命中就點節點的 tCount。
+  **輸入區按 Escape 不清空**（作者 2026-10）：文字與結果都留著，只是離開欄位；
+  要清空用輸入框的 ✕（`#queryClear`／`#termsClear`／`#freqClear`／`#latinClear`／`#folioClear`），Enter 則立即重搜。
+  `#query` 與四個 pane 的輸入框（`wireOwnSearch`）共用這個規則。
+  ⚠️ **五個輸入框都是 `<input type="search">`，Chromium 內建「Escape 清空」** —— keydown 一定要
+  `ev.preventDefault()`；只是把自己寫的清空程式碼刪掉，欄位還是會被瀏覽器清掉（作者 2026-10 回報
+  「fgdict 全文檢索輸入區按 Escape 還是會刪除輸入文字」就是這個）。合成事件的測試**不會**觸發這個
+  預設動作，所以回歸測試用 CDP `Input.dispatchKeyEvent` 送真正的（trusted）按鍵來驗。
+
+  **狀態列只顯示錯誤與「讀取中」**（作者 2026-10「取消 span.status（用戶不需要此信息）」）：
+  `setStatus(msg, 'info')` 不再寫進 DOM（`#status` 設 `hidden`），但訊息仍記在 `lastStatus`，
+  `__accelon26.status()`／`state().status` 讀得到，所以測試與診斷不受影響。載入後的
+  「庫名：N 詞、M 文件」、「已關閉資料庫」、「一次選了 N 個」都不再出現在畫面上。
+
+  點某節點的**命中數**（tCount）→ 右欄摘要切成**該節點 realm 內**的命中（標題會說「…範圍內 N 筆」）；
+  **重新輸入一個不同的詞 → 這個約束就取消**，摘要回到整個結果（作者 2026-10）。
+  實作要點：scope 記的是「產生這份結果的那個查詢」（`lastQuery`），**不是輸入框當下的文字** ——
+  用當下文字的話，一個在新查詢還在飛時按下的命中數會把新文字當成「同一個查詢」，約束就黏住了。
+  `state().searchQuery` 就是那個查詢，測試用它等搜尋真的落地再點徽章（`file-protocol-test.ts` 的
+  「重新輸入不同的詞 → 「只看該節點」的摘要約束取消」）。
+
+二）**本文分頁**：每次聯動只載入當前節點（realm）的**一頁**，底部有「上一頁」「下一頁」。
+  頁＝網頁分頁 page（每頁 `PAGE_LINES = 200` 行），**不是**原書的葉／folio。
+  只有一頁的節點不顯示分頁列。
+
+三）**Ctrl 開新分頁**：任何會聯動本文的動作（節點、摘要、頻次、西文、token、文件）
+  按著 Ctrl（Mac 是 Cmd）就**開一個新的本文分頁**，否則更新目前分頁。
+  本文分頁列（`#docTabs`）在有一頁以上時顯示，✕ 關閉、＋ 新開。
+  **原本 Ctrl＋點節點名展開全部子孫，已改為 Alt＋點**（Ctrl 讓給「開新分頁」）。
+
+四）**左欄＝每個 `<樹 s="…">` 一頁**，頁名由 scope 決定（`syncTreeTabs`）：
+
+  | scope | 分頁 | 內容 |
+  |---|---|---|
+  | `*` | 目錄 | `t=` 層級樹＋全文搜尋 |
+  | `$詞` | 名詞 | `<詞>` 的每個實例＝一個詞條；輸入時**只比對 `<詞>` 包住的字**，可選 開頭(`^`)／中間／結尾(`$`)／全部 |
+  | `*u=文` | 頻次 | 依屬性分段，命中數排序、0 不顯示 |
+  | `*詞` | 全文 | 依標籤分段（同一個 pane，只是頁名不同） |
+  | `頁.n` | 原書分頁 | `<頁>` 的 `n` 值清單（fgdict 6,959 個），可用選的或**輸入頁碼**跳過去 |
+  | `~…` | 西文 | 碼點範圍（作者確認）；有 任意／開頭／中間／結尾 位置篩選 |
+
+  fgdict 因此是「名詞／全文／原書分頁」三頁（沒有 `s="*"` 就沒有目錄頁），
+  13j 只有目錄，yinshun 是目錄／頻次／西文。每個 pane 都是**按到才建**（`showTab` 分派）。
+
+五）**tCount（命中數）**：有搜尋時**永遠**顯示該節點 realm `[va, vaEnd)` 內的命中數，
+  **與節點開合無關**（沒有搜尋時才顯示子節點數）。顏色分四級：
+  由「占全體命中的比例」與「絕對數量」取較高者（`t1`…`t4`），
+  最多命中的最亮（亮紅 `#ff1744` ＋ 微光暈），≥1000 再加一級字級。
+  點 tCount 把右欄「摘要」切到該 realm。
+
+  **「永遠」是字面意思（2026-10-20 修）**：結果清單只留前 `maxHits`（5,000）筆，而且是
+  **VA 順序的前綴**——taisho 的「佛」全庫 567,678 筆，前 5,000 筆全部落在阿含部上
+  （VA < 954,553），所以另外 55 個冊的徽章會全部顯示 0、阿含部上顯示 5,000（真值 7,110）。
+  現在徽章／頻次段數／點 tCount 之後的摘要都改用**索引自己算**（`SearchSession.rangeStats()`／
+  `hitsInRange()`：對 posting 清單二分，`matchesInRange()` 與 `phraseMatchPattern()` 同一套規則），
+  與 `maxHits` 無關；實測 56 個冊的徽章加總 = 567,678 = 精確總數，`state().hitTotal` 也是 567,678。
+  多詞組（`+`／`−`／`*`）的排名結果無法只靠 posting 重算，仍用清單裡的命中數
+  （那時 `truncated` 也只影響顯示，不影響計數語意）。
+
+六）**本文捲動 → 目錄樹同步**：以畫面**中間那一行**（不是第一行）為準，
+  對應節點標為 `current`、其所有祖先標為 `ancestor`（只是亮起，**不捲過去、不自動展開**）。
+  要展開並捲到該節點，按「文件內容」標題左邊的 🌲「展開樹」小按鈕（`#treeReveal`）。
+
+七）**摘要聯動**會**強制打開右欄**（`setSide('right', true)` ＋ 切到「摘要」頁），
+  因為右欄藏起來時摘要就沒有意義。
+
+八）**欄寬的記憶**（作者 2026-10）：`#toggleLeft`／`#toggleRight` 把側欄收起來再打開時，
+  要回到**上回調整的寬度**，不是回到 25% 預設。作法是同一個 key（`accelon26.cols.v2`）裡多存
+  一份 `last`（`{left,right}`，永遠是「上一次真的顯示時」的寬度）：`saveCols` 遇到 0 不改 `last`，
+  `setSide(side, true)` 讀 `last`。**雙擊分隔線仍回到預設 25%**（那是「重設」，不是「還原」）。
+  另外中間欄有 20% 下限：兩側相加超過 80% 時按比例縮（`layoutCols`），免得 grid 出現負的 `fr`
+  ——拖曳中的即時預覽與放開後存檔走同一個 `layoutCols`，畫面與存檔值不會走鐘。
+
+九）**沒有資料庫時，📁 右邊閃爍「← 開啟資料庫」**（`#dbHint`，作者 2026-10；文案 2026-10 再修短）。
+  純 CSS 驅動：`body:not(.loaded) #dbHint { display:inline-block; animation: dbHintFlash … }`，
+  `.loaded` 由 `openFile` 成功時加上、`clearDbUi()`（關掉最後一個庫）移除 —— 所以「有庫就消失、
+  關光又回來」不需要任何額外的 JS 同步。`prefers-reduced-motion: reduce` 時只留一行亮字、不閃
+  （headless Chrome 預設就是 reduce，回歸測試要用 `Emulation.setEmulatedMedia` 才量得到閃爍）。
+  這一條的測試順帶抓出一個潛伏 bug：`clearDbUi()` 呼叫 `resetTextPane()` 但 `ui.ts` 沒 import
+  （拆模組時的遺漏，`ReferenceError` 讓關庫收尾中斷、chip 留在畫面上）。現在 `no page exceptions`
+  也改到**全部動作跑完之後**才檢查，這一類「後面才炸」的錯誤不會再漏。
+
+十）**詞條＝閱讀單位**（`s="$詞"`／`s="*詞"`，作者 2026-10）：這兩種 scope 宣告了「`<詞>` 就是
+  內文的分界」，所以**點名詞（或全文）的詞條時，內文只顯示那一個 `<詞>` 實例的 realm**
+  —— `linkTo` 的 `opts.realm` 直接吃 `{from: 詞的 VA, to: 下一筆詞的 VA}`，也就是整個詞條
+  （詞頭＋釋文），不是整個 `<檔>`。分頁名仍是詞條名，plain click 更新當前分頁、Ctrl 另開
+  （與其他聯動一致）。**`s="*"` 的目錄維持現狀**：仍然用樹節點的 realm；`*u=文` 這種屬性分段
+  也不套用（`<文>` 不是詞條）。實測 fgdict 第一個詞條：`<詞>@1293–1409 → realm {1293,1409}，
+  本頁 8 行`（整條釋文），不是四萬多行的 `<檔>`。
+
+十一）**名詞／全文 搜尋的三個修正**（作者 2026-10 回報「名詞搜尋、全文搜尋無法工作」）：
+
+  1. **名詞清單顯示錯的詞**（真 bug）：`prepare` 用「這一批列在 slice 裡的位移」去取
+     `caches/<tag>`，所以一輸入查詢，12 筆符合的列全部顯示字典最前面的 `一、一一、一一心識…`。
+     修法：每一列帶著自己在 `segs` 的 `idx`，只補「還沒有名字」的列（`names[row.idx]`）。
+     實測「法王」→ `一切如來寶冠三界法王灌頂／大乘法王／大慈法王…`。
+  2. **點列像沒反應（慢）**：`linkTo` 一定會 `mapper.elementAt(va)` 走一次 VA→PA 掃描；fgdict 的
+     游標可能落後 20 萬行（實測在 #748 條目時點「法王家」＝第 223,814 行），那幾秒就是「點不動」。
+     名詞／全文的列自己帶 realm 又用 `exact`（按文字塗紅），**不需要 element** → 直接跳過掃描。
+     （2026-10-20 追根：`elementAt` 已改成查行表定位，見 §5 之後「VA 定位改成查表」——這條的
+     病根就是它，現在不再有「走一次掃描」。）
+  3. **element 找不到就整支放棄**：fgdict 的大文件裡有空 block，`elementAt` 回 null，
+     舊碼 `if (!el && !node) return` 讓那種列永久點不動。現在只要呼叫端給了 realm 就照樣聯動
+     （行號本來就來自 line table，不靠 walk）。
+
+  另外兩個 pane 都加了**過期結果丟棄**（`termsSeq`／`freqSeq`）：非同步的字串表／搜尋回來時
+  若已經有新查詢，舊的那一輪不再改清單 —— 否則快速輸入時舊結果會蓋掉新結果。
+
+十二）**多關鍵字搜尋＋BM25**（2026-10，TypeScript 版已實作；作用於 `s="*"`／`s="*tag"`／
+  `s="$tag"`／`s="*u=值"`）。
+
+  **語法**（`query.ts`）：空白或運算子都是分隔，`+`／`-`／`*` 是**前綴**，作用在後面那一個詞組：
+
+  | 寫法 | 意思 |
+  |---|---|
+  | `緣起 性空` | 兩個詞組都算分（optional，OR）：至少命中一個，命中越多分數越高 |
+  | `緣起 +性空` | `性空` 是必要（required，AND）；其餘照舊算分 |
+  | `緣起 -性空` | `性空` 不能出現（excluded；不上色） |
+  | `緣起*性空` | 兩個詞組的距離 ≤ `PROXIMITY_TOKENS`（20）且落在同一份文件 |
+
+  詞組內部仍要求 **token 相鄰**（「緣起」＝緣＋起），與索引既有的片語規則一致。
+
+  **文件（BM25 的單位）**（`search.ts: segments()`）：優先 `s="*u=值"`（屬性分段，yinshun：40 個
+  標籤、6,978 個節）→ `s="*tag"`／`s="$tag"`（fgdict：`<詞>` 22,648 個）→ 結構標籤
+  **書／章／節**（13j：1,329 段）→ **頁／_頁** → 分群標籤 → 整個庫（完整規則見十四）。
+  **文件長度＝tag 位置的 VA 差值**（`to - from`），
+  不讀本文 —— VA 就是 token 位置，差值就是 token 數（作者指定要省下來的開銷）。
+
+  **BM25**：`idf = ln(1 + (N - df + 0.5)/(df + 0.5))`、`k1 = 1.2`、`b = 0.75`，
+  `score = Σ idf · tf·(k1+1) / (tf + k1·(1 - b + b·dl/avgdl))`。文件依分數排序，命中再依
+  「文件排名 → VA」排序，所以摘要清單自然是「最相關的先」。
+
+  **選引擎**（`SearchSession.searchAuto`）：單一詞組、沒有運算子 → 走舊的片語引擎（行為完全
+  不變，還有分群與桌面版 Go 查詢）；有空白／運算子 → 多詞組 + BM25。摘要、全文（`*u=值`／
+  `*tag`）、名詞（`$tag`；詞條名比對 `+`／`-`）都換成 `searchAuto`。
+
+  **顏色**：每個正面詞組一個 HSV 色相（`query.ts: clauseHue`，0 號紅、往後轉 300°），
+  摘要卡片與本文都用同一組色相：`mark.kw`／`mark.docHit` 吃 `--hue`。排除詞不上色。
+  本文由 `paint.ts: paintKeywordMarks()` 逐行（純文字節點）塗色，長詞優先、不重疊。
+
+  **實測（yinshun）**：`緣起*性空` 190 份文件／3,101 命中、`緣起+性空` 552／4,688、
+  `緣起 性空` 1,078／6,683、`緣起-性空` 526／1,995（引擎全量；UI 只取前 300 份文件）。
+  測試：`test/multi-search.test.ts`（引擎，含「鄰近 ⊂ 必要 ⊂ 可選」的集合關係）＋
+  `file-protocol-test.ts` 的多詞組斷言（詞組解析、分段、集合關係、三種顏色）。
+
+  **還沒做**：桌面版的 BM25 仍在 JS（Go 只服務單詞組查詢）；`$tag` 目前只比對詞條名，
+  詞條內文的 BM25 尚未接上。
+
+十三）**單字萬用字元 `.`**（作者 2026-10）：`菩.心` ＝ 菩 ＋ **任意一個 token** ＋ 心
+  （菩提心、菩薩心…），`菩.心-菩提心` 則是「菩與心之間不是提」的那一種
+  （排除詞照常以片語比對）。
+
+  * 解析：`query.ts: normalizeClause()` —— `.` **只有在「前後都是漢字」時才算萬用字元**
+    （`菩.心` ✓、`菩.提.心` ✓、`菩..心` ＝ 兩個）；**其他位置的 `.` 是 skipword，直接丟掉**
+    （歷史上 `.` 會被索引起來，其實它該被丟棄，所以查詢裡不把它當 token：
+    `a.b` → `ab`、`菩.a` → `菩a`、`.菩.心.` → `菩.心`）。
+    中間的 `.` **最多保留 `MAX_WILDCARDS`＝10 個**，多的忽略。
+  * 引擎選擇：整理後還有 `.` 的查詢**一定走多詞組引擎**（舊的片語引擎不認得它，會當成沒命中的 token）。
+  * 比對：`search.ts: phraseMatchPattern()` —— 以第一個「有實際 token」的清單當錨點，
+    回推詞組起點，其餘位置用 binary search 在各自的 posting list 裡驗證；沒有 `.` 時
+    直接退回原本的 `phraseMatch()`（同一套規則，只是快一點）。
+  * 名詞分頁：`query.ts: namePattern()` 把 `.` 當「任一個字」（詞條名是字串，不是 token），
+    同樣先 normalize。
+  * 塗色：萬用字元的實際文字只能由 VA span 取得（`searchSummary` 無 phrase 的路徑），
+    所以摘要卡片標的是 `s.start..s.end` 那個真實片段，而不是查詢字串。
+  * 實測（yinshun，引擎全量）：`菩.心` 1,506 筆、`菩提心` 1,408 筆、
+    **`菩.心-菩提心` 32 筆（剩下的就是菩薩心那一些）** —— 這個例子才看得出「萬用字元
+    ＋排除」是同一個詞族裡的篩選，而不是把結果全部清空。
+    `菩..心` 150 筆（菩薩發心、菩提的心…）、`大.乘` 125 筆（大小乘…）、
+    `大..乘` 44 筆（大小二乘…）——命中的長度正好等於詞組的 token 數。
+    UI 只取前 300 份文件，所以摘要那兩條是 435 → 27 份文件。
+  * 注意：`.` 是「任意一個 **token**」，所以標點（例如 `大）乘` 的全形括號）也算一個
+    token —— 想要只比對文字得另外排除標點，目前沒做。
+
+十四）**文件分界的退回階梯**（作者 2026-10）：
+
+  ```
+  s="*u=值" / s="*tag" / s="$tag"           ← scope 自己宣告的文件單位
+      ↓ 沒有宣告
+  書 → 書＋章 → 書＋章＋節（100 token 門檻）  ← 由粗到細，取第一個「平均 ≤ 8KB」的層級
+      ↓ 連最細的結構層級都還是 > 8KB
+  頁／_頁                                    ← 最後的細分界
+      ↓ 都沒有
+  分群標籤（13j 的 13 本 書） → 整個庫
+  ```
+
+  **100 token 門檻**（`MIN_SEG_GAP`）：相鄰兩個分界相距不到 100 token 就**不算新文件**
+  —— `<書>` 和它的第一章、某章和它的第一節之間不是兩份文件。做法是把該層級所有標籤的
+  實例 VA 併起來排序，再逐個「離上一個留下的分界 ≥ 100 才留」。
+
+  **1KB–8KB 的目標帶**（`MIN_AVG_DOC`＝1024、`MAX_AVG_DOC`＝8192 token，作者 2026-10
+  「1~8KB 之間都可以接受，比用 `<頁>` 好」）：書／章／節 由粗到細試，**取第一個平均長度
+  ≤ 8KB 的層級**。所以 13j 選的是 **書／章（254 段、平均 3,223 token ≈ 3.1KB）**，
+  而不是更細的 書／章／節（1,329 段、平均 616 token —— 掉出 1KB 下限，一份文件太小）。
+  只有在「連最細的層級都 > 8KB」時才退到 頁／_頁。
+
+  診斷：`test/multi-search.test.ts` 會印 `attr:`／`tag:`／`hier:書/章`／`page:`／`group:`／
+  `whole`、段數與平均長度，並斷言 hier 的平均落在 1–8KB。
+
+十五）**目錄的兩個 UI 規則**（作者 2026-10）：
+
+  1. **`#dirMeta` 只在進階模式顯示**（層級／節點數／展開列數／`s="…"`）—— 一般讀者不必看到。
+     在 `renderDirTree()` 收尾時設定 `head.hidden = !advanced`；切換進階模式時
+     `setAdvanced()` 若正在看目錄會重畫一次（只更新那一行，不是重建整棵樹的資料）。
+  2. **再點一次已經 active 的「目錄」分頁 → 把所有子孫收起來，整棵樹只留第一層**
+     （`scopes.ts: collapseDirTree()`：清空 `d.open`、重畫、捲回頂端）。
+     ui.ts 的 tab 點擊改成「先記住 active 再 showTab」，只有目錄分頁有這個第二段行為；
+     其他分頁再點一次沒有特別效果（fgdict 沒有目錄分頁，不受影響）。
+
+十六）**`#docTitle` ＝上一輪引擎耗時**（作者 2026-10）。新模組 `engine-stats.ts` 只存兩個
+  最近量測，兩個地方呼叫它：搜尋完成（`summary.ts` → `noteSearch`）、本文聯動完成
+  （`link.ts` → `noteLink`）。
+
+  * 標題文字：`文件內容（搜尋 4.1 ms・取文 3 ms）`；清空查詢或換庫就回到預設的
+    `文件內容（硬分行；未渲染 XML）`（`resetEngineStats()`）。
+  * hover（`title` 屬性，多行）：
+    ```
+    上一輪引擎耗時
+    搜尋：4.1 ms（4 個 token、1,646 筆命中、526 份文件）
+      token／posting：緣(15,325)　起(19,667)　性(22,582)　空(17,769)
+      文件分割：attr:*u=文　6,978 段
+      查詢：緣起-性空
+    取文字：3 ms（確保頁面 3 ms、25 列、VA 1,977,299）
+    ```
+  * posting 長度由 `SearchSession.lookups()` 提供（每次 `search`／`searchMulti` 開頭清空，
+    `lookup()` 順手記一筆）。桌面版單詞組查詢由 Go 一次算完、沒有回傳 posting 長度，
+    所以顯示「宿主回答」。
+  * 「取文」那段量的是 `linkTo` 裡 `ensurePage`＋捲動＋亮樹的時間（`lastLink` 的
+    totalMs／ensureMs 同源，只是現在也寫進標題）。
+
+十七）**繁簡通檢**（作者 2026-10）：系統級開關，對所有 adb 生效。
+  * **對照表**：`cd ts && bun run tools/gen-variants.ts` 讀 `vendor/Unihan_Variants.txt`
+    （Unicode 18），把 kTraditionalVariant／kSimplifiedVariant 的關係用 union-find 併成
+    「同一組字」，輸出 `ts/src/accelon26/variant-data.ts`（一行字串，組與組之間 `|`）。
+    **5194 組、10510 個字、10632 條關係**；`萨薩`、`发發髮`、`乾干幹`、`裏裡里` 都在同一組
+    （傳遞併組會把「里」與「裏」放一起 —— 通檢是取超集，寧可多找到）。
+    `--fields` 可以加 `kZVariant` 之類的欄位做更寬的異體通檢。
+  * **資料來源不進 git**：`vendor/Unihan_Variants.txt` 來自
+    <https://github.com/CNMan/Unicode/blob/master/Unihan/Unihan_Variants.txt>，
+    `.gitignore` 已排除 `vendor/`，工具也**不會**自己去下載（檔案不存在時直接告訴你
+    來源網址並結束）。**產物 `variant-data.ts` 有 commit**，所以建置與測試都不需要 vendor/；
+    只有要重新產生對照表時才要手動放進 `vendor/Unihan_Variants.txt`。
+    大小約 40 KB（bundle +59 KiB，作者 2026-10 表示可接受）。
+  * **開關**：header 的 `#varToggle`（「繁簡」），存 localStorage `accelon26.variants`，
+    點一下對**所有已開的庫**都生效；有查詢時立刻重跑一次。
+  * **引擎**：`SearchSession.lookup()` 在通檢模式下把單一漢字換成整組字，逐一取 posting
+    後**聯集去重**（`variants.ts: expandToken`）；合併結果按「整組」快取（key 前綴 `\u0001`），
+    所以關掉之後不會用到合併過的快取。桌面版的 Go 單詞組查詢在通檢模式下**改走 JS**，
+    確保與網頁版結果一致。
+  * **名詞分頁**：詞條名比對改用 `variants.ts: variantNamePattern()`（每個字換成 `[萨薩]`
+    這樣的字元類），所以「菩萨」也找得到「菩薩」詞條。
+  * **實測（yinshun）**：關著時「菩萨」0 筆（索引沒有「萨」）；開著時「菩萨」與「菩薩」
+    都是 12,388 筆且 VA 完全相同。fgdict 名詞分頁「菩萨」→ 200 個「菩薩…」詞條。
+
+十八）**內文渲染成 HTML**（作者 2026-10）：獨立模組 `render_accelon3.ts`（未來可再加
+  `render_md.ts`），**不放在 viewer.ts**。doc-pane 與 text-pane 都呼叫它。
+
+  * 標題＝`t=` 定義的層級標籤（`TreeNode.tag` → `depth`）。字級：**每往上一層 +2px**，
+    以 `min(calc(1em + Npx), 1.8em)` 表達，**上限 180%**（作者 2026-10-18）。
+    `N` 不是資料庫的絕對深度：`renderPageBlocks` 會找**「正文開始的那一層」**當錨點
+    （第一個後面直接接內文的標題），那一層＝+2px、往上一層再 +2px（`depthSteps`）——
+    所以「丁一」只比內文大 2px、「丙一」比「丁一」大 2px；比正文更深的子標題（戊、己、庚…）
+    也維持 +2px，不會反過來把上面的祖先撐大。同一個標題在不同頁面大小可以不同。
+    字色＝該層的**亮色**主題變數 `--tag-text-N`（比 tDot 的 `--tag-N` 亮、彩度高）。
+    **N 跟著標籤走，不是深度**（作者 2026-10-18）：`computeTierContext` 會建 `tagChroma`
+    （標籤第一次出現的順序），所以同一個庫裡「章」和「節」即使位在同一層（例如攝大乘論講記
+    兩者都是 depth 1），也會拿到不同顏色；目錄樹的 `tDot` 與 breadcrumb 共用同一個索引，
+    三處顏色一致。沒有 `tagChroma` 時才退回深度。
+    標題不用底色（作者 2026-10：底色在深色主題上不明顯）。
+  * **字級控制移到各自的欄**（作者 2026-10）：左欄的 `#fsLeftPick` 在左欄分頁列、
+    中欄的 `#fsBodyPick` 在本文工具列、右欄的 `#fsRightPick` 在右欄分頁列。
+    三者都**沒有文字標籤**，顯示成黑底白字的「小 T／大 T」（`.fsT`，純 CSS，不用圖）。
+  * **字級是「按鈕」不是下拉**（作者 2026-10 第二版）：`doc-pane.ts: stepFontSize()`
+    * 點一下 **+2px**；加完**超過 32px 就回到 12px**
+    * 按住 **Alt** 點：**−2px**；到最小 12px 後再點也不會變（不會繞回 32）
+    * 三顆按鈕共用同一支，範圍 12–32px；提示文字（title）會顯示目前 px 與操作方式
+      （`syncFontButtons()`，`setDocFont`／`setSideFont` 都會更新）。
+  * 右欄字級也會套到右欄的「文字內容」
+    （`.docBody` 在中欄用 `--fsdoc`，在右欄被 `#colRight .docBody` 蓋成 `--fs-right`）。
+  * **「不換行」自動字級已移除**（作者 2026-10：讓讀者自己用按鈕調整）。開啟資料庫也不再
+    自動改字級（預設 `DOCFS_DEFAULT`＝16px）；`autoFitFont()` 只留在 `window.__accelon26`
+    供診斷／測試。
+  * 內文標題用**字色**（`--tag-text-N`：比 tDot 亮、彩度高，深色底上看得清楚），
+    不用底色（作者 2026-10：底色在深色主題上不明顯）。釘住的那一行只有淡淡一層
+    `rgba(255,212,121,.10)`，免得標題看起來像有底色。
+
+二十一）**原書分行**（作者 2026-10）：本文工具列的 `#hbToggle` → `#showHardBreaks`，
+  預設**開**（保留原書的硬換行）。存 localStorage `accelon26.hardbreaks`。
+
+  * **開**：每一行都是 `div.docLine`（硬換行），`<頁>` 是右靠的 `.pageBreak` 分隔。
+  * **關**：不保留硬換行 —— `renderPageBlocks()` 把連續的內文行合成 `<p class="docPara">`
+    連排（行本身是 `span.docLine id="Ln"`，所以捲動／塗紅照樣對得上）；
+    **標題**與**空行**（連續兩個以上的換行）才換段；`<頁>` 變成行內的小字頁碼
+    `.pageMark`（`〔12〕`），不是分隔線。英文行相接時補一個空白，中文不補。
+  * **塗紅在渲染 HTML 之前完成**：`RenderOptions.marks` 讓 renderer 邊產生 HTML 邊把
+    關鍵字包成 `<mark class="kw" style="--hue:…">`（作者：事後在 DOM 找字容易抓錯，尤其
+    關鍵字跨行時）。所以 `.docBody.reflow` 下 `paintKeywordMarks()` 直接跳過，不重做。
+  * 中欄與右欄「文字內容」都吃同一個設定（`hardBreaksOn()`）。
+
+二十二）**設置頁（扳手 🔧）**（作者 2026-10）：header 的 `#settingsBtn`（🔧）開啟置中彈窗
+  `#settingsBox`。原本的 🧑‍💻（進階模式）與「繁簡」按鈕都收進來，header 只剩三個圖示
+  （◧／◨／🔧）。左上角標題是 `Accelon26`（亮灰 `#d9d9d9`，`26` 仍是金色）。
+
+  * **主題**：`#themeSeg` 三選一——**暗色系（預設）／亮色系／護眼**；設定鍵 `localStorage['accelon26.theme']`，`theme.ts` 是唯一碰 `data-theme` 的地方。通用規則（CSS 變數、boot script、色票、三主題驗收）見 [yap-software-practice.md](./yap-software-practice.md) §7。
+  * **介面**：`#setPageMarks` 顯示原書頁碼（進階模式已移到最下面，見下）。
+  * **進階**（作者 2026-10：搬到設置頁**最下面**一區）：`#setAdvanced` 進階模式
+    （token 瀏覽、META／容量／文件／圖片、顯示原始文件）。
+  * **介面．顯示原書頁碼**（`#setPageMarks`，作者 2026-10）：決定 `<頁>`／`<_頁>`／`頁元`
+    要不要渲染。開（預設）＝照常（原書分行是右靠頁分隔＋頁碼，連排是行內 `〔n〕`）；
+    關＝**整個標籤不渲染**（沒有頁碼、也沒有分隔線），中欄與右欄「文字內容」都一樣。
+    狀態存在 `localStorage['accelon26.pagemarks']`，切換時 `rerenderDoc()` 立即重畫。
+  * **繁簡．輸入通檢**：`#setVariants` —— 查詢時把一個字的所有寫法合併（`variants.ts`）。
+    說明用一般人的例子（打「菩萨」也找得到「菩薩」、打「台」也找得到「臺」「檯」）。
+  * **繁簡．文字顯示**（`#simSeg` 三態）：`保持原樣`（0）／`無損簡體`（1）／`強制簡體`（2）；判定與範例見 [yap-software-practice.md](./yap-software-practice.md) §6。
+  * **設置頁有範例**（`#simDemo`）：同一句「頭髮乾燥，臺灣的醫生後來又發心。」三列並排，
+    **不一樣的字**用黃色虛線底線標出（無損 5 個、強制 9 個），目前模式那一列會突顯，
+    切換時立刻重畫 —— 一眼看出「無損」保留了 髮／乾／臺。
+  * **字級按鈕**（`button.fsStep` ＋ `.fsT`）：`<button class="fsPick iconOnly fsStep"
+    id="fsBodyPick" data-fs="body"><span class="fsT">TT</span></button>`，點一下 +2px、
+    Alt+點 −2px（12–32px，超過 32 回 12）。沒有 `<select>` 了（第二版改的）。
+  * **資料**：`ts/src/accelon26/simplified-data.ts`（`tools/gen-lossless.ts` 從
+    `vendor/Unihan_Variants.txt` 產生；每兩個字一組「繁,簡」）。無損 **2641** 組、
+    強制 **2810** 組。只收 BMP 的字（產物是「兩字一組」的字串，非 BMP 會對不齊）。
+    讀過 `D:\2023\ptk\lossless-simplified-chinese` 的做法後自己算的。
+  * **無損的判定**：一對一、異體 union-find、`LOSSY_TARGETS`、只收 BMP；完整規則見 [yap-software-practice.md](./yap-software-practice.md) §6.3。
+  * **只影響顯示**：索引、搜尋、塗紅比對仍在原文（見指南 §6.4）；塗紅要畫的字也先用同一個轉換再找字。
+  * 設定都是系統級（存 localStorage：`accelon26.advanced`、`accelon26.variants`、
+    `accelon26.simmode`），換庫不變。
+  * **顏色全部走主題變數**：`:root` 的 `--tag-0..--tag-7`；`depthColor()` 回傳
+    `var(--tag-N)`，內文標題的 `--tagc` 也用同一組；通用規則見指南 §7.2。
+  * 標題後面那串統計（`.docHead .dim`：頁數／行號／source 區塊／字數）**只在進階模式顯示**
+    （CSS：`body:not(.advanced) .docHead .dim { display: none }`；中欄與右欄「文字內容」都適用）。
+  * **詞典型 adb 不顯示 `docHead`**（作者 2026-10）：詞條名稱已經在分頁標題上，而第一個
+    詞條字串通常就是命中、會被塗紅 —— 再放一次標題就變成同一個詞顯示三次。判定在
+    `db-kind.ts: detectDictDb()`，只看來源前幾行（**作者指定：有 `$詞` 就算詞典型**）：
+    1. `<樹 s="$詞">`／`<樹 s="$字">`／`$詞條`／`$字頭` —— **主要依據**
+       （佛光大辭典沒有 `isdict`，靠這條認出來）
+    2. `<集 … c="… isdict …">` —— **補充**（康熙字典、漢語大詞典有；會漏掉沒標的庫）
+    3. 保險：`詞`／`字` 標籤有現成且對得上的名稱表（就是詞條表）
+    都沒有 → 一般文本（13j、印順）照常顯示。`state().dict` 會回報這個判定。
+    注意 JS 的 `\b` 只認 ASCII，`<集\b` 永遠不匹配非 ASCII 的字 —— 要用「空白或 `>`」當邊界。
+    詞典查詢（`dict-lookup.ts: declaredEntryTags()`）也用同一條規則：先讀 `<樹 s="$X">`
+    的宣告決定詞條標籤，沒有宣告才退回 `詞`／`字`／`詞條`／`字頭` 的候選。
+  * **摘要卡片也渲染標籤**（作者 2026-10）：`summary.ts: snippetHtml()` 用同一個 renderer，
+    但 `hardBreaks: false`（文字連著排、不硬換行）＋ `headScale: false`（標題**只上色、不放大**）。
+    關鍵字在渲染前用文字比對上色；這張卡片的命中字多一個 `cur`。
+  * `<頁>`／`_頁`／13j 的 `頁元` → 右靠的分隔（`.pageBreak`：虛線＋頁碼 `data-page`）。  * `<段/>` → `<br class="para">` ＋ 兩個全形空格（縮排放在 `.paraIndent`，塗紅會跳過它）。
+  * 沒有 `t=` 定義的標籤：標籤丟掉、文字照留；`樹`／`隱` 是建庫資訊，連內容一起隱藏。
+  * 跨行的標題（`<章>` 開在第 1 行、`</章>` 在第 9 行）：renderer 用一個堆疊，每行開頭
+    重新開、行尾收掉，所以每一行的 HTML 都平衡。
+  * 塗紅現在走「所有文字節點」（不再假設 `.lineText` 只有一個 text node），並跳過
+    renderer 合成的文字（頁碼、段落縮排）；每一行也帶 `data-src`（原始行），
+    索引算出的字元位移先用 `data-src` 取回那幾個字再找字塗色，所以渲染後不會偏。
+  * **進階模式的「顯示原始文件」**（`#rawToggle` → `#showRaw`）：勾了就不渲染；
+    預設關閉＝讀者看到渲染後的樣子。狀態存 localStorage `accelon26.showraw`。
+  * 標籤盤點工具：`bun run tools/tag-stats.ts --adb <path>`（見 §7 的統計）。
+
+十九）**軟件說明（About）**（作者 2026-10）：點左上角 `#brand` → 置中彈窗（`about.ts`）。
+
+  * 內容：左上角 88px 的大 logo（直接借用 favicon 的 data URI，不重複內嵌）、
+    大標題「開放古籍平台」、小字「Accelon3 跨平台平替」、官網
+    <https://shutonggui.cn/accelon26/>、版本（建置時間）、執行環境、程式檔位置。
+    建置時間由 `tools/page-build.ts` 注入 `window.__ACCELON_BUILD__`；桌面版改用
+    宿主 `AppInfo` 回報的 exe 時間（比較準）。
+  * **開啟時才檢查更新**（沒有背景輪詢），判定依據只有「比目前建置時間晚」：
+    * 桌面版：`main.AdbHost.CheckUpdate`（Go 拿線上 exe 的 Last-Modified 比
+      `AppInfo.buildTime`）→ 有新版顯示「下載更新」，走 `InstallUpdate`
+      （下載到暫存、帶 `-updated-from` 啟動新 exe、自己結束 → **執行中的程式不會
+      被直接改寫**）。
+    * 網頁版：沒有 exe 可換，best-effort 抓 `version.json`（`{ "buildTime": … }`，
+      需 CORS）；抓不到就顯示「無法檢查更新」，不擋任何操作。
+  * 沒有新版 → 「已是最新版本」；失敗 → 「無法檢查更新（原因）」。
+  * **網頁版沒有自動更新**（作者 2026-10：等回到 Go／桌面版再做）：About 只顯示
+    「重新載入頁面即可取得最新版」，不連網。`version.json` 的位置留在
+    `about.ts: VERSION_MANIFEST`，未來要接再開。
+  * Esc／點背景／✕ 關閉。左上角仍有「有新版本」的閃動提示（`update-ui.ts`），
+    但點擊一律開 About，更新按鈕在 About 裡。
+
+二十）**本文上方的 breadcrumb 與跨節點翻頁**（作者 2026-10）。
+
+  * 本文上方（`#docTrail`）是 **breadcrumb**：把目前本文的**所有祖先節點**由外到內排成一條路，
+    後面再接上**目前這一節的 siblings**（作者 2026-10：不用先開選單就能左右換節）。
+    **同層超過 5 個就改成下拉**（作者 2026-10-18：點書名時同層有幾十本書，全部排成晶片會把
+    本文整個擠掉）：只顯示「目前這一節 ▾」＋「同層 N」，點一下才列出全部（`.trailMenu`）。
+    **它不在 `.docBody` 裡**（作者 2026-10-18：從 `.docBody` 搬到 `#docText` 的 head 區，
+    `.docTop` 是 flex row，**與標題同一行**——`.docHead` 保留原本語意，路徑接在它後面，
+    中間一條細線隔開；排不下時只讓路徑自己換行，不會把標題擠到另一列。
+    `.docTop` 有 `flex: 0 0 auto`，所以捲動本文時它**固定不動**，讀者隨時能跳去別的 tree node；
+    字級自己取 `var(--fsdoc)`（＝中欄正文的字級），所以仍然**正好等於正文**；顏色用
+    標題那組主題變數 `--tag-text-N`。
+  * **短標籤**（`doc-pane.ts: trailLabel()`）：標籤裡有分隔符（空白／全形空白／
+    `、，。：；·｜／/ - — _`）→ 只取**分隔符之前**那段（「甲二　正宗分」→「甲二」）；
+    沒有分隔符 → 最多 **5 個字**。完整標籤留在 `title` 與下拉選單裡。
+  * **siblings 晶片**（`.trailSib`）：目前這一節用 `.cur` 突顯（藍底＋左側色條，不可點）；
+    點別的晶片**直接換到那一節**（`revealHit(mode:'node')`，分頁／塗紅／游標都一致）。
+  * **點祖先格 → 下拉同層的所有節點**（`scopes.ts: siblingsOf(va)` → `#trailMenu`），
+    目前這一個用 `.active` 突顯；下拉**不節略**（`text-overflow: clip`、不設 `max-width`，
+    完整標籤；實測 yinshun 最長 16 字沒有被截斷）。點空白處或再點一次收起。
+  * **短路徑的邊界**（作者 2026-10-22）：`<檔>` 的開標籤佔 4 個 VA，節點的 `vaEnd`
+    又停在「下一個標題」，所以每一冊的最後一串節點會跨進下一冊的檔頭。VA → 節點一律走
+    `search.ts: nodeOwningVa`（**檔界優先**：節點不跨檔、檔頭算這一檔的第一個節點），
+    breadcrumb 才不會把「華雨集第二冊」的命中說成第一冊。詳見 §14。
+  * **上一頁／下一頁**：小節（少於一頁）以前整個 pager 被藏起來，現在只要「有上／下一個
+    節點」就顯示；走到頁面邊界時改成換到**上／下一個 text node**
+    （`link.ts: stepRealm()` 用 `treeOrder()` 的 DFS 順序，走 `revealHit(mode:'node')`
+    同一條路，所以分頁／塗紅／游標都一致）。
+
+二十四）**搜尋所有 adb（放大鏡）與「詞典」分頁**（作者 2026-10）。
+
+  * **`#searchAllBtn`（🔍，就在 📁 右邊；沒有打開任何 adb 時隱藏）** → `#allSearchBox`：
+    輸入查詢 → `#allSearchGo`（或 Enter）→ `allsearch.ts: runSearchAll()` **依序查每一個 catalog
+    裡的 adb**，**每查完一個就重畫一次清單**（`renderCount` 可從 `searchAllState()` 看到），
+    最後**依命中數由多到少排序**（同數按庫名）。清單一列 = 庫名（同名不同檔補檔名）＋命中數＋ms。
+    標題是 **「搜尋 n 個數據庫」**（`#allSearchTitle`，開啟時依 `catalog.length` 更新）。
+    點一列 → 打開那個庫（`openCatalogEntry`，等庫真的開好），再把查詢詞帶進
+    **左欄目前 active 的分頁**的輸入框（`dir→#query`、`terms→#termsQuery`、
+    `freq→#freqQuery`、`folio→#folioQuery`、`latin→#latinQuery`；作者 2026-10）。
+    查詢用的是**暫時的 reader**（`AdbReader.open(new BlobIO(file))`
+    ＋ `SearchSession.search()`），所以不會佔用 `openDbs` 的 5 個名額，也不會動到讀者的本文。
+  * **名詞分頁的比對位置是三態 toggle**（`#termsMode`，作者 2026-10）：按一下換
+    **開頭 → 中間 → 結尾 → 開頭**（沒有「任意」）。一般模式 `#termsMeta` 收起，
+    符合的詞條數直接顯示在按鈕右邊的 `#termsCount`；進階模式才顯示 `#termsMeta` 的完整統計。
+    多詞組（`+`／`-`／空白）也吃這個模式（否則 `法王 -大慈` 會用 includes 比對，
+    列出的詞條反而比單詞查詢多）。
+  * **名詞分頁的結果依輸入詞塗紅**（作者 2026-10）：`markName()` 把詞條名裡對到的
+    片段包成 `<mark class="kw">`，純文字比對是「所有出現位置」（`法王` 在「大乘法王」只塗
+    中間那兩個字）；多詞組時塗第一個必要詞（`法王 -大慈` → 塗「法王」）。
+  * **名詞分頁的輸入支援萬用字元 `.`**（作者 2026-10）：`.` ＝ 任一個字元
+    （`般.經` → `般若經十喻`、`般若經典`），比對用 `query.ts: namePattern(text, mode)`，
+    會**依三態模式加上錨點**（開頭 `^body`、結尾 `body$`、中間不錨定），塗紅也用同一個樣式。
+    前後的 `.` 沒有意義（`normalizeClause` 會丟掉），所以 `法.` 等於 `法`。
+  * **右欄「詞典」分頁**（`#dictList` 上、`#dictBody` 下）：
+    1. 在中間本文**點任何一個字**（`initDictPane()` 在 document 的捕捉階段掛 click）→
+       `sentenceFrom()` 從那個字往後取到標點（`。，、；：！？…「」『』（）〔〕【】〈〉《》`）或 24 字。
+       點在塗紅的詞上時直接用那個 `mark` 的文字定位（caret 常常落在字與字之間）。
+       **一次試幾個起點**（`sentencesAtElement()`：caret、caret-1、caret-2、caret+1），
+       取第一個查得到詞條的 —— 作者回報「順世者的斷見」點在「順世」上時 caret 可能落在
+       「者」，只試一個起點就會查不到。
+    2. 對**每一個詞典型 adb**（`catalog` 裡有 `<樹 s="$詞">` 這類宣告、且該詞條標籤有
+       現成名稱表 `caches/<tag>` 的庫；`dict-lookup.ts: entryTagOf()`＋`declaredEntryTags()`）
+       做**開頭模式查詢**：句子由長到短的前綴各二分搜尋一次（詞條名稱表已排序）。
+       **只有完全查不到「剛好是前綴」的詞條時**，才退回「以這段話開頭」的詞條
+       （作者 2026-10：`順世` → 詞典只有 `順世外道`，要能找到；而 `般若經` → 詞典有
+       `般若`，就**不該**再帶出 `般若經十喻`／`般若經典`）。
+    3. 結果**依詞條長度由大到小**列出；點一列 → `renderEntry()` 把那個詞條的正文渲染到下半部
+       （詞典型 adb 本來就不顯示 docHead）。
+    4. **正文下面還有「開頭」／「結尾」兩個分頁**（`relativesOf()`）：列出以這個詞條
+       開頭／結尾的其他詞條，讓讀者沿著詞條往下挖。開頭排序是**和點到的那句話共同前綴較長者
+       優先**（`般若` → `般若經典`、`般若經十喻` 排在 `般若學`／`般若二種相` 前面）；
+       結尾短的先（`三般若`、`二般若`、`深般若`…）。點任何一個「親戚」就把它變成清單的一列。
+  * 詞條名稱表與 `tags` 的實例 VA 一一對應（`cachedStrings(tag)` 與 `decodeBlockList('tags', i)`
+    長度相同才用），所以不必掃本文；索引建一次就快取（`dictIndexState()` 可看）。
+    實測：佛光大辭典 22,648 條（`詞`）、康熙字典 46,024 條（`字`）、漢語大詞典 353,116 條。
+  * 驗證（fgdict）：點「比丘尼戒」→ 詞條 `比丘尼`、`比丘`（長的先列）；點「比丘」→
+    下半部顯示「比丘梵語bhikṣu…」；點「般若經」→ 只有 `般若`；`般若` 的開頭清單是
+    `般若經典`、`般若經十喻`、`般若學`…，結尾是 `三般若`、`二般若`…。
+    非詞典型 adb（13j／印順）則顯示「沒有詞典型 adb」。
+
+二十三）**後端分界（Go／TS）與共用測試集**（作者 2026-10，目標：UI 改動不必跑 Go 測試）。
+
+  * **一句話**：後端只回答「詞組出現在哪些 VA」（`ClauseHits`）；分段、BM25、
+    塗色、畫面都在前端。Go 與 TS 各有一個後端實作，回傳同一個形狀，前端只透過
+    `backend.ts` 呼叫。
+  * **誰是後端**（不可以 import 前端模組，`test/backend-layout.test.ts` 會擋）：
+    `adb.ts`、`vapa.ts`、`search.ts`、`query.ts`、`backend.ts`、`lossless.ts`、
+    `variants.ts`、`simplified-data.ts`、`variant-data.ts`。
+  * **契約**（`search.ts: ClauseHits`）：
+    `{ text, tokens, role, nearOf, wildcard, missing, occurrences, hits[{va,units}],
+       colorIndex }`。**只有一條查詢路徑**（作者 2026-10 重構）：
+    `backend.ts: queryBackend()` → `ClauseHits[]`，然後
+      - 單詞組、沒有運算子 → `SearchSession.singleResult()`（不排名、照 VA 排、附分群統計）
+      - 有空白／`+`／`-`／`*`／`.` → `SearchSession.rankClauses()`（分段＋候選文件＋
+        `*` 鄰近＋排除＋BM25，也順便算分群統計）
+    舊的「單詞走舊片語引擎、多詞走另一條」分岔、以及 Go 的 `SearchTokens` 都刪掉了
+    （Go 現在只有一個查詢入口，分群統計改由 TS 的 `groupStats()` 算）。
+  * **Go 後端**（`wails/query.go`）：`AdbHost.SearchQuery(path, query, maxHits, groups)`。
+    自己解析查詢（空白／`+`／`-`／`*`／`.` 萬用字元、最多 10 個 `.`）、自己切 token
+    （CJK 一字一 token、拉丁字連成一串），再解 posting ＋ `phraseMatchPattern()`。
+    Wails 用 `ByName` 動態呼叫，不需要 codegen。
+  * **繁簡通檢也走 Go**（作者 2026-10）：`groups` 是**變體表**（每個字串一組互為異體的
+    單字，例如 `"萨薩"`）。TS 只挑「這一串查詢用得到的組」（`backend.ts:
+    variantGroupsFor()`，通常 0–3 組，不必把 40 KB 整張表送過去），Go 用
+    `unionPostings()` 把同組字的 posting 合併（遞增、去重）—— 那是整個查詢最花時間的
+    部分，放在 Go 做。網頁版沒有宿主時，TS 用同一張表自己聯集（`SearchSession.lookup()`）。
+  * **前端**（`ts/src/accelon26/backend.ts`）：`backendKind(io)`（`go`／`ts`）、
+    `variantGroupsFor(query)`、`clauseHitsFor()`、`searchMultiVia()`、`searchAutoVia()`
+    （規則與 `SearchSession.searchAuto()` 相同，只是後端可換）、`goQueryCount()`（診斷）。
+  * **共用測試集**：`ts/test/shared/search-cases.json`（3 個庫 × 20 個查詢：單詞／
+    多詞／`+`／`-`／`*`／`.x`／`x.`／`x.y`／缺字／只有排除詞，**外加 18 個通檢案例**：
+    同樣的查詢但帶 `groups`，驗 Go 的 posting 聯集）。產生：
+    `bun run tools/make-search-cases.ts`（以 TS 後端為答案）。
+    * TS 側：`bun run test/backend-cases.test.ts` — 重算一次，並用「假宿主 io」
+      驗證 `backend.ts` 的映射與 `searchAutoVia ≡ searchAuto`。
+    * Go 側：`cd wails && go test ./...` — `query_cases_test.go` 讀同一份檔案；
+      資料庫路徑用環境變數（`ACCELON_DB_13J`／`ACCELON_DB_YINSHUN`／`ACCELON_DB_FGDICT`），
+      沒設就找預設位置，再沒有就跳過（CI 沒 .adb 不會紅）。
+  * **桌面版驗證**：`state().backend`（`go`／`ts`）與 `state().goQueries`；
+    `tools/desktop-test.ts --gui --quick` 會斷言多詞組／萬用字元查詢在桌面版
+    `backend=go`、`goQueries` 增加、而且有結果（實測「大乘 般若」5,000/5,000、
+    「菩薩.心」118、「緣起*性空」4632/2051、「涅槃 解脫」5,000/5,000）。
+  * **繁簡通檢（Go 版）**：`clauseHitsFor()` 在 `variantSearchOn()` 時仍然呼叫 Go，
+    只是多傳 `groups`（`variantGroupsFor(query)`）；Go 的 `unionPostings()` 把同組字
+    posting 聯集起來。實測桌面版（yinshun，繁體庫）「菩萨 般若」：通檢關 → `菩萨`
+    詞組 0 命中；通檢開 → 5,000 命中、`backend=go`、`goQueries` 增加。
+  * **什麼時候該跑什麼**：只改 UI（`summary`／`paint`／`doc-pane`／`scopes`／template）
+    → 跑瀏覽器測試就好；改了 `search.ts`／`query.ts`／`backend.ts`／`wails/*.go`
+    → 加跑 `bun run test:backend`、`bun run test:go`，並在有新案例時
+    `bun run cases` 重產共用測試集。
+
+## 3. 檔案地圖
+
+| 檔案 | 角色 |
+|---|---|
+| `ts/src/accelon26/adb.ts` | 格式核心。`AdbIO.read(offset,length)` 是唯一原語；`BlobIO`（瀏覽器，含 **128 KiB 區塊快取**）／`SyncIO`（Bun）。容器／長度表／名稱表解析、`tokens()`、`documents()`、`attributeValues()`、`decodeUtf16()` |
+| `ts/src/accelon26/vapa.ts` | **VA↔PA 映射器**。`init()`、`elementAt`、`lineSpans`、`phraseSpans`、`textOfVaSpan`、`nodeLabel`、`lineLengthPercentile`、**`lineLengthMaxUnder`**、**`edgeLine`**、`loadAnchors`、`validate` |
+| `ts/src/accelon26/search.ts` | 搜尋：`loadTrees`（`<樹>`）、`parseScope`／`parseTiers`、`loadInstanceAttrs`、`loadTree`、`buildTree`／`flattenTree`、`phraseMatch`、`searchSummary`、`SearchSession`（`clauseHits`／`singleResult`／`rankClauses`／`groupStats`／BM25／`segments()`） |
+| `ts/src/accelon26/backend.ts` | **後端分界**（作者 2026-10）：`ClauseHits` 契約、`backendKind()`、`queryBackend()`（唯一查詢入口，Go 或 TS）、`variantGroupsFor()`、`clauseHitsFor()`、`searchMultiVia()`／`searchAutoVia()`、`lastGoAnswer`／`goQueryCount()`。不 import 任何 UI 模組 |
+| `ts/src/accelon26/db-kind.ts` | **詞典型 adb 判定**（`detectDictDb()`／`isDictDb()`）：`<集 c="… isdict …">` 或 `$詞`／`$字` 樹 → 本文不顯示 docHead |
+| `ts/test/shared/search-cases.json` | **Go／TS 共用**的查詢測試集（3 庫 × 20 查詢 ＋ 18 個通檢案例）；`tools/make-search-cases.ts` 產生 |
+| `wails/query.go` | Go 後端（**唯一的宿主查詢入口**）：`parseQuery`／`queryTokens`／`phraseMatchPattern`／`unionPostings`（變體組 posting 聯集）、`AdbHost.SearchQuery(path, query, maxHits, groups)` |
+| `wails/query_cases_test.go` | Go 側跑共用測試集＋`TestSearchQueryVariants`（環境變數給 .adb，沒給就跳過） |
+| `ts/src/accelon26/query.ts` | 查詢語法：`parseQuery`（空白／`+`／`-`／`*` 前綴）、`PROXIMITY_TOKENS`、`clauseHue`（每個詞組一個 HSV 色相） |
+| `ts/src/accelon26/kw-marks.ts` | 摘要與本文共用的「哪個關鍵字是哪個顏色」（避免 paint ↔ summary 的循環 import） |
+| `ts/src/accelon26/engine-stats.ts` | `#docTitle` 的「上一輪引擎耗時」：搜尋／取文的毫秒數＋hover 的 token／posting 細節 |
+| `ts/src/accelon26/variants.ts` | 繁簡通檢：開關、`expandToken`／`variantNamePattern`（資料在 `variant-data.ts`） |
+| `ts/src/accelon26/render_accelon3.ts` | 內文 → HTML（Accelon3 方言）：標題層級字級／底色、`<頁>`→分隔、`<段/>`→段落、未知標籤；`computeTierContext` |
+| `ts/src/accelon26/about.ts` | 軟件說明（About）：點左上角開啟、版本／建置時間、開啟時檢查更新（桌面走宿主、網頁抓 version.json） |
+| `ts/src/accelon26/lossless.ts` | 顯示用的「無損簡體／強制簡體」（`toSimplified`；資料在 `simplified-data.ts`） |
+| `ts/src/accelon26/simplified-data.ts` | **產生檔**：`tools/gen-lossless.ts` 從 Unihan 產生的繁→簡對照（無損 2641 組／強制 2810 組） |
+| `ts/src/accelon26/variant-data.ts` | **產生檔**：`tools/gen-variants.ts` 從 `vendor/Unihan_Variants.txt` 產生的分組字串（5194 組／10510 字，約 40 KB）。**有 commit**；`vendor/` 本身不進 git（來源見檔頭註解） |
+| `ts/src/accelon26/viewer.ts` | UI（原生 DOM）：左欄目錄樹／頻次／西文／token，**中間本文分頁＋分頁（page）**，右欄摘要。本文區核心是 `DocSession`／`linkTo`／`ensurePage`／`renderDoc`。**已 2701 行，正在拆**（見下） |
+| `ts/src/accelon26/paint.ts` | **塗紅**：`markPhraseInLine`／`markPhraseOnPage`／`paintHit`（自 viewer.ts 拆出，依賴 `docSession`／`mapper`／`scrollToVa`／`scheduleCursorSync`） |
+| `ts/src/accelon26/accelon26.template.html` | 版面與 CSS（由 build 內嵌）。`#docTabs`／`#docPager` 是本文分頁與上下頁 |
+| `ts/tools/build-viewer.ts` | 把 UI 打包成**傳統 script 並 inline** 進單一 HTML |
+| `ts/tools/file-protocol-test.ts` | file:// 端對端測試（驅動真實 UI） |
+| `ts/tools/shot.ts` | 開啟頁面、餵檔、驅動本文分頁，存一張 PNG 供目視檢查 |
+| `ts/src/tokenize.ts`、`ts/src/unicode.ts` | 分詞器與 Unicode 判定（照 Delphi 移植） |
+
+### 3.2 viewer.ts 拆檔計畫（依主題，模組間用 live binding 共用狀態）
+
+| 模組 | 內容 | 狀態 |
+|---|---|---|
+| `paint.ts` | 塗紅：`markPhraseInLine`／`markPhraseOnPage`／`paintHit` | ✅ 已拆（13j 67/67） |
+| `doc-pane.ts` | 本文分頁捲動：`DocSession`／`ensurePage`／`renderDoc`／`renderPager`／`goPage`／`renderDocTabs`／`boundsOfRealm`／字級 | ⏳ |
+| `summary.ts` | 摘要：`runSearch`／`renderSnippets`／`showNodeHits`＋snippet 狀態 | ⏳（狀態要改 setter，ESM 不能寫入 imported binding） |
+| `link.ts` | 聯動：`linkTo`／`revealHit`／`showLine`／`nodeContaining`／游標高亮 | ⏳ |
+| `scopes.ts` | 搜尋 scheme／左欄分頁：目錄樹、`renderTerms`／`renderFreq`／`renderFolio`／`renderLatin`、`labelTableFor`／`wrappedText` | ⏳ |
+| `panes.ts` | 右欄與進階面板：`renderMeta`／`renderContainers`／`renderResources`／`renderDocs`／token 瀏覽 | ⏳ |
+| `viewer.ts` | 狀態宣告、`openFile`、wiring／boot、`window.__accelon26` | ✅ 入口 |
+
+拆法：子模組 `import { … } from './viewer'`，viewer 端把用到的狀態／函式 `export`；**不要**在子模組寫入 imported binding。
+
+**工具**：`ts/tools/split-viewer.ts <doc-pane|link|summary|scopes|panes|ui>`（依名字自動算 span、import、export；每個模組跑一次，可重複）。
+
+**結果（2026-10）**：已全拆完成，行為不變 —— 13j 67/67、yinshun 74/75、fgdict 76/78（後兩者只差
+本來就未修的兩個 bug）。`viewer.ts` 2,701 → 197 行；模組大小：scopes 815／doc-pane 545／ui 376／link 221／
+summary 211／panes 185／paint 117。bundle 198.7 KiB。
+
+**第 7 個坑（這次卡住的真兇）**：payload 用到 viewer.ts 從**其他套件** import 的符號（`CLASS_LABELS`／
+`VaPaMapper`／`loadTree`／`TreeNode`…）時，工具只掃「宣告」不會帶過去 → `ReferenceError: CLASS_LABELS is not defined`
+（在 `openFile` 裡被 try/catch 吞掉，症狀是測試 `Runtime.evaluate` timeout）。修法：把 viewer.ts 的
+`./adb`／`./vapa`／`./search` import 中、payload 有用到的名字一併加進子模組的 import。
+
+**下一輪若還要拆**（例如再從 scopes.ts 分出 `dir-tree.ts`），照 §3.2 的工具與清單做；先前的實驗紀錄如下。
+
+**一輪全拆的實驗結果（2026-10，已回退）**：機械上成功——15 個模組、bundle 189 KiB、`bun build` 無錯、
+viewer.ts 剩 197 行——但啟動後 **`Runtime.evaluate` timeout（頁面卡住）**，來不及在該輪定位，故整批回退，
+只留已驗證的 `paint.ts`（13j 67/67）。下一輪照下列順序做，這些坑都已踩過：
+
+1. **span 不可吃下一個宣告的 doc comment**：end 要用「下一個 span 的 start − 1」，否則重複刪除會切掉下一個函式的頭（症狀：`Unexpected }`）。
+2. **import 掃描要看整個 registry**，不是只看 viewer.ts：已經搬到別的模組的符號仍要從那個模組 import（症狀：`setDocFont is not defined`）。
+3. **ESM 不能寫 imported binding** → 每個模組要提供 setter／reset（`setDocActive`／`resetScopes`／`resetSummary`／`resetLink`／`resetDocPane`…），openFile 改呼叫 reset。
+4. **測試用的 `window.__accelon26` 必須延後建立**（包成 `installDebugApi()`，在 `boot()` 最後呼叫）：它是 top-level 讀取所有模組的 binding，循環 import 下會踩 TDZ（症狀：`ReferenceError`、`__accelon26` undefined）。
+5. **`document.addEventListener('DOMContentLoaded', boot)` 只能留一處**（留在入口模組或 ui），且 `boot` 只能在所有模組初始化後跑。
+6. 每拆一塊就跑 13j（67）確認；全拆完再跑 yinshun／fgdict。卡住時先用 `build/probe.ts` 抓 `Runtime.exceptionThrown`。
+7. **子模組要繼承 viewer 的套件 import**（`CLASS_LABELS`／`VaPaMapper`／`loadTree`…），否則 `ReferenceError` 會被 `openFile` 的 try/catch 吞掉，症狀是「頁面卡住」。
+8. **手改子模組而用到新符號時，記得自己補 import**：Bun 對「未 import 的識別字」不會報錯，會當成全域變數 → 執行時才 `ReferenceError`（例：`sessionForRealm`）。
+
+**分頁行為（需求三，2026-10 作者回報後修正）**：不按 Ctrl 的聯動**更新當前分頁**（不是每個節點開一個）；
+只有 Ctrl/Cmd 開新分頁；若目標 realm 已經有分頁，則聚焦那一個。回歸測試：`不按 Ctrl 走訪目錄只更新當前分頁（不會多開）`。
+
+### 3.3 同時開啟多個 adb（2026-10，完成；剩 §待辦 的測試回歸）
+
+最多 `MAX_DBS = 5` 個。每個資料庫是一個 **slot**（`dbs.ts`），內含各模組的 snapshot：
+`snapshotCore/restoreCore`（reader/mapper/session/tokens/docs/blocksVirtual/currentDoc）、
+`snapshotDocPane/restoreDocPane`（**本文分頁在 slot 裡** → 關掉資料庫就等於關掉它所有分頁）、
+`snapshotScopes/restoreScopes`（樹、folio）、`snapshotSummary/restoreSummary`、`snapshotLink/restoreLink`、`snapshotPanes/restorePanes`。
+
+UI（作者 2026-10 的頂欄順序）：`#brand` → `#toggleLeft`／`#toggleRight` → **`#dbPickBtn`（📁，原本 ＋ 的位置）**
+→ `#searchAllBtn`（🔍，沒開庫時隱藏）→ `#dbHint` → `#dbTabs` → `#status` → **`#settingsBtn`（🔧，最右邊）**。
+`#file` 是隱藏的 `<input type=file>`，只由下拉第一項「＋ 加入 adb」觸發（`dbs.ts: needsAddItem()`：
+`hostState().available` 為真＝桌面版，不需要這一項；桌面版啟動時已列出工作目錄的 adb）。
+`#dbTabs`＝每個已開庫一個 chip，**最後開啟的放最左邊**（作者 2026-10），其餘維持相對順序（切換只改顏色，不重排）、
+**只有 active 的 chip 顯示 ✕**（關閉該庫＝連同它所有本文分頁）。chip 字級 13px 固定，不隨 active 變。
+切換／關閉後由 `ui.ts` 的 `refreshAll()` 重畫（每個 pane 交給自己的 `showTab()` 重跑）；全部關完呼叫 `clearDbUi()`。
+`clearDbUi()` 會 `hideDocLogo()`：**關掉資料庫時中間的 logo 一定要收起**（`updateDocLogo()` 會因為 reader
+還指著剛關掉的庫、而 #docText 已經沒有 `.docLine`，又把 logo 打開，所以那裡不能再呼叫它）。
+
+**最右上的 adb 清單**（作者 2026-10 第二版：**黃色資料夾按鈕**，不再是 `<select>`）：
+`#dbPickBtn`（📁，`color: #ffd479`）按一下才展開 `#dbPickMenu`（預設 `hidden`；再按一下、
+點空白處或 Esc 收起）。清單列出**這次工作階段選過／拖過的每一個 adb**，只讀 header
+（`catalogAddFile()` → `AdbReader.open(new BlobIO(file))`，幾 KiB）所以**未載入的庫也在清單裡**
+（作者 2026-10-18：不再標「（未載入）」，改用表格分辨）。目前這一個的列標 `.active`。
+
+**清單是表格（作者 2026-10-18）**：`檔名`（不帶 `.adb`）／`庫名`／`字數`／`建置日期`（檔案時間
+`YYYY-MM-DD`）。選單貼在 📁 **正下方、向右展開**（`left: 0`，相對 `.dbPickWrap`）；寬度由
+`renderDbPick` 依「按鈕左緣到視窗右緣」寫進 `max-width`，庫名太長就在格子裡省略 —— 以前
+`right: 0` 是向左展開，庫名一長就溢出畫面左邊；改貼右緣又離按鈕太遠，兩個都不對。
+`字數` 不在檔頭裡（要解壓 source 容器才知道），所以**選單打開才
+在背景算一次**：桌面版走 Go 的 `SourceCharCount`（一次呼叫掃完，13j 831,156／佛光大辭典
+6,619,481／印順 8,847,831，約 0.1 秒），file:// 版走 TS bzip2；算好只更新那一格，結果快取在
+`charCache`（key 是檔名＋大小＋mtime）。
+
+選一個（或 Enter／空白鍵）就加入 `dbTabs`：已載入的直接切換，未載入的當場載入。**沒有「拒絕」了**：`MAX_DBS = 5`
+滿了就讓**最久沒用**的那個 slot 讓位（它的本文分頁跟著消失，跟按 ✕ 同義）。
+**還沒開過任何 adb 時，file:// 版按 📁 直接開檔案挑選**（作者 2026-10-18，`catalogEmpty()` ＋
+`pickAddFile()`），不必先展開空選單再按「＋ 加入 adb」；桌面版（工作目錄沒有 adb）仍會展開選單
+顯示「（這個資料夾沒有 .adb）」。
+瀏覽器版不能列資料夾，所以來源只有使用者自己選的檔；桌面版會自動列出與執行檔同資料夾的 adb（同一份清單模型）。
+`state().dbPick` 是目前 active 的 catalog key，`state().dbPickOpen` 是清單開著沒有。
+
+**純網頁版的下拉清單唯一來源就是 file input dialog**（作者 2026-10 確認）：`catalog` 只是模組裡的陣列，
+**不寫 localStorage**，重新整理頁面就重來。localStorage 只放閱讀偏好（`accelon26.cols.v2` 欄寬、
+`accelon26.docfs` 字級、`accelon26.advanced` 進階模式）。probe 實測（`build/probe-reload.ts`）：開兩個庫後
+`Page.reload` → 下拉回到「（用 ＋ 開啟 .adb）」、chips 0、catalog 0，而 localStorage 的三個 key 一字不變。
+
+**一次選多個**：`#file` 有 `multiple`。`openPicked()` 先把每一檔加進 catalog（只讀 header），再把**還有空位**的載入；
+選**單一個**檔时一律載入（就算已經 5 個，最久沒用的讓位）——「選了就是要看它」。其餘留在下拉裡等讀者挑。
+**同一次挑選的 change 會來兩次**（瀏覽器行為，測試又常自己 dispatch 一次）→ `picking`＋檔名／大小／mtime 簽章把重複的那一次丟掉。
+
+**庫名相同時**：`alreadyOpen()` 比對「檔名＋大小＋mtime」→ 同一個檔案只是**切換**過去；
+**不同檔案但庫名相同則取代那個 chip**（`registerOpenDb` 回 `replaced`），狀態列明說「十三經：13j.adb 取代了同名的庫（它的舊分頁已關閉）」。
+
+**已用 probe 驗證**（`build/probe-multi.ts`、`build/probe-pick.ts`）：開 yinshun → 開 fgdict（chip 出現、active 變佛光大辭典）→ 在 fgdict 開一個本文分頁 →
+點 chip 切回 yinshun（名稱／docs／左欄分頁都跟著換）→ 按 ✕ 關掉 fgdict（chip 0、`docTabs` 0＝它的分頁一併關掉、狀態列回到 yinshun）；
+一次挑 6 個檔（已開 2 個）→ chips 5 個、順序不變、`略過 2 個`（其中 1839.adb 與 13j.adb 同名 → 取代，所以只新增 3 個 chip）。
+
+**待辦**：`file-protocol-test.ts` 的多庫回歸、關閉 active 時挑選下一個的策略（目前取陣列最後一個）。
+
+### 3.4 切換資料庫的「慢」＝一次把幾千列塞進 DOM（2026-10，已修）
+
+作者回報「從 yinshun 切到 fgdict 明顯慢，fgdict→yinshun 很快」。量測（`build/probe-switch.ts`，
+在頁面裡用兩次 `performance.now()` 夾住 chip 的 click，量的是**同步**成本）：
+
+| 方向 | 修前 | 修後 |
+|---|---|---|
+| fgdict → yinshun | 34–44 ms | 2–4 ms |
+| yinshun → fgdict | **381–445 ms** | 2–4 ms |
+
+原因不是「名詞／全文節點太多」（那兩頁本來就只列 200／300 列），而是 **目錄樹**：
+`showTab(name,'right')` 裡有一行 `if (col === 'right' && dirTrees.length) void renderDirTree();`
+——**任何右欄分頁被切換都會重建（左欄的）目錄樹**，而 fgdict 的樹是 6,966 列／34,837 個 DOM 節點，
+全部同步建在 click 的處理函式裡（一次 `innerHTML`）。切換資料庫時 `refreshAll()` 一定會呼叫
+`showTab(rt,'right')`，所以每次切到 fgdict 都要付這 390 ms。
+
+修法兩層：
+
+1. **觸發點修對**：目錄樹改成在 `refreshAll()` 裡依「左欄 `dir` 分頁是否顯示」重建，右欄切換不再碰它。
+2. **列分批掛上**（新模組 `lazy-list.ts`）：`renderChunked(box, items, { html, bind, prepare, min })`
+   先掛 `CHUNK = 200` 列，捲到接近底部（或點「還有 N 列…」）再掛下一批。
+   `prepare(slice, from, to)` 只為**即將顯示的列**做非同步工作（`labelFor`、`nameSegs`、
+   `caches/詞` 的字串表）；`growUntil(box, pred)` 給「必須捲到某一列」用（🌲 展開樹）。
+   目錄樹用 `min: mounted(box)`：展開／收合後仍保留讀者已經捲出來的那麼多列。
+
+同一套分批掛列也用在 名詞（fgdict 22,648 詞條）、頻次（yinshun 6,978 段）、原書分頁（6,959 頁）、
+西文（碼位範圍內的 token）：清單仍然是**完整**的，只是 DOM 一次只放一屏。
+診斷：`state().dirRows`（現在掛了幾列）＋ `#dirTree .moreRows` 的提示；測試端有
+`window.__accelon26.growTree()` 先把整棵樹掛完再斷言（見 `file-protocol-test.ts` 的「目錄樹分批掛上 DOM」）。
+
+**沒有 `s="*"` 就沒有目錄樹**（作者 2026-10）：「不指定 s="*" 就不必顯示目錄樹」，接著「可以拿掉背景建樹」。
+唯一的判斷是 `dirPaneShown()`（`#colLeft .tabBtn[data-tab=dir]` 可不可見）：`renderDirTree()`
+開頭就檢查，不顯示時直接清空 `#dirTree` 與 `#dirMeta`（免得換庫後留著上一個庫的列）。
+**而且連資料都不建了**：`loadDirectoryTrees()` 只建「宣告了 `s="*"` 的那棵樹」（`dirTrees` 現在只放這種），
+沒有就 `dirTrees=[]`、`dirActive=-1`、`treePhases.skipped=1` 直接返回 —— fgdict 的 88k 實例／~160 ms 背景建樹整批省掉。fgdict（`$詞`／`*詞`／`頁.n`，沒有 `s="*"`）
+因此 **0 列**在 DOM，左欄也真的沒有「目錄」這個分頁。
+**樹的資料仍然建**（`dirTrees`，作者 2026-10 確認「照建不畫 ok」）：現在它只服務目錄樹面板
+（`paintTreeActive`／展開集合／`dirInfo` 診斷），**搜尋分組不再需要它**——`groupNames()`
+改成先讀 adb 自己的 `caches/<標籤>` 字串表（13j 13、yinshun 44、fgdict 7，每個都與該標籤的
+實例數相同、內容也與樹標籤一致），其次才用 `treeLabels`，最後才是屬性表 `<tag>.n`／`<tag>.id`。
+所以那 ~160 ms 的背景建樹**可以**拿掉（只影響隱藏面板），但目前刻意留著。
+
+**代價與界線**：`#dirTree` 的列不再保證全部都在 DOM。要數整棵樹的斷言要先 `growTree()`；
+`paintTreeActive()` 只會亮**已掛上**的列。fgdict 沒有 `s="*"`，它的目錄樹面板是隱藏的，
+所以「樹的形狀」斷言（幾本書／逐層展開）在 fgdict 用 `dirTabShown` 跳過（13j／yinshun 完整覆蓋）。
+
+**樹的狀態在切換時不會丟**：展開集合 `d.open`、已解出的標籤 `d.labels`、`parentOf` 都在
+`DirTree` 物件裡，而 `DirTree` 由 `snapshotScopes/restoreScopes` 隨資料庫的 slot 一起保存
+（DOM 只是從 `d.open` 重畫出來的結果）。所以切走再切回來，樹還是原本展開的樣子。
+
+### 3.5 右欄「文字內容」＋ 本文區的 logo（2026-10）
+
+**右欄「文字內容」＝第二個閱讀窗格（純參考）**，新模組 `text-pane.ts`。作者指定的操作：
+
+| 動作 | 結果 |
+|---|---|
+| Ctrl+點 **樹節點**（含箭頭） | 該節點的文字放到右欄「文字內容」；**中間本文完全不動** |
+| Ctrl+點 **本文分頁**（`#docTabStrip`） | 複製到右欄並顯示（中間那個分頁留著） |
+| Shift+點 **本文分頁** | 搬到右欄（中間讓出那一個分頁） |
+| 在右欄捲動／點 | **不連動左邊的樹**（只有中間的本文驅動樹與游標） |
+
+* 這些點擊用**捕捉階段**的 listener（`initTextPane()`，掛在 `#dirTree` 與 `#docTabStrip` 上）：
+  Ctrl/Shift 的點擊被它 `stopPropagation` 吃掉，所以樹列自己的 handler（`scopes.ts` 的 `bind`）
+  與本文分頁的 handler 都不會看到那個點擊。
+* 右欄多一個分頁鍵 `[data-tab=text]`，**有文字分頁時才出現**（`syncTextTab()`）；
+  分頁籤在 `#textTabs`、內容在 `#textBody`、翻頁在 `#textPager`（`#textPrev`／`#textPageInfo`／`#textNext`）。
+* **文字內容頁刻意獨立成模組**：`renderTextPane()` 是**唯一**決定「一行長什麼樣」的地方，
+  目前是純文字（`mapper.docText` ＋ 行表），下一步要把行內的 XML 標籤變成 HTML —— 那時只改這裡。
+* 右欄分頁也住在資料庫的 slot 裡（`snapshotTextPane/restoreTextPane`），關掉資料庫就一起收掉。
+
+**本文區空白時的 logo**：新模組 `logo.ts`。`#docText` 裡沒有任何 `.docLine` 時，顯示這個資料庫
+**自己在 adb 內的**圖：`resources` 容器裡名稱符合 `<dbname>_logo.*` 或 `<檔名>_logo.*` 的那一筆
+（yinshun 是 `yinshun_logo.png`，320×480）。圖用 `resourceBytes(i)` 直接取（resources 不壓縮）
+並以 blob URL 顯示；沒有這個資源的庫（13j、fgdict）就什麼都不顯示。`state().logo` 有
+`{ name, at, shown }` 可診斷。開檔時 `setLogoBase(file.name)` 讓檔名也成為候選。
+
+### 3.1 分區名稱與 id（溝通時直接用；示意圖 [accelon26-map.html](../../accelon26-map.html)）
+
+| 統一稱呼 | 選擇器 | 備註 |
+|---|---|---|
+| 頂欄 | `#header` | `#brand`／`#toggleLeft`／`#toggleRight`／`#dbPickBtn`（📁 下拉，第一項「加入 adb」）／`#file`（隱藏）／`#searchAllBtn`（🔍）／`#dbTabs`（庫名 chips）／`#status`／`#settingsBtn`（🔧 最右） |
+| 三欄容器 | `#main` | `--left` 25fr・`--center` 50fr・`--right` 25fr，6px 分隔線 |
+| 左欄／中欄／右欄 | `#colLeft`／`#colMid`／`#colRight` | `#splitLeft`／`#splitRight` 拖到 15% 以下即收合 |
+| 左欄分頁列／窗格區 | `#tabsLeft`／`#paneLeft` | 分頁鍵＝`[data-tab=dir\|terms\|freq\|folio\|latin\|token]` |
+| 右欄分頁列／窗格區 | `#tabsRight`／`#paneRight` | `[data-tab=sum\|text\|meta\|capacity\|docs\|images]`（`text`＝文字內容，有文字分頁才出現） |
+| 目錄樹本體 | `#dirTree` | 面板＝`#paneLeft [data-tab=dir]` |
+| 名詞／頻次／原書分頁／西文清單 | `#termsList`／`#freqList`／`#folioList`／`#latinList` | 各自的 meta＝`#termsMeta` 等 |
+| 位置篩選（名詞／西文共用一套） | `#termsMode`／`#latinMode` | 任意／開頭／中間／結尾；`modeMatch()` 一份實作（`scopes.ts`） |
+| 摘要清單 | `#searchList` | 面板＝`#paneRight [data-tab=sum]` |
+| 文件工具列 | `#docBar` | `#treeReveal`(🌲)・`#docTitle`・字級 `#fsDown`/`#fsValue`/`#fsUp`/`#fsAuto`/`#fsReset` |
+| 本文分頁籤條 | `#docTabStrip`（父層 `#docTabs`，另有 `#docTabAdd`） | 分頁 ≥ 1 才顯示 |
+| 本文 | `#docText` | 行元素 `L<行號>`、命中行 `.hitLine`；空白時旁邊顯示 `#docLogo`→`#docLogoImg` |
+| 分頁列 | `#docPager` | `#pagePrev`／`#pageInfo`／`#pageNext`；分頁 ≥ 2 才顯示 |
+| 右欄文字內容 | `#textTabs`／`#textBody`／`#textPager` | 分頁籤／文字／翻頁（`#textPrev`／`#textPageInfo`／`#textNext`） |
+
+沒有 id 的 `[data-tab]` 面板，一律用 `#paneLeft`／`#paneRight` 當前綴指稱（`showTab(name, 'left' | 'right')` 用的鍵就是它）。
+
+**維護規則**：改版面（新增／刪除／改名任何 id）時，同一輪必須更新 `accelon26-map.html`，並跑
+`bun run tools/check-map-ids.ts`（雙向比對示意圖與 `build/accelon26.html` 的 id 集合，不一致就 exit 1）。
+示意圖是與作者溝通分區的**共同詞彙**，不能讓它腐化。
+## 4. 已驗證的格式知識（可直接信任）
+
+* **VA（虛擬位址）= token 序號**：token +1、連續空白 +1、標籤開／閉**各 +4**、skip 標籤 +0。
+* **PA（實體位址）= blockIndex × srcBlocksize + 區塊內位移**（UTF-16LE，srcBlocksize 16384）。
+* **硬換行不佔 VA** → 被硬換行切開的中文詞是**連續的 VA 範圍**（13j 行界 90.5% 的 VA 差恰為 1）。
+* **版面模型＝自訂標題（h1~h6 的推廣）**：標籤＝一行標題、**不包住內容**；範圍＝**到下一個同樣的標籤**（沒有就到 `</檔>`）。
+  因此「同標籤不互相巢狀」是可驗證的不變量（13j 0 個、yinshun 0 個）。
+* **`t=` 是逐實例宣告**，沒宣告的實例在該處停止下探；`t="章,節,項."` 的**第一項是直接子層**，
+  其餘是**同層兄弟槽位**（會**繼承**到子層之下，所以 `章` 即使沒有 `t=` 也能收 `節`／`項`）。
+  宣告只寫一次（13j 的 13 本書只有第一本帶 `t=`），其餘同標籤實例沿用。
+* **`s=` 的種類**（Pascal `formatter.pas:1472 createSearchSchemes` + `tokenize.pas:717 parseTAV`）：
+
+  | `s=` | 意義 | 現況 |
+  |---|---|---|
+  | `*` | 全文 | ✅ 分頁「目錄」（搜尋摘要移到右欄「摘要」） |
+  | `*u=文` | **屬性過濾**（attr `u`, value `文`） | ✅ 分頁「頻次」（yinshun 6,978 段／40 個標籤） |
+  | `*文` | **標籤名** → `<文>` 的實例 | ✅ 分頁「全文」（fgdict `*詞`：5,000 筆命中分布於 1,356／22,648 段） |
+  | `~X` | **token 清單**：`settoken(adb, X)` | ⚠️ 分頁「西文」**已接線並有內容**（原本 `renderLatin()` 根本沒被呼叫）；**作者確認 X 就是碼位範圍**（2026-10） |
+  | `$詞` | 標籤包裹（`parsetav` → tag `詞`） | ✅ 分頁「名詞」（fgdict：一個 `<詞>` 一個詞條，輸入時先列詞條名符合者） |
+  | `@X` / `^X` / `%` | 字表／主題表／反向連結 | 未接 |
+  | `頁.n` | `tag.attr`：樹從 `<頁>` 起，名字取 `n` 屬性 | ✅ 分頁「原書分頁」（fgdict 6,959 個頁碼，可選可輸入；用 `attributeValues('頁.n')` 的 pointers 對到 `<頁>` 實例 VA） |
+
+  另有 `t`（subtree）、`p`（paging）、`o`（columns）三個屬性**尚未讀取**；
+  **分頁名應取 `<樹>…</樹>` 的元素內容**（`ss.caption := removetag(getnNodeValue(dn))`），
+  目前是用 `s=` 推導（fgdict 的三個 `<樹>` 內容都是空的，需要 fallback）。
+* **屬性容器是「不掃內文」的關鍵**：`attributeValues(key)` 回傳的 `pointers` 低位 24 bits 是
+  **1-based 實例序號**、高位 byte 是 tag id，所以每個屬性值都能直接對應到 `tags` 容器的實例。
+* **本文分頁只能靠行表**：節點的 realm 是 VA 範圍，但一個節點**可以橫跨多個 `<檔>`**
+  （yinshun 的 `書` 就是），所以頁碼→行號必須用**全域行表**（`linesVirtual`）算，
+  `docText()` 的 VA 範圍要由「該頁第一行的 VA … 最後一行的 VA+1」推導，**不可**用單一 `<檔>` 的範圍。
+  （踩過的坑：用 `<檔>` 範圍會讓每頁被夾成 1 行。）
+* **映射器行號 vs 行表漂移**：`elementAt` 走的行號（walk）與 `linesVirtual` 的行號在檔界可能差 1 行
+  （fgdict 每個檔界都差）。所以釘住的命中行要**夾回當前頁實際渲染的行**，否則標不到紅。
+* **`caches` 容器是現成的字串表**（本輪最重要的發現）：`caches` 內是若干「本身也是容器」的區塊，
+  以名稱為鍵，fgdict 有 `書`（7 個書名）與 `詞`（22,648 個詞條 innerText），
+  yinshun 之類有 `檔`（`docNames()` 已在用）。**順序＝實例序號**，與 `tags` 容器的實例一一對應。
+  讀它只要一次容器解析；改從內文切同樣的字要對每個碰到的區塊 bunzip，慢且容易取錯。
+  `AdbReader.cachedStrings(key)` 就是這個入口。fgdict 的書名（P0）與詞條名都靠它解決。
+* **fgdict 的 VA walk 漂移很大**：`elementAt(219386)` 會回傳別的區塊的第一個元素（walk VA 與
+  儲存 VA 差 >1000），所以 fgdict 上 **VA→PA 的走訪不可信**；行表（`linesVirtual`/`linesPhysical`）
+  與 `caches`／`tags` 才是 ground truth。**摘要的 snippet 也一樣**：`searchSummary(…, { phrase })` 會用
+  `lineOfVa` ＋ 文字搜尋定位並塗紅，否則會顯示並塗到隔壁字（實測：搜「法喜」的兩筆顯示「帖見」「止觀」）。跳行用 `lineOfVa(va)`（`edgeLine` ＋「VA 等於某行結尾時
+  屬於下一行」的修正），塗紅則對「節點標籤連結」改用「在該行原文中找詞條字串」(`markPhraseInLine`)。
+* **本文分頁標籤**顯示「詞名／來源節點名」（`shortLabel` 截 8 字，完整名在 tooltip），
+  不再顯示 `Fgdict1.xml` 這種對讀者無意義的檔名。
+
+## 5. 效能
+
+**開檔**：yinshun 24 MiB 原本 **3,525 ms → 60 ms**。原因不是 SSD、不是解壓，而是
+`Blob.slice()` 被呼叫 **10,489 次**（每次約 0.33 ms 固定成本，與長度無關）。
+`BlobIO` 加 128 KiB 區塊快取後降到 **19 次**。
+細分可用 `window.__accelon26.openBreakdown()` 或 `state()` 取得（狀態列只顯示人看得懂的資訊）。
+
+**本文**：舊版一次渲染 `min(3000 行, 整份文件)`，yinshun 的檔可達 45k 行，
+一次要讀數百個 bzip2 區塊並塞進 DOM。現在**一次只載一頁 200 行**，聯動成本變成
+「讀 1–2 個區塊」的量級（實測 `state().lastLink.ensureMs`：fgdict 29–85 ms、yinshun 數十 ms）；
+DOM 列數也固定。
+
+**聯動卡頓（本輪處理）**：
+* **畫家不再自己換頁**：`paintHit` 原本發現命中不在當前頁就呼叫 `ensurePage`，
+  於是「上一頁／下一頁」一翻頁就被拉回命中的那一頁（fgdict 這種映射器行號會漂移的庫特別明顯）。
+  現在**只有「聯動」才跟隨命中**（`linkTo` 明確傳 targetLine），翻頁純粹由 `goPage` 決定。
+* **目錄樹查找 O(depth × log width)**：`deepestNode()` 逐層二分搜尋，取代走訪全樹
+  （fgdict 29,614 節點、每次聯動與每次捲動都跑）。
+* **捲動高亮只改 class**：`paintTreeActive()` 不再重建整棵樹的 DOM。
+* **命中數 O(log n)**：`realmHits` 用兩個二分搜尋取代線性掃描（大節點有數千命中）。
+* **解碼快取上限 256 塊**：`AdbReader.sourceText` 的 `srcTextCache` 原本無上限，
+  長時間跳讀會把整個 24 MB 庫的解碼結果留在記憶體、GC 抖動就變成卡頓。
+* 診斷入口：`state().lastLink`（`ensureMs`／`totalMs`／`rows`）、`state().textCache`。
+
+### VA → 元素改成「查行表」（2026-10-20，taisho 241 MB 崩潰的根因）
+
+**症狀**（客戶回報，2026-10-20）：taisho.adb（241 MB、11,255 個 source 區塊、87,894,472 VA、
+4,982,297 行）在 16 GB 的 Windows 桌機上，**點目錄後面的書（如 史傳部三 → 古清涼傳）整個
+WebView2「內存不足」崩掉**；**查任何文字也一樣**。
+
+**根因**：`elementAt(va)` 從 block 0 逐行重播到目標 VA（`advanceTo`），而它把**每一個**
+`TokenPos`、`elemIndex` 記錄、`tagHits` 全留在記憶體裡，永不淘汰。taisho 的書排在檔尾
+（古清涼傳 VA 78,711,204 ＝ 全庫 89%），所以點一下書就要走完 ~4,900 萬 VA：
+
+| | 舊（逐行走訪） | 新（查行表） |
+|---|---:|---:|
+| `elementAt(78,711,204)` | **> 25 s 還沒走完，堆已 3.8 GB** | **4.5 ms**，堆 90 MB |
+| 點「史傳部三」→ 本文出現 | 沒有出現（例外被 `void revealHit()` 吞掉） | 90 ms／200 行 |
+| 點「古清涼傳」 | 同上 | 58 ms／200 行 |
+| taisho 搜「菩.心」（5000 命中、30 張摘要） | 第一個深處命中就觸發同一條走訪 | 25 ms、堆 89 MB |
+
+**修法**（`vapa.ts`）：`tables/lines.virtual` 已經存了每一行的 VA，所以
+「VA → 哪一行」是二分搜尋、「這一行的元素」只要單獨 tokenise 一次（`tokenize(index, vaStart)`）。
+`elementAt`、`blockWalk`、`elementAtUnit`、skip 標籤的跨步（`elementAfter`）全部走這條，
+快取只留 **12 個 block／64 行**（`blockAtCache`／`lineAtCache`）。逐行重播只留給
+`validate`／`lineAdjacency`／`crossLinePairs`／`scoreModel` 這些**驗證工具**。
+
+**關鍵細節（踩過的坑）**：`tables/lines.virtual[i]` 存的是第 i 行**最後一個 unit 的 VA**
+（含頭不含尾的「inclusive end」），所以第 i 行的起點是 `lines.virtual[i-1] + 1`，
+不是 `lines.virtual[i-1]`。差這 1 個 unit，13j 的 `<隱>` 就會從 VA 11 變成 10、
+整庫的元素全部錯位一格（`test/vapa.test.ts`、`test/search.test.ts` 立刻紅）。
+
+**驗證**：`tools/check-element.ts --adb <adb>` 對每一個標籤實例取樣比對
+（13j 478/478、yinshun 2,578/2,578、fgdict 138/138、taisho 336/336 都回到自己的 VA），
+並在有走訪資料的區塊裡比對查表與逐行重播（13j 400/400、yinshun 400/400、taisho 400/400 一致；
+fgdict 走訪本身漂移 +41,636（最差 +94,246），以查表為準 —— 查表讓 fgdict 的標籤 VA 命中率
+從 32/238 提升到 238/238）。
+
+**自動字級（「不換行」）**：可用寬度必須取**中間欄**（`docTextWidth()`，扣除左右欄與列內 gap）；
+量測必須在**無寬度約束**的容器。**因為有分頁，量測不可以只看當前頁**：
+現在用行表取整份文件的 p90 當「代表行長」，並取 `線表最大行長（≤1.15×p90）` 當上限，
+再從當前頁挑一條**真實**、長度不超過上限的行當量尺（CJK 量尺會偏寬）；
+罕見超長行容許橫向捲動。`state().lastFit` 有全部中間數字。
+
+## 6. 目前測試狀態
+
+| 測試 | 結果 |
+|---|---|
+| `file-protocol-test.ts`（13j） | **159/159**（2026-10-20 修好兩支過期探針後第一次跑到完） |
+| `file-protocol-test.ts`（yinshun） | **182/182** |
+| `file-protocol-test.ts`（fgdict） | **173/173** |
+| `test/tree.test.ts` | 40/40 |
+| `test/search.test.ts`（13j／yinshun） | 19/19、18/18 |
+| `test/multi-search.test.ts`（yinshun／fgdict／13j） | 39/39、18/18、18/18 |
+| `test/variants.test.ts`（繁簡通檢） | **13/13** |
+| `test/backend-cases.test.ts`（共用測試集，TS 側；含 18 個通檢案例） | **180/180** |
+| `test/backend-layout.test.ts`（後端／前端分界） | **11/11** |
+| `wails/query_cases_test.go`（共用測試集，Go 側；含 `TestSearchQueryVariants`） | `go test ./...` 全綠 |
+| `tools/desktop-test.ts --gui --quick`（桌面） | **38/38**（2026-10-18 重跑） |
+| `test/render.test.ts`（內文渲染） | **22/22** |
+| `wails/export_test.go`（導出：`safeZipName`／`isImageName`／真的寫一個 zip） | `go test ./...` 全綠 |
+| `test/accelon26.test.ts` / `test/vapa.test.ts` | 22/22、13/13 |
+| `test/tour.test.ts`（劇本⇄宏、剖析器、同步檢查） | **31/31** |
+| `tools/tour-test.ts`（操作導覽全播；13j／yinshun／fgdict） | **29/29** 各一次 |
+
+新增／改寫的斷言（都在 `file-protocol-test.ts`）：
+* 輸入只更新摘要、本文不隨輸入移動（比對釘住的 VA）
+* 點 tCount：摘要範圍切在該節點 realm 內、每筆命中 VA 都落在範圍內
+* 點節點（開得起來就開）並聯動本文；Ctrl+點另開本文分頁；Ctrl+點箭頭不再爆開；
+  Alt+點節點名展開全部子孫；切換分頁不會再生分頁
+* 本文分頁：每頁 ≤200 行、只有一頁時分頁列隱藏、多頁時上一頁／下一頁真的換頁且翻得回去
+* **本輪新增**：本文區空白時顯示資料庫自己的 logo（沒有這個資源就保持隱藏）
+* **本輪新增**：目錄樹分批掛上 DOM（首批 ≤200 列、有「還有 N 列」提示、`growTree()` 掛完＝全部）
+* **本輪改寫**：Ctrl+點樹節點＝送右欄文字內容且**中間本文不動**（含箭頭；原本是開新分頁）；
+  Alt+點仍是展開全部子孫
+* **本輪新增**：Ctrl+點本文分頁＝複製到右欄、Shift+點＝搬到右欄（中間讓出）、右欄捲動不連動左樹
+* fgdict 沒有 `s="*"`（目錄樹面板隱藏）：樹的形狀斷言（幾本書／逐層展開）用 `dirTabShown` 跳過，
+  由 13j／yinshun 覆蓋
+* **本輪新增**：右上 `#dbPick`（header 最後一個元素）列出這次工作階段的所有 adb、選中目前的庫
+* **本輪新增**：狀態列只顯示錯誤／忙碌（載入後 `#status` 是空的，`__accelon26.status()` 仍記得最後訊息）
+* **本輪新增**：餵非 .adb → 狀態列顯示「開啟失敗」，原本的庫不受影響，而且不丟例外
+* **本輪新增**：沒有 `s="*"` 的庫完全不建樹（`treePhases.instances = 0`）
+* **本輪新增**（多庫：測試自己造一個「庫名不同」的複本 adb —— 只改 header 的 dbname／dbcname）：
+  餵兩個檔＝兩個 chip 且最後開啟的在最左、**點 chip 切換順序完全不動**、
+  **從下拉選的那一個跳到最左**、關掉它之後仍留在下拉標「（未載入）」
+* **本輪新增**：沒有資料庫時 `#dbHint` 在 ＋ 右邊閃爍（`animationName=dbHintFlash`），
+  開庫後消失；`prefers-reduced-motion` 下不閃爍但仍在；關掉最後一個庫後又回來
+  （這條順帶抓到 `clearDbUi` 少了 `resetTextPane` import 的舊 bug）
+* **本輪新增**：`no page exceptions` 移到全部動作之後才檢查（之前只涵蓋到中段）
+* **本輪新增**（fgdict）：點名詞詞條 → `state().docRealm` 恰為 `[該 <詞> VA, 下一筆 <詞> VA)`、
+  分頁名＝詞條名、不另開分頁；名詞搜尋「法王」→ 每一列都含「法王」；`法王 -大慈` 會排除
+* **本輪新增**（yinshun）：`緣起*性空`／`緣起 性空`／`緣起+性空`／`緣起-性空` 四種詞組解析、
+  文件數 `鄰近 < 必要 < 可選`、摘要與本文的每個關鍵字各自一種 HSV 顏色（排除詞不上色）
+* **本輪新增**（yinshun）：`菩.心`（單字萬用字元）在摘要與本文都塗到「菩提心／菩薩心」；
+  `菩.心-菩提心` 排除後還剩 27 份文件（菩薩心那一些）
+* **本輪新增**：`.` 只在前後都是漢字時才是萬用字元，其餘位置的 `.` 當 skipword 丟掉
+  （`a.b`→`ab`、`菩.a`→`菩a`）
+* **本輪新增**（yinshun）：`#docTitle` 顯示「搜尋 X ms・取文 Y ms」，hover 有
+  token／posting 長度與文件分割；清空查詢後回到預設文字
+* **本輪新增**：`#dirMeta` 只在進階模式顯示（一般模式 `hidden`、`display:none`、無文字）；
+  再點一次 active 的目錄分頁 → `dirRows` 回到第一層（13j 82→13、yinshun 47→44）、
+  已展開的分支 0
+
+## 7. 待辦事項
+
+> **2026-10-18 的最新清單在 §13.8**（換庫時分頁殘留、導出要不要去掉 `<檔>` 外框、
+> 導出平行解壓、`build/macos` 的 zip 要重下）。下面這幾條是更早的，沒有標記「已解決」的仍然有效。
+
+### P0 — 已解決
+
+1. ~~fgdict 的 6/7 本書名取不到~~ → 已用 `caches/書`（7 個書名，實例序）解決；
+   `loadTree` 的 20,000 標籤預算會切掉後面的節點，所以第一層標籤另外從快取補一次。
+
+### P1 — 未實作的規格
+
+2. **`$詞` 分頁**（fgdict）：✅ 已實作（名詞清單、`+`／`-`、單字萬用字元、點詞條只讀該詞條）。
+   剩下的問題是 **`*詞` 與 `$詞` 的語意差異** —— 目前兩者共用同一份 `<詞>` 實例，
+   需向作者確認 `*詞` 是否要求「命中從詞首開始」。
+3. **`頁.n`（tag.attr）scope** 與 `@`／`^`／`%` 三種。
+4. **讀 `<樹>` 元素內容當分頁名**，並讀 `t`/`p`/`o` 屬性（`o` 是 columns）。
+5. **`~X`（西文）語意**：現在 **已接線、有內容**（`renderLatin()` 原本沒被呼叫是 bug），
+   X 就是**碼位範圍**（2026-10 作者確認），不需再猜。
+6. **目錄樹與頻次改為純屬性查表**：目前節點名稱仍會走內文（fgdict 6,978 段的取名已限制在顯示的前 200 列）。
+
+### P2 — 測試覆蓋缺口
+
+7. 測試改成**資料庫感知**：書數（13/44/7）、有無「頻次／西文／`$詞`」分頁都依 `s=` 宣告決定。
+   （本輪已把本文分頁與自動字級的斷言改成資料庫感知，但書數與分頁存在性仍寫死。）
+8. 「Ctrl 展開後收合，再展開不該還開著子孫」的斷言（已修，無斷言）。
+9. 開第二個資料庫（換檔）後，本文分頁與快取必須重置——已實作（`openFile` 清
+   `docTabs`／`boundsCache`／`paintAsked`），但**沒有測試**。
+
+## 8. 工作注意事項（踩過的坑）
+
+> 通用的 Wails3 CDP／WebView2 坑見 [wails3-pitfalls.md](./wails3-pitfalls.md) §2.7；Windows／漢字／`file://`／UI 見 [yap-software-practice.md](./yap-software-practice.md) §3–§7。本節只留本專案的測試與診斷細節。
+
+* **測試的 page-eval 字串內不要放 TypeScript 型別註解**（`const x: number[]`），
+  也不要用未轉義的 `${}`／反引號 —— 兩者都會造成 `SyntaxError`。
+* **重複宣告會靜默蓋掉新函式**：`viewer.ts` 曾經同時有兩個 `revealHit`，
+  舊版把新版的 `linkTo` 整個蓋掉，浪費了一輪除錯。改完先用
+  `bun build src/accelon26/viewer.ts --target browser --outfile build/_check.js` 轉譯一次。
+* **繪圖是非同步的**，測試請輪詢「結果特徵」而不是固定 `setTimeout`；
+  也不要輪詢「本來就非空」的元素（舊版的頻次斷言就是這樣讀到舊值的）。
+  本輪新增：**比對 `state().pinned` 的 VA** 比比對 DOM 的 `.hitLine` 穩定
+  （換頁時 DOM 會先換行、後塗紅）。
+* **`#freqQuery`／`#latinQuery` 曾經完全沒有 handler**（輸入了不會重畫）。
+  現在 `boot()` 用 `wireOwnSearch` 接上 input／Enter／Escape／清除鈕。
+* 測試用的診斷入口都在 `window.__accelon26`（`state()`、`openBreakdown()`、`fitDebug()`、
+  `pinnedSpans()`、`treeDebug()`、`debugDoc()`、`setCols()`、`setAdvanced()`、`showTab()`）。
+  `state()` 新增 `docTab`／`docTabs`／`docPage`／`docPages`／`docTabPages`／`docPageLines`／
+  `docRealm`／`pagerHidden`／`docStrip`／`snippetScope`／`lastFit`／`lastLink`／`pagerLog`／
+  `cursorNode`／`textCache`。
+* **左欄頁名與 scope 綁定**：`syncTreeTabs()` 由 `<樹 s="…">` 決定顯示哪幾頁與頁名
+  （`*`→目錄、`$X`→名詞、`*u=`→頻次、`*X`→全文、`X.y`→原書分頁、`~X`→西文），
+  換庫時「目錄」可能不存在，所以預設頁會自動落到第一個存在的頁。
+* `.gitignore` 已排除 `*.adb`、`build/`、`sourcecode/`，所以資料庫與建置產物不會進版控。
+
+## 9. 主要資料庫
+
+| 檔案 | 大小 | 特色 |
+|---|---|---|
+| `D:\2026\adb-converter\13j.adb` | 2.25 MB | 十三經。單檔、13 書、四層（書→章→節→項 2,020 節點） |
+| `D:\accelon3\yinshun\yinshun.adb` | 24.9 MB | 印順法師全集。45 文件、456 資源、三棵 `<樹>`（`*`／`*u=文`／`~00602000`） |
+| `D:\accelon3\fgdict.adb` | 18.2 MB | 佛光大辭典。三棵 `<樹>`（`$詞`／`*詞`／`頁.n`）、`<詞>` 22,648 個 |
+
+## 10. 桌面版（Wails3 宿主，2026-10）
+
+> 通用的 Wails3 建置／橋／視窗／更新坑見 [wails3-pitfalls.md](./wails3-pitfalls.md)；Windows／漢字／UI 見 [yap-software-practice.md](./yap-software-practice.md)；本章只記本專案的實作、數據與檔案。
+
+**目的**：exe 啟動時就自動列出**工作目錄裡所有 `.adb`**（只讀每個檔的 256 位元組檔頭），
+讀內文用 **mmap**。使用者從右上 `#dbPick` 下拉選一個就加入 `dbTabs`，其餘行為與網頁版完全一樣。
+**啟動先開哪一本**（作者 2026-10-18）：**優先有自帶 logo 圖的庫**（`<dbname>_logo.*`／
+`<檔名>_logo.*`，例如 yinshun.adb，中間才有那張大圖），都沒有才開第一個；
+判斷用 `hasLogoResource()`（只讀檔頭＋資源名稱表，不算「已載入」）。
+
+**作者指示**：除非明確說要造 exe 或「準備發佈」，否則**只產生 HTML 版**；大部分程式碼留在 TypeScript，
+Go 層越薄越好，UI 最好不要知道 Go 層存在；Wails 不必走 socket／event 回呼。
+
+### 10.1 一份 UI、兩種宿主
+
+| 宿主 | 檔案從哪來 | 讀取方式 |
+|---|---|---|
+| 純網頁 `file://` | `#file` 檔案選擇器／拖曳（`File`） | `Blob.slice().arrayBuffer()`（`BlobIO`，128 KiB 分塊快取） |
+| 桌面 `accelon26.exe` | 工作目錄的 `*.adb`（宿主回報，只讀檔頭） | Go mmap → base64 → `Uint8Array` |
+
+UI 怎麼可能不知道 Go 層：`ts/src/accelon26/adb.ts` 定義 `ByteSource`／`AdbSource`（只要 `name`／`size`／
+`lastModified` 與 `slice(start,end).arrayBuffer()`），挑檔案的 `File` 與宿主檔案都符合。
+**只有 `ts/src/accelon26/host.ts` 知道宿主存在**：它用 `new Function('u','return import(u)')` 動態載入
+`/wails/runtime.js`（`file://` 下必然失敗 → 沒有宿主），把 `Call.ByName('main.AdbHost.ListAdbs')` 與
+`('main.AdbHost.ReadBase64', path, offset, length)` 包成普通的 `AdbSource`。`ui.ts` 只多一行
+`void bootDesktop()`（有宿主才把工作目錄的 adb 加進 catalog，並開第一個）。
+診斷：`state().host = { available, listed, error }`（**不要讓它靜默退化** —— 這一輪就是靠它抓到 bug）。
+
+### 10.2 Go 層（`wails/`，獨立模組 `github.com/accelon/adb-converter/wails`）
+
+只註冊一個 service `AdbHost`：
+
+* `ListAdbs()`：`os.ReadDir(".")` 找 `*.adb`（大小寫不敏感）→ mmap → 只解析檔頭的 `dbname`（0..32 ASCII）
+  與 `dbcname`（128..192 UTF-16LE）→ 回 `path/name/dbname/dbcname/size/modified`。
+  `Name` 優先序＝`dbcname` → `dbname` → 檔名。讀不了就跳過，不讓整個清單失敗。
+* `Open(path)`／`Close(path)`／`CloseAll()`：白名單（必須 `.adb` 且位於**當前工作目錄之內**）、
+  映射快取＋引用計數（webview 會從多個 goroutine 呼叫，內部 `sync.Mutex`）。
+* `ReadBase64(path, offset, length)`：**UI 唯一的讀取入口**，回傳映射切片的 base64；越界／負數回 error 不 panic。
+* `Postings(path, token)`：回某個詞的 posting（VA 清單，遞增）—— 「TypeScript 直接取得詞 posting」的入口。
+  packed varint 清單在 Go 解（直接從 mmap 讀），只有結果跨邊界。
+* `SearchTokens(path, tokens, groupTag, maxHits)`：一次做完 查詞 → 解 posting（**多詞平行**）→
+  `phraseMatch`（plAnd）→ `groupHits`（分群統計），回 `{hits, missing, truncated, groups}` 與各階段耗時。
+  切詞仍在 TypeScript（`tokenize.ts` 是語言層），Go 只做索引運算（作者 2026-10 的指示）。
+* `DecompressText(path, offset, length)`：**bzip2 有 Go 版就用 Go**（作者 2026-10）。adb 的 source 每個
+  block 都是獨立 bzip2 stream，所以標準庫 `compress/bzip2` 剛好夠用；一次呼叫做完**解壓＋UTF-16LE 解碼
+  ＋截到第一個 NUL**，回字串（比回 base64 的展開位元組小）。前端 `sourceText` 有宿主就走這條，
+  沒有宿主（`file://`）才退回 TypeScript 的 vendored bzip2 —— `host.ts` 就是那個開關。
+* mmap 直呼 `kernel32.dll`（`CreateFileMappingW`／`MapViewOfFile`／`UnmapViewOfFile`），不引入 `golang.org/x/sys`。
+* **不做任何 adb 解析**（除了 256 位元組檔頭）：沒有事件、沒有 socket、沒有自訂協議。
+
+**為什麼傳 base64 而不是 `[]byte`**：Wails 會把 `[]byte` 序列化成 JSON 數字陣列（約 6 倍大）；base64 只膨脹
+1.33 倍，前端用 `Uint8Array.fromBase64`（沒有就 `atob`）解回 bytes。
+
+### 10.3 建置與驗證
+
+```powershell
+cd ts; bun run tools/build-viewer.ts                  # 預設產物：../build/accelon26.html（單檔，file:// 可開）
+cd ts; bun run tools/build-desktop.ts                 # 只在要桌面版時：同一份 HTML → ../wails/assets/index.html
+cd wails; go test ./...                               # Go 單元測試（不需要 GUI）
+cd ts; bun run tools/release.ts --no-build           # 打包 exe → accelon3\accelon26.exe（HTML 內嵌）
+#   或直接：cd wails; go build -ldflags "-H windowsgui" -o ..\accelon3\accelon26.exe .
+cd ..\accelon3; .\accelon26.exe -selftest            # 不開 GUI：列工作目錄的 adb + mmap 讀取計時
+cd ts; bun run tools/desktop-test.ts [--gui]          # 桌面版回歸：headless 5 項；--gui 再加視窗版 6 項
+```
+
+**實測（2026-10，exe 在倉庫根目錄執行，那裡有 13j.adb／fgdict.adb／yinshun.adb）**：
+
+```
+`-selftest`（節錄）：
+  found 3 .adb file(s):
+    佛光大辭典        size=19121862  dbname="fgdict"  dbcname="佛光大辭典"
+    十三經            size=2252537   dbname="13j"     dbcname="十三經"
+    印順法師佛學著作集  size=24910598  dbname="yinshun" dbcname="印順法師佛學著作集"
+  mmap+base64 read: 200 x 131072 bytes = 25.0 MiB input, total 17.7 ms
+    88540 ns/op, 1412 MiB/s input, 1882 MiB/s base64 out
+
+tools/desktop-test.ts --gui（11/11 passed，節錄）：
+  ok  視窗頁面啟動（desktop host 有回應）  ["佛光大辭典","印順法師佛學著作集（未載入）","十三經（未載入）"]
+  ok  下拉已含工作目錄的兩個 adb          ["佛光大辭典","十三經","印順法師佛學著作集"]
+  ok  啟動時沒有把每個 adb 都載入（只讀檔頭）1 個已載入
+  ok  開第一個 adb 是用 mmap 讀的        reads=17 ioMs=75.8 parseMs=52.3 totalMs=109.8
+  ok  從下拉選另一個 adb 會載入它        fgdict → yinshun：wall 206 ms、開檔 110 ms（19 次讀取，io 89.6 ms）
+  ok  Go 的 bzip2 與 TypeScript 的 bzip2 對同一批 source block 逐字相同  blocks [0,1,51,101]（第 0 塊 8192 字）
+  ok  視窗頁面啟動／下拉已含工作目錄的 adb／啟動只載入 1 個／開檔有 reads+ioMs
+  （共 13 項全過；`tools/desktop-test.ts --gui`）
+```
+
+**bzip2 兩條路必須等價**：`tools/desktop-test.ts` 拿同一批 source block（13j 的第 0／1／51／101 塊）
+分別用 Go 的 `compress/bzip2`（經宿主 binding）與 TypeScript 的 vendored bzip2 解壓＋解碼，**逐字相同**。
+
+### 10.4 效能：mmap 很快，**跨語言邊界才是瓶頸**（實測，別被直覺騙了）
+
+Go 端 mmap+base64：**~1.4 GiB/s**（25 MiB 讀 200 次共 17.7 ms）。但 webview 呼叫一次要過 Wails 的
+runtime（JSON + base64 + 訊息傳遞），在執行中的 exe 裡用 `build/probe-bridge.ts` 量到：
+
+| 一次要的位元組 | 每次呼叫耗時 | 有效頻寬 |
+|---|---|---|
+| 4 KiB | 0.99 ms | 4 MB/s |
+| 16 KiB | 1.18 ms | 13 MB/s |
+| 128 KiB | 3.16 ms | 40 MB/s |
+| 512 KiB | 8.51 ms | 59 MB/s |
+| 1 MiB | 16.9 ms | 59 MB/s |
+| 4 MiB | 63.4 ms | 63 MB/s |
+
+也就是：**每次呼叫固定成本 ~0.9 ms，之後約 60 MB/s**（base64 字串的搬運與解碼）。開 fgdict 要讀
+~2.4 MB 的表 → 桌面 **109.8 ms**（17 次讀取、io 75.8 ms），同一顆庫在瀏覽器走 `Blob.slice` 是 **~49 ms**
+（`ioMs` 只有 15 ms，因為 `Blob.slice` 每次呼叫幾乎不用錢）。**桌面版的價值是「啟動就列出工作目錄的庫」
+與不用挑檔，不是原始讀取速度**。（要再快就得動這個邊界：加大分塊是「開檔變快、翻頁變慢」的取捨；`BlobIO.CHUNK` 目前 128 KiB 是兩者的折衷。）
+
+**bzip2：Go 的解碼器略快，但「跨語言邊界」讓單塊呼叫變慢**（同一批真實 source block，純解壓、迴圈內無 I/O）：
+
+| 資料集 | TypeScript vendored bzip2 | Go compress/bzip2（單核） | Go 平行 14 核 |
+|---|---|---|---|
+| 13j 32 塊（0.27→0.50 MiB） | 36.0 ms／14 MiB/s | 30.2 ms／17 MiB/s（中位數 1.01 ms/塊） | 7.6 ms／66 MiB/s（4.0×） |
+| yinshun 128 塊（0.97→2.00 MiB） | 136.3 ms／15 MiB/s | 110.7 ms／18 MiB/s（1.00 ms/塊） | 23.1 ms／86 MiB/s（4.8×） |
+
+所以：(1) Go 的解碼器本身只快 **~1.2×**；(2) 但**單塊走 binding 反而慢 2.4×** —— 在 exe 內量到
+Go 4.6 ms/塊 vs TypeScript（含 fs 讀取）1.9 ms/塊，差的 ~3.6 ms 幾乎全是運輸（每次固定 ~0.9 ms ＋
+把**解壓後**的文字搬過邊界；解壓後的位元組本來就比壓縮後大 2–3 倍）。mmap 本身沒問題：
+`BenchmarkReadBase64_128KiB` = 87 µs/128 KiB（1.5 GB/s，in-process）。
+
+**結論／選項**：
+
+| 情境 | 目前最快的路 |
+|---|---|
+| 單塊（`sourceText` 現在的用法） | **TypeScript 解壓**（傳壓縮位元組、解碼 1.2 ms） |
+| 一次很多塊（整份文件預取、搜尋暖機） | **Go 批次＋平行**（128 塊：平行 23 ms ＋ 一次運 2 MiB ≈ 58 ms vs TS 136 ms，約 **2.3×**） |
+
+量測工具（可重跑）：`cd ts && bun run tools/bzip2-bench.ts [--adb … --blocks N]` 把真實 block 寫到
+`build/bzip2-blocks/*.bin` 並量 TypeScript 解碼；`cd wails && go test -count=1 -run TestBzip2Throughput -v`
+對同一批位元組量 Go 單核／平行（`wails/bzip2_bench_test.go`，另有 benchmark）。
+目前程式**照作者指示「有 Go 版就用 Go」**（`hostSource()` 的 `decompressText`）：要讓單塊走回 TypeScript，
+把那兩行拿掉即可；要讓 Go 真的贏，需要一個批次 API（Go 平行解壓 ＋ 一次回傳多塊）。
+
+### 10.5 踩到的坑（下一輪別再踩）
+
+> 通用的 Wails3 坑（asset handler、CDP、build 順序、syso、DPI、mutex、探測競態）見 [wails3-pitfalls.md](./wails3-pitfalls.md)；Windows／漢字／UI 見 [yap-software-practice.md](./yap-software-practice.md)。本節只留本專案獨有的歷史教訓，避免兩邊各寫一份。
+
+* `physicalBytes()`（adb.ts）目前**沒有任何呼叫者**（原本就不存在），所以 Go 端只做 `DecompressText`、
+  沒有做回原生位元組的版本 —— 保持 Go 層最薄；哪天真要用再加。
+* `searchFile()` 曾把解析結果寫進 nil map（`h.search[key] = f`）→ panic；panic 回溯時 deferred `release()`
+  又想拿同一把鎖 → goroutine 卡死，前端 `Runtime.evaluate` 逾時 60 s。修法：寫入前先 `make` map；
+  通用教訓見指南 §7.1。
+* `bootDesktop()` 曾漏 import `catalogAdd`：Bun 不報錯、async 內 `ReferenceError` 被吞 → 下拉空的。
+  已補 import，並用 `state().host.error` 讓它可見；通用教訓見指南 §2.3。
+
+### 10.8 視窗與螢幕（作者 2026-10）
+
+> 通用的視窗／螢幕／DPI 坑見 [wails3-pitfalls.md](./wails3-pitfalls.md) §3；以下只記本專案的規則、狀態檔與驗證。
+
+規則（原文）：「第一次進入 exe 先進入全屏，離開時記下視窗設定，下次恢復；永遠將 exe 投在用戶
+執行 exe 的那個屏，如果偵測不到，就在主屏開啟（經常有軟件開已不存在的外接屏）。」
+
+實作（`wails/window.go` ＋ `main.go`）：
+
+* **狀態檔**：`%AppData%\accelon26\window.json`（`RelX/RelY` 相對所在螢幕**工作區原點**、`W/H`、
+  `State`＝normal／maximised／fullscreen、`Screen` 上次那張螢幕的名字）；可用環境變數
+  `ACCELON26_STATE_DIR` 改寫（自動化測試與可攜版用）。原子寫入（.tmp ＋ rename），壞掉的檔視同第一次。
+* **啟動流程**：視窗先建立但 `Hidden: true` → 等 `events.Common.ApplicationStarted`（訊息迴圈與
+  螢幕資訊都就緒）→ 選螢幕 → 夾進工作區 → `SetSize`／`SetPosition` → 套用狀態（只最大化；
+  不全螢幕）→ `Show()`。所以不會「先出現在錯的螢幕再跳過去」。
+* **選螢幕**：啟動瞬間的**滑鼠游標**所在螢幕（雙擊／點執行就是在那一張）→
+  `application.ScreenNearestPhysicalRect` 找出對應的 Wails 螢幕 → 拿它的 `WorkArea`；
+  游標問不到（外接螢幕被拔掉的座標、拿不到游標）→ 主螢幕 → 第一張。
+* **第一次啟動**：正常視窗（`stateNormal`，預設 1400×900 夾進工作區後置中）；**不要全螢幕**。
+  全螢幕會換成沒有標題列的外框，使用者一開始就看不到右上角的關閉鈕（作者 2026-10-23 回報）。
+  就算舊版留下的 `window.json` 記著 `state=fullscreen`，`startupState()` 也會改成 normal；
+  最大化仍保留（有標題列與關閉鈕）。
+  > 2026-10-24：已隨 Windows／macOS 版發佈（官網 2026-10-24）。
+* **視窗要有標準 Windows 標題列**：Wails 全螢幕在 Windows 是 `WS_POPUP`（沒有標題列；通用坑見指南 §3.5），所以本專案用 **F11／Esc** 切換（`ts/src/accelon26/window-keys.ts` → `AdbHost.ToggleFullscreen`），離開後恢復 `WS_OVERLAPPEDWINDOW`（標題列／可縮放／可關／可最大化，測試有斷言）。
+  按 F11 進入全螢幕時，畫面頂端會出現 7 秒提示：「全螢幕中：按 Esc 或 F11 回到視窗（Alt+F4 關閉）」；
+  `#brand` 的 hover hint 也一直寫著「F11 全螢幕／Esc 回視窗」。`WindowInfo().style` 可以看樣式位元
+  （caption／resizable／sysMenu／maximizeBox／popupOnly），排錯時先看它。
+* **相對位置用「啟動時選的那張螢幕」**算（不是「視窗框最近的那張」）：平台有時會把視窗再挪幾十像素，
+  剛好跨過螢幕邊界時「最近的那張」會在兩張之間跳，存下來的相對位置就會在兩個座標系之間擺盪
+  （實測：{DISPLAY2,99,0} ⇄ {DISPLAY1,70,38} 交替）。改用啟動螢幕後立刻收斂 ✓。
+* **之後啟動**：恢復上次的框，位置＝工作區原點 ＋ 相對位置，**並夾進工作區**
+  （大小不超過工作區、位置不越界）—— 這是「上次在外接螢幕、這回那張不在了」的解藥
+  （`clampWindowState`，有單元測試）。上次若是 fullscreen，一律改成 normal 啟動。
+* **離開**：`WindowClosing` 先寫一次（那一刻視窗還在），`OnShutdown` 當保險，`windowTracker`
+  只寫一次。追蹤器是**事件驅動**的（移動／縮放／最大化／全螢幕都會更新「最後一次 normal 的框」），
+  所以就算 save 時視窗已經銷毀也寫得出來。
+
+**排錯工具**（多螢幕問題先看這兩個）：
+
+* `accelon26.exe -screens`：Win32 列出來的每張螢幕（monitor／work／primary／current／scale）、游標位置、
+  Wails 選的啟動螢幕、上次的設定、狀態檔路徑。
+* 服務方法 `main.AdbHost.WindowInfo()`（頁面可直接呼叫，**UI 完全不需要知道**）：位置、大小、狀態、
+  所在螢幕與工作區、最後一次 normal 的框、狀態檔路徑。
+
+**座標系**：通用坑見指南 §3.2。本專案 `w32.GetAllScreens()` 在 `application.New()` 前後可能回不同數字（DPI 虛擬化），所以**定位一律走 Wails 的 `application.Screen`**（`ScreenNearestPhysicalRect` 做 physical↔DIP 換算），`w32` 只用來列舉與拿游標原始座標（`-screens`）。
+
+**驗證**（`tools/desktop-test.ts --gui --quick`，43 項全過）：
+
+```
+ok 第一次啟動是正常視窗（不全螢幕）      state=normal fullscreen=false 1040x694@0,0
+ok 第一次啟動就看得到標題列與關閉鈕      caption=true sysMenu=true
+ok 第一次啟動沒有全螢幕提示（因為不是全螢幕）
+ok 知道自己落在哪張螢幕（含工作區）        screen=\.\DISPLAY1 primary=true work=1040x694@0,0
+ok 狀態檔寫在 ACCELON26_STATE_DIR
+ok 離開時記下視窗設定                    { "relX":0, "relY":0, "w":1040, "h":694, "state":"normal", "screen":"\\.\DISPLAY1" }
+ok 第二次啟動恢復 normal（不會恢復全螢幕）
+ok 舊狀態檔是 fullscreen 時，更新後仍以正常視窗啟動
+ok 恢復記下的大小（夾進啟動螢幕的工作區）  state=normal got 900x694 want 900x694（要求 900x700 → 夾到 694）
+ok 恢復的位置在啟動螢幕的工作區內
+ok 恢復的位置接近要求                    got (70,0) want (40,0)（平台差 30 px，見下）
+ok 連續兩次啟動的視窗設定不會漂移         兩次都是 {relX:70, relY:0, w:900, h:694, state:normal}
+```
+
+測試環境的顯示器幾何很怪（三張虛擬螢幕、scale 3.0），平台回報的位置與要求差 ~30 px；**但同一份
+設定連續兩次啟動完全相同**（不漂移），所以程式不補正這個常數差，只在啟動時等 60 ms 穩定後讀回來
+補一次（不一致才補）。測試因此驗「在工作區內 + 接近要求 + 兩次不漂移」，而不是要求逐像素相同。
+
+關視窗要用真的關閉；硬殺不會觸發 `WindowClosing`／`OnShutdown`，設定就不會被寫下來（通用坑見指南 §3.4）。
+
+### 10.7 索引查詢（postings／plAnd／分群）搬到 Go
+
+作者 2026-10：「把 plAnd、posting group 也做 go 版，這樣 TypeScript 直接取得詞 posting 和分群統計；
+計算量大的函式，可以做 Go 平行版。」
+
+**為什麼是「整條查詢」而不是單獨搬 plAnd／groupHits**：Go 端在 mmap 上解 posting 幾乎免費
+（實測 yinshun「大乘」：lookup 0.5 ms（平行）／plAnd 0.5 ms／group 0.0 ms），真正花時間的是
+**跨語言運輸**。所以做成一個呼叫（`SearchTokens`）只把命中與分群統計送回 TS；若只搬 plAnd，
+反而得先把整份 posting 清單送過去，一定更慢。
+
+**等價性**（`ts/tools/desktop-test.ts --gui`，同一顆庫、同一個查詢；hits 逐筆、groups 逐欄比對）：
+
+| 案例 | hits | groups | TypeScript 引擎（本地 fs） | Go 一次呼叫（含運輸） |
+|---|---|---|---|---|
+| 13j「象曰」 | 446 | 13/13 | 1.5–1.8 ms | 3 ms |
+| 13j「孟子」 | 316 | 13/13 | 0.4–0.6 ms | 2 ms |
+| yinshun「大乘」 | 5,000 | 44/44 | 3.5–12 ms（JIT／快取暖不暖差很多） | 6–7 ms |
+| yinshun「般若波羅蜜」 | 1,848 | 44/44 | 1.5–4.2 ms | 5 ms |
+
+**讀數（誠實版）**：
+* Go 的解壓是**平行**的（`parallel=true`，yinshun「大乘」內部 lookup 1.1 ms／plAnd 1.1 ms／group 0.0 ms），
+  所以清單大時有優勢；但**每次呼叫固定約 2 ms 的運輸**讓清單小的查詢（13j）反而慢一點。
+* 表上的 TS 數字是**本地 fs**（SyncIO，暖快取）量的，那是 TS 最有利的條件；桌面版若走 TS 路徑，
+  還得用 `ReadBase64` 把每個 packed posting block 搬過橋（「大乘」兩個 block 約 100 KB，約 +4 ms），
+  所以桌面上兩條路大致打平、清單大時 Go 明顯佔優。
+* 真正的結構性好處：**posting 清單不必跨邊界**（只有命中與分群統計過去）、少很多次往返、
+  而且解壓在 Go 的 goroutine 上，不佔 JS 主執行緒。
+
+**在視窗裡實測**（`--gui` 斷言）：輸入「大乘」→ `state().hostSearch` 有值（hits 5,000、8.3 ms，
+Go 內部 lookup 1.1／plAnd 1.1／group 0.0）、摘要 30 筆、「分 28 群（依 書）」——UI 真的走這條路，
+不是只有直接呼叫 binding。
+Go 端的自我檢查（不開 GUI）：`cd wails && go test -count=1 -run TestSearchTokensOnCorpus -v`
+（對 13j 的「象曰」446 筆／13 群、「孟子」316 筆／13 群，並印出 `Postings` 的筆數）。
+
+### 10.9 左上角建置時間與線上更新（作者 2026-10）
+
+> 通用的更新／簽章／WebView2 坑見 [wails3-pitfalls.md](./wails3-pitfalls.md) §4–§5；以下只記本專案的版本資訊、指令與檔案。
+
+作者原文：「accelon26.exe 改名…左上角 hover hint 顯示 built time。如果
+https://shutonggui.cn/accelon26/accelon26.exe 的 built time 比用戶運行中的更新，左上角閃動
+表示有更新版提醒用戶更新，用戶點下時，問是否確定更新（先檢查 exe 所在目錄是否可寫，不可寫就
+永遠不檢查是否有更新；如果目前運行的 exe built time 和電腦時鐘差別不到 2 小時，表示是開發者
+本地 exe，就不必檢查更新了），更新後，顯示改版新增或改進的功能。」
+
+**改名**：exe 與應用識別都改成 `accelon26`（`D:\accelon26\accelon26.exe`、視窗標題、
+`%AppData%\accelon26\window.json`）；環境變數改成 `ACCELON26_*`。單檔 HTML 產物也跟著改成
+`build/accelon26.html`（作者 2026-10：不要讓讀者在 `accelon26.html` 與 `accelon26.exe` 之間猜），
+工具的預設路徑與測試一起改。**viewer 模組本身仍叫 accelon26**（`ts/src/accelon26/`）—— 那是同一份
+UI，兩個宿主共用；桌面版內嵌的那一份仍叫 `wails/assets/index.html`（`go:embed` 的要求）。
+
+**建置時間**（`wails/update.go`）：發佈時用 `-ldflags "-X main.buildTime=<RFC3339>"` 注入；
+沒注入就退回執行檔的修改時間（`buildSource=file`，hover hint 會註明「檔案時間，非發佈建置」）。
+線上的版本資訊**優先看 `versions.json`**（2026-10-18 加上，主機已放好）：
+
+1. `GET https://shutonggui.cn/accelon26/versions.json` → `{ buildTime, url, size, sha256 }`；
+   用 `buildTime` 比新舊（遠端要新至少 1 分鐘），`sha256`／`size` 拿來驗下載的內容。
+2. 沒有 versions.json（舊主機）才退回 `HEAD accelon26.exe` 的 `Last-Modified`。
+   這是 **fallback**：`Last-Modified` 是**上傳時間**，跟 exe 裡的建置時間不一定一致
+   （2026-10-18 實測差 11 秒；上傳慢一點就會「更新完又說有新版」），所以不要靠它。
+
+**不檢查更新的兩種情況**（都不打擾使用者）：
+1. **exe 所在目錄不可寫**（真的寫一個暫存檔測試）→ 本專案目前永遠不檢查（通用建議是仍檢查、只停用自動換檔，見指南 §5.7）；
+2. **本地建置時間與現在差不到 2 小時** → 開發者自己的 exe（自動化測試用
+   `ACCELON26_UPDATE_URL` 覆寫網址時會強制檢查，否則測不到）。
+
+**UI**（`ts/src/accelon26/update-ui.ts`，透過 `host.ts` 對話；UI 完全不知道 Go 層）：
+* 左上角 `#brand`（accelon26）的 hover hint ＝`accelon26 · built 2026-10-16 22:10 · …`
+  （有新版時再加上「有新版本：線上 … — 點這裡更新」）；
+* 有新版 → `#brand.update` **閃動**（CSS `brandFlash`）＋ 可點擊 → `window.confirm` 問一次；
+* 更新後第一次啟動（帶 `-updated-from`）→ 顯示**改版說明**（`#notesBox`），內容來自
+  `wails/release_notes.json`，只顯示比舊版新的那幾筆。
+
+**更新流程**（`InstallUpdate`）：下載到 `<dir>/accelon26.exe.new`（先 `.part` 再改名）→
+**五道關卡**，任何一道不過都丟掉下載檔、不動使用者手上那一顆：
+`size` ＝ versions.json → `sha256` ＝ versions.json → 檔頭 `MZ` 且 ≥ 1 MiB →
+跑一次 `new.exe -version` 解得建置時間 → 那個時間比目前新 → 把**執行中的** exe 改名成
+`accelon26-prev.exe`（可以直接雙擊）→ `.new` 改名成正式名字 → 啟動 prev 這支**重新啟動器**
+（`-relaunch-pid/-relaunch-exe/-relaunch-from/-relaunch-port`）→ 0.7 秒後舊行程結束。
+
+**為什麼要重新啟動器**：新舊行程不能同時用同一個 WebView2 使用者資料目錄（`8007139f`）；通用坑與 helper 設計見指南 §5.3。本專案的時序：舊行程 0.7 秒後結束，prev 等它完全結束（＋0.4 秒）才開新版；這支不開視窗、不碰 WebView2；再觀察新版 4 秒，失敗就把 prev 改名回 `accelon26.exe`、跳訊息框、開舊版。新版跑得起來時 prev 在 6 秒後與正常關閉時刪掉（`handedOff` 區分交棒與正常關閉）。`InstallUpdate` 有鎖（`installMu.TryLock`）。
+
+**exe 放哪裡／怎麼建**：exe 一律產在 `accelon3\`（那裡有幾十個 `.adb`，建完直接雙擊測）。用 `-ldflags "-H windowsgui"` 建置；console 版加 `--console`（通用坑見指南 §1.4）。
+
+**發佈（作者說「發布」時）**：
+
+```powershell
+cd ts; bun run tools/desktop-test.ts --gui                    # 發布前跑一次桌面回歸（慢，平常不跑）
+cd ts; bun run tools/release.ts --items-file notes.txt        # 一行一項（UTF-8，中文請用這個）
+# 或 bun run tools/release.ts --items "ascii-only;…" [--title "…"]
+#  1) append 到 wails/release_notes.json  2) 先建 HTML 再 go build（-ldflags 注入建置時間）
+#  3) 用 -version 驗 exe 裡真的是 ldflags 的時間  4) 產生 versions.json（buildTime＋sha256＋size）
+#  5) 打包 www/accelon26.7z  6) 印出上傳指示並確認線上的 versions.json
+cd ts; bun run tools/deploy.ts [--site]                       # 上傳 exe → versions.json，再從 https 驗 sha256
+```
+
+`deploy.ts` 用 `.local/server.env` 的帳密（`.local/` 在 `.gitignore`，內容不進版控也不印出來），
+主機金鑰指紋釘在 `.local/hostkey.txt`。**順序固定：先 exe、後 versions.json**，兩者都先寫 `.tmp`
+再 `mv`（原子替換），並把上一版留成 `accelon26.exe.prev`／`versions.json.prev` 以便回滾。
+主機事實、回滾步驟、五道關卡全部在 [DEPLOY.md](./DEPLOY.md)。
+
+**圖示**（作者 2026-10：「用 logo128.png 做成 exe 和網頁版的 icon」）：
+
+* **來源只有一份**：`ts/src/accelon26/appicon.png`（原本是倉庫根目錄的 logo128.png，已搬進 viewer 模組）。
+* **exe 圖示**：`release.ts` 用 `wails3 generate icons` 產生 `build/windows/icon.ico`，再用
+  `wails3 generate syso -arch amd64 -icon … -manifest wails/windows.manifest` 產生
+  `wails/accelon26.syso`（go build 會自動連結這個資源物件）。`.syso` 是建置產物（gitignore）。
+  manifest 宣告 per-monitor v2 DPI 感知、longPathAware、Common-Controls、Win10/11 支援。
+  `-arch` 與 syso 的坑見指南 §1.2。
+* **網頁版圖示**：`page-build.ts` 把同一張 PNG 以 **data URI** 內嵌成 `<link rel="icon">`
+  —— 單檔 HTML 不能依賴旁邊的檔案，data URI 才真的「一個檔案帶著走」（+19 KiB）。
+* 驗證：`ExtractAssociatedIcon` 從 exe 取出 32×32 圖示（與來源相同）；網頁版在瀏覽器測試裡斷言
+  `link[rel=icon]` 是 PNG data URI 且頁面標題是 accelon26。
+
+**診斷**：`accelon3\accelon26.exe -version`（建置時間／說明筆數／更新網址／versions.json
+網址）、`-check-update`（真的連一次網，印出 `AppInfo` 的 JSON：`updateAvailable`、`checkOK`、
+`note`）、`main.AdbHost.AppInfo()`、`CheckUpdate()`（立刻檢查一次；90 秒內剛檢查過就回快取）、
+`InstallUpdate()`、`ReleaseNotes(since)`。
+
+**驗證**（發布時才跑）：`tools/desktop-test.ts --gui` **49 項全過**（2026-10-18 實跑），其中更新相關：
+
+```
+ok 檢查到線上版本比較新（versions.json）     本地 2026-10-18 11:04 vs 線上 2026-10-19T03:04
+ok 目錄可寫 → 允許更新；線上網址就是設定的那個   dirWritable=true canUpdate=true
+ok 左上角 hover hint 顯示建置時間             accelon26 · built 2026-10-18 11:04 · …
+ok 左上角閃動並提示有新版本                    update｜… 有新版本：線上 2026-10-19 03:04 — 點這裡更新
+ok 「關於」裡出現「下載更新」按鈕               （使用者路徑＝點左上角開「關於」→ 按這裡）
+ok 更新後舊行程結束（交給新版）                exit 1（2 s）
+ok 執行檔已被新版取代（mtime 變新）
+ok 留下上一版 accelon26-prev.exe（新版起不來時可以雙擊它）
+ok 新版帶著 -updated-from 啟動                updatedFrom=2026-10-18T03:04:47Z
+ok 新版正常關閉時把上一版（accelon26-prev.exe）刪掉
+ok 更新後顯示改版說明（notesBox）
+```
+
+測試的「線上新版」是真的：它把 exe 裡烙進去的建置時間改成明天（同長度純文字替換，PE 不受
+影響），再餵一份 `versions.json`（buildTime ＋ sha256 ＋ size 都對得上），所以下載、五道關卡、
+換檔、重新啟動器、回滾、改版說明全部走真的程式碼。**本專案未簽章，才能這樣 byte-patch；若簽章就不能這樣做（見指南 §4.8）。**
+
+Go 單元測試（`wails/update_test.go`）：目錄可寫／不可寫、遠端較新／較舊／沒有 Last-Modified／
+連不上、開發者本地 exe 跳過檢查、下載＋PE 檔頭檢查、versions.json 判斷與 sha256／size 帶回、
+`-version` 輸出解析、改版說明過濾與 fallback。
+測試用**本地 HTTP 伺服器**當「已發佈的新版」（`ACCELON26_UPDATE_URL` 或
+`ACCELON26_VERSION_URL`），被更新的 exe 是 `build/tmp-upd` 的副本，不連外網、也不碰正式 exe。
+
+### 10.6 檔案
+
+
+| 檔案 | 角色 |
+|---|---|
+| `wails/main.go` | Wails 應用（極薄）：內嵌 assets、`-selftest`、註冊 `AdbHost`、`ACCELON26_DEBUG_PORT` |
+| `wails/adbhost.go` | mmap + `ListAdbs`／`Open`／`ReadBase64`／`Close`／`CloseAll` |
+| `wails/decompress.go` | bzip2（`DecompressText`）：解壓＋UTF-16 解碼一次做完 |
+| `wails/search.go` | 索引查詢：容器表解析、packed posting 解壓、`phraseMatch`（plAnd）、`groupHits`（分群，可平行） |
+| `wails/window.go` | 視窗與螢幕：狀態檔、啟動螢幕選擇、夾進工作區、事件驅動的追蹤器、`-screens` 診斷 |
+| `wails/update.go` | 建置時間、目錄可寫偵測、線上檢查（優先 versions.json，fallback Last-Modified）、五道關卡＋換檔＋失敗回滾、改版說明 |
+| `wails/release_notes.json` | 各版改版說明（發佈時用 `tools/release.ts` 追加） |
+| `ts/src/accelon26/update-ui.ts` | 左上角提示／閃動／確認／改版說明（UI 端唯一碰更新的一支） |
+| `ts/src/accelon26/appicon.png` | 應用圖示（唯一來源）：exe 圖示與網頁 favicon 都用它 |
+| `ts/src/accelon26/window-keys.ts` | F11／Esc 全螢幕切換與全螢幕提示 |
+| `ts/tools/page-build.ts` | 單檔 HTML 的組裝（bundle ＋ favicon data URI），兩個建置腳本共用 |
+| `wails/windows.manifest` | Windows manifest（DPI／longPath／Common-Controls），給 generate syso 用 |
+| `ts/tools/release.ts` | 發佈：追加說明 → 先 HTML 再 exe（注入建置時間）→ 驗證 → 產生 versions.json → 打包 www/accelon26.7z → 上傳指示與線上檢查 |
+| `ts/tools/deploy.ts` | 部署：讀 `.local/server.env`，pscp 上傳 `.tmp` → 遠端原子 `mv`（exe 先、versions.json 後）→ 從 https 抓回來驗 sha256 |
+| `DEPLOY.md` | 主機事實、部署步驟、五道關卡、回滾與緊急處置（本文件 §10.9 的細節版） |
+| `wails/adbhost_test.go`／`decompress_test.go`／`search_test.go`／`window_test.go`／`bzip2_bench_test.go` | Go 測試與量測 |
+| `wails/adbhost_test.go` | Go 測試：檔頭解析、與 `os.ReadFile` 逐位元組相同、越界報錯、讀取計時 |
+| `wails/assets/index.html` | 內嵌的 accelon26（由 `ts/tools/build-desktop.ts` 產生） |
+| `ts/src/accelon26/host.ts` | 唯一知道宿主存在的地方（動態 import runtime → `AdbSource`） |
+| `ts/tools/desktop-test.ts` | 桌面版回歸（headless `-selftest` ＋ `--gui` 的 WebView2/CDP 檢查） |
+| `ts/tools/build-desktop.ts` | 把同一份單檔 HTML 寫進 `wails/assets/` |
+
+---
+
+## 11. 操作導覽（作者 2026-10）
+
+目的：**取代人類手把手教新手**。劇本是資料（人可讀可編），宏是產物（人不可讀），
+播放器內建在 HTML 裡，一場景一停，由使用者決定要不要往下。
+
+```
+ts/tour/*.tour  ──build-tours.ts──▶  src/accelon26/tour-data.ts  ──build-viewer──▶  accelon26.html
+   (Markdown 方言)                     (base64 二進位宏，進版控)                     (宏 ＋ 播放器)
+```
+
+### 11.1 為什麼這樣分三層
+
+| 層 | 理由 |
+|---|---|
+| 劇本用 Markdown 方言，不用 JSON | 要「可編」：能寫段落、加註解、diff 看得懂。JSON 的標點門檻會讓人寫第二份時就放棄 |
+| 宏用二進位 ＋ base64 | 單檔 HTML 在 file:// 讀不到旁邊的檔案（§4.1），所以**只能內嵌**；同時讓「改 DSL」不必動播放器，也讓手滑編輯不會弄壞產品（這是妨碍順手改，不是加密） |
+| 播放器只認 opcode | 它不 import 任何面板模組（`initTour(app)` 注入動作），所以不會有 ui → tour → ui 的循環 |
+
+### 11.2 三個不能忘的約束
+
+1. **等待一律條件式**（`等頁面 count:#searchList .snippet >= 1`）。開庫、目錄樹、清單分批掛載
+   全是非同步的；固定 `等 1500` 在慢機器上就是隨機失敗。播放器輪詢 100 ms，逾時就**停在原地**
+   並顯示「等不到 X」，不會靜默往下走。
+2. **聚光燈不擋操作**：`#tourSpot` 是 `pointer-events:none` 的 `box-shadow: 0 0 0 9999px`，
+   所以整場導覽期間頁面都還能用（「你來」那幾步更是必須如此）。
+3. **檔案對話框不能自動化**：開檔那一步永遠是 `你來`（等 `api:db` 成立就自動過關，
+   所以桌面版已經開好庫時這一步是零秒）。
+
+### 11.3 格式（`tour-format.ts`，改編碼就要 `TOUR_FMT+1`）
+
+```
+"AC26T" u8 fmt u8 flags u32 crc32(payload)
+str id | str title | str intro | str require | u16 場景數
+  場景：str title | str 說明(Markdown) | u16 步驟數
+    步驟：u8 opcode | u8 參數個數 | 參數 × str(u16 長度 + UTF-8)
+```
+
+`str` 一律 u16 長度；數字當字串存（`"400"`），少一種型別就少一處錯。
+CRC 壞掉、magic 不對、版本不合都給人話訊息（不是播到一半亂掉）。
+
+### 11.4 播放器的狀態機
+
+```
+play(id) → running ──step ok──▶ running
+              │                  │ 場景最後一步
+              │                  ▼
+              │              waiting（說明文字 ＋「下一個場景 →」）
+              │                  │
+              └─ 失敗／需要 ──▶ paused（「略過這步」「重播」「結束」）
+```
+
+* 換場景／重播／上一場景都是「重新開一場」（`seq++` 讓舊的迴圈自然結束），不維護半途堆疊。
+* 進度存在 `accelon26.tour.<id>`，選單的按鈕會變成「繼續（3 / 10）」。
+* 鍵盤：`→`／空白 下一場景、`←` 上一場景、`Esc` 結束 —— 掛在 **window capture**（比 document 的
+  capture 先收到），但**有彈窗時讓彈窗先處理 Esc**。
+* 入口：**「關於」（左上角 `accelon26`）→「▶ 操作導覽」**（作者 2026-10-18：原本是頂欄的 🎬）。
+  「關於」預設**啟動時顯示**（`accelon26.about.startup`，勾掉就不再自動彈），所以第一次開就會看到入口。
+  `__accelon26.playTour/stopTour/tourState/openTourMenu` 供測試。
+
+### 11.5 寫一份新劇本
+
+看 `ts/tour/README.md`（語法、指令表、條件語法、六個常見錯誤）。摘要：
+
+```markdown
+### 查一個詞
+左上「目錄」分頁的輸入框就是搜尋框：**邊打邊查**。
+
+> 指向 #query
+> 輸入 #query => 之
+> 等頁面 count:#searchList .snippet >= 1 20000
+> 說 每一筆是一句上下文，命中的字有顏色。
+```
+
+然後 `bun run build:tours`（編譯＋靜態檢查）→ `bun run tools/build-viewer.ts` → `bun run test:tour-ui`。
+
+編譯器會擋：不認得的指令、參數個數不對、`#id` 不在 template、`data-tab` 打錯、
+`api:` 路徑不在白名單、`@id` 與檔名不一致。**打錯的選擇器是導覽最常見的死法**——
+它不會讓程式壞掉，只會讓導覽默默指著空氣。
+
+### 11.6 這一輪抓到的兩個真問題（測試的價值）
+
+1. `指向 #setVariants` 之後直接 `點 #settingsClose`：彈窗一關，聚光燈就照在空氣上，
+   氣泡還顯示「⚠ 找不到」。修法：**關彈窗前先 `不指向`**（`#allSearchList` 同理）。
+2. 「查一個詞」場景原本沒有 `若非` 守衛，在 fgdict（沒有「目錄」分頁）上整場指著
+   0×0 的 `#query` 跑完，卻一步都沒報錯 —— 現在每個依賴 `s="*"` 的場景都第一行守衛。
+
+### 11.7 檔案
+
+| 檔案 | 角色 |
+|---|---|
+| `ts/tour/*.tour` | 劇本（人寫的） |
+| `ts/tour/README.md` | 劇本語法與指令表 |
+| `ts/tools/build-tours.ts` | 編譯器：剖析、靜態檢查、產生 `tour-data.ts`（`--check`） |
+| `ts/src/accelon26/tour-format.ts` | opcode 表、編解碼、CRC32、base64 |
+| `ts/src/accelon26/tour.ts` | 播放器：聚光燈、氣泡、條件、狀態機、鍵盤 |
+| `ts/src/accelon26/tour-data.ts` | 產物（不要手改） |
+| `ts/test/tour.test.ts` | 編解碼／剖析器／同步（31） |
+| `ts/tools/tour-test.ts` | 真瀏覽器全播（29／庫） |
+
+### 11.8 2026-10-18 作者回饋的調整（都已實作、都有測試）
+
+| 回饋 | 做法 |
+|---|---|
+| 場景 1 跳太快 | 新增 opcode `停`（`tap`，16）：停在原地，等使用者在**畫面任何地方點一下**（或空白／→／Enter）才繼續。場景 1 每一步後面都加了 `停` |
+| 「＋ 加入 adb」太暗 | 聚光燈的壓暗 `rgba(0,0,0,.55)` → `.40` |
+| 氣泡要亮、字要大 | 底色 `#31353f`（比面板亮一階）、說明 16.5px、場景主題另立 `#tourTitle` 18px 粗體 、按鈕 14px |
+| 要能回上一個場景 | `← 上一場景` 永遠顯示（第一個場景只是 disabled） |
+| 🎬 移到 About | 頂欄移除 `#tourBtn`；About 加「▶ 操作導覽」 |
+| About 啟動時顯示 | 新增勾選框 `#aboutStartup`（`accelon26.about.startup`，預設開）；`showAboutOnStartup()` 在 boot 最後呼叫 |
+| 頂欄更緊湊 | `.sideToggle` 左右 padding 9px → 5px |
+| 字級每次 1px | `FONT_STEP` 2 → 1 |
+| 字級只調清單與內文 | `#colLeft/#colRight` 固定 13px；`--fs-left/right` 只套在 `.scrollArea`／`#tokenRows`／`.dictList`（`.dictItem`/`.dictHead` 改成 em）。分頁按鈕、搜尋列、迷你按鈕、`#docTabs` 都不再跟著縮放 |
+| `#freqClear` 不需要 | 移除（`wireOwnSearch` 傳 null 元素本來就安全） |
+| `#termsCount` 移進 `termsMode` | 按鈕改成 `開頭 <span id="termsCount">5</span>`；只放**數字**（不再寫「個詞條」），一般與進階模式都顯示 |
+
+---
+
+## 12. 官網（www/，作者 2026-10-18）
+
+一頁、無第三方依賴：沒有 CDN、沒有字型檔、沒有框架。`index.html` 內嵌 CSS 與十幾行 JS，
+圖片是四張 gallery 用的 JPEG。
+
+```
+www/
+  index.html        一頁官網：特色 → 畫面 → 下載與安裝 → 聯絡
+  img/search.jpg    全文搜尋（13j，君子 1,137 筆）
+  img/dict.jpg      詞典（fgdict，般若）
+  img/allsearch.jpg 一次搜尋所有資料庫
+  img/tour.jpg      操作導覽（聚光燈＋氣泡）
+  img/appicon.png   favicon（與 exe 圖示同一份來源）
+  accelon26.7z      下載檔（**不進 git**，由 release.ts 產生）
+```
+
+| 事項 | 指令／做法 |
+|---|---|
+| 畫面區 | 四張截圖是**輪播**（`#gallery`，2026-10-18：作者說首頁太長）：3 秒換一張、小白點可點、滑鼠移入／鍵盤聚焦／切到別的頁籤時暫停、系統要求減少動態時不自動換 |
+| 重拍截圖 | `bun run tools/site-shots.ts`（1600×1000 ×1.5 → 2400×1500 JPEG q88）。UI 改了就跑一次，官網的圖才不會過時 |
+| 產生下載檔 | `bun run tools/release.ts`：建好 exe 之後順便打包 `www/accelon26.7z`（7-Zip ultra，17 MB → 7.1 MB）。壓縮檔裡有 `accelon26.exe` ＋ `README.txt`（簡體）＋ `README-tc.txt`（繁體），兩份說明是 **UTF-8 帶 BOM ＋ CRLF**（理由與編碼規則見 [yap-software-practice.md](./yap-software-practice.md) §4.1；文字在 `ts/tools/readme-text.ts`）。只改說明時跑 `tools/pack-7z.ts`，不會動 exe、也不會讓使用者跳更新 |
+| 公開數據庫頁 | `www/adb/index.html`（作者 2026-10-18）：`index.txt` 是清單來源，`bun run tools/make-adb-index.ts` 讀本地 `accelon3/` 的 adb **檔頭**（`maxblockoffset`＝字數（約）、`dbcname`、檔案時間、大小）產生頁面；adb 有增補就重跑一次再 `bun run tools/deploy.ts --site-only`。首頁 nav／頁尾都有入口 |
+| 部署 | `bun run tools/deploy.ts --site`：先 exe、後 versions.json、再首頁與 7z；每一項都先 `.tmp` 再 `mv`，最後從 https 抓回來驗 sha256。主機事實、回滾與更新器的判斷邏輯見 [DEPLOY.md](./DEPLOY.md) |
+| 頁面上的安裝說明 | 解開 7z → 把 `accelon26.exe` 放到 **accelon3.exe 同一個資料夾** → 雙擊。打不開 7z 就到 https://sparanoid.com/lab/7z/ 下載 Windows x64 版 |
+| 亮底／暗底 | 右上角切換（`#themeBtn`），**預設亮底**（軟件截圖是暗色的，亮底才有對比）；`localStorage['accelon26.site.theme']`，`<head>` 裡的行內腳本在畫面出現前就套上，不會閃。留言頁共用同一個設定 |
+| 留言頁 | `www/message.html`：類型（回報錯誤／功能要求／改良建議，可取消）＋ 稱呼 ＋ Email ＋ 微信 ＋ 開始使用年份 ＋ 內容。**軟件版本自動附上**（作者 2026-10-18）：軟件的「關於 → 留言給作者」會把 `?from=desktop&build=<RFC3339>&buildText=<本地時間>` 帶進網址，頁面顯示成「桌面版 2026-10-18 13:15」並隨留言送出；信件與 `messages.jsonl` 都有一行「版本：…」，主旨也帶上版本時間。直接開官網留言頁（或從首頁連過去）就顯示「（網版，沒有帶版本號）」。官網「開發者聯絡」與軟件「關於」都有入口（軟件走 `OpenExternal` 開系統瀏覽器）。後端 `www/message.cgi`（Python CGI）用 QQ SMTP 寄到作者信箱；安裝見 `ts/tools/install-message-backend.ts` 與 [DEPLOY.md](./DEPLOY.md) §6 |
+| 開發者聯絡 | 微信 **Sukhanika**（官網頁尾與「關於」都有；`#aboutWechat` 有測試顧） |
+
+設計上的取捨：整頁只有一個大按鈕（下載），其餘都是「為什麼要用它」。圖片用
+`loading="lazy"` ＋ 固定寬高，所以就算圖還沒載入版面也不會跳。
+
+### 12.1 截圖時發現的一件事（待查，非官網問題）
+
+換資料庫時，**前一個庫的本文分頁與內文可能還留在中間**（`#docTabs` 沒有被清掉）。
+在 `openFile` 換庫後一兩秒內還看得到；`openFile` 的 `finally` 只清 DOM 的 strip、
+不動 `docTabs` 狀態。懷疑是「點擊後的非同步載入在換庫之後才落地」的競態
+（`ensurePage` 完成時沒有再檢查自己還屬於哪個庫）。
+官網截圖工具因此每個資料庫都 `Page.reload` 一次，拍到的畫面才乾淨。
+
+---
+
+## 13. 2026-10-18 收工交接（本輪）
+
+一天之內把 accelon26 從「能用」推到「已發佈」：macOS 版上線、官網多了兩個新頁面、
+四個 UI 新功能（含一個新的 Go 端功能「導出」）、一次正式發佈、`build/` 清掉 5 GB。
+下面按「作者要求 → 做法 → 驗證」記，細節留給下一個人接手時查。
+
+### 13.1 本輪改動一覽
+
+| # | 作者要求 | 做法 | 主要檔案 |
+|---|---|---|---|
+| 1 | macOS 版要能下載，但**只提示更新、不自動安裝** | `updatesSupported()` 在 darwin 回 false；CI（`.github/workflows/build-macos.yml`）用 `macos-14` 建 arm64＋x86_64；`wails/scripts/package-macos.sh` 統一打包；官網兩顆按鈕加 OS 標誌 | `wails/*darwin*`、`www/index.html`、`MACOS.md` |
+| 2 | 字級按鈕在亮色／護眼主題下是「一塊黑」 | 新增 `--chip-bg`／`--chip-fg`（暗／亮／護眼三套） | `accelon26.template.html` |
+| 3 | 官網要有「公開數據庫」頁 | `ts/tools/make-adb-index.ts` 讀 **本地** `accelon3/` 的 adb 檔頭（`maxblockoffset`＝字數、`dbcname`＝中文名、檔案時間、大小）→ `www/adb/index.txt` ＋ `index.html`；`deploy.ts --site-only` 一起上傳 | `ts/tools/make-adb-index.ts`、`www/adb/` |
+| 4 | 字數不要抓本文算（太慢），用 max VA | 官網頁一開始就用 `maxblockoffset`；**資料庫清單**（📁）原本還會呼叫 Go 的 `SourceCharCount` 解壓整本（jc 15,838 塊）→ 改成 `maxVaOf()` 只讀檔頭 offset 96 的 4 個位元組 | `ts/src/accelon26/dbs.ts` |
+| 5 | jc 一打開看到的是書的內目，應該先是第一層的書 | `loadTree()` 補 fallback：層級只宣告在 `<樹>` 上（jc 是 `t="書名,章,節,項,目,條"`）時，用宣告鏈當父子關係 | `ts/src/accelon26/search.ts` |
+| 6 | 進階要一個「檔頭」分頁，顯示開頭第一個 block，沒有圖片／文件就不必顯示 | `renderHeader()` ＋ `headerExcerpt()`／`bodyTagsOf()`（規則見 §13.3） | `panes.ts`、`accelon26.template.html` |
+| 7 | META 的「容器」與「容量」重複，刪掉 | 移除 `<h2>容器</h2><ul id="containers">` 與 `renderContainers()`／`containerSummary()` | `panes.ts`、`template`、`viewer.ts`、`ui.ts` |
+| 8 | 進階 → 容量要能「導出文字與圖片」成 zip 存到「下載」（file:// 不需要） | 新增 Go 的 `ExportTextImages`（細節見 §13.2）；UI 只在 `desktopHost()` 為真時顯示按鈕 | `wails/export.go`、`host.ts`、`panes.ts`、`adb.ts` |
+| 9 | 匯出的 txt 要保留硬換行 | 依 `tables/lines.physical` 在串流上插 CRLF（行尾可能跨區塊） | `wails/export.go` |
+| 10 | 有 `<檔>` 的庫不要合成一個大 txt，要按文件 block 分成 `y01.xml` 等 | 第一篇 `<檔 n="…">` 一出現就開新 entry；檔名取 `n="…"` | `wails/export.go` |
+| 11 | `build/` 佔太大空間，清一清 | 保留產物／截圖／`pas/`，其餘全刪（5,121 → 56.5 MB）；新增 `bun run clean` | `ts/tools/clean.ts`、`DEPLOY.md` |
+| 12 | 可以發佈新版 | `release.ts --items-file` → `deploy.ts --site` → mac CI → `deploy-macos.ts`（§13.6） | — |
+
+### 13.2 導出（`wails/export.go`）—— 本輪最複雜的一塊
+
+**做什麼**：把 adb 的**文字**與**圖片**打包成 zip，存到使用者的「下載」資料夾；
+**刻意不導出** `tokens`／`postings`／`tags`／`tables`／`attributes`／`caches`（即時建置的索引，
+換一台機器或換一個閱讀器都能重建，體積卻很大）。
+
+**兩種形態**（用「第一個 source 區塊是否以 `<檔` 開頭」判斷）：
+
+| 庫 | 形態 |
+|---|---|
+| yinshun、taixu…（有 `<檔>`） | **一篇一個檔**：`yinshun.xml`（設定檔）、`y01.xml`…、`yinshunfoundation.xml`；內容含 `<檔 …>` 包起來的原樣標記 |
+| 13j、jc、kangxi…（沒有 `<檔>`） | 全部串成 `<db>.txt` |
+
+**硬換行**：`tables/lines.physical` 是每一行的**結束位置**（原始單位是 UTF-16LE 位元組，
+`>>1` 就是 code unit 索引）。一行可能跨區塊（13j：42,173 個行尾只有 13 個落在區塊邊界），
+所以要在**整個串流**上一邊寫一邊切，行尾插 `\r\n`。換行是「插進去」不是「取代」。
+
+**為什麼在 Go 做**：350 MB 的 adb 走 base64 過 Wails 的 JSON 橋會是 GB 級流量；
+Go 直接從 mmap 串流寫 `archive/zip`。
+
+**存放位置**：`~/Downloads` → `<exe 旁>/export` → `%TEMP%/accelon26-export`。
+退到後面時回一個 `note` 說明原因（作者環境曾經出現 `Access is denied`）。
+
+**其他入口**：
+* `accelon3\accelon26.exe -export <adb>`：不開 GUI 跑同一條路、印 JSON（診斷／自動化用，已寫進 DEPLOY.md）。
+* 導出後 UI 有「在資料夾中顯示」（`RevealInFolder`，Windows `explorer /select`、macOS `open -R`）。
+
+**實測**（真的 adb）：
+
+| 庫 | 文字 | 行數 | 檔案數 | 圖片 | zip | 時間 |
+|---|---|---|---|---|---|---|
+| 13j | 831,156 字（102 塊） | 42,173 | 1（`13j.txt`） | 0 | 0.99 MB | 0.2 s |
+| 康熙 | 5,173,338 字 | 144,301 | 1 | 1 | 4.5 MB | 1.4 s |
+| 印順 | 8,847,831 字 | 266,916 | **45**（`yinshun.xml`＋`y01..y43`＋`yinshunfoundation.xml`） | 456 | 11.4 MB | 1.8 s |
+| 太虛 | 6,554,326 字 | — | **33** | — | 10.4 MB | ~2 s |
+| 中醫笈成 | 129,740,847 字（15,838 塊） | — | 1 | 1 | **147.6 MB** | **36 s** |
+
+**兩個踩到的坑（都已修，值得記住）**：
+
+1. **比對 `<檔` 時用了 Go 字串的位元組**。「檔」在 UTF-8 是 3 個位元組，
+   拿 `uint16(s[j])` 去比 UTF-16 code unit 永遠不相等 → 整篇文字沒被導出（第一次匯出只有圖片）。
+   正確做法：比對樣式用 `[]uint16`（`docOpen`／`docClose`／`gtOnly`）。
+2. `*li++` 不是合法 Go，要寫 `(*li)++`。
+
+**測試**（`wails/export_test.go`）：
+* `safeZipName`（不准帶 `../`、空字串給 fallback）、`isImageName`（哪些用 `zip.Store`）。
+* `TestExportZip`：13j 的文字 831,156 字、換行 42,173（＝檔頭 linecount）、
+  txt 裡的 CRLF 數＝`res.Lines`、去掉換行後＝`res.Chars`、zip 裡**不可以**出現索引容器名稱。
+* **CI 教訓**：`newTestHost(t)` 在沒有真 `13j.adb` 時會造一個合成檔（隨機位元組），
+  source 解不開 → 導出必然失敗 → macOS CI 紅燈。現在 `!real` 就 `t.Skip`（跟 `TestSourceCharCount` 一樣）。
+
+### 13.3 檔頭分頁的規則（`panes.ts`）
+
+顯示的是**正文之前**那一段（`<集>`、`<樹>`、`<英文名>`、`<檔 n="…">`），停止條件三個，
+取最早出現的那一個：
+
+1. **樹宣告裡指名的層級標籤**：從 `<樹 …>` 收集
+   `s="$X"`、`s="*X"`、`s="*u=X"`（`$`／`*` 後面那個名字）與 `t="A,B."`（去掉結尾句點）。
+   例：13j 的 `<書>`、yinshun 的 `<文>`、jc 的 `<書名>`、kangxi 的 `<字>`、taixu 的 `<編>`。
+2. **開頭是 `<檔 n="….xml">`**：收在它的 `</檔>`（只顯示設定檔本身）。
+3. **後面還有另一個 `<檔>`**（下一篇文件）也停。
+
+比對要檢查邊界（`<書` 後面必須是空白／`>`／`/`），否則 `<書` 會誤中 `<書名`。
+
+分頁顯示條件：**有 `<檔>` 或 有 resources（圖片）**；兩者都沒有（13j）就不顯示 ——
+那種庫的第一塊就是正文開頭。實測：13j 隱藏／yinshun 280 字元／jc 118／kangxi 110。
+
+### 13.4 資料庫清單的字數（`dbs.ts`）
+
+```ts
+async function maxVaOf(file: AdbSource): Promise<number | null> {
+  const hdr = new Uint8Array(await file.slice(0, 256).arrayBuffer());
+  return new DataView(...).getInt32(96, true);   // maxblockoffset
+}
+```
+
+* 只讀 4 個位元組 → **15 個庫整份清單 58 ms** 填好（原本 jc 要解 15,838 個 bzip2 塊）。
+* 是**近似值**（與精確字數差幾個百分點，jc 的 max VA 反而比解壓後的字元數多 0.3%）→
+  表頭有 tooltip 說明。
+* Go 的 `SourceCharCount` 留著當診斷（`TestSourceCharCount` 仍守著 13j 的 831,156）。
+
+### 13.5 公開數據庫頁（`www/adb/`）
+
+* 清單在 `www/adb/index.txt`（**不要刪**，是來源），`make-adb-index.ts` 讀它 ＋ 本地 `accelon3/`
+  的 adb 檔頭產生 `index.html`（字數（約）、建置日期、檔案大小、下載連結）。
+* 更新時機：adb 有增補 → `cd ts && bun run tools/make-adb-index.ts` →
+  `bun run tools/deploy.ts --site-only`（只動官網，不動 exe／versions.json）。
+* 頁面的亮／暗切換與首頁同一套（標籤顯示**目前**主題）。
+
+### 13.6 發佈流程（今天實際跑過的順序）
+
+```powershell
+# 1) 把 wails/release_notes.draft.txt 寫成「使用者感覺得到」的句子（一行一條）
+cd ts
+bun run tools/release.ts --items-file ../wails/release_notes.draft.txt   # 建 HTML → exe → 說明 → 7z → versions.json
+bun run tools/deploy.ts --site                                          # exe → versions.json → 官網（每項 .tmp→mv，抓回來驗 sha256）
+
+# 2) 驗證
+cd ../accelon3; .\accelon26.exe -version; .\accelon26.exe -check-update  # 應為「已是最新（線上 …）」
+#   線上：https://shutonggui.cn/accelon26/versions.json
+
+# 3) macOS（CI 產 artifact ＋ Release asset）
+git tag mac-2026-10-18-2215; git push origin mac-2026-10-18-2215
+#   等 CI 綠 → 從 Release 下載兩份 zip（**先刪舊檔再用 curl**，PowerShell 的 Invoke-WebRequest 會失敗
+#   或留下大小相同的舊檔 → 假成功）→ 用 .sha256 核對 → 
+bun run tools/deploy-macos.ts
+
+# 4) 收尾：清空 release_notes.draft.txt、commit wails/{assets/index.html,release_notes.json,draft}
+```
+
+今天的結果：`buildTime 2026-10-18T13:57:44Z`（台北 21:57）、exe `sha256 844b23fd233e…`、
+7z 7,492,744 bytes；macOS `arm64 37834e86…`（8,710,706 bytes）／`x86_64 db6f080f…`（9,479,294 bytes）。
+
+**CI 紅燈怎麼查**：`ci-log` 分支的 `RESULT.txt` 只有 metadata（`build/*.log` 才會有內容），
+真正要知道哪一步失敗要打 `…/actions/runs/<id>/jobs`（一次呼叫就好，免得撞 60 次/小時的限制）。
+
+### 13.7 清 `build/`（5,121 MB → 56.5 MB）
+
+刪掉的幾乎都是：Chrome／Edge 探針 profile（近百個）、一次性的比較輸出（`cmp-*`／`out-*`／
+`model-*.xml`／`textcmp/`／`oracle*`）、`bench/`（1.26 GB 的合成語料）與 `xstress/`、
+舊 adb 複本、`tmp-*-state`、幾百個 `probe-*.ts`／`diag-*.ts`／`commit*.txt`。
+
+**留著**：`accelon26.html`（產物）、`macos/`（deploy 要用的 zip）、`site-shots/`（今天的驗證截圖）、
+`pas/`（舊 Delphi 轉換器的參照原始碼，**別處沒有**）、`tmp-*.ts`（探針腳本）。
+
+工具：`ts/tools/clean.ts`（`bun run clean`／`--all`／`--dry-run`）。
+小心：第一版把 `ROOT` 算成 `ts/`，誤刪了 `ts/build/`（37 MB、gitignore 的暫存 `_check*.js`，
+沒有版控檔案）—— 已修；寫這類工具時**先印路徑再刪**。
+
+`accelon3/` 13.3 GB 是資料庫本體（jc 338 MB、skqs 三份 600 MB 級、`lawtw` 589 MB、
+`中醫.zip` 830 MB…），**不是建置產物**，作者沒點頭不要動。
+
+### 13.8 下次開工建議
+
+| 優先 | 事項 |
+|---|---|
+| P1 | **換庫時前一個庫的本文分頁還在**（§12.1，未修）：`openFile` 的 `finally` 只清 DOM 的 strip，不動 `docTabs`；懷疑是 `ensurePage` 完成時沒有再檢查自己還屬不屬於當前庫 |
+| P1 | **導出的 xml 要不要去掉 `<檔 …>` 外框**（純內容）——目前保留，等作者一句話，改一行 |
+| P2 | 導出可平行解壓（jc 36 s → 6–10 s）：Go 端可以用 worker pool 解 bzip2、再依序寫入 |
+| P2 | `build/macos/*.zip` 只在下載後才存在（發佈 mac 版前要重新從 Release 抓，並用 `.sha256` 核對） |
+| P2 | `versions.json` 的 buildTime（21:57）比 mac build（22:20）舊：mac 使用者不會被誤提示；但若之後只發 Windows，mac 使用者會看到「有新版」而下載到同一份 zip（既有設計，mac 不自動更新） |
+| P2 | 官網截圖（`www/img/*.jpg`）是 UI 改動前拍的；`tools/site-shots.ts` 重跑一次即可（今天沒重拍） |
+
+### 13.9 本輪新增／大改的檔案
+
+| 檔案 | 角色 |
+|---|---|
+| `wails/export.go`／`export_test.go` | 導出（兩種形態、硬換行、圖片、退路、`-export`） |
+| `wails/adbhost.go` | `exportMu`（同時只允許一個導出）、`RevealInFolder` |
+| `wails/sys_windows.go`／`sys_darwin.go` | `revealCommand`（檔案總管／Finder） |
+| `wails/main.go` | `-export <adb>` 指令 |
+| `ts/src/accelon26/panes.ts` | 檔頭分頁（`headerExcerpt`／`bodyTagsOf`）、導出按鈕、META 去容器 |
+| `ts/src/accelon26/dbs.ts` | 字數改 `maxVaOf()` |
+| `ts/src/accelon26/adb.ts` | `AdbIO.path`（桌面版才有絕對路徑，導出要用） |
+| `ts/src/accelon26/host.ts` | `desktopExportTextImages`、`desktopRevealInFolder` |
+| `ts/src/accelon26/search.ts` | `loadTree()` 的層級 fallback（jc） |
+| `ts/tools/clean.ts` | 清 `build/` |
+| `ts/tools/make-adb-index.ts` | 公開數據庫頁 |
+| `wails/release_notes.draft.txt` | 下一版要告訴使用者的句子（發佈時 append 進 `release_notes.json`） |
+
+## 14. 2026-10-22：`<檔>` 邊界與 breadcrumb（作者回報）
+
+**回報**：yinshun.adb 搜尋「彗」，目錄顯示華雨集第二冊有 1 個命中（正確），但本文上方的
+breadcrumb 說在華雨集第一。
+
+### 14.1 原因：節點範圍跨進下一個檔的檔頭 4 個 VA
+
+* 目錄節點的 `vaEnd` 是**下一個同層標題的 VA**（`buildTree` 的語義），而 `<檔>` 的開標籤
+  本身佔 **4 個 VA**。所以每一冊的最後一串節點都會跨進下一冊的檔頭：
+  yinshun **44 個檔界、131 個節點，全部剛好溢 4 個 VA**。
+
+  ```
+  華雨集第一冊   va 3160839 … vaEnd 3361718   ← 節點範圍
+  y25 的 </檔>   3361713                      （收標籤 0 VA）
+  y26 的 <檔>    3361714 … 3361717            （開標籤 +4 VA，屬於第二冊）
+  <書>華雨集第二冊</書>  va 3361718            ← 第一個標題
+  ```
+
+* 「摘要」點一張命中卡時，`linkTo` 會把 realm 設成**整個 `<檔>`**（不是命中所在的節點）。
+  檔頭 4 個 VA 落在第一冊的 `vaEnd` 之內，於是 VA → 節點的範圍判定回傳**華雨集第一冊的
+  最後一節**，`ancestorTrail()`／`currentNodeAt()` 就把它排成 breadcrumb。
+  目錄的命中徽章是數 `[va, vaEnd)` 的 posting，命中的 VA（3376132）本來就在第二冊，
+  所以兩邊看起來矛盾。
+
+* 同一個原因也讓**游標高亮**（`link.ts: deepestNode`）與**上一頁／下一頁**（`orderIndex`）
+  在檔頭那幾個 VA 指向前一本書。
+
+### 14.2 修法：`<檔>` 邊界優先於加寬的範圍
+
+新增 `search.ts: nodeOwningVa(roots, va, docs)`，VA → 節點只走這一個入口：
+
+1. 節點不能跨過自己所在的 `<檔>`：有效 `vaEnd` ＝ `min(vaEnd, 檔尾)`。
+2. 檔頭（`<檔>` 開標籤到第一個標題之間）的 VA 屬於**這一個檔的第一個節點**，
+   不是前一本書；這一條讓「整個 `<檔>`」的 realm 得到正確的書（華雨集第二冊）。
+3. 沒有 `<檔>` 的庫（13j 單一檔）行為不變；資料庫開頭仍然不屬於任何節點（不做 (2) 的退路）。
+
+呼叫端：`scopes.ts: nodeContainingVa`（breadcrumb 的祖先與自己）、
+`link.ts: deepestNode`（游標高亮、連結時的節點）、`link.ts: orderIndex`（跨節點翻頁）。
+命中徽章的數字不用改：`<檔>` 開標籤不是 token，posting 裡不會有那 4 個 VA。
+
+### 14.3 回歸測試
+
+* `test/tree.test.ts`：每個 `<檔>` 的起點（`vaStart`）必須對到**這一個檔的第一個節點**、
+  檔尾最後一個 VA 仍屬於同一個檔；13j（沒有 `<檔>`）則檢查資料庫開頭不屬於任何節點。
+  yinshun 45 個檔、起點錯 0（修好前 44 個檔的起點都指向前一本書）。
+* `tools/file-protocol-test.ts`：開最後一本書的整個 `<檔>`（`showLine`，與文件清單同一條路，
+  摘要點命中也是同一種 realm）→ breadcrumb 至少要有**一個節點落在這個檔之內**；
+  前一本書的節點全部在 realm 之前。實測（作者回報的那一手）：搜「彗」點摘要卡，
+  修好前 breadcrumb 是 `["華雨集第一冊", …]`、修好後是 `["華雨集第二冊", "同層 44"]`。
+
+### 14.4 這一輪沒有做的事
+
+* **沒有重建 exe**（作者 2026-10 的規矩：平常只做 `build/accelon26.html`）。桌面版要看到修正：
+  `cd ts && bun run tools/build-desktop.ts` → `cd ../wails && go build -ldflags "-H windowsgui" -o ..\accelon3\accelon26.exe .`
+* 整個 `<檔>` 的 realm 走到最後一頁按「下一頁」時，如果這一冊**有子節點**，還是會換到
+  這一冊的第一個子節點（不是下一個檔；沒有子節點的書才會換到下一冊）。這是 realm 語義的
+  老問題，與 breadcrumb 無關，這一輪沒動。
+
+## 15. 2026-10-22：標籤樣式設定（實作）
+
+作者先看 mockup（`ts/mockup/tag-style-settings.html`＋[`TAG-STYLE-SETTINGS.md`](./TAG-STYLE-SETTINGS.md)），
+回覆九個決定後實作。**設計稿是 spec，這一節只記實作重點與驗證。**
+
+### 15.1 定案
+
+* 設置改成**分頁**：**介面（主題／介面／進階）在最左**、標籤樣式、繁簡（作者 2026-10-22
+  後續把主題／介面／進階合併成一個「介面」分頁）。
+* 每個標籤設**顏色、相對本文的大小（50–300%）、字型（第一種＋第二種 fallback）**；
+  自訂以**整個標籤**為單位，不做單欄位繼承。
+* **天干地支是同一個設定、22 層**：指定底色，每層色相 +30°（S／L 不變）；不能單獨改某個字。
+* 作用範圍：全域預設／此資料庫；此庫預設繼承全域。
+* **`profiles.adb` 的鍵＝adb 檔名**（重建 adb 不會動到 settings.json；同檔名就繼續套用）。
+* 儲存：網頁版 `localStorage['accelon26.settings']`；exe 版 **exe 旁 `settings.json`**，
+  不可寫才退到 `%APPDATA%\accelon26\settings.json`（Go 用 `dirWritable()` 決定）。
+  About 多一列「設定檔」顯示**實際**位置＋v1，可匯出／在資料夾中顯示。
+* 字型：**exe 列出系統已安裝字型**（Windows 讀登錄檔 Fonts 機碼；macOS 用 `system_profiler`），
+  網頁版只列內建清單。
+* `settings.json` v1 只放標籤樣式；格式／版本見設計稿 §3。
+
+### 15.2 實作檔案
+
+| 檔案 | 工作 |
+|---|---|
+| `ts/src/accelon26/tag-style.ts`（新） | 合併、22 層 ramp、`tagStyleOf`、序列化（只存差異） |
+| `ts/src/accelon26/settings.ts`（新） | localStorage／宿主讀寫、版本檢查、匯出／匯入、位置 |
+| `wails/settings.go`（新） | `SettingsInfo`／`LoadSettings`／`SaveSettings`（原子寫）、位置決策 |
+| `wails/fontlist_windows.go`／`fontlist_darwin.go`（新） | 已安裝字型清單 |
+| `ts/src/accelon26/ui.ts` | 設置分頁、標籤列、ramp、預覽、儲存卡、重繪 |
+| `accelon26.template.html` | 分頁與標籤樣式 markup／CSS（940px） |
+| `render_accelon3.ts`／`scopes.ts`／`doc-pane.ts` | 標題、色點、breadcrumb 先問 `tagStyleOf` |
+| `viewer.ts`／`about.ts` | `setActiveDb`（檔名）、About 的設定檔一列 |
+| `ts/test/tag-style.test.ts`（新）／`wails/settings_test.go`（新） | 單元測試 |
+
+### 15.3 驗證
+
+* `bun run test/tag-style.test.ts` **23/23**（合併、22 層色相、只存差異、版本、檔名鍵；
+  另外用真的 renderer 驗證標題的顏色／大小／字型，第二種字型接在第一種後面）。
+* `go test ./...` 全綠（settings round-trip、原子寫、退路、字型解析）。
+* 網頁版 file:// 端到端（headless）：開 yinshun → 設置 → 全域改「章」#ff0000/200%
+  → 本文標題 32px 紅、目錄色點紅、breadcrumb 紅；天干地支自訂底色 → 22 層 ramp
+  每層 +30°；此庫改「節」→ settings.json 的 adb 鍵 `yinshun.adb`；重新載入後設定還在；
+  About 顯示 localStorage。**8/8**。
+* 桌面版（暫存 exe，不覆寫 `accelon3/accelon26.exe`）：settings 位置在 exe 旁、列出 **158** 個
+  已安裝字型、改設定真的寫出 `settings.json`（v1、章 #00aaff/150）、About 顯示路徑、
+  重新載入後讀回。**6/6**。
+* 既有測試：file:// 全套 **187/187**（yinshun；含新增的標籤樣式 4 項）、tree 43、
+  render 22、backend-layout 11、search 18、tour 31 全綠；`desktop-test --gui --quick`
+  37/38（唯一失敗是視窗位置差 80px 的平台誤差，與本功能無關）。
+  * 全套原本會在目錄徽章那一塊 CDP timeout；原因是 headless 的背景頁被 Chrome 節流
+    （5 分鐘後 `setTimeout` 一分鐘才跑一次）。`file-protocol-test.ts` 的 `openPage` 現在
+    會 `Page.bringToFront`＋`Emulation.setFocusEmulationEnabled`，之後就穩定 187/187。
+
+### 15.4 注意
+
+* **沒有重建 `accelon3/accelon26.exe`**（作者 2026-10 的規矩）。`wails/assets/index.html` 已更新；
+  要換 exe：`cd ts && bun run tools/build-desktop.ts` → `cd ../wails && go build -ldflags "-H windowsgui" -o ..\accelon3\accelon26.exe .`
+* macOS 的字型清單走 `system_profiler SPFontsDataType`，第一次可能幾秒（快取）；**未在 macOS 實測**。
+* 沒有 `s="*"` 樹的庫（fgdict）只顯示預設標籤清單（作者決定 8），仍可改全域樣式。
+* 字型的 inline style 在 renderer 裡用**單引號**（`style="font-family:'DFKai-SB', …"`）：外層是
+  雙引號的 HTML 屬性，家族名再用雙引號會把 style 截斷（這一輪實測抓到的）。
+* 設定頁改成雙欄（分頁）後，操作導覽的繁簡步驟要先切到「繁簡」分頁
+  （`first-run.tour` 已加）；tour-data.ts 已重建。
+* 順手修了一個與本功能無關的 bug：`<聯>` 沒有 `n=` 時以前會多吐一個 `</a>`（render 測試
+  「沒有 t= 的標籤」因此失敗）；現在只有真的開了錨點才收。
+
+## 16. 2026-10-22（追加）：查字典的開關與詞典順序
+
+作者需求：設置／介面加上「查字典」，可以選詞典順序；**先列出目前有的詞典存起來，
+下回找不到也不警告、略過**；也可以關閉自動查字典。
+
+### 16.1 行為
+
+* **開關**：預設開。關閉後，本文的捕捉階段 click handler 直接 return，不會查、也不會
+  切右欄；右欄「詞典」分頁保留上一次的結果，空白時提示「查字典已關閉」。
+* **詞典清單**：設置 → 辭典順序（2026-10-26 起獨立成分頁；原在「介面」）。打開分頁時
+  （`setSettingsPane('dict')`）非同步 `listDicts()` 掃
+  catalog，用 `dictIndexOf()` 判斷真正是詞典型 adb 的（有 `$詞`／名稱表）；列出
+  名稱、檔名與詞條數，↑↓ 調整順序。第一次列出就存。
+* **儲存**（這台電腦；和主題／繁簡一樣走 localStorage）：
+  * `accelon26.dict.auto`：`'1'`／`'0'`。
+  * `accelon26.dict.selection`：`'1'`／`'0'`（2026-10-24 追加，選取自動查）。
+  * `accelon26.dict.order`：JSON 陣列，元素是 **adb 檔名**（`fgdict.adb`）。
+  * **不放 settings.json**：settings.json v1 只放可分享的標籤樣式；詞典順序是本機介面偏好。
+* **找不到的詞典**：`orderByFile()` 直接略過（不警告）；清單只列目前找到的。失聯的舊檔名
+  仍留在存檔順序的最後面（下次同檔名的 adb 回來還會被認得）；新加入的詞典也排最後。
+* **查詢順序**：`dictLookup()` 依存的檔名順序分組，同一個詞典內「長的在前」；還沒存順序
+  時維持原本全域「長的在前」，行為不變。清單裡新加入的詞典排在最後。
+* **新詞典**：首次打開設置就會列在最後並存起來；不必手動加入。
+* **偵測成本**：第一次打開設置要為 catalog 的每個 adb 建／查詞典索引（非詞典會快取
+  「不是詞典」）；畫面先顯示「讀取詞典中…」，之後快取。
+
+### 16.2 檔案
+
+| 檔案 | 工作 |
+|---|---|
+| `ts/src/accelon26/dict-settings.ts`（新） | 開關、檔名順序、`orderByFile()`（略過找不到的） |
+| `ts/src/accelon26/dict-lookup.ts` | `listDicts()`；`dictLookup()` 照順序分組 |
+| `ts/src/accelon26/dict-pane.ts` | 自動查字典的開關 gate；選取 10 字以內自動查；空白時的提示 |
+| `ts/src/accelon26/ui.ts`／template | 「辭典順序」分頁的清單、↑↓、重新整理、`isdict` 過濾（2026-10-26） |
+| `ts/test/dict-settings.test.ts`（新） | 開關／順序／略過缺失／壞 JSON |
+
+### 16.3 驗證
+
+* `bun run test/dict-settings.test.ts` **13/13**。
+* 真的 viewer（yinshun＋fgdict；fgdict 22,648 條）：設置預設介面 → 清單列出
+  `fgdict.adb` 並存檔；關閉自動 → 點本文句子不變、右欄不動；打開 → 點本文有候選句子／
+  詞條、右欄切到詞典；**6/6**，沒有 JS 例外。
+* file:// 全套：**yinshun 189/189、fgdict 179/179**（含新增的開關／清單斷言；fgdict 的
+  標籤樣式沒有目錄樹，只有 6 列預設標籤＋天干地支，測試已放寬）。
+
+### 16.4 注意
+
+* 詞典順序是**本機偏好**；分享 `settings.json` 不會帶它。
+* 只認 **catalog 裡**的 adb（file:// 是使用者加入過的；exe 是工作目錄的）；沒打開過的
+  詞典也會被列出／查詢（`dictIndexOf` 會自己開 reader）。
+
+### 16.5 2026-10-24 追加：選取 10 字以內自動查
+
+作者需求：本文有選取區、且在 **10 個字以下**時，用選取文字查右側詞典；設置的
+「點擊查字典」改名「查字典」，並增加「選取區十字以下自動查」選項。
+
+* **判定**（`selectedDictText()`）：選取必須整段在 `#docText` 裡；去掉前後空白、
+  換行收斂成空白；空字串或 **超過 10 個字**回 `null`，不查（避免拿整段文章去查）。
+* **觸發**：`selectionchange` 停 180ms（拖曳時不要查半截）；`mouseup` 再補一次。
+  同一段文字只查一次（`lastSelectionText`）；`mousedown`／選取收起來時重設，所以
+  同樣的字可以再查。
+* **點擊**：click handler 先試選取查詢；有合格選取就用選取文字，否則才走原本的
+  「點到哪裡查那句話」。
+* **開關**：`accelon26.dict.selection`，預設開；和「點本文就自動查」是**兩個獨立**
+  開關（關掉點擊自動查，選取自動查仍可用）。關掉後選取完全不查。
+* **提示**：右欄空白時會依兩個開關的狀態顯示「點本文／選取 10 字以內」或
+  「查字典已關閉」。
+* **驗證**：`dict-settings` 13/13；headless 實測短選取（般若）→ 右欄更新、
+  11 字選取 → 不更新、關閉選取自動查後選「菩薩」→ 右欄仍停在般若。
+
+### 16.6 2026-10-26：辭典順序獨立成頁、只列出 c="isdict"
+
+作者需求：辭典順序選項從「介面」獨立成頁；清單可勾「只列出 `c="isdict"`」。
+
+* **分頁**：設置多了「辭典順序」分頁（`data-setpane="dict"`，排在介面之後）。
+  清單、↑↓、重新整理、說明都搬過去；「介面」只留「查字典」的兩個開關。
+  `setSettingsPane('dict')` 才掃 catalog（原本是 `'ui'`）。
+* **只列出 `c="isdict"`**：設定頁新勾選框 `#dictOnlyIsdict`，存
+  `accelon26.dict.isdictonly`（預設 `'0'`＝全部）。勾選後清單只留
+  `<集 c="… isdict …">` 的庫；每個有標記的列顯示小 `isdict` 徽章。
+  **清單與查詢一起過濾**（作者 2026-10-26 晚間更正）：`dictLookup()` 直接跳過
+  沒有 isdict 的辭典（點字、選取都不查）；`saveDictOrder()` 仍存完整清單。
+* **判定**：`db-kind.ts` 拆出 `detectIsdict()`（只看 `<集 c>` 的 isdict，不看 `$詞` 樹）；
+  `dict-lookup.ts` 的 `DictIndex`／`DictListEntry` 多一個 `isdict` 欄位。
+  實測：hanyu／hanyu3／kangxi／swjz 有 isdict，fgdict／gjhy／hcy 等沒有。
+* **↑↓ 與過濾**：只在「看得到的列」之間交換；沒列出的辭典位置不動（換的是完整清單的
+  兩個索引，隱藏的列留在原位）。
+* **驗證**：`dict-settings` 16/16；headless 開 kangxi＋fgdict → 分頁順序
+  `介面|辭典順序|標籤樣式|繁簡`、全部 2 列（只有 kangxi 有 `isdict` 徽章）、
+  勾選後只剩 kangxi 且 ↑↓ 都 disabled、localStorage `'1'`；取消後 2 列回來。
+
+## 17. 2026-10-22（第二輪）：本文列、pt、移除預覽、內置標籤、秋黃
+
+作者第二輪調整：
+1. 標籤樣式加「本文」樣式（置頂）；2. 本文字級用 **pt**，不是百分比；3. **取消預覽**，
+   改在每一列的 `.tName` 直接示範；天干地支只示範「甲」；4. **文／項／部／經**設為內置標籤，
+   **\<經\> 預設楷體**；5. 主題「護眼」改名「春綠」，新增「秋黃」。
+
+### 17.1 行為
+
+* **本文列**（表格第一列，`tagStyle.body`）：顏色、字型（第一／第二）、字級。
+  * 字級是 **`body.size`（pt，8–30）**，per-adb 可覆寫；沒自訂時用**文件字級**（`DOCFS`，
+    以 pt 顯示、用文件字級按鈕調整）。改本文列會建立／更新本文條目，不會偷偷改文件字級。
+  * 顏色／字型／字級都存在 `profiles.global.tagStyle.body`／`profiles.adb[...].tagStyle.body`。
+  * 套用：`ui.ts applyBodyStyleToDoc()` 把 `--doc-body-color`／`--doc-body-font`／
+    `--doc-body-size` 設在 `document.documentElement`；CSS 只對 `#docText .docBody` 生效
+    （右欄文字內容不動）。沒有 `--doc-body-size` 時回到 `--fsdoc`。
+* **沒有預覽卡**：每一列的 `.tchip` 用該列的字型／顏色／字級直接示範；本文列示範
+  「本文」在本文 pt；標籤示範在 `本文 pt × 該標籤 %`；天干地支只示範「甲」，沒有 22 格
+  ramp（22 層的 ramp 計算還在 `tag-style.ts`，只是不畫）。
+* **內置標籤**：`STRUCTURAL_TAGS = 書 篇 章 節 詞 文 項 部 經`。`<經>` 沒自訂字型時用
+  `DEFAULT_TAG_FONTS['經'] = '楷體'`；`fontFamilyOf()` 展開成
+  `'DFKai-SB', 'KaiTi', '楷體'`（跨平台）。自訂時 `seedTagStyle` 會把楷體帶進條目；
+  使用者把字型改成「本文」就真的用本文。
+* **主題**：原本 `eye` 的調色盤不變，只把標籤改成「春綠」；新增 `autumn`（秋黃／黃棕紙色），
+  `ThemeName`／`THEME_LABEL`／`stored()`／`<head>` 的先行套用／`#themeSeg` 都加了。
+* **`applyTo` 修正**：只給有寫 `size` 的條目夾範圍；沒寫＝auto，不再偷偷變成 100%
+  （作者只改顏色的標籤／匯入的 partial 條目會因此正確）。
+* **本文的換庫**：`setActiveDb` 新增 `onActiveDbChange` 只通知輕量聽眾（本文樣式），
+  不重繪本文／目錄（避免換庫時兩個 renderDirTree 撞在一起）。
+
+### 17.2 檔案
+
+| 檔案 | 工作 |
+|---|---|
+| `tag-style.ts` | `BODY_KEY`、`bodyStyleOf`、`TagStyleProfile.body`、`fontFamilyOf`、`DEFAULT_TAG_FONTS`、文項部經、`applyTo` 修正 |
+| `render_accelon3.ts` | 經的預設楷體；改用 `fontFamilyOf` |
+| `ui.ts` | 本文列、每列 `.tchip` 示範、pt 字級、`applyBodyStyleToDoc`、移除預覽、字型來源 |
+| `accelon26.template.html` | 本文列／無預覽的 markup、`#docText .docBody` 變數、秋黃主題、春綠標籤、4 個主題按鈕 |
+| `theme.ts` | `autumn`、春綠標籤 |
+| `test/tag-style.test.ts` | 本文、經楷體、內置標籤、body round-trip |
+
+### 17.3 驗證
+
+* `bun run test/tag-style.test.ts` **32/32**。
+* 真的 viewer（yinshun）：無預覽、本文列 12pt→15pt（`--fsdoc` 20px）→章 32→40px、
+  本文紅／DFKai-SB 套到中欄、文項部經列、經楷體、天干地支只示範甲、秋黃切換；**9/9**。
+* file:// 全套：**yinshun 192/192、fgdict 182/182**（含本文列／示範／秋黃的斷言）。
+* `go test ./...` 全綠；桌面 assets 已重建。
+
+### 17.4 注意
+
+* 本文的**字級**存在 `tagStyle.body.size`（pt，per-adb；沒自訂時用文件字級）；文件字級的
+  按鈕仍然存在，是「沒有本文 size 時」的預設。本文列 slider 8–30pt 直接套在 `#docText .docBody`。
+* 本文列的字級 slider 8–30pt（`--doc-body-size`）；沒有 `--doc-body-size` 時用 `--fsdoc`
+  （文件字級，10–40px）。
+* `settings.json` 的 `body` 是 v1 的 additive 欄位（舊檔沒有 body 也能讀）。
+* 標籤示範的 auto 大小用 `autoSizePct(depth)`（100 + 12.5%/層）近似；實際 renderer 用
+  頁面相對層級的 `font-size:min(calc(1em + n*2px), 1.8em)`。
+* 主題 `eye` 的值保留（舊的 localStorage 不會失效），只改顯示名稱為「春綠」。
+---
+
+## 18. 2026-10-25：「加入 Obsidian」（Obsidian vault → adb，在頁面內轉換）
+
+作者需求（原話）：「加入 adb 旁邊加上『加入 Obsidian』功能。http 版產生到 下載。
+桌面版放在執行檔文件夾。記得更新 adb 清單。」還有「小圖也打包進去」。
+
+### 18.1 介面
+
+📁 選單（`renderDbPick`）在「加入 adb」下面多兩列：`加入 Obsidian（資料夾）`、
+`加入 Obsidian（.zip）`。為什麼兩列：`<input type=file>` 的 `webkitdirectory` 與
+普通檔案選擇不能共用同一個 input。兩列都只在 `vault-import.ts` 註冊了 handler 之後才畫
+（`setVaultAddHandlers`，避免 dbs ↔ vault-import 成環）。
+
+右欄／本文都不用改：完成後直接 `openFile(file)`，走的就是一般的開庫路徑。
+
+選完 vault 會先**問檔名**（`askVaultName`）：`lunyu` 與 `lunyu.adb` 都收，中文檔名也可以，
+`\ / : * ? " < > |` 會清掉、前後的點與空白會修掉。adb 檔頭的 `dbname` 只能 ASCII，所以
+中文檔名會記成 `adb`（畫面上的庫名仍是 dbcname＝書名），對話框的即時提示會寫出來。
+規則在 `src/vault-name.ts`（DOM-free，`test/vault-name.test.ts` 8 項）。
+
+### 18.2 轉換（頁面內，無 Bun）
+
+```
+FileList/zip → vault-plan.ts（★與 CLI 共用）→ XML 行 + 圖片
+            → author-core.ts（★與 CLI 共用）→ 容器/檔頭
+            → bzip2-wasm（既有）→ Uint8Array
+```
+
+* `src/vault-plan.ts`：資料夾＝篇、`NN-MM標題.md`＝章、根目錄單字檔＝字、`[[…]]`→`<聯>`、
+  `![[圖]]`／data-URI→`<圖>`。**預設打包 vault 裡每一張圖**（作者：「小圖也打包進去」）。
+* **筆記裡的 `<`、`>`、`&` 不再讓整個匯入失敗**（作者 2026-10-25 的錯誤回報）：adb 是
+  XML 方言，`vault-plan.ts` 把這些字寫成 `&lt;`／`&gt;`／`&amp;`（屬性另加 `&quot;`），
+  顯示時由 `src/xml-entities.ts` 解回原字。解碼只做一層（`&amp;lt;` 是文字 `&lt;`，不是 `<`），
+  用在本文渲染、目錄／詞典標籤（`cachedStrings`、`nodeLabel`、`wrappedText`）與 `<圖>`
+  的檔名。測試 `test/vault-plan.test.ts` 12 項（含真的建 adb 後讀回 `caches/字`）。
+* `src/author-core.ts`：`buildIndex` → source/tokens/tags/tables/attributes/caches/resources
+  → 檔頭；壓縮器由呼叫端注入（Node 用 libbz2、瀏覽器用 wasm）。
+* `src/accelon26/adb-bytes.ts`：加 `makeHeaderBytes`（從零寫 256 byte 檔頭）。
+* `src/inflate.ts`：自寫 RFC 1951 inflate。原因：`DecompressionStream('deflate-raw')`
+  一條一個 stream，1,300 個條目要 ~2 分鐘；自寫版 78 ms（與 zlib 逐位元組相同）。
+
+**對拍**：同一份 vault，CLI 與瀏覽器產生的 adb sha256 相同（`8a4ba9f2…`，3,871,803 B）。
+
+### 18.3 出口
+
+| 環境 | 寫到哪 | 清單 |
+|---|---|---|
+| 網頁版 | `<a download>` → 瀏覽器下載資料夾 | 同一份加入 catalog 並開啟 |
+| 桌面版 | `main.AdbHost.SaveAdb` → exe 旁（不可寫才退下載） | `ListAdbs` 重掃（`refreshHostDbs`） |
+
+Go（`wails/import.go` 新）：`SaveAdb` 驗簽名 → 清理檔名（ASCII、`.adb`）→ 寫 exe 旁；
+`wails/adbhost.go`：`seedDirs()`（cwd ＋ exe 目錄）、`ListAdbs` 掃兩處去重、`resolve()`
+白名單加上 exe 目錄（捷徑的開始位置不一定等於 exe 資料夾）。
+
+### 18.4 測試
+
+* `test/inflate.test.ts` 4 項（含真 vault 1,299 條目對拍 zlib）。
+* `test/vault-plan.test.ts` 12 項（`<`／`>`／`&`、連結、圖檔名、真的建 adb 後 `caches/字` 解回原字）。
+* `test/adbauthor.test.ts` 8 項；`wails/import_test.go` 5 項。
+* `tools/probe-vault-import.ts`：網頁版端到端（選單 → 選 zip → 建庫 → 下載 → 開庫 → 清單）。
+* `tools/probe-desktop-import.ts`：桌面版端到端（exe 複製到暫存資料夾 → 寫在 exe 旁 → 開庫 → 清單）。
+* `tools/file-protocol-test.ts --adb 13j.adb`：73 pass / 2 fail（與改動前同樣兩項）；
+  選單那項測試改成「有 `.dbPickName` 的才是資料庫列」。
+
+### 18.5 已知限制
+
+* 檔名由使用者輸入（`.adb` 可省略、中文可以）；adb 檔頭的 dbname 只能 ASCII，
+  中文檔名會記成 `adb`（畫面顯示的庫名是書名）。
+* 資料夾選取沒有自動化測試（CDP 無法設定 `webkitRelativePath`）。
+* zip64／加密 zip 不支援。
+
+### 18.6 相關文件
+
+`OBSIDIAN-TO-ADB.md`（§1–§10 第一輪的 CLI 方案、§11 第二輪的頁面內轉換）。
+`www/adb/index.txt` / `index.html` 已加入 `lunyu.adb`（尚未部署）。
+
+> 本地重建 exe 時務必照 `release.ts` 的旗標（含 GUI 子系統），否則雙擊會跳命令列視窗；
+> 建完用 `bun run tools/pe-subsystem.ts <exe>` 確認 `subsystem=2`（作者 2026-10-25 加的守門）。
+
+## 19. 2026-10-26（晚間）：辭典順序分頁、圖片放大、2026-10-26 版發佈
+
+作者需求（兩輪）：
+
+1. 「辭典順序選項獨立成頁，加上『只列出 c="isdict"』的選項。」
+2. 「右欄圖片，點一下看大圖，並能縮放、有存檔按鈕（文件名同 adb 圖片名）。」
+
+### 19.1 辭典順序獨立成頁（詳見 §16.6）
+
+* 設置的分頁變成 **介面｜辭典順序｜標籤樣式｜繁簡**；「介面」只留「查字典」的兩個開關。
+  清單、↑↓、重新整理都搬到 `data-setpane="dict"`；`setSettingsPane('dict')` 才掃 catalog。
+* 新勾選框 `#dictOnlyIsdict`（`accelon26.dict.isdictonly`，預設 0＝全部）：只列
+  `<集 c="… isdict …">` 的庫，有標記的列顯示小 `isdict` 徽章。
+* `db-kind.ts` 拆出 `detectIsdict()`（只看 `<集 c>`）；`DictIndex`／`DictListEntry` 多 `isdict`。
+  實測 hanyu／hanyu3／kangxi／swjz 有，fgdict／gjhy／hcy 沒有。
+* **清單與查詢一起過濾**（作者 2026-10-26 晚間更正）：勾選後 `dictLookup()` 直接跳過
+  沒有 isdict 的辭典（點字、選取都不查）；`saveDictOrder()` 仍存完整清單；↑↓ 只在看得到的
+  列之間交換（換的是完整清單的兩個索引）。
+* 驗證：`dict-settings` 16/16；file://（fgdict）182/182。
+
+### 19.2 右欄圖片：點縮圖看大圖（`panes.ts` / template）
+
+* 右欄「圖片」（進階模式）的縮圖加 `thumbImg`：滑鼠變成放大鏡、可 Tab 聚焦、Enter／空白開啟。
+* 全螢幕 `#imgView`（z-index 96/97）：檔名、`−`／`＋`／`適合`／`1:1`、`存檔`、`✕`。
+  * **縮放**：以游標為錨點（滾輪）或視窗中心（按鈕）；比例 5%–800%，100%＝原始像素。
+  * **平移**：圖比視窗大時可拖曳；`適合` 依 stage 大小算 fit（小圖不放大，維持 100%）。
+  * **鍵盤**：`Esc` 關閉、`+`／`-` 縮放、`0` 適合、`1` 原始大小。
+  * **存檔**：`<a download>` 走 blob（和設定匯出一樣）；檔名取資源名的**去目錄檔名**
+    （例如 `images/mc0198.png` → `mc0198.png`；瀏覽器不接受路徑）。按鈕會短暫顯示
+    「已存檔 ✓」（狀態列只顯示錯誤／忙碌，成功訊息看不到）。
+* 只列前 48 張縮圖是原本的限制（`THUMB_LIMIT`），這次沒動；提示加「點縮圖看大圖」。
+* 驗證：headless yinshun（456 個資源）點第一張 → 100%（64px）→ 125%（80px）、
+  Esc 關閉、下載檔名 `mc0198.png`；另用 2000×3000 的 canvas 驗 fit（25%，500px）。
+  file:// 全套（yinshun）192 passed／2 failed——兩個失敗都是既有的 `docHead` 斷言
+  （`docHead 0 個`，與這次改動無關，fgdict 全套 182/182 不受影響）。
+
+### 19.3 2026-10-26 版（Windows）
+
+* 同一個版號 `2026-10-26` 當天重發四次（作者要求小改不另開版號）：14:13（辭典順序）→
+  14:42（補圖片放大）→ 14:47（「只列出 c="isdict"」改成連查詢一起過濾）→
+  15:02（補腳注連動）。
+* **最終上線**：buildTime `2026-10-26T15:02:00Z`、size `17984512`、
+  sha256 `6e47c239b0ada6c8f76a001084a8ac218ad67d4074fd7e66cf516af29fd4fbe1`。
+* `deploy.ts --site` 上線；線上 versions.json／exe sha／7z sha／changelog／首頁
+  `verNo` 都核對過。伺服器上的 `accelon26.exe.prev` 是 14:47 的版本，可回滾。
+* 公告信寄到 `adb.dao@gmail.com` 三次：14:13（辭典順序）、14:47（圖片放大＋isdict
+  連查詢一起過濾）、15:02（腳注連動；主旨「accelon26 2026-10-26 更新：註解與釋文連動」）。
+* 最終 exe 已含 19.1（isdict 查詢過濾）、19.2（圖片放大）與 19.4（腳注連動）。
+
+### 19.4 腳注：`<註 n>` ↔ `<釋 n>`（作者 2026-10-26 晚間）
+
+作者需求：「`<註>` 與 `<釋>` 是有連動關係的（attribute n），hover `<註>` 會顯示 `<釋>`
+包住的信息。點 `<註>` 捲到 `<釋>`，點 `<釋>` 捲回 `<註>`，就像 md 的腳注。」
+
+* **渲染**（`render_accelon3.ts`）：`<註 n="1"/>` → `noteRef` 上標錨點；
+  `<釋 n="1">…</釋>`（manual.adb，可跨行）與 `<釋 n="1"/>注文`（thonzu.adb，注文在
+  標籤後面）都變成 `noteBody` ＋ 開頭的回跳編號 `noteBack`。跨行的釋每行重新開、
+  行尾收（和跨行標題同一套）；**沒有 n 的釋**（hcy 的「意思是…」）只丟標籤，不當腳注。
+* **互動**（`notes.ts`，新）：hover 註 → `#noteTip` 顯示釋文（可捲動）；點註 →
+  `revealDocLine(釋的行)`；點釋（或它開頭的編號）→ 回註。找對應的釋／註是**由近而遠**
+  掃來源行（先往後找注文、先往前找引用），所以同一本書每章重新編號（n=1 很多次）
+  也不會抓錯；結果用 WeakMap 依 reader 快取。
+* **捲動**（`doc-pane.ts`）：新增 `revealDocLine(line)`（不塗紅、不釘選）。注意
+  **不能拿 `lineStartOf()` 的 VA 去 `docOfVa()`**：manual 的 tags VA 與行表 VA 不在
+  同一空間（`<檔>` VA 4082／行表 VA 10992），會挑錯檔；改用行號找 `<檔>`。
+* **驗證**：`render` 30/30（新增 6 條腳注）；manual.adb（包住多行）hover 顯示全文、
+  點註 scrollTop 0→536、點回 97；thonzu.adb（自閉合）hover「宿慧──早先熟悉的技能或
+  知識」、點註 scroll 0→1357、點回 0。截圖 `build/note-tip.png`。
+* 已併入 2026-10-26 最後一次同版重發（15:02，作者：「合併到今天的版本。發布。」）。
+
+## 20. 2026-10-27：摘要與本文的著色一致（yinshun「不斷」）
+
+作者回報：yinshun 搜「不斷」，摘要同一張卡有**兩個**著色點，點進本文卻只有**一個**；
+同一段有多個命中時摘要重複出現，好像都跳到第一個著色點。
+
+* **原因**：單一詞組搜尋時 `kwMarks` 是空的（只有 `res.multi` 才 `setKwMarks`），
+  `paintHit` 走 span 路徑只塗 pinned 的那一個 span；摘要則是拿查詢字在整段文字裡
+  比對、每個出現都上色。所以兩邊不一致，而且同段的多個 hit 各成一張卡。
+* **修正**：
+  * `paint.ts`：`markPhraseInLine(..., all=true)` 由後往前包同一行的**所有**出現；
+    exact 分支、`markPhraseOnPage` fallback、span 分支（用 `data-src` 的實際字）都用它。
+  * `summary.ts`：單一詞組時同一行（`searchSummary` 回傳的 `line`）只列一張卡，
+    「更多」標示「同段只列一次」；多詞組不動（每個詞組要自己的 `cur`）。
+* **驗證**：yinshun 搜「不斷」→ 摘要 27 張卡（前 30 筆命中、3 組同段合併）、
+  3 張卡各有 2 個著色點；點任一張，本文同一行 2 個著色點（修正前只有 1 個）。
+  `file:// fgdict` 182/182、`render` 30/30、`search` 38/38。
+* 尚未發佈；`release_notes.draft.txt` 已記一條。
+
+### 20.1 2026-10-27 RC1（Gmail 擋附件 → 改發官網）
+
+作者要求：編一個 exe 壓成 7z 寄給 `hunxian@gmail.com`、感謝他回報這個 bug，先不要部署；
+版號用今天日期＋RC1。**後來 Gmail 擋掉含 exe 的附件**，作者改口：「發一個版本到網站」，
+所以 RC1 直接上線，再寄下載連結給回報者。
+
+* 中間版本（附件用）：`2026-10-27T03:10:00Z`、exe sha `dbeaacfa…`、7z
+  `build/accelon26-2026-10-27-RC1.7z`（7,684,714 bytes，內含 exe ＋ 兩份 README）。
+* **正式上線版**：`release.ts --items-file --title "accelon26 2026-10-27 RC1"
+  --build-time 2026-10-27T03:31:00Z` → build `2026-10-27 11:31`、size `17,985,536`、
+  sha256 `33f309848286d2e5493d7f28d4064ae1b06d2306519ed2c02207843e76e4935f`。
+  `release_notes` 多了第 9 版（2026-10-27 RC1，一條：摘要與本文著色對齊）。
+* `deploy.ts --site` 上線；線上 versions.json／exe sha／7z sha／changelog／首頁
+  `verNo`（2026-10-27）都核對過。
+* 通知 `hunxian@gmail.com`：主旨「accelon26 2026-10-27 RC1 已放上官網（搜尋著色修正）」，
+  附官網連結，請他用 yinshun 搜「不斷」再試。
+* 注意：`build/accelon26-2026-10-27-RC1.7z`（03:10 版）與線上（03:31）不是同一顆；
+  線上以 `versions.json` 的 sha 為準。
+
+## 21. 2026-10-27 RC2：桌面版修改 ADB 後覆蓋原檔（mmap 鎖檔）
+
+作者回報：桌面版修改 ADB 之後，覆蓋原來的檔案會寫不進去，程式接著要求使用者
+提供另外一個資料夾。
+
+* **原因**：桌面版開 adb 是 mmap（`wails/sys_windows.go`）。Windows 上被映射的
+  檔案不能 rename／覆寫，WebView 的「另存新檔」如果選原檔就會失敗，只能換資料夾。
+* **後端**（`wails/import.go`）：新增 `OverwriteAdb(path, b64)`：
+  1. 驗 base64／adb 簽名；
+  2. `h.Close(path)` 先解除 mmap（含 search 快取）；
+  3. 同目錄寫暫存檔 → `os.Rename` 原子換檔（被最後一個 reader 卡住時重試約 2 秒）；
+  4. rename 真的不行才退回直接 `WriteFile`；回 `SaveAdbResult`。
+  `wails/overwrite_test.go` 用**已映射**的檔案驗證（`TestOverwriteAdbReplacesMappedFile`），
+  這是這個 bug 的回歸測試。
+* **前端**：
+  * `host.ts` 新增 `desktopOverwriteAdb(path, bytes)`。
+  * `rebuild-ui.ts`：`slot.file.path` 存在（桌面版）時，對話框改成「覆蓋原檔」；
+    成功後 `discardAll(es)`（修訂已寫入，別再問關閉會丟失）＋ `hooks.reloadPath()`；
+    只有覆寫失敗才退回原本的下載（提示另存到別的資料夾）。
+  * `ui.ts` 的 `reloadPath`：`closeDb(slot.id)` → `desktopSources()` 找同一路徑的新檔頭
+    → `openFile(fresh)`，使用者不必手動重開。
+* **驗證**：`go test ./...` 全綠（含新的 overwrite 測試）；真的 exe 透過 Wails bridge
+  對一個已 mmap 的 `test.adb` 呼叫 `OverwriteAdb` → `ok:true`、檔案 hash 改變、
+  `ReadBase64` 重讀正常；file:// 版沒有 `path`，仍走原本的下載流程。
+* **上線**：2026-10-27 RC2，buildTime `2026-10-27T04:25:00Z`、size `17,994,240`、
+  sha256 `80304f1e9c530183ab61f4e4e9faf1c5f82a826d599ce15922544fcc98493b72`；
+  `deploy --site` 後線上 versions.json／exe／7z／changelog 都核對過。

@@ -43,6 +43,21 @@ export interface AuthorInput {
   srcBlockSize?: number;
   /** single characters to drop from the token index (build time punctuation filter) */
   dropPunct?: string;
+  /**
+   * 從第一個實例起就快取的標記（舊庫的 docdef 宣告在 adb 之外，文字裡看不到）。
+   * 重建時把舊 `caches` 的鍵傳進來，目錄樹才會跟原庫一致。
+   */
+  cachedTags?: readonly string[];
+  /**
+   * 自閉合也要記一筆 close hit 的標記。舊庫的 docdef 會把某些成對標記
+   * （例如太虛的 `平裝`／`精裝`）寫成 `<x/>` 但仍索引 `/x`。
+   */
+  dualSelfClosingTags?: readonly string[];
+  /**
+   * 只承認這些標記（舊庫 docdef 的 validTags）。正文裡用 `<…>` 包書名之類的
+   * 寫法（于淩波用 `<大唐西域記>`）就不會被當成新標記，標記表才不會暴增。
+   */
+  validTags?: readonly string[];
   /** bzip2 one source block (16 KiB of UTF-16LE) */
   compress: (block: Uint8Array) => Promise<Uint8Array> | Uint8Array;
   /** coarse progress for the UI; may be called many times */
@@ -142,12 +157,14 @@ export async function authorAdbBytes(input: AuthorInput): Promise<AuthorOutcome>
   const built = buildIndex([[...input.lines]], {
     srcBlockSize,
     ignoreBlank: (input.dbtype ?? 0) === 1,
-    validTags: null,
+    validTags: input.validTags ? new Set(input.validTags) : null,
     indexedTags: null,
     dropPunct: input.dropPunct,
     dualIndexSelfClosing: false,
+    dualTags: input.dualSelfClosingTags ? new Set(input.dualSelfClosingTags) : null,
     // no static set: `t=` / `s="*…"` declarations in the text decide what is cached
-    cachedTags: null,
+    cachedTags: input.cachedTags ? new Set(input.cachedTags) : null,
+    cachedFromStart: true,
   });
   progress?.('建立索引', 1, 1);
 

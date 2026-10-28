@@ -30,6 +30,12 @@ export interface AuthorInput {
   srcBlockSize?: number;
   /** single characters to drop from the token index (build time punctuation filter) */
   dropPunct?: string;
+  /** 從第一個實例起就快取的標記（重建舊庫時沿用它的 `caches` 鍵） */
+  cachedTags?: readonly string[];
+  /** 自閉合但仍要索引 close hit 的成對標記（舊 docdef 的寫法） */
+  dualSelfClosingTags?: readonly string[];
+  /** 只承認這些標記（舊 docdef 的 validTags；正文用 `<…>` 包書名時很重要） */
+  validTags?: readonly string[];
   log?: (msg: string) => void;
   extraContainers?: Record<string, Uint8Array>;
 }
@@ -62,6 +68,9 @@ export async function authorAdb(input: AuthorInput): Promise<AuthorResult> {
       features: input.features,
       srcBlockSize: input.srcBlockSize,
       dropPunct: input.dropPunct,
+      cachedTags: input.cachedTags,
+      dualSelfClosingTags: input.dualSelfClosingTags,
+      validTags: input.validTags,
       extraContainers: input.extraContainers,
       compress: (block) => encoder.encode(block),
       onProgress: (phase, done, total) => {

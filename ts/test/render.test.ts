@@ -57,11 +57,16 @@ ok('段：變成 <br class="para"> ＋ 縮排 span（兩個全形空格）',
   para.startsWith('<br class="para"><span class="paraIndent">　　</span>何故禮拜')
   && para.includes('　　'), para);
 
-const unknown = r.line('<聯 i="taisho">參考</聯>正文', 6);
+// 2026-10：`<聯 i="…">` 已經是跨庫錨點，不再算「未知標籤」；用真的未知標籤測。
+const unknown = r.line('<未知 i="taisho">參考</未知>正文', 6);
 ok('沒有 t= 的標籤：標籤丟掉、文字留著', unknown === '參考正文', unknown);
 
 const hidden = r.line('<隱><樹 s="*" t="書">目錄</樹></隱>正文', 7);
 ok('樹／隱：連內容一起隱藏', hidden === '正文', hidden);
+
+const jl = r.line('<聯 i="taisho?8p848c" q="色即是空" j="52-60">色即是空</聯>', 7);
+ok('聯 j：字級範圍帶到 data-j，舊的 data-xref 不變',
+  jl.includes('data-xref="taisho?8p848c"') && jl.includes('data-j="52-60"'), jl);
 
 // 跨行標題：<章> 開在第 1 行，第 2 行還是標題，</章> 收在第 3 行
 const a = r.line('<章>標題一', 8);

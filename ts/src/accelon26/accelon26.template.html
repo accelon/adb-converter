@@ -488,6 +488,8 @@
   }
   .aboutToggle:hover { color: var(--fg); }
   .aboutFoot { margin: 10px 0 0; font-size: 12px; color: var(--dim); }
+  .aboutKeys { margin: 8px 0 0; font-size: 12px; color: var(--dim); }
+  .aboutKeys b { color: var(--fg); font-variant-numeric: tabular-nums; }
   /* the database name lives on the chip (#dbTabs); this rule went with #dbname */  #file { display: none; }   /* the picker is driven by #dbAdd */
 .dbAdd { border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink);
   cursor: pointer; font-size: 13px; padding: 1px 7px; line-height: 1.5; }
@@ -809,13 +811,135 @@
   /* <聯 n="詞">：詞條連結（別名、參見）。目標由 link.ts 的 linkToEntry 解析 */
   .lineText .entryLink { color: #2e7a80; text-decoration: none; border-bottom: 1px dotted currentColor; cursor: pointer; }
   .lineText .entryLink:hover { color: #b26949; text-decoration: underline; }
+  /* <嵌 i="db?page">：文內嵌入晶片；點一下在下面插入引文，再點收合 */
+  .lineText .embedChip {
+    display: inline-flex; align-items: center; gap: 2px; vertical-align: baseline;
+    margin: 0 2px; padding: 0 5px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--panel2); color: var(--accent); font: inherit; font-size: .78em;
+    line-height: 1.45; cursor: pointer; white-space: nowrap;
+  }
+  .lineText .embedChip:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel2)); }
+  .lineText .embedChip.is-open { color: var(--fg); border-color: var(--accent); }
+  .embedBlock {
+    margin: 3px 0 6px 1.2em; padding: 5px 9px 6px; border-left: 3px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, var(--panel)); border-radius: 0 5px 5px 0;
+    font-size: .92em; line-height: 1.6;
+  }
+  .embedHead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; color: var(--dim); font-size: .82em; }
+  .embedSrc { color: var(--accent); font-weight: 600; }
+  .embedPage { font-family: ui-monospace, monospace; }
+  .embedClose { margin-left: auto; border: 0; background: transparent; color: var(--dim); font: inherit; font-size: .9em; cursor: pointer; }
+  .embedClose:hover { color: var(--fg); text-decoration: underline; }
+  .embedText { color: var(--fg); }
+  .embedText mark.embedHit, .embedText mark.xrefHit { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+  .embedLoading, .embedError { color: var(--dim); font-size: .9em; padding: 4px 0; }
+  .embedError { color: var(--err); }
   /* 引文塗紅（<mark class="xrefHit">）：跨庫引文在目標頁上的位置 */
   mark.xrefHit { background: #ffd166; color: #1a1a1a; border-radius: 2px; padding: 0 1px; }
-  .xrefRevBar { margin: 6px 0 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .xrefRev { font-size: 12px; }`r`n  /* 回連結分批：第 11 顆以後先藏起來，按「＋N」再放一批（作者 2026-10-28） */`r`n  .xrefRev.is-hidden { display: none; }`r`n  .xrefMore { font-size: 12px; color: var(--dim); }
+  /* 反鏈（2026-10-28）：右欄跨庫頁面標題下的一排；可依頻次／來源序／目標序重排 */
+  .xrefRevBar { margin: 6px 0 10px; display: flex; flex-direction: column; gap: 6px; }
+  .revTop { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .revTitle { font-weight: 600; color: var(--fg); }
+  .revTitle b { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .revFrom { min-width: 0; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .revSortSeg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .revSortSeg button { background: transparent; color: var(--dim); border: 0; border-right: 1px solid var(--line); font: inherit; font-size: 11px; padding: 2px 7px; cursor: pointer; }
+  .revSortSeg button:last-child { border-right: 0; }
+  .revSortSeg button.active { background: var(--accent); color: var(--ink-on-accent, #fff); font-weight: 700; }
+  .revSortSeg button:hover { color: var(--fg); }
+  .revChips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+  .xrefRev { font-size: 12px; }
+  .xrefRev.is-hidden { display: none; }
+  .xrefRevN { color: var(--gold, #c9a227); font-size: 10px; margin-left: 3px; font-variant-numeric: tabular-nums; }
+  .xrefMore { font-size: 12px; color: var(--dim); }
+  .revHeatBtn { color: var(--dim); }
   /* 回連結嵌在經文裡（作者 2026-10-28）：跟在 <頁> 分隔後面，隨文字捲動 */
-  .xrefRevInline { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 2px 0 10px; font-size: 12px; color: var(--dim); }`r`n  /* 嵌在經文行首的版本（作者 2026-10-28）：跟著那一行，不佔一整列 */`r`n  .docLine .xrefRevInline, .lineText .xrefRevInline { display: inline-flex; margin: 0 6px 0 0; vertical-align: middle; }
+  .xrefRevInline { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 2px 0 10px; font-size: 12px; color: var(--dim); }
+  /* 嵌在經文行首的版本（作者 2026-10-28）：跟著那一行，不佔一整列 */
+  .docLine .xrefRevInline, .lineText .xrefRevInline { display: inline-flex; margin: 0 6px 0 0; vertical-align: middle; }
   .xrefRevInline .mini { font-size: 11px; }
+  /* 引用分布熱圖（2026-10-28）：fixed overlay，不影響閱讀位置 */
+  #revHeat { position: fixed; inset: 4vh 4vw; z-index: 96; background: var(--panel, var(--bg)); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,.55); display: flex; flex-direction: column; }
+  #revHeat[hidden] { display: none; }
+  .revHeatTop { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .revHeatTop b { font-size: 15px; }
+  .revHeatTop select { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; font: inherit; font-size: 12px; padding: 2px 5px; }
+  .revHeatTop .aboutClose { margin-left: auto; }
+  .revHeatBody { overflow: auto; padding: 10px 14px 16px; }
+  .revHeatMain { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+  .revHeatWrap { flex: 1 1 0; min-width: 0; max-width: 100%; overflow: auto; }
+  .revHeatGrid { display: grid; grid-auto-rows: 20px; gap: 2px; width: max-content; font-size: 10px; }
+  .hgCorner { color: var(--dim); font-size: 9px; white-space: nowrap; align-self: end; padding-right: 5px; }
+  .hgCol { color: var(--dim); font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; align-self: end; padding: 0 1px 2px; }
+  .hgRow { color: var(--dim); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 20px; padding-right: 4px; }
+  .hgCell { border-radius: 2px; text-align: center; line-height: 20px; font-variant-numeric: tabular-nums; overflow: hidden; }
+  .hgTot { color: var(--gold, #c9a227); text-align: right; line-height: 20px; font-variant-numeric: tabular-nums; padding-left: 4px; }
+  .revHeatTable { border-collapse: separate; border-spacing: 2px; font-size: 11px; width: auto; }
+  .revHeatTable th { font-weight: 400; color: var(--dim); }
+  .revHeatTable th.corner { color: var(--dim); font-size: 10px; text-align: left; white-space: nowrap; padding-right: 6px; }
+  .revHeatTable th.hcol { height: auto; vertical-align: bottom; padding: 0 1px; font-size: 9px; line-height: 1.15; max-width: 44px; }
+  .revHeatTable th.hcol span { display: block; max-width: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .revHeatTable th.hrow { text-align: right; white-space: nowrap; padding-right: 5px; max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+  .revHeatTable td.heatCell { width: 28px; height: 20px; min-width: 28px; text-align: center; border-radius: 2px; font-size: 10px; font-variant-numeric: tabular-nums; color: var(--fg); white-space: nowrap; overflow: hidden; }
+  .revHeatTable td.heatTot { color: var(--gold, #c9a227); text-align: right; padding-left: 6px; font-variant-numeric: tabular-nums; }
+  .revHeatTops { flex: 0 0 310px; display: flex; flex-direction: column; gap: 12px; margin-top: 0; }
+  .revHeatTops > div { min-width: 0; }
+  .revHeatTops h4 { margin: 0 0 4px; font-size: 12px; color: var(--dim); font-weight: 600; }
+  .revHeatTops ol { margin: 0; padding-left: 20px; font-size: 12px; line-height: 1.7; }
+  .revHeatTops li span { margin-right: 8px; }
+  .revHeatTops li b { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .revHeatNote { margin: 10px 0 0; font-size: 11px; }
+  /* 引紋頁籤（2026-10-28）：不開跨庫頁面也能看；列／欄標題 sticky */
+  .tabPane[data-tab="heat"] { flex-direction: column; min-height: 0; }
+  .heatToolbar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+  .heatTitle { color: var(--link); }
+  .heatArrow { color: var(--dim); font-size: 17px; line-height: 1; user-select: none; }
+  .heatToolbar label { display: inline-flex; gap: 4px; align-items: center; color: var(--dim); font-size: 12px; }
+  .heatToolbar select { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; font: inherit; font-size: 12px; padding: 2px 4px; max-width: 190px; }
+  .heatHelp { padding: 2px 10px 4px; font-size: 11px; line-height: 1.5; min-height: 1.4em; }
+  .heatSeg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .heatSeg button { background: transparent; color: var(--dim); border: 0; border-right: 1px solid var(--line); font: inherit; font-size: 11px; padding: 2px 7px; cursor: pointer; }
+  .heatSeg button:last-child { border-right: 0; }
+  .heatSeg button.active { background: var(--accent); color: var(--ink-on-accent, #fff); font-weight: 700; }
+  .heatSeg button:hover { color: var(--fg); }
+  .heatStats { font-size: 11px; margin-left: auto; }
+  .heatBody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; }
+  .heatMiniWrap { flex: 0 0 auto; }
+  .heatMiniHead { display: flex; gap: 8px; align-items: baseline; font-size: 11px; margin-bottom: 3px; }
+  .heatMiniScroll { overflow: auto; max-height: min(42vh, 360px); border: 1px solid var(--line); border-radius: 4px; padding: 4px; }
+  .heatScroll { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 4px; }
+  #heatFull[hidden] { display: none; }
+  .heatGrid { display: grid; grid-auto-rows: 20px; gap: 2px; width: max-content; font-size: 10px; }
+  .heatGrid .hgCol { position: sticky; top: 0; z-index: 3; background: var(--bg); }
+  .heatGrid .hgRow { position: sticky; left: 0; z-index: 2; background: var(--bg); }
+  .heatGrid .hgCorner { position: sticky; top: 0; left: 0; z-index: 4; background: var(--bg); }
+  .heatMini { grid-auto-rows: 7px; gap: 1px; }
+  .heatMini .hgCell { line-height: 7px; font-size: 0; border-radius: 0; }
+  .heatMini .hgCell[title] { cursor: default; }
+  .heatMini .hgCell[data-mr0] { cursor: pointer; }
+  .heatDetail { flex: 1 1 auto; min-height: 80px; overflow: auto; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px 10px; }
+  .heatDetailHead { display: flex; gap: 8px; align-items: baseline; margin: 4px 0 6px; flex-wrap: wrap; }
+  .heatDetailHead b { color: var(--gold, #c9a227); font-size: 12.5px; font-weight: 600; }
+  .heatDetailHead .mini { margin-left: auto; }
+  .heatDetailList { display: flex; flex-direction: column; }
+  .heatDetail .revListRow { padding: 4px 2px; }
+  .heatDetailMore { margin: 6px 0 0; font-size: 11px; }
+  /* 反鏈清單抽屜 */
+  #revList { position: fixed; top: 4vh; right: 3vw; bottom: 4vh; width: min(640px, 46vw); z-index: 95; background: var(--panel, var(--bg)); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,.55); display: flex; flex-direction: column; }
+  #revList[hidden] { display: none; }
+  .revListTop { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .revListTop b { font-size: 15px; }
+  .revListTop input { flex: 1 1 160px; min-width: 120px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; font: inherit; font-size: 12px; padding: 3px 6px; }
+  .revListTop .aboutClose { margin-left: auto; }
+  .revListSort { padding: 6px 14px; border-bottom: 1px solid var(--line); }
+  .revListBody { overflow: auto; flex: 1 1 auto; min-height: 0; padding: 4px 10px 12px; }
+  .revListGroup { color: var(--gold, #c9a227); font-size: 12px; font-weight: 600; margin: 10px 0 3px; }
+  .revListRow { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 2px 8px; width: 100%; text-align: left; background: transparent; color: var(--fg); border: 0; border-bottom: 1px solid var(--line); font: inherit; padding: 5px 3px; cursor: pointer; }
+  .revListRow:hover { background: var(--hl-bg, rgba(255,255,255,.06)); }
+  .revListBook { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+  .revListPage { color: var(--gold, #c9a227); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .revListN { color: var(--gold, #c9a227); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .revListQuote { grid-column: 1 / -1; color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* <註 n="…"/> ↔ <釋 n="…">：像 Markdown 腳注（作者 2026-10-26）。
      註是上標的小連結，hover 顯示釋文；點註跳到釋、點釋（或它的編號）跳回註。 */
   .lineText .noteRef {
@@ -832,6 +956,18 @@
     box-shadow: 0 10px 30px rgba(0, 0, 0, .55); padding: 8px 11px;
     font-size: 13px; line-height: 1.6; white-space: pre-wrap;
   }
+  /* 書籤（2026-10-28） */
+  .selMenu { position: fixed; z-index: 100; display: flex; flex-direction: column; min-width: 112px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; box-shadow: 0 10px 30px rgba(0,0,0,.55); }
+  .selMenu[hidden] { display: none; }
+  .selMenu button { background: transparent; color: var(--fg); border: 0; border-radius: 4px; font: inherit; font-size: 12.5px; text-align: left; padding: 5px 9px; cursor: pointer; }
+  .selMenu button:hover { background: var(--hl-bg, rgba(255,255,255,.08)); color: var(--accent); }
+  .bmRow { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); }
+  .bmJump { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; background: transparent; color: var(--fg); border: 0; text-align: left; font: inherit; padding: 7px 4px; cursor: pointer; }
+  .bmJump:hover { background: var(--hl-bg, rgba(255,255,255,.06)); }
+  .bmTitle { color: var(--gold, #c9a227); font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bmText { color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bmDel { flex: 0 0 auto; background: transparent; color: var(--dim); border: 0; font-size: 12px; padding: 0 7px; cursor: pointer; }
+  .bmDel:hover { color: var(--err, #e06c75); }
   .lineText .pageBreak::before { content: ""; flex: 1 1 auto; border-top: 1px dashed var(--line); }
   .lineText .pageBreak .pageId { font-variant-numeric: tabular-nums; }
   /* <段/> → <br class="para"> ＋ 兩個全形空格 */
@@ -845,6 +981,13 @@
     background: #fff; padding: 1px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .10);
   }
   .lineText img.inlineImg:hover { outline: 1px solid var(--accent); height: 2.2em; }
+  /* 內嵌 SVG（小篆字形）：跟著字色／主題走，不必鋪白底、也不必裝字型（作者 2026-10-28）。
+     width:auto 讓每個字用自己的 bbox 比例，不會被拉成方塊。 */
+  .lineText svg.inlineSvg {
+    height: 1.5em; width: auto; vertical-align: -.35em;
+    margin: 0 1px; color: inherit; fill: currentColor;
+  }
+  .lineText svg.inlineSvg:hover { height: 2.4em; outline: 1px solid var(--accent); border-radius: 2px; }
   .lineText .inlineImgMissing {
     display: inline-block; min-width: 1em; text-align: center;
     border: 1px dashed var(--line); border-radius: 2px; color: var(--dim);
@@ -1244,8 +1387,8 @@
 <header id="header">
   <!-- 左上角：桌面版會在這裡顯示建置時間（hover hint），有新版本時閃動並可點擊更新 -->
   <h1 id="brand" title="Accelon26">Accelon<span class="accent">26</span></h1>
-  <button class="sideToggle" id="toggleLeft" title="顯示／隱藏左欄">◧</button>
-  <button class="sideToggle" id="toggleRight" title="顯示／隱藏右欄">◨</button>
+  <button class="sideToggle" id="toggleLeft" aria-keyshortcuts="Control+B" title="顯示／隱藏左欄（Ctrl+B；Mac ⌘B）">◧</button>
+  <button class="sideToggle" id="toggleRight" aria-keyshortcuts="Control+Alt+B" title="顯示／隱藏右欄（Ctrl+Alt+B；Mac ⌘⌥B）">◨</button>
   <!-- adb 選單（作者 2026-10）：原本的 ＋ 按鈕收進下拉的第一項「加入 adb」 -->
   <span class="dbPickWrap">
     <button type="button" class="dbPickBtn" id="dbPickBtn" title="adb：按一下選一個（最多同時 5 個）">📁</button>
@@ -1270,6 +1413,7 @@
   <section class="col" id="colLeft">
     <div class="tabs" id="tabsLeft">
       <button class="tabBtn active" data-tab="dir">目錄</button>
+      <button class="tabBtn" data-tab="bookmark">書籤</button>
       <button class="tabBtn" data-tab="terms" hidden>名詞</button>
       <button class="tabBtn" data-tab="freq" hidden>頻次</button>
       <button class="tabBtn" data-tab="folio" hidden>原書分頁</button>
@@ -1291,6 +1435,11 @@
         <!-- 同一個庫宣告了兩棵 s="*" 樹（taisho：經目／分卷）時才出現 -->
         <div class="note" id="dirPickWrap" hidden><select id="dirPick" class="modeSel" title="這個庫宣告了多棵目錄樹"></select></div>
         <div id="dirTree" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div>
+      </div>
+      <!-- 書籤（2026-10-28）：所有 adb 都有；存在這個瀏覽器 -->
+      <div class="tabPane" data-tab="bookmark">
+        <div id="bookmarkMeta" class="note"></div>
+        <div id="bookmarkList" class="scrollArea"></div>
       </div>
       <!-- 名詞：s="$詞"（tag 包裹）。詞條＝<詞> 的實例，字典式查詢。 -->
       <div class="tabPane" data-tab="terms">
@@ -1392,6 +1541,7 @@
     <div class="tabs" id="tabsRight">
       <button class="tabBtn active" data-tab="sum">摘要</button>
       <button class="tabBtn" data-tab="text" hidden>文字內容</button>
+      <button class="tabBtn" data-tab="heat" hidden>引紋</button>
       <button class="tabBtn" data-tab="dict">詞典</button>
       <button class="tabBtn advOnly" data-tab="header" id="tabHeader" hidden>檔頭</button>
       <button class="tabBtn advOnly" data-tab="meta">META</button>
@@ -1418,6 +1568,28 @@
         <div id="searchMeta" class="note"></div>
         <div id="searchList" class="scrollArea"></div>
         <div id="searchMore" class="note"></div>
+      </div>
+      <!-- 引紋（2026-10-28）：反鏈的引用分布熱圖；不必先開跨庫頁面 -->
+      <div class="tabPane" data-tab="heat">
+        <div class="heatToolbar">
+          <select id="heatHost" title="被引用的庫（左）"></select>
+          <span class="heatArrow" title="右邊的庫引用左邊的庫">←</span>
+          <select id="heatSource" title="引用別人的庫（右）"></select>
+          <span class="heatSeg" id="heatGrain" role="group" aria-label="目標粒度">
+            <button type="button" data-grain="volume" title="依大正部（冊）">部</button>
+            <button type="button" data-grain="sutra" title="依經（書）">經</button>
+            <button type="button" data-grain="juan" title="依卷">卷</button>
+          </span>
+          <span class="heatSeg" id="heatNorm" role="group" aria-label="數值">
+            <button type="button" data-norm="count" title="原始 <聯> 條數">計數</button>
+            <button type="button" data-norm="row" title="同一列加總為 100%：看這部大正部/經/卷的引用來自哪些來源書">列佔比</button>
+            <button type="button" data-norm="col" title="同一欄加總為 100%：看這部來源書的引用分佈在大正哪些部/經/卷">欄佔比</button>
+          </span>
+          <span id="heatStats" class="dim heatStats"></span>
+          <button type="button" class="mini" id="heatFullBtn" title="展開完整熱圖（預設只顯示縮圖）">完整熱圖</button>
+        </div>
+        <div id="heatHelp" class="heatHelp dim"></div>
+        <div id="heatBody" class="heatBody"><p class="dim">同時開啟來源庫（ys/tx/lc/yulinpo）與目標庫（taisho），這裡會出現引用分布。</p></div>
       </div>
       <!-- 詞典（作者 2026-10）：上半詞條清單、下半詞條正文 -->
       <div class="tabPane" data-tab="dict">
@@ -1530,20 +1702,11 @@
           <span class="setHint">渲染 <code>&lt;頁&gt;</code>／<code>&lt;_頁&gt;</code>：原書分行時是右靠的頁分隔＋頁碼，連排時是行內的小頁碼；取消＝完全不出現</span>
         </label>
       </section>
-      <!-- 查字典（作者 2026-10-22；2026-10-24 加選取自動查）：兩個開關。
-           辭典順序在 2026-10-26 獨立成「辭典順序」分頁。 -->
+      <!-- 查字典（2026-10-28）：不再自動查；改由本文選取選單「查字典」明確觸發
+           （原本的點本文／選取十字以下自動查已取消）。 -->
       <section class="setSection">
         <h3>查字典</h3>
-        <label class="setRow" for="setDictAuto">
-          <input type="checkbox" id="setDictAuto">
-          <span>點本文就自動查詞典</span>
-          <span class="setHint">關閉後點字不會自動查；右欄「詞典」分頁仍會保留上一次的結果</span>
-        </label>
-        <label class="setRow" for="setDictSelection">
-          <input type="checkbox" id="setDictSelection">
-          <span>選取區十字以下自動查</span>
-          <span class="setHint">在本文選取 10 個字以內，放開滑鼠就自動用選取文字查右側詞典；更長的選取不會查</span>
-        </label>
+        <p class="setHint">在中間本文選取文字，選單按「查字典」。不再因為點本文或選取而自動查詞典。</p>
       </section>
       <section class="setSection">
         <h3>進階</h3>
@@ -1566,7 +1729,7 @@
         <label class="setRow" for="dictOnlyIsdict">
           <input type="checkbox" id="dictOnlyIsdict">
           <span>只列出 <code>c="isdict"</code></span>
-          <span class="setHint">只留 <code>&lt;集 c="… isdict …"&gt;</code> 的庫；佛光大辭典這類沒標記的不列出，點字、選取也不會查它們。</span>
+          <span class="setHint">只留 <code>&lt;集 c="… isdict …"&gt;</code> 的庫；佛光大辭典這類沒標記的不列出，選單「查字典」也不會查它們。</span>
         </label>
         <div class="dictOrder" id="dictOrderList"><div class="note">讀取辭典中…</div></div>
         <p class="setHint">只列出目前可用的詞典型 adb（有 <code>&lt;樹 s="$詞"&gt;</code> 的庫）；順序存在這台電腦。</p>
@@ -1635,6 +1798,42 @@
 </div>
 <!-- 腳注提示（作者 2026-10-26）：hover <註> 時顯示對應 <釋> 的文字 -->
 <div id="noteTip" hidden></div>
+<!-- 選取文字選單（2026-10-28）：加入書籤／複製／引用複製 -->
+<div id="selMenu" class="selMenu" role="menu" hidden>
+  <button type="button" data-sel="bookmark">加入書籤</button>
+  <button type="button" data-sel="search">搜尋</button>
+  <button type="button" data-sel="dict">查字典</button>
+  <button type="button" data-sel="sutra" hidden></button>
+  <button type="button" data-sel="copy">複製</button>
+  <button type="button" data-sel="cite">引用複製</button>
+</div>
+<!-- 引用分布熱圖（作者 2026-10-28）：反鏈的「分布」按鈕打開 -->
+<div id="revHeat" role="dialog" aria-modal="true" aria-labelledby="revHeatTitle" hidden>
+  <div class="revHeatTop">
+    <b id="revHeatTitle">引用分布</b>
+    <span id="revHeatSub" class="dim"></span>
+    <select id="revHeatSrc" title="選擇來源庫" hidden></select>
+    <button type="button" class="aboutClose" id="revHeatClose" title="關閉（Esc）">✕</button>
+  </div>
+  <div id="revHeatBody" class="revHeatBody"><p class="dim">從反鏈那一排按「分布」。</p></div>
+</div>
+<!-- 反鏈清單抽屜（2026-10-28）：100+ 條時的完整清單 -->
+<div id="revList" role="dialog" aria-modal="true" aria-labelledby="revListTitle" hidden>
+  <div class="revListTop">
+    <b id="revListTitle">反鏈清單</b>
+    <span id="revListSub" class="dim"></span>
+    <input id="revListFilter" type="search" placeholder="搜尋書名、頁碼、引文…" autocomplete="off">
+    <button type="button" class="aboutClose" id="revListClose" title="關閉（Esc）">✕</button>
+  </div>
+  <div class="revListSort">
+    <span class="heatSeg" role="group" aria-label="反鏈排序">
+      <button type="button" data-revsort="freq" class="active">頻次</button>
+      <button type="button" data-revsort="src">來源序</button>
+      <button type="button" data-revsort="host">目標序</button>
+    </span>
+  </div>
+  <div id="revListBody" class="revListBody"><p class="dim">載入中…</p></div>
+</div>
 <div id="aboutBackdrop" hidden></div>
 <div id="aboutBox" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" hidden>
   <div class="aboutTop">
@@ -1656,6 +1855,7 @@
       <input type="checkbox" id="aboutStartup"> <span>啟動時顯示本頁面</span>
     </label>
   </div>
+  <p class="aboutKeys">快速鍵：<b>Ctrl+B</b> 開關左欄；<b>Ctrl+Alt+B</b> 開關右欄（Mac：⌘B／⌘⌥B）。</p>
   <div class="aboutMeta">
     <div><span>版本</span><b id="aboutBuild">—</b></div>
     <div><span>執行環境</span><b id="aboutMode">—</b></div>

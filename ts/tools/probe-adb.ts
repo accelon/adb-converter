@@ -122,6 +122,7 @@ const step1 = await cdp.eval<string>(`
     out.dirRows = st.dirRows; out.treePhases = st.treePhases; out.leftTabs = st.leftTab;
     const rows = () => [...document.querySelectorAll('#dirTree .tRow')];
     out.tree = rows().slice(0, 6).map((r) => (r.querySelector('.tTag')?.textContent ?? '') + ':' + (r.querySelector('.tName')?.textContent ?? ''));
+    out.treeSnapshot = window.__accelon26?.treeSnapshot?.('勝鬘') ?? null;
     // open the first node that has a link action
     const first = rows().find((r) => r.querySelector('.tDot')) ?? rows()[0];
     (first?.querySelector('.tDot') ?? first)?.click();

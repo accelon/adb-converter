@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tx.adb 與 taixu.adb 有什麼不同</title>
+<meta name="theme-color" content="#f7f7f8" id="themeColor">
+<link rel="icon" type="image/png" href="../img/appicon.png">
+<script>
+  // 亮底／暗底（作者 2026-10-18）：**預設亮底**（軟件的截圖是暗色的，亮底才有對比）。
+  // 選過的記在 localStorage；在畫面出現前就套上，免得先閃一下另一種底色。
+  (function () {
+    var t = 'light';
+    try { t = localStorage.getItem('accelon26.site.theme') === 'dark' ? 'dark' : 'light'; } catch (e) { /* 無痕模式 */ }
+    document.documentElement.setAttribute('data-theme', t);
+  }());
+</script>
+<style>
+  /* 亮底（預設） */
+  :root {
+    color-scheme: light;
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --panel2: #f1f3f6;
+    --line: #e2e5ea;
+    --fg: #17181c;
+    --dim: #6b7280;
+    --muted: #444a54;
+    --muted2: #454b55;
+    --accent: #2f6fd0;
+    --gold: #a9720a;
+    --btn-fg: #ffffff;
+    --btn-shadow: 0 6px 22px rgba(47,111,208,.20);
+    --msg-shadow: 0 4px 14px rgba(47,111,208,.18);
+    --code-bg: #f1f3f6;
+    --screen-bg: #eceef2;
+    --header-bg: rgba(247,247,248,.92);
+    --dot-off: rgba(0,0,0,.22);
+    --dot-off-border: rgba(0,0,0,.32);
+    --dot-hover: rgba(0,0,0,.45);
+    --dot-on: #1a1c20;
+    --dot-ring: rgba(0,0,0,.12);
+    --max: 960px;
+  }
+  /* 暗底 */
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #16171a;
+    --panel: #1e2024;
+    --panel2: #24272c;
+    --line: #2e3238;
+    --fg: #dcdee3;
+    --dim: #8f959e;
+    --muted: #c3c7ce;
+    --muted2: #b9bec6;
+    --accent: #6cb0ff;
+    --gold: #ffd479;
+    --btn-fg: #0a2338;
+    --btn-shadow: 0 6px 22px rgba(108,176,255,.22);
+    --msg-shadow: 0 4px 14px rgba(108,176,255,.18);
+    --code-bg: #26292f;
+    --screen-bg: #101113;
+    --header-bg: rgba(22,23,26,.92);
+    --dot-off: rgba(255,255,255,.28);
+    --dot-off-border: rgba(255,255,255,.40);
+    --dot-hover: rgba(255,255,255,.55);
+    --dot-on: #ffffff;
+    --dot-ring: rgba(255,255,255,.14);
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.75 system-ui, "Segoe UI", "Microsoft JhengHei", "PingFang TC",
+      "Noto Sans CJK TC", sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+  code {
+    font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+    font-size: .9em; background: var(--code-bg); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 5px;
+  }
+
+  /* ---------------------------------------------------------------- 頂端 */
+  header.top {
+    border-bottom: 1px solid var(--line);
+    background: var(--header-bg);
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(6px);
+  }
+  header.top .wrap {
+    display: flex; align-items: center; gap: 20px; height: 62px;
+  }
+  .brand { font-size: 20px; font-weight: 700; letter-spacing: .01em; color: var(--fg); }
+  .brand b { color: var(--gold); font-weight: 700; }
+  .brand span { color: var(--dim); font-weight: 400; font-size: 14px; margin-left: 10px; }
+  nav { margin-left: auto; display: flex; gap: 18px; font-size: 14px; align-items: center; }
+  nav a { color: var(--dim); }
+  nav a:hover { color: var(--fg); text-decoration: none; }
+  /* 亮底／暗底切換（作者 2026-10-18）：右上角，圖示＋tooltip */
+  .themeBtn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+    border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px;
+    cursor: pointer; line-height: 1.2;
+  }
+  .themeBtn:hover { color: var(--fg); border-color: var(--dim); }
+  .themeBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .themeBtn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+  /* GitHub 圖示（作者 2026-10-22）：右上角，點一下開原始碼庫 */
+  .ghLink {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 50%;
+    color: var(--muted); border: 1px solid var(--line); background: var(--panel);
+  }
+  .ghLink:hover { color: var(--fg); border-color: var(--dim); text-decoration: none; }
+  .ghLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ghLink svg { width: 17px; height: 17px; fill: currentColor; }
+  /* 最新版本號＋更新說明（作者 2026-10-22） */
+  .verLine { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; font-size: 13px; color: var(--dim); }
+  .verLine .vBadge {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 10px;
+  }
+  .verLine .vBadge b { color: var(--fg); font-weight: 600; }
+  .verLine a { color: var(--accent); }
+
+  /* ---------------------------------------------------------------- 主視覺 */
+  /* 錨點捲動時不要被上面那條 sticky 標頭蓋住（作者 2026-10-18）。 */
+  section, #shots { scroll-margin-top: 78px; }
+  /* 作者 2026-10-18：一進站就要看到軟件畫面 —— 主視覺分成左右兩欄，
+     左邊文字＋下載按鈕，右邊是圖庫（約 54%）。 */
+  .hero { padding: 46px 0 54px; }
+  .heroGrid {
+    max-width: 1120px; margin: 0 auto; padding: 0 24px;
+    display: grid; grid-template-columns: minmax(0, 46fr) minmax(0, 54fr);
+    gap: 46px; align-items: center;
+  }
+  .heroText { min-width: 0; }
+  .heroArt { min-width: 0; }
+  .hero h1 {
+    font-size: clamp(24px, 2.9vw, 34px); line-height: 1.35; margin: 0 0 16px;
+    font-weight: 700; letter-spacing: .01em;
+  }
+  .hero h1 em { font-style: normal; color: var(--gold); }
+  .lead { font-size: 17px; color: var(--muted); margin: 0 0 30px; max-width: 42em; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: var(--btn-fg);
+    font-weight: 700; font-size: 15.5px; padding: 10px 22px; border-radius: 9px;
+    box-shadow: var(--btn-shadow);
+  }
+  /* 按鈕上的 OS 標誌（2026-10-18）：跟著字色，大小固定，不要被壓縮。 */
+  .btn svg { width: 16px; height: 16px; fill: currentColor; flex: none; opacity: .95; }
+  .btn:hover { text-decoration: none; filter: brightness(1.08); }
+  /* 兩個下載按鈕並排（macOS 版 2026-10-18）；窄螢幕自動換行。 */
+  .btnRow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn.alt {
+    background: transparent; color: var(--fg);
+    border: 1px solid var(--line); box-shadow: none;
+  }
+  .btn.alt:hover { border-color: var(--gold); color: var(--gold); filter: none; }
+  .fine { margin: 14px 0 0; color: var(--dim); font-size: 13px; }
+  .fine b { color: var(--fg); font-weight: 600; }
+
+  /* ---------------------------------------------------------------- 特色 */
+  section { padding: 54px 0; border-top: 1px solid var(--line); }
+  h2 {
+    font-size: 13px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--dim); font-weight: 600; margin: 0 0 26px;
+  }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px 22px 20px; }
+  .card svg { width: 26px; height: 26px; stroke: var(--gold); fill: none; stroke-width: 1.6; }
+  .card h3 { font-size: 17px; margin: 12px 0 8px; font-weight: 700; }
+  .card p { margin: 0; color: var(--muted2); font-size: 14.5px; line-height: 1.7; }
+  .card p b { color: var(--fg); font-weight: 600; }
+
+  /* ---------------------------------------------------------------- 截圖（圖庫） */
+  /* 四張畫面輪播：3 秒換一張，小白點可切換（作者 2026-10-18：首頁太長）。 */
+  /* 說明在圖**上方**（作者 2026-10-18），字比圖說大一點。 */
+  .installBody { max-width: 780px; }
+  #install h2 { margin-bottom: 18px; }
+  .gallery { position: relative; }
+  .slides {
+    position: relative; aspect-ratio: 16 / 9;
+    background: var(--screen-bg); border: 1px solid var(--line); border-radius: 10px;
+    overflow: hidden;
+  }
+  .slide { position: absolute; inset: 0; margin: 0; opacity: 0; transition: opacity .55s ease; }
+  .slide.on { opacity: 1; }
+  .slide img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .gcap {
+    color: var(--muted); font-size: 15px; line-height: 1.7;
+    margin: 0 0 14px; min-height: 3.5em;
+  }
+  .gcap p { margin: 0; display: none; }
+  .gcap p.on { display: block; }
+  .gcap b { color: var(--fg); font-weight: 700; }
+  .dots { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
+  .dots button {
+    width: 10px; height: 10px; padding: 0; border-radius: 50%; cursor: pointer;
+    background: var(--dot-off); border: 1px solid var(--dot-off-border);
+    transition: background .2s ease, box-shadow .2s ease;
+  }
+  .dots button:hover { background: var(--dot-hover); }
+  .dots button[aria-selected="true"] {
+    background: var(--dot-on); border-color: var(--dot-on); box-shadow: 0 0 0 3px var(--dot-ring);
+  }
+  .dots button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) {
+    .slide { transition: none; }
+  }
+
+  /* ---------------------------------------------------------------- 安裝 */
+  ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: step; }
+  ol.steps li {
+    counter-increment: step; position: relative; padding: 0 0 26px 52px;
+    border-left: 1px solid var(--line); margin-left: 15px;
+  }
+  ol.steps li:last-child { border-left: 1px solid transparent; padding-bottom: 0; }
+  ol.steps li::before {
+    content: counter(step); position: absolute; left: -16px; top: -2px;
+    width: 31px; height: 31px; border-radius: 50%;
+    background: var(--panel2); border: 1px solid var(--line); color: var(--gold);
+    font-size: 14px; font-weight: 700; display: grid; place-items: center;
+  }
+  ol.steps h3 { margin: 0 0 4px; font-size: 16px; }
+  ol.steps p { margin: 0; color: var(--muted2); font-size: 14.5px; }
+
+  .note {
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--gold);
+    border-radius: 8px; padding: 14px 18px; color: var(--muted2); font-size: 14.5px; margin-top: 26px;
+  }
+  .note b { color: var(--fg); }
+
+  /* ---------------------------------------------------------------- 聯絡 */
+  .contact { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .contact .k { color: var(--dim); font-size: 14px; }
+  .contact .v {
+    font-size: 17px; font-weight: 700; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 7px; padding: 5px 14px; user-select: all;
+  }
+  .contact small { color: var(--dim); font-size: 13px; }
+  /* 留言給作者（作者 2026-10-18）：開新視窗到 message.html */
+  .msgBtn {
+    display: inline-block; font-size: 14px; font-weight: 700; color: var(--btn-fg);
+    background: var(--accent); border-radius: 8px; padding: 6px 14px;
+    box-shadow: var(--msg-shadow);
+  }
+  .msgBtn:hover { text-decoration: none; filter: brightness(1.08); }
+
+  footer {
+    border-top: 1px solid var(--line); padding: 30px 0 46px;
+    color: var(--dim); font-size: 13px;
+  }
+  footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; }
+  footer .right { margin-left: auto; }
+
+  @media (max-width: 900px) {
+    /* 窄螢幕：文字在上、畫面在下（作者 2026-10-18） */
+    .heroGrid { grid-template-columns: 1fr; gap: 28px; }
+    .hero { padding: 34px 0 40px; }
+  }
+  @media (max-width: 780px) {
+    .cards { grid-template-columns: 1fr; }
+    .gcap { min-height: 0; }
+    header.top .wrap { height: 54px; gap: 10px; }
+    nav { gap: 10px; font-size: 12.5px; white-space: nowrap; }
+    .brand { font-size: 18px; }
+    .brand span { display: none; }
+    section { padding: 40px 0; }
+    .btn { font-size: 16px; padding: 12px 22px; }
+  }
+  /* 窄螢幕：右上角的主題與 GitHub 不能超出畫面（作者 2026-10-22） */
+  @media (max-width: 640px) {
+    header.top .wrap { height: auto; min-height: 54px; flex-wrap: wrap; padding: 7px 24px; }
+    nav {
+      flex: 1 1 100%; width: 100%; min-width: 0;
+      flex-wrap: wrap; justify-content: flex-end; gap: 6px 10px; white-space: normal;
+    }
+    .themeBtn { padding: 5px 9px; }
+    .themeBtn #themeLabel { display: none; }
+    .ghLink { width: 28px; height: 28px; }
+  }
+
+  .doc { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; }
+  .doc h1 { font-size: 1.6em; margin: .2em 0 .8em; }
+  .doc h2 { font-size: 1.2em; margin: 1.6em 0 .6em; }
+  .doc h3 { font-size: 1.05em; margin: 1.2em 0 .4em; }
+  .doc p { line-height: 1.9; margin: .7em 0; color: var(--muted); }
+  .doc li { line-height: 1.85; color: var(--muted); }
+  .doc code { background: var(--code-bg); border-radius: 4px; padding: 1px 5px; font-size: .92em; }
+  .doc pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow: auto; }
+  .doc pre code { background: none; padding: 0; }
+  .doc blockquote { margin: 1em 0; padding: .4em 1em; border-left: 3px solid var(--line); color: var(--dim); }
+  .tableWrap { overflow-x: auto; margin: 1em 0; }
+  .doc table { border-collapse: collapse; width: 100%; font-size: .94em; }
+  .doc th, .doc td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+  .doc th { background: var(--panel2); font-weight: 600; }
+  .doc a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">accelon<b>26</b><span>古籍資料庫閱讀器</span></div>
+    <nav>
+      <a href="../index.html">首頁</a>
+      <a href="index.html">公開數據庫</a>
+      <a href="../changelog.html">更新說明</a>
+    </nav>
+  </div>
+</header>
+<main class="doc">
+<h1>tx.adb 與 taixu.adb 有什麼不同</h1>
+<p><code>taixu.adb</code> 是 2006 年隨光碟流通的《太虛大師全書》資料庫；<code>tx.adb</code> 是 2026 年</p>
+<p>在同樣的文字上重建、再加上<b>大正藏經文連結</b>的新版。兩本的正文逐字相同，差別在</p>
+<p>資料庫檔頭、索引重建方式，以及新版多出來的 <code>&lt;聯 i=&quot;taisho?…&quot;&gt;</code> 跨庫錨點。</p>
+<p>舊版已從公開資料庫下架，新讀者請用 <code>tx.adb</code>。</p>
+<h2>一眼看差異</h2>
+<div class="tableWrap"><table>
+<thead><tr><th>項目</th><th>taixu.adb（舊版，已下架）</th><th>tx.adb（2026 連結版）</th></tr></thead>
+<tbody><tr><td>檔頭 <code>dbname</code></td><td><code>taixu</code></td><td><code>tx</code></td></tr>
+<tr><td>資料來源</td><td>2006 年光碟版文字</td><td>同一份文字（沒有改字）</td></tr>
+<tr><td>行數</td><td>214,956</td><td>214,956</td></tr>
+<tr><td>頁（<code>頁 id</code>）</td><td>16,441</td><td>16,441（完全相同）</td></tr>
+<tr><td>標記種類／caches</td><td>120／37</td><td>120／37（相同）</td></tr>
+<tr><td>大正鏈結</td><td>0</td><td><b>4,484 個 <code>&lt;聯&gt;</code>（2,450 筆引文、1,204 頁）</b></td></tr>
+<tr><td>字級範圍</td><td>沒有</td><td><b>4,337 個帶 <code>j=&quot;起-訖&quot;</code></b>（其餘沿用 <code>q</code> 比對）</td></tr>
+<tr><td>反向連結</td><td>沒有</td><td>大正藏頁面可回連太虛</td></tr>
+<tr><td>封面</td><td><code>taixu_logo.png</code>（259,836 B）</td><td><code>tx_logo.png</code>（320,214 B，「2026年新版」）</td></tr>
+<tr><td>資源</td><td>678 個</td><td>678 個（只換 logo）</td></tr>
+<tr><td>檔案大小</td><td>20,475,406 B（19.5 MiB）</td><td>21,685,303 B（20.7 MiB）</td></tr>
+<tr><td>建置日期</td><td>2006-01-20</td><td>2026-10-28</td></tr>
+<tr><td>重建方式</td><td>Delphi 版索引器</td><td>一支腳本（見 <code>taixu-links.md</code>）</td></tr></tbody></table></div>
+<h2>一、資料來源與做法</h2>
+<p>舊版是 2006 年用 Accelon3 的 Delphi 索引器建的，正文與目錄都在 adb 裡，沒有大正藏連結。</p>
+<p>新版<b>沒有換底本</b>：直接把舊 <code>taixu.adb</code> 的 <code>source</code> 解成 accelon3 標記（一行一個</p>
+<p>pcl 行），在文字上插入連結，再用 <code>ts/src/adbauthor.ts</code> 重建</p>
+<p><code>source / tokens / tags / tables / attributes / attributes.sorted / caches</code>，</p>
+<p><code>resources</code> 與 <code>caches</code> 的鍵都沿用原檔。所以：</p>
+<ul>
+  <li>把新舊文字的所有標記去掉後，<b>逐字相同</b>（214,956 行）。</li>
+  <li><code>頁 id</code> 16,441 筆的順序與內容完全相同。</li>
+  <li><code>caches</code> 37 個鍵的長度與內容完全相同（<code>節</code> 697、<code>項</code> 675、<code>章</code> 1,441…）。</li>
+</ul>
+<h2>二、新版多了什麼</h2>
+<ul>
+  <li><b>4,484 個大正藏錨點</b>：<code>&lt;聯 i=&quot;taisho?8p749b&quot; q=&quot;…&quot; j=&quot;52-60&quot;&gt;經文…&lt;/聯&gt;</code>，來自書中</li>
+</ul>
+<p>  「經曰：」「經上說：」「經云：」「法華云：『」「：『」後面的引文；2,450 筆成功</p>
+<p>  對到大正藏，分佈在 1,204 頁。<code>q</code> 帶著大正藏原文，所以能反過來在大正藏頁面上</p>
+<p>  顯示「回連結」。</p>
+<ul>
+  <li><b>字級範圍 <code>j</code></b>：<code>j=&quot;52-60&quot;</code> 是目標頁「可見漢字」的起訖索引（0 起算、end 不含），</li>
+</ul>
+<p>  4,337/4,484 個錨點有；點下去 accelon26 只塗那一小段（不是整頁或整欄），</p>
+<p>  對不上 <code>q</code> 時才退回文字比對。<code>聯.i</code> 格式不變，舊 accelon3 忽略 <code>j</code>。</p>
+<ul>
+  <li><b>多庫反鏈</b>：和 <code>ys.adb</code> 一起開時，大正藏一頁的回連結會同時列出印順與太虛；</li>
+</ul>
+<p>  兩庫共同引用 224 頁、54 部經（見 <code>shared-xref-tx-ys.md</code>）。</p>
+<ul>
+  <li><b>新封面</b>：<code>logo/tx_logo.png</code>（「2026年新版」），資源名 <code>tx_logo.png</code>，</li>
+</ul>
+<p>  本文區空白時顯示。</p>
+<ul>
+  <li><b>檔名／dbname 改成 <code>tx</code></b>：與 <code>ys.adb</code> 的命名一致；反連結靠檔頭 dbname 找庫，</li>
+</ul>
+<p>  所以檔名、dbname、logo 資源名三者都是 <code>tx</code>。</p>
+<h2>三、與舊版不同的地方</h2>
+<ul>
+  <li><b><code>dbname</code> 由 <code>taixu</code> 改為 <code>tx</code></b>：檔案叫 <code>tx.adb</code>，閱讀器才找得到來源庫；</li>
+</ul>
+<p>  對外的大正連結（<code>taisho?…</code>）不受影響。</p>
+<ul>
+  <li><b>VA 表重算</b>：<code>tables/lines.virtual</code> 由新索引器重建，與舊檔最多差 52 個 VA</li>
+</ul>
+<p>  （Delphi 版對少數自閉合標記的計法不同）。頁的定位一律走</p>
+<p>  <code>attributes/頁.id → tags/頁</code>，所以頁碼不受影響。</p>
+<ul>
+  <li><b>標記順序</b>：<code>聯</code> 因為新版到處都有，在 tag 表裡的位置提前了；標記集合仍是</li>
+</ul>
+<p>  120 種，<code>andtagid=18</code>（頁）與舊版相同。<code>平裝</code>／<code>精裝</code> 這種「自閉合但仍有</p>
+<p>  close hit」的舊 docdef 寫法也照原樣重建。</p>
+<ul>
+  <li><b>檔案變大 1.2 MiB</b>：多出來的 <code>&lt;聯&gt;</code> 標記、<code>聯.i</code>／<code>聯.q</code>／<code>聯.j</code> 屬性與新 logo。</li>
+  <li><b>沒有改到的</b>：正文、頁碼、目錄層級、<code>u=</code> 屬性、圖片（678 個資源只換了 logo）。</li>
+</ul>
+<h2>四、怎麼重建</h2>
+<pre><code>:: 1) 從舊版重建出加好連結的 tx.adb（會先寫 build/taixu-linked.txt）
+bun run ts/tools/backlink.ts --src build/taixu-original.adb --reuse ^
+  --dbname tx --logo logo/tx_logo.png --out build/tx.adb
+
+:: 2) 重跑搜尋（不用 --reuse）會重新抽引文、查大正藏，約 30 秒＋打包 90 秒
+bun run ts/tools/backlink.ts --src build/taixu-original.adb ^
+  --dbname tx --logo logo/tx_logo.png --out build/tx.adb</code></pre>
+<p>需要 <code>build/taixu-original.adb</code>（舊版備份）與 <code>accelon3/taisho.adb</code>。</p>
+<p>完整規則、命中率與驗收見 <code>taixu-links.md</code>。</p>
+<h2>五、這一版</h2>
+<ul>
+  <li>版本：2026-10-28</li>
+  <li>下載：<code>tx.adb</code>（20.7 MiB）</li>
+  <li>大正鏈結：4,484 個錨點／2,450 筆引文／1,204 頁</li>
+  <li>授權：程式與增值標記 CC BY；原著作權利屬原權利人</li>
+</ul>
+</main>
+<footer>
+  <div class="wrap">
+    <span>accelon26 · Accelon3 跨平台平替 · <a href="index.html">公開數據庫</a></span>
+    <span class="right">授權：Apache-2.0</span>
+  </div>
+</footer>
+</body>
+</html>

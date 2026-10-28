@@ -1,59 +1,21 @@
 /**
- * 「查字典」的偏好（作者 2026-10-22 追加）
+ * 「查字典」的偏好（作者 2026-10-22；2026-10-28 取消自動查）
  *
- *   * 自動查字典：預設開。關閉後，點本文不會自動查詞典（右欄「詞典」分頁仍可看
- *     上一次的結果）。
- *   * 選取區自動查（作者 2026-10-24）：預設開。在本文選取 10 個字以內，放開滑鼠
- *     就自動用選取文字查詞典；超過 10 個字不查。
+ *   * 2026-10-28 起不再有點本文／選取十字以下自動查；改由本文選取選單的
+ *     「查字典」明確觸發（見 bookmarks.ts 與 dict-pane.ts 的 openDictLookup）。
  *   * 詞典順序：儲存的是**adb 檔名**（例如 `fgdict.adb`），不是 catalog 的 key
  *     ——key 含 size/mtime，重建 adb 就變了；檔名和標籤樣式的 adb 鍵一致。
  *     下回啟動時，找不到的檔名直接略過，**不警告**（作者指定）。
  *   * 只列出 c="isdict"（作者 2026-10-26）：辭典順序清單只留 `<集 c="… isdict …">`
- *     的庫，查詢（點字、選取）也只查這些。預設關（顯示並查全部詞典型 adb，
+ *     的庫，查詢也只查這些。預設關（顯示並查全部詞典型 adb，
  *     含沒標 isdict 的佛光大辭典）。
  *
  * 這是「這台電腦」的介面偏好，和主題／繁簡一樣存 localStorage；不放 settings.json
  * （settings.json v1 只放可分享的標籤樣式）。
  */
 
-const AUTO_KEY = 'accelon26.dict.auto';
-const SELECTION_KEY = 'accelon26.dict.selection';
 const ORDER_KEY = 'accelon26.dict.order';
 const ISDICT_KEY = 'accelon26.dict.isdictonly';
-
-/** 點本文就自動查詞典？（預設開） */
-export function autoDictOn(): boolean {
-  try {
-    return localStorage.getItem(AUTO_KEY) !== '0';
-  } catch {
-    return true;
-  }
-}
-
-export function setAutoDict(on: boolean): void {
-  try {
-    localStorage.setItem(AUTO_KEY, on ? '1' : '0');
-  } catch {
-    /* 無痕模式／容量滿：這次有效就好 */
-  }
-}
-
-/** 在本文選取 10 個字以內就自動查詞典？（預設開） */
-export function selectionDictOn(): boolean {
-  try {
-    return localStorage.getItem(SELECTION_KEY) !== '0';
-  } catch {
-    return true;
-  }
-}
-
-export function setSelectionDict(on: boolean): void {
-  try {
-    localStorage.setItem(SELECTION_KEY, on ? '1' : '0');
-  } catch {
-    /* 同上 */
-  }
-}
 
 /** 詞典檔名的順序（可能包含目前不存在的檔名；查詢時會略過） */
 export function dictOrder(): string[] {

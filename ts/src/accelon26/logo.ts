@@ -6,7 +6,7 @@
  * carry a picture, and nothing is read from disk beside the file. Databases without
  * one (13j, fgdict) simply show nothing.
  */
-import { $, reader } from './viewer';
+import { $, currentFile, reader } from './viewer';
 import { AdbReader, BlobIO, type AdbSource } from './adb';
 
 const IMG_EXT = /\.(png|jpe?g|gif|svg|webp|bmp)$/i;
@@ -17,6 +17,7 @@ const MIME: Record<string, string> = {
 
 let forReader: unknown = null;
 let at = -1;
+let gen = 0;
 let url: string | null = null;
 let base = '';
 let loading = false;
@@ -25,6 +26,9 @@ let loading = false;
 export function setLogoBase(name: string): void {
   base = name.replace(/\.[^.]+$/, '');
   forReader = null;
+  at = -1;
+  gen++;                       // 讓還在解碼的舊 logo 作廢
+  if (url) { URL.revokeObjectURL(url); url = null; }
 }
 
 /** the resource index of <dbname>_logo.* / <file>_logo.*, or -1 */
@@ -35,7 +39,9 @@ function findLogo(): number {
   const bases: string[] = [];
   const db = reader?.header.dbname;
   if (db) bases.push(db);
-  if (base) bases.push(base);
+  if (base && !bases.includes(base)) bases.push(base);
+  const fileBase = (currentFile.split(/[\\/]/).pop() ?? '').replace(/\.[^.]+$/, '');
+  if (fileBase && !bases.includes(fileBase)) bases.push(fileBase);
   for (const b of bases) {
     const esc = b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const want = new RegExp('(^|/)' + esc + '_logo\\.', 'i');
@@ -80,27 +86,35 @@ export async function updateDocLogo(): Promise<void> {
   // 作者 2026-10：關掉資料庫時 `reader` 已經沒有意義 —— 立刻收起，不要因為
   // `loading`（上一個庫的 logo 還在解碼）就提早 return 而把圖留在中間。
   if (!reader) { hideDocLogo(); return; }
-  if (loading) return;
   if (document.querySelector('#docText .docLine')) { box.hidden = true; return; }
-  if (forReader !== reader) {
-    forReader = reader;
+  // 切庫時 reader 會換；不要讓「上一個庫」的解碼結果蓋掉新的圖。
+  const want = reader;
+  if (forReader !== want) {
+    forReader = want;
     at = findLogo();
     if (url) { URL.revokeObjectURL(url); url = null; }
   }
-  if (at < 0 || !reader) { box.hidden = true; return; }
-  if (!url) {
-    loading = true;
-    try {
-      const r = await reader.resourceBytes(at);
-      const ext = (r.name.split('.').pop() ?? '').toLowerCase();
-      url = URL.createObjectURL(new Blob([r.bytes.slice().buffer as ArrayBuffer], { type: MIME[ext] ?? 'image/png' }));
-      img.alt = reader.header.dbcname || reader.header.dbname;
-    } finally {
-      loading = false;
-    }
+  if (at < 0) { box.hidden = true; return; }
+  if (url) {
+    if (img.getAttribute('src') !== url) img.src = url;
+    box.hidden = false;
+    return;
   }
-  if (img.getAttribute('src') !== url) img.src = url;
-  box.hidden = false;
+  if (loading) return;         // 解碼完成時 finally 會再叫一次
+  const my = ++gen;
+  loading = true;
+  try {
+    const r = await want.resourceBytes(at);
+    if (my !== gen || reader !== want) return;   // 期間已切庫
+    const ext = (r.name.split('.').pop() ?? '').toLowerCase();
+    if (url) URL.revokeObjectURL(url);
+    url = URL.createObjectURL(new Blob([r.bytes.slice().buffer as ArrayBuffer], { type: MIME[ext] ?? 'image/png' }));
+    img.alt = want.header.dbcname || want.header.dbname;
+  } finally {
+    loading = false;
+    if (reader !== want) void updateDocLogo();   // 幫新庫補畫
+    else if (url) { if (img.getAttribute('src') !== url) img.src = url; box.hidden = false; }
+  }
 }
 
 /** 立刻收起中間的 logo（關掉資料庫時用；作者 2026-10） */

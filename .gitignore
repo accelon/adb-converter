@@ -13,6 +13,9 @@ accelon3/
 *.zip
 *.7z
 
+# 例外：人工校訂的經群繼承表要進版控
+!jingqun/jingqun.tsv
+
 # 官網（www/）：index.html 與 img/ 進版控；下載檔是發佈產物，由
 # `bun run tools/release.ts` 從 build 出來的 exe 重新打包，不進 git（一個 7 MB）
 www/*.7z
@@ -50,3 +53,4 @@ build/windows/
 build/darwin/
 
 y2adb.exe
+tei2adb.exe

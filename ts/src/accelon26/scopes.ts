@@ -15,7 +15,7 @@ import { growUntil, mounted, renderChunked } from './lazy-list';
 import { lastResult, showNodeHits } from './summary';
 import { parseQuery, namePattern } from './query';
 import { variantNamePattern, variantSearchOn } from './variants';
-import { computeTierContext, setTierContext, tierContext } from './render_accelon3';
+import { computeTierContext, labelDepthIndex, setTierContext, tagChromaIndex, tierContext } from './render_accelon3';
 import { tagColorOf } from './tag-style';
 import { diffPage, findSession, onEditsChange, sourceKey } from './edit-session';
 import { decodeXmlEntities } from '../xml-entities';
@@ -159,6 +159,8 @@ async function loadDirectoryTrees() {
   // load is still running) and re-running would discard the trees already built.
   if (dirTrees.length) return;
   if (!reader) return;
+  if (dirLoading) return;
+  dirLoading = true;
   const tTree0 = performance.now();
   const phase: Record<string, number> = { trees: 0, load: 0, build: 0, instances: 0 };
   treePhases = phase;
@@ -181,6 +183,7 @@ async function loadDirectoryTrees() {
     syncTreeTabs();
     phase.trees = performance.now() - tTree0;
     treePhases = phase;
+    dirLoading = false;
     return;
   }
   for (const t of wanted) {
@@ -227,6 +230,14 @@ async function loadDirectoryTrees() {
     // 已經存好的字串表，一次容器解析就能補滿；沒有表（名稱要回讀內文）就跳過，
     // 免得為了沒人看到的節點去解 source。上限 5000 筆，大庫不受影響。
     await fillCachedLabels(roots);
+    // 2026-10-28：標籤階層救不回「甲、乙、丙、丁」時，按標題序重掛；
+    // 先把 章/節/項 的空標籤補齊（例如勝鬘經講記的乙一、丙一）。
+    try {
+      await resolveSemanticLabels(roots);
+      repairSemanticTree(roots);
+    } catch (e) {
+      console.warn('semantic tree repair failed', e);
+    }
     // share the labels with the search grouping, so a book has one name
     const byTag = new Map<string, string[]>();
     for (const node of iterNodes(roots)) {
@@ -262,6 +273,7 @@ async function loadDirectoryTrees() {
   phase.render = performance.now() - tRender;
   phase.trees = performance.now() - tTree0;
   treePhases = phase;
+  dirLoading = false;
 }
 
 /**
@@ -564,6 +576,7 @@ async function renderDirTree(): Promise<void> {
   }
   const d = dirTrees[dirActive];
   if (!d || !mapper) {
+    if (reader && !dirLoading && !dirTrees.length) void loadDirectoryTrees();
     box.innerHTML = dirLoading
       ? '<p class="dim">目錄樹建立中…（讀取各層標籤）</p>'
       : '<p class="dim">此庫沒有 <code>&lt;樹&gt;</code> 宣告。</p>';
@@ -613,7 +626,7 @@ async function renderDirTree(): Promise<void> {
       const edited = editedSet.has(n.va);
       return `<div class="tRow${edited ? ' edited' : ''}" data-va="${n.va}">
       <span class="tTwisty">${twisty}</span>
-      <span class="tDot" style="background:${depthColor(n.depth, n.tag)}"></span>
+      <span class="tDot" style="background:${depthColor(n.depth, n.tag, d.labels.get(n.va) || '')}"></span>
       <span class="tTag">${escapeHtml(n.tag)}</span>
       <span class="tName">${escapeHtml(d.labels.get(n.va) || '#' + n.index)}</span>
       ${badge}
@@ -718,15 +731,15 @@ function collapseDirTree(): void {
  * ~30%, so depth reads at a glance while every row keeps the same height and
  * indent (no file-manager style growing whitespace).
  */
-function depthColor(depth: number, tag?: string): string {
+function depthColor(depth: number, tag?: string, label?: string): string {
   // 作者 2026-10-22：標籤樣式有自訂顏色就用它（目錄色點與本文標題同色）；
   // 沒有才回到主題的 tag 色相／深度。
+  const semantic = labelDepthIndex(label);
   const custom = tag ? tagColorOf(tag) : null;
-  if (custom) return custom;
-  // 顏色是**主題變數**（作者 2026-10：不要寫死；換 theme 只要改 CSS 的 --tag-N）。
-  // 內文的標題底色也用同一組變數，所以 tDot 與標題一定同色。
-  // 作者 2026-10-18：色號跟著**標籤**（章、節 即使同一層也不同色）；沒有 tagChroma 才退回深度。
-  const idx = tag ? tierContext().tagChroma?.get(tag) : undefined;
+  if (custom && semantic == null) return custom;
+  // 作者 2026-10-28：同一標籤跨深度（ys 的甲一、乙一…都是 <項>）不能再只用
+  // 標籤色；標題以天干／地支開頭時，直接依那個序換色，其餘才看 tagChroma。
+  const idx = semantic ?? (tag ? tagChromaIndex(tag, depth, tierContext(), label) : depth);
   const n = (((idx ?? depth) % 8) + 8) % 8;
   return `var(--tag-${n}, hsl(${((idx ?? depth) * 55) % 360}, 55%, 32%))`;
 }
@@ -1478,6 +1491,22 @@ function jumpRank(label: string, q: string): number {
   return 3;
 }
 
+/** 從一段引用文字裡找頁 id（引用複製的格式會是《書》：「…」( Y 1pa001a )）。 */
+function embeddedPage(entries: { label: string; va: number }[], q: string): { label: string; va: number } | null {
+  let best: { label: string; va: number } | null = null;
+  for (const e of entries) {
+    if (e.label.length < 3) continue;
+    const at = q.indexOf(e.label);
+    if (at < 0) continue;
+    const before = at > 0 ? q[at - 1] : '';
+    const after = q[at + e.label.length] ?? '';
+    // 頁 id 前後不能緊貼英數，避免把書名或引文中的數字當頁碼
+    if (/[0-9A-Za-z]/.test(before) || /[0-9A-Za-z]/.test(after)) continue;
+    if (!best || e.label.length > best.label.length) best = e;
+  }
+  return best;
+}
+
 /**
  * 跳至：列出（符合的）頁 id；`enter` 為真時直接跳到最接近的一頁。
  * 捲動分批載入，行為與原書分頁一致。
@@ -1517,6 +1546,18 @@ export async function renderJump(enter = false): Promise<void> {
     setJumpRange(null);            // 換頁就收起上一段的大正藏色帶
     void revealHit(e.va, e.label, 1, { mode: 'node', noMark: true });
   };
+  // 貼上「引用複製」的整段文字時，從裡面認出頁 id（例：( Y 1pa001a )）。
+  const emb = q ? embeddedPage(entries, q) : null;
+  if (emb && q !== emb.label) {
+    meta.textContent = `引用字串含頁 id ${emb.label}：按 Enter 跳到這一段`;
+    if (enter) { go(emb); return; }
+    list.innerHTML = `<div class="snippet active" data-va="${emb.va}"><div><b>${escapeHtml(emb.label)}</b></div></div>`;
+    list.querySelector<HTMLElement>('[data-va]')!.onclick = (ev) => {
+      setJumpRange(null);
+      void revealHit(emb.va, emb.label, 1, { ...(mods(ev) ?? {}), mode: 'node', noMark: true });
+    };
+    return;
+  }
   if (enter && hit.length) { go(hit[0]); return; }
   meta.textContent = `${fmtInt(entries.length)} 頁`
     + (q ? `；「${q}」符合 ${fmtInt(hit.length)} 頁（Enter 跳到最接近的一頁）` : '（輸入頁 id 的一部份即可；Enter 直接跳）');
@@ -1585,4 +1626,100 @@ function restoreScopes(s: any): void {
   labelTables.clear();
   dirLoading = false;
 }
+/** 診斷：目前目錄樹的扁平快照（含 parent／depth），給樹的測試用。 */
+export function treeSnapshot(rootLabel?: string): { label: string; tag: string; depth: number; parent: string }[] {
+  const d = dirTrees[dirActive];
+  if (!d) return [];
+  const out: { label: string; tag: string; depth: number; parent: string }[] = [];
+  const walk = (ns: TreeNode[], parent: string) => {
+    for (const n of ns) {
+      out.push({ label: n.label || `#${n.index}`, tag: n.tag, depth: n.depth, parent });
+      walk(n.children, n.label || `#${n.index}`);
+    }
+  };
+  const start = rootLabel ? d.roots.filter((n) => (n.label ?? '').includes(rootLabel)) : d.roots;
+  walk(start, '');
+  return out;
+}
+
+/** 天干／地支序：目錄的「甲一、乙一…」即使同一個標籤、同一層，也依序換色。 */
+const STEMS = '甲乙丙丁戊己庚辛壬癸';
+const BRANCHES = '子丑寅卯辰巳午未申酉戌亥';
+
+function semanticLevel(label?: string): number | null {
+  const ch = [...(label ?? '').trim()][0];
+  if (!ch) return null;
+  const s = STEMS.indexOf(ch);
+  if (s >= 0) return s;
+  const b = BRANCHES.indexOf(ch);
+  if (b >= 0) return STEMS.length + b;
+  return null;
+}
+
+/** 有些庫（ys 的勝鬘經講記）天干／地支標題的標籤只是 <章>/<節>/<項>，
+ *  tag 階層和「甲、乙、丙、丁」的語意階層不一致。這裡按標題序重掛一次：
+ *  甲→書／所屬章節，乙→甲，丙→乙，丁→丙…；甲乙丙丁以外的節點不動。 */
+function repairSemanticTree(roots: TreeNode[]): void {
+  for (const book of roots) {
+    if (book.tag !== '書') continue;
+    const all = [...iterNodes(book.children)].sort((a, b) => a.va - b.va);
+    const parentOf = new Map<TreeNode, TreeNode>();
+    for (const n of all) for (const c of n.children) parentOf.set(c, n);
+    const nearestNonSemantic = (n: TreeNode | undefined): TreeNode => {
+      let p = n;
+      while (p && p !== book && semanticLevel(p.label) != null) p = parentOf.get(p);
+      return p ?? book;
+    };
+    const stack: (TreeNode | undefined)[] = [];
+    let base: TreeNode = book;
+    for (const node of all) {
+      const lvl = semanticLevel(node.label);
+      if (lvl == null) continue;
+      let parent: TreeNode;
+      if (lvl === 0) {
+        const cand = nearestNonSemantic(parentOf.get(node));
+        if (cand !== book) base = cand;
+        parent = base;
+        stack.length = 0;
+      } else {
+        parent = stack[lvl - 1] ?? base;
+        for (let j = lvl - 2; j >= 0 && parent === base; j--) {
+          if (stack[j]) { parent = stack[j]; break; }
+        }
+      }
+      let cur: TreeNode | undefined = parent;
+      let cycle = false;
+      while (cur) { if (cur === node) { cycle = true; break; } cur = parentOf.get(cur); }
+      if (cycle) continue;
+      // 先把 node 從所有舊 parent 拿掉（parentOf 在多次搬動後可能不是唯一參考）
+      for (const p of all) {
+        if (p === parent) continue;
+        const at = p.children.indexOf(node);
+        if (at >= 0) p.children.splice(at, 1);
+      }
+      if (book !== parent) {
+        const at = book.children.indexOf(node);
+        if (at >= 0) book.children.splice(at, 1);
+      }
+      if (!parent.children.includes(node)) parent.children.push(node);
+      parentOf.set(node, parent);
+      stack[lvl] = node;
+      stack.length = lvl + 1;
+    }
+    const sortAndDepth = (n: TreeNode, depth: number) => {
+      n.depth = depth;
+      n.children.sort((a, b) => a.va - b.va);
+      for (const c of n.children) sortAndDepth(c, depth + 1);
+    };
+    sortAndDepth(book, 0);
+  }
+}
+
+async function resolveSemanticLabels(roots: TreeNode[]): Promise<void> {
+  for (const n of iterNodes(roots)) {
+    if (n.label || !['章', '節', '項'].includes(n.tag)) continue;
+    n.label = await labelFor(n.tag, n.va, n.vaEnd);
+  }
+}
+
 export { DirTree, collapseDirTree, countHitsPerSegment, countNodes, depthColor, dirActive, dirError, dirLoading, dirTrees, findNode, folioCache, folioEntries, freqSegments, hitBadge, labelFor, labelTableFor, labelTables, loadDirectoryTrees, lowerBound, nameSegs, realmHits, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, restoreScopes, snapshotScopes, syncTreeTabs, tagSegments, tagVas, treePhases, treeScope, wrappedText };

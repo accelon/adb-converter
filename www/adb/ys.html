@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ys.adb 與 yinshun.adb 有什麼不同</title>
+<title>ys.adb 與舊版印順資料庫有什麼不同</title>
 <meta name="theme-color" content="#f7f7f8" id="themeColor">
 <link rel="icon" type="image/png" href="../img/appicon.png">
 <script>
@@ -331,7 +331,8 @@
 <tr><td>頁元</td><td>63</td><td>75</td></tr>
 <tr><td>行數</td><td>266,916</td><td>307,141</td></tr>
 <tr><td>大正鏈結</td><td>13,918（頁欄級為主）</td><td>25,918（字元級，另帶大正原文 <code>q</code>）</td></tr>
-<tr><td>檔案大小</td><td>約 24.9 MB</td><td>25.2 MiB</td></tr>
+<tr><td>字元範圍 <code>j</code></td><td>沒有</td><td>25,095 個（2026-10-28 補；2,104 用寬鬆對位：頁內 1,189、前後頁 915）</td></tr>
+<tr><td>檔案大小</td><td>約 24.9 MB</td><td>25.3 MiB</td></tr>
 <tr><td>更新方式</td><td>手動</td><td>一個腳本從 CBETA 重建（見 <code>ys-steps.md</code>）</td></tr></tbody></table></div>
 <h2>一、資料來源不同</h2>
 <p>舊版是作者自己把紙本逐字錄入、再標記而成的 corpus；新版直接吃 <b>CBETA Y 部 TEI P5</b>，</p>
@@ -345,7 +346,9 @@
 <ul>
   <li><b>字元級大正鏈結</b>：25,918 條，比舊版多將近一倍；每一條都記著大正藏原文，</li>
 </ul>
-<p>  所以能反過來在大正藏頁面上顯示「回連結」。</p>
+<p>  所以能反過來在大正藏頁面上顯示「回連結」。其中 25,095 條另帶 <code>j=&quot;起-訖&quot;</code></p>
+<p>  （2026-10-28 補），點下去只塗那一小段；沒有 <code>j</code> 的仍可用 <code>q</code> 比對，</p>
+<p>  清單見 <a href="./broken-quote.md"><code>broken-quote.md</code></a>。</p>
 <ul>
   <li><b>回連結</b>：讀大正藏時，被印順引用過的那一行直接出現「般若 114a」這樣的按鈕，</li>
 </ul>

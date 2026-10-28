@@ -32,6 +32,7 @@ interface AnchorIndex {
   lv: number[];
   bookVas: number[];
   juanVas: number[];
+  volVas: number[];
   lianVas: number[];
 }
 
@@ -93,6 +94,7 @@ async function anchorIndex(r: AdbReader): Promise<AnchorIndex | null> {
     lv: await r.linesVirtual(),
     bookVas: await list('書'),
     juanVas: await list('卷'),
+    volVas: await list('冊'),
     lianVas: await list('聯'),
   };
   indexCache.set(r, idx);
@@ -110,7 +112,7 @@ export async function anchorVa(r: AdbReader, anchor: string): Promise<number | n
   return idx.vas[(ptr & 0xffffff) - 1] ?? null;
 }
 
-async function readerFor(db: string): Promise<AdbReader | null> {
+export async function readerFor(db: string): Promise<AdbReader | null> {
   if (reader && reader.header.dbname === db) return reader;
   const cached = foreignReaders.get(db);
   if (cached) return cached;
@@ -121,8 +123,126 @@ async function readerFor(db: string): Promise<AdbReader | null> {
   return r;
 }
 
+export interface BookHit { db: string; va: number; title: string; pageVa?: number; pageId?: string }
+
+const bookCache = new WeakMap<AdbReader, Promise<{ title: string; va: number }[]>>();
+
+async function bookList(r: AdbReader): Promise<{ title: string; va: number }[]> {
+  const cached = bookCache.get(r);
+  if (cached) return cached;
+  const p = (async () => {
+    const tc = r.containers.get('tags');
+    const i = tc?.names.indexOf('書') ?? -1;
+    if (!tc || i < 0) return [];
+    const vas = await r.decodeBlockList('tags', i);
+    const names = await r.cachedStrings('書').catch(() => [] as string[]);
+    const out: { title: string; va: number }[] = [];
+    for (let k = 0; k < vas.length; k++) {
+      const title = names[k] ?? '';
+      if (title) out.push({ title, va: vas[k] });
+    }
+    return out;
+  })();
+  bookCache.set(r, p);
+  return p;
+}
+
+const normBook = (s: string): string => s.replace(/[^\p{L}\p{N}]/gu, '');
+
+/** 常見簡稱 → 大正藏題名（《金剛經》這種簡稱不能只靠字面比對）。 */
+const BOOK_ALIASES: Record<string, string[]> = {
+  金剛經: ['金剛般若波羅蜜經'],
+  心經: ['般若波羅蜜多心經'],
+  法華經: ['妙法蓮華經'],
+  華嚴經: ['大方廣佛華嚴經'],
+  般若經: ['大般若波羅蜜多經'],
+  大般若經: ['大般若波羅蜜多經'],
+  涅槃經: ['大般涅槃經'],
+  大涅槃經: ['大般涅槃經'],
+  楞嚴經: ['大佛頂如來密因修證了義諸菩薩萬行首楞嚴經'],
+  楞伽經: ['楞伽阿跋多羅寶經'],
+  圓覺經: ['大方廣圓覺修多羅了義經'],
+  維摩經: ['維摩詰所說經'],
+  起信論: ['大乘起信論'],
+  俱舍論: ['阿毘達磨俱舍論'],
+};
+
+/** 書名相似度：完全符合 → 開頭 → 包含 → 依序出現（處理《金剛經》→《金剛般若波羅蜜經》）。 */
+function bookScore(q: string, title: string): number {
+  if (title === q) return 0;
+  const qEnd = [...q].at(-1);
+  const tEnd = [...title].at(-1);
+  // 選《金剛經》時，優先「…經」本經，不要先抓到《金剛經疏》這類註疏。
+  const endingPenalty = (qEnd === '經' || qEnd === '論') && tEnd !== qEnd ? 20 : 0;
+  if (title.startsWith(q)) return 1 + title.length / 100 + endingPenalty;
+  if (q.startsWith(title)) return 2 + q.length / 100 + endingPenalty;
+  if (title.includes(q)) return 12 + title.length / 100 + endingPenalty;
+  if (q.includes(title)) return 13 + title.length / 100 + endingPenalty;
+  const qa = [...q], ta = [...title];
+  let at = 0, gaps = 0;
+  for (const ch of qa) {
+    const k = ta.indexOf(ch, at);
+    if (k < 0) return Infinity;
+    gaps += Math.max(0, k - at);
+    at = k + 1;
+  }
+  return 10 + gaps + title.length / 100 + endingPenalty;
+}
+
+/**
+ * 在有「書名」快取的庫（大正藏）裡找一本書；給選取選單的「開《…》」用。
+ * query 可以是《金剛經》這類簡稱，會用書名子序列比對完整題名。
+ */
+export async function lookupBook(db: string, query: string): Promise<BookHit | null> {
+  const r = await readerFor(db);
+  if (!r) return null;
+  let q = query.trim();
+  const inside = /《([^》]+)》/.exec(q);
+  if (inside) q = inside[1];
+  q = q.replace(/^[「『《〈（(【\[]+|[」』》〉）)】\]]+$/g, '').replace(/[，。；：、！？…\s]+$/g, '').trim();
+  const nq = normBook(q);
+  if ([...nq].length < 2) return null;
+  const books = await bookList(r);
+  const aliases = BOOK_ALIASES[nq];
+  if (aliases) {
+    for (const a of aliases) {
+      const hits = books.filter((b) => normBook(b.title) === normBook(a));
+      const hit = hits.at(-1);       // 同一題名有幾個版本時，取最後一個（通常才是正文，不是前面的參照）
+      if (hit) return { db, va: hit.va, title: hit.title };
+    }
+  }
+  let best: { title: string; va: number } | null = null;
+  let bestScore = Infinity;
+  for (const b of books) {
+    const nt = normBook(b.title);
+    if (!nt) continue;
+    const score = bookScore(nq, nt);
+    if (score < Infinity && score <= bestScore) { bestScore = score; best = b; }
+  }
+  if (!best) return null;
+  const hit: BookHit = { db, va: best.va, title: best.title };
+  const idx = await anchorIndex(r);
+  if (idx) {
+    let pi = -1;
+    for (let i = 0; i < idx.values.length; i++) {
+      const ptr = idx.pointers[i];
+      if (idx.tags[(ptr >>> 24) & 0xff] !== '頁') continue;
+      const v = idx.vas[(ptr & 0xffffff) - 1];
+      if (v < best.va) continue;
+      if (pi < 0 || v < idx.vas[(idx.pointers[pi] & 0xffffff) - 1]) pi = i;
+    }
+    if (pi >= 0) {
+      hit.pageId = idx.values[pi];
+      hit.pageVa = idx.vas[(idx.pointers[pi] & 0xffffff) - 1];
+    }
+  }
+  return hit;
+}
+
 function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // `"` 一定要跳脫：revButtonHtml 把 cite / quote 放進 data-* 屬性，
+  // 引文裡可能出現 `"`（或整段 `<聯 …>` 標記），不跳脫會把屬性切斷。
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 /** 一行 adb 文字（含標記）→ HTML；<聯> 變成可點的錨點，其餘標記去掉 */
@@ -140,6 +260,20 @@ function lineHtml(s: string, markFrom = -1, markTo = -1): string {
       i = gt + 1;
       if (tag.startsWith('</聯')) { out += '</a>'; continue; }
       if (tag.startsWith('</')) continue;
+      const me = /^<嵌([^>]*)>/.exec(tag);
+      if (me) {
+        const attrs = me[1];
+        const xref = /\bi="([^"]*)"/.exec(attrs)?.[1];
+        const xq = /\bq="([^"]*)"/.exec(attrs)?.[1];
+        const xj = /\bj="([^"]*)"/.exec(attrs)?.[1];
+        const label = /\bn="([^"]*)"/.exec(attrs)?.[1] ?? '嵌';
+        if (xref) {
+          out += `<button type="button" class="embedChip" data-embed="${esc(xref)}"`
+            + (xq ? ` data-q="${esc(xq)}"` : '') + (xj ? ` data-j="${esc(xj)}"` : '')
+            + ` data-label="${esc(label)}" title="嵌入 ${esc(label)} 的引文">▸ ${esc(label)}</button>`;
+        }
+        continue;
+      }
       const m = /^<聯([^>]*)>/.exec(tag);
       if (m) {
         const attrs = m[1];
@@ -164,10 +298,14 @@ function lineHtml(s: string, markFrom = -1, markTo = -1): string {
 
 // ---------------------------------------------------------------- 逆鏈結表
 
-interface RevEntry { src: string; db: string; va: number; pageId: string; bookVa: number; cite: string; quote: string; tq: string }
+interface RevEntry { src: string; db: string; va: number; pageId: string; bookVa: number; cite: string; quote: string; tq: string; targetPage: string }
 let revKey = '';
 let revIndex: Map<string, RevEntry[]> = new Map();
+/** 全部 <聯> 的扁平清單（給「引用分布」熱圖用；每個聯只收一次） */
+let allEntries: RevEntry[] = [];
 const linkedDbs = new Set<string>();
+/** dbname → 中文庫名（回連結那一排的來源標籤） */
+const srcLabels = new Map<string, string>();
 
 /**
  * 反連表的來源：**每一個開著的庫**，不只主庫。
@@ -178,10 +316,13 @@ const linkedDbs = new Set<string>();
  */
 function reverseSources(): AdbReader[] {
   const out: AdbReader[] = [];
-  const seen = new Set<AdbReader>();
+  const seen = new Set<string>();
   const push = (r: AdbReader | null | undefined): void => {
-    if (!r || seen.has(r)) return;
-    seen.add(r);
+    if (!r) return;
+    // 同一個庫可能同時以主 reader 與 openDbs 的 reader 出現，用 dbname 去重；
+    // 用物件去重會讓同一個庫被掃兩次，反鏈與熱圖的數量都會變兩倍。
+    if (seen.has(r.header.dbname)) return;
+    seen.add(r.header.dbname);
     out.push(r);
   };
   push(reader);
@@ -189,19 +330,51 @@ function reverseSources(): AdbReader[] {
   return out;
 }
 
+let revBuilding: Promise<void> | null = null;
 async function ensureReverse(): Promise<void> {
-  const sources = reverseSources();
-  // 只讀屬性就能判斷「要不要重建」：庫的組合或行數變了才重建
-  const key = sources.map((r) => r.header.dbname + ':' + r.header.lineCount).join('|');
-  if (key === revKey) return;
-  revKey = key;
-  revIndex = new Map();
-  linkedDbs.clear();
-  for (const r of sources) await addReverseFrom(r);
+  // 建表期間來的呼叫先排隊；建完再重算 key，避免兩支同時清表／塞表
+  // （先前會讓 allEntries 累積成兩倍、三倍，熱圖數字越開越大）。
+  for (;;) {
+    if (revBuilding) {
+      await revBuilding;
+      continue;
+    }
+    const sources = reverseSources();
+    const key = sources.map((r) => r.header.dbname + ':' + r.header.lineCount).join('|');
+    if (key === revKey) return;
+    const idx = new Map<string, RevEntry[]>();
+    const entries: RevEntry[] = [];
+    const linked = new Set<string>();
+    const labels = new Map<string, string>();
+    const build = (async () => {
+      for (const r of sources) await addReverseFrom(r, idx, entries, linked, labels);
+    })();
+    revBuilding = build;
+    try {
+      await build;
+      revKey = key;
+      revIndex = idx;
+      allEntries = entries;
+      linkedDbs.clear();
+      for (const d of linked) linkedDbs.add(d);
+      srcLabels.clear();
+      for (const [k, v] of labels) srcLabels.set(k, v);
+      document.dispatchEvent(new CustomEvent('accelon26:reverse'));
+    } finally {
+      revBuilding = null;
+    }
+    return;
+  }
 }
 
 /** 把一個庫的 `聯.i` 併進反連表：目標頁碼 → 來源的書／頁。只讀屬性，不讀全文。 */
-async function addReverseFrom(r: AdbReader): Promise<void> {
+async function addReverseFrom(
+  r: AdbReader,
+  outIndex: Map<string, RevEntry[]>,
+  outAll: RevEntry[],
+  outLinked: Set<string>,
+  outLabels: Map<string, string>,
+): Promise<void> {
   const idx = await anchorIndex(r);
   if (!idx) return;
   const av = await r.attributeValues('聯.i');
@@ -237,7 +410,8 @@ async function addReverseFrom(r: AdbReader): Promise<void> {
     const inst = (ptr & 0xffffff) - 1;
     const va = idx.lianVas[inst];
     if (va == null) continue;
-    linkedDbs.add(db);
+    outLinked.add(db);
+    outLabels.set(r.header.dbname, r.header.dbcname || r.header.dbname);
     const pi = lastLE(pageVas, va);
     const bi = lastLE(idx.bookVas, va);
     const entry: RevEntry = {
@@ -247,6 +421,7 @@ async function addReverseFrom(r: AdbReader): Promise<void> {
       cite: '',
       quote: '',
       tq: qByInst.get(inst) ?? '',
+      targetPage: anchor,
     };
     // 這一聯的顯示文字（例「五一‧一八五中」），回印順時用來塗紅
     try {
@@ -258,23 +433,49 @@ async function addReverseFrom(r: AdbReader): Promise<void> {
       // 聯後面的「…」引文，回印順時一起塗紅
       const tail = mm ? raw.slice((mm.index ?? 0) + mm[0].length) : raw;
       const qm = /「([^」]{8,240})」/.exec(tail) || /「([^」]{8,240})」/.exec(raw.slice(0, mm?.index ?? 0));
-      if (qm) entry.quote = qm[1];
+      if (qm) entry.quote = qm[1].replace(/<[^>]*>/g, '').trim();
     } catch { /* 取不到就算了 */ }
+    outAll.push(entry);
     const key = db + '?' + anchor;
-    const arr = revIndex.get(key);
-    if (arr) arr.push(entry); else revIndex.set(key, [entry]);
+    const arr = outIndex.get(key);
+    if (arr) arr.push(entry); else outIndex.set(key, [entry]);
     // 大正藏一頁有三欄（a/b/c）：讀者在 a 欄時，連到 b、c 欄的引文也該看得到，
     // 所以另外用「頁」為鍵收一份（作者 2026-10-28）。
     const pageKey = db + '?' + anchor.replace(/[a-z]$/, '');
     if (pageKey !== key) {
-      const parr = revIndex.get(pageKey);
-      if (parr) parr.push(entry); else revIndex.set(pageKey, [entry]);
+      const parr = outIndex.get(pageKey);
+      if (parr) parr.push(entry); else outIndex.set(pageKey, [entry]);
     }
   }
 }
 
 /** 某個目標庫被哪些主庫連過（載入時就知道了） */
 export function linkedTargets(): string[] { return [...linkedDbs]; }
+
+function lastLEof(arr: number[] | Int32Array, v: number): number {
+  let lo = 0, hi = arr.length - 1, ans = -1;
+  while (lo <= hi) { const mid = (lo + hi) >> 1; if (arr[mid] <= v) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+  return ans;
+}
+
+/** 目標庫的「頁碼 → 頁 VA」表；熱圖要按 host 的自然次序排，不能每次線性搜頁碼。 */
+const pageVaMaps = new Map<string, Map<string, number>>();
+async function pageVaMapOf(db: string): Promise<Map<string, number>> {
+  const hit = pageVaMaps.get(db);
+  if (hit) return hit;
+  const m = new Map<string, number>();
+  const r = await readerFor(db);
+  if (r) {
+    const idx = await anchorIndex(r);
+    if (idx) {
+      for (let k = 0; k < idx.values.length; k++) {
+        m.set(idx.values[k], idx.vas[(idx.pointers[k] & 0xffffff) - 1] ?? 0);
+      }
+    }
+  }
+  pageVaMaps.set(db, m);
+  return m;
+}
 
 // ---------------------------------------------------------------- 顯示
 
@@ -324,6 +525,32 @@ async function bookAt(r: AdbReader, idx: AnchorIndex, va: number): Promise<{ tit
 }
 
 const labelCache = new WeakMap<AdbReader, Map<string, string[]>>();
+const tagVasCache = new WeakMap<AdbReader, Map<string, number[]>>();
+
+/** 某個標籤在 tags 容器的 VA 表（快取；太虛的 <編>/<章> 需要） */
+async function tagVasOf(r: AdbReader, tag: string): Promise<number[]> {
+  let m = tagVasCache.get(r);
+  if (!m) { m = new Map(); tagVasCache.set(r, m); }
+  const hit = m.get(tag);
+  if (hit) return hit;
+  const ti = r.containers.get('tags')?.names.indexOf(tag) ?? -1;
+  const vas = ti < 0 ? [] : await r.decodeBlockList('tags', ti);
+  m.set(tag, vas);
+  return vas;
+}
+
+/** 一個 VA 所屬的書名；沒有 <書> 的庫（太虛）退到 <編>/<集>/<章>。 */
+async function sourceLabelAt(r: AdbReader, idx: AnchorIndex, va: number): Promise<string> {
+  const book = await cachedLabel(r, '書', idx.bookVas, va);
+  if (book) return book;
+  for (const tag of ['編', '集', '篇', '章', '節', '文']) {
+    const vas = await tagVasOf(r, tag);
+    if (!vas.length) continue;
+    const name = await cachedLabel(r, tag, vas, va);
+    if (name) return name;
+  }
+  return '';
+}
 
 /** 用 caches/<tag> 的標籤（書名、卷名）對回 tags/<tag> 的順序 */
 async function cachedLabel(r: AdbReader, tag: string, vas: number[], va: number): Promise<string> {
@@ -414,7 +641,7 @@ function lcsSpan(a: string, b: string): { count: number; bFirst: number; bLast: 
   return { count, bFirst, bLast };
 }
 
-export async function renderForeign(db: string, va: number, anchor?: string, quote?: string): Promise<{ html: string; title: string }> {
+export async function renderForeign(db: string, va: number, anchor?: string, quote?: string, range?: string): Promise<{ html: string; title: string }> {
   const r = await readerFor(db);
   if (!r) return { html: '<p class="dim">請先把 ' + esc(db) + '.adb 開起來（同一個瀏覽器工作階段）。</p>', title: db };
   const idx = await anchorIndex(r);
@@ -426,16 +653,44 @@ export async function renderForeign(db: string, va: number, anchor?: string, quo
   let blockText = await r.sourceText(blk);
   let startAt = va - idx.bv[blk];
   if (anchor) {
-    // 頁碼的 VA 與實際標籤位置可能有差；往前後幾個 block 找，找到才切
-    let at = -1;
+    // 頁碼的 VA 與實際標籤位置可能有差；往前後幾個 block 找，找到才切。
+    // 同一頁 id 可能出現兩次（大正藏有這種情形），有 quote 時選「含這段引文」的那一個。
+    const qh = quote ? foldVariants(Array.from(quote).filter((c) => HAN_RE.test(c)).join('')).slice(0, 40) : '';
+    const pageAt = async (b: number, at: number): Promise<string> => {
+      let t = (await r.sourceText(b)).slice(at);
+      for (let bb = b + 1; t.indexOf('<頁 ') < 0 && bb < idx.bv.length && t.length < maxChars + 500; bb++) t += await r.sourceText(bb);
+      const cut = t.indexOf('<頁 ', 1);
+      if (cut > 0) t = t.slice(0, cut);
+      const gt = t.indexOf('>');
+      if (gt >= 0) t = t.slice(gt + 1);
+      return t.length > maxChars ? t.slice(0, maxChars) : t;
+    };
+    let first: { b: number; at: number } | null = null;
+    let chosen: { b: number; at: number } | null = null;
     for (const off of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -8, 8]) {
       const b = blk + off;
       if (b < 0 || b >= idx.bv.length) continue;
       const t = off === 0 ? blockText : await r.sourceText(b);
-      const k = t.indexOf('<頁 id="' + anchor + '"');
-      if (k >= 0) { blockText = t; blk = b; at = k; break; }
+      let from = 0, k = t.indexOf('<頁 id="' + anchor + '"');
+      while (k >= 0) {
+        const cand = { b, at: k };
+        if (!first) first = cand;
+        if (qh) {
+          const pt = await pageAt(b, k);
+          const ph = foldVariants(Array.from(pt).filter((c) => HAN_RE.test(c)).join(''));
+          if (ph.includes(qh.slice(0, 8))) { chosen = cand; break; }
+        }
+        from = k + 1;
+        k = t.indexOf('<頁 id="' + anchor + '"', from);
+      }
+      if (chosen) break;
     }
-    if (at >= 0) startAt = at;
+    const pick = chosen ?? first;
+    if (pick) {
+      blockText = pick.b === blk ? blockText : await r.sourceText(pick.b);
+      blk = pick.b;
+      startAt = pick.at;
+    }
   }
   let raw = blockText.slice(startAt);
   let baseVa = idx.bv[blk] + startAt;
@@ -481,7 +736,21 @@ export async function renderForeign(db: string, va: number, anchor?: string, quo
       const ok = count > 0 && (count >= 12 || (count >= 6 && count >= denom * 0.5)) && bFirst >= 0;
       return ok ? { count, bFirst, bLast, qn } : null;
     };
-    let hit = quote ? matchOf(quote) : null;
+    let hit = null as { count: number; bFirst: number; bLast: number; qn: string } | null;
+    // <聯 i="…" j="12-34">：字級範圍（相對於目標頁的漢字索引）。
+    // 只有和 q 對得上才用；對不上就退回下面的引文比對，避免標錯位置。
+    if (range && quote) {
+      const mm = /^(\d+)-(\d+)$/.exec(range);
+      const qn0 = foldVariants(Array.from(quote).filter((c) => HAN_RE.test(c)).join('').slice(0, 160));
+      if (mm && qn0) {
+        const from = Number(mm[1]), to = Number(mm[2]);
+        if (from >= 0 && to > from && to <= pn.length) {
+          const piece = pn.slice(from, to);
+          if (piece && piece === qn0.slice(0, piece.length)) hit = { count: piece.length, bFirst: from, bLast: to - 1, qn: qn0 };
+        }
+      }
+    }
+    if (!hit && quote) hit = matchOf(quote);
     if (!hit && cands.length === 1) hit = matchOf(cands[0]);
     if (!hit && quote && cands.length > 1) {
       const qn = foldVariants(Array.from(quote).filter((c) => HAN_RE.test(c)).join('')).slice(0, 40);
@@ -533,18 +802,40 @@ function shortTitle(name: string): string {
   return name;
 }
 
-/** 回連結按鈕上要顯示的東西（書名短名＋頁碼＋大正原文 tq，給中間本文定位用） */
+/** 反鏈按鈕上要顯示的東西（書名短名＋頁碼＋大正原文 tq，給中間本文定位用） */
 export interface RevItem {
   src: string; va: number; pageId: string;
   label: string; book: string; page: string;
   full: string; tq: string; cite: string; quote: string;
+  /** 同一來源頁對這一頁的引用次數（跨行引文只算一筆） */
+  count: number;
+  /** 來源庫的自然次序（VA）：按「來源序」排用 */
+  srcVa: number;
+  /** 目標庫的自然次序（VA）：按「目標序」排用（同一頁時都相同） */
+  hostVa: number;
+  hostPage: string;
+}
+
+export type RevSort = 'freq' | 'src' | 'host';
+
+/** 三種排序：引用頻次、來源庫自然次序、目標庫自然次序。 */
+export function sortRevItems(items: RevItem[], mode: RevSort): RevItem[] {
+  const out = items.slice();
+  if (mode === 'src') {
+    out.sort((a, b) => a.src.localeCompare(b.src) || a.srcVa - b.srcVa || b.count - a.count);
+  } else if (mode === 'host') {
+    out.sort((a, b) => a.hostVa - b.hostVa || a.src.localeCompare(b.src) || a.srcVa - b.srcVa);
+  } else {
+    out.sort((a, b) => b.count - a.count || a.src.localeCompare(b.src) || a.srcVa - b.srcVa);
+  }
+  return out;
 }
 
 /**
- * 這一頁的回連結清單（去重、算好短名）。中間本文拿它逐條比對經文，把按鈕嵌到引用處；
- * 右欄的跨庫頁面則整排畫在標題下。
+ * 這一頁的反鏈清單（去重、算好短名、算引用次數）。中間本文拿它逐條比對經文，
+ * 把按鈕嵌到引用處；右欄的跨庫頁面則整排畫在標題下。
  */
-export async function reverseItemsForPage(db: string, pageId: string): Promise<RevItem[]> {
+export async function reverseItemsForPage(db: string, pageId: string, mode: RevSort = 'freq'): Promise<RevItem[]> {
   if (!revIndex.size || !pageId) return [];
   // 先看這一欄；整頁（a/b/c 三欄）如果還有別的欄被引用，就一併列出（作者 2026-10-28）
   const colEntries = revIndex.get(db + '?' + pageId) ?? [];
@@ -553,22 +844,51 @@ export async function reverseItemsForPage(db: string, pageId: string): Promise<R
   if (!entries.length) return [];
   const uniq = new Map<string, RevEntry>();
   for (const e of entries) uniq.set(e.src + ':' + e.pageId + ':' + e.va, e);
-  const out: RevItem[] = [];
-  const seen = new Set<string>();
-  let lastBook = '';
+  // 目標頁的 VA（給「目標序」用；同一頁的所有按鈕都一樣，但語義要對）
+  let hostVa = 0;
+  const hostR = await readerFor(db);
+  if (hostR) hostVa = (await anchorVa(hostR, pageId)) ?? 0;
+
+  // 先按「來源庫＋來源頁」分組：同一頁引用好幾次 → count；跨行引文的同一個 q 只算一筆。
+  interface Group { e: RevEntry; count: number; firstVa: number; tqs: Set<string> }
+  const groups = new Map<string, Group>();
   for (const e of uniq.values()) {
-    const srcR = await readerFor(e.src);
-    const srcIdx = srcR ? await anchorIndex(srcR) : null;
-    const name = (srcR && srcIdx ? (await cachedLabel(srcR, '書', srcIdx.bookVas, e.va)) : '') || e.src;
-    const key = name + '|' + e.pageId;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const short = shortTitle(name);
+    const gk = e.src + '\u0000' + e.pageId;
+    let g = groups.get(gk);
+    if (!g) { g = { e, count: 0, firstVa: e.va, tqs: new Set() }; groups.set(gk, g); }
+    if (e.va < g.firstVa) { g.e = e; g.firstVa = e.va; }
+    const ck = e.tq || e.quote || 'va:' + e.va;
+    if (!g.tqs.has(ck)) { g.tqs.add(ck); g.count++; }
+  }
+
+  const temp: RevItem[] = [];
+  const nameCache = new Map<string, { srcR: AdbReader | null; srcIdx: AnchorIndex | null }>();
+  for (const g of groups.values()) {
+    const e = g.e;
+    let cached = nameCache.get(e.src);
+    if (!cached) {
+      const srcR = await readerFor(e.src);
+      cached = { srcR, srcIdx: srcR ? await anchorIndex(srcR) : null };
+      nameCache.set(e.src, cached);
+    }
+    // 沒有 <書> 的庫（例如太虛全書用 <集>/<編>/<文>）先退到 <編>/<章>，再退中文庫名。
+    const name = (cached.srcR && cached.srcIdx ? await sourceLabelAt(cached.srcR, cached.srcIdx, e.va) : '')
+      || (cached.srcR ? cached.srcR.header.dbcname : '') || e.src;
     const page = shortPage(e.pageId);
-    // 同一本書的連續幾條只寫頁碼，讓按鈕群短一些（作者 2026-10-28）
-    const label = short === lastBook ? page : short + ' ' + page;
-    lastBook = short;
-    out.push({ src: e.src, va: e.va, pageId: e.pageId, label, book: short, page, full: name, tq: e.tq, cite: e.cite, quote: e.quote });
+    temp.push({
+      src: e.src, va: e.va, pageId: e.pageId, label: '', book: shortTitle(name), page,
+      full: name, tq: e.tq, cite: e.cite, quote: e.quote,
+      count: g.count, srcVa: g.firstVa, hostVa, hostPage: pageId,
+    });
+  }
+
+  const out = sortRevItems(temp, mode);
+  // 同一本書的連續幾條只寫頁碼，讓按鈕群短一些（作者 2026-10-28）
+  let lastBook = '';
+  for (const it of out) {
+    const bkey = it.src + '|' + it.book;
+    it.label = bkey === lastBook ? it.page : it.book + ' ' + it.page;
+    lastBook = bkey;
   }
   return out;
 }
@@ -578,11 +898,14 @@ function shortPage(id: string): string {
   return id.replace(/^\d+p/, '').replace(/^0+(?=\d)/, '');
 }
 
-/** 一顆回連結按鈕（按鈕上文字很短，完整書名與頁碼放 title／data） */
+/** 一顆反鏈按鈕（按鈕上文字很短，完整書名與頁碼放 title／data） */
 export function revButtonHtml(it: RevItem, hidden = false): string {
-  return '<button class="mini xrefRev' + (hidden ? ' is-hidden' : '') + '" type="button" title="《' + esc(it.full) + '》 ' + esc(it.pageId) + '" data-rrev="' + esc(it.src + '|' + it.va) + '" data-rrev-label="' + esc(it.full + ' ' + it.pageId) + '" data-rpage="' + esc(it.pageId) + '" data-rcite="' + esc(it.cite) + '" data-rquote="' + esc(it.quote) + '"'
+  const badge = it.count > 1 ? '<span class="xrefRevN">×' + it.count + '</span>' : '';
+  const title = '《' + it.full + '》 ' + it.pageId + (it.count > 1 ? ' · ' + it.count + ' 次' : '');
+  return '<button class="mini xrefRev' + (hidden ? ' is-hidden' : '') + '" type="button" title="' + esc(title) + '" data-rrev="' + esc(it.src + '|' + it.va) + '" data-rrev-label="' + esc(it.full + ' ' + it.pageId) + '" data-rpage="' + esc(it.pageId) + '" data-rcite="' + esc(it.cite) + '" data-rquote="' + esc(it.quote) + '"'
     + ' data-rbook="' + esc(it.book) + '" data-rp="' + esc(it.page) + '"'
-    + '>' + esc(it.label) + '</button>';
+    + ' data-count="' + it.count + '" data-srcva="' + it.srcVa + '" data-hostva="' + it.hostVa + '"'
+    + '><span class="revLabel">' + esc(it.label) + '</span>' + badge + '</button>';
 }
 
 /**
@@ -598,7 +921,11 @@ export function relabelRevRows(): void {
       if (top !== lastTop) {
         const book = btn.dataset.rbook;
         const page = btn.dataset.rp;
-        if (book && page) { const want = book + ' ' + page; if (btn.textContent !== want) btn.textContent = want; }
+        if (book && page) {
+          const want = book + ' ' + page;
+          const label = btn.querySelector<HTMLElement>('.revLabel');
+          if (label && label.textContent !== want) label.textContent = want;
+        }
         lastTop = top;
       }
     });
@@ -619,15 +946,33 @@ export function revButtonsHtml(items: RevItem[]): string {
 }
 
 /**
- * 「回連結」那一排（作者 2026-10-28）：右欄的跨庫頁面用。
- * 按鈕上的書名用 corpus 的短名（「般若經講記」→「般若」），也不加《》。
+ * 「反鏈」那一排（作者 2026-10-28；2026-10-28 改成可排序＋帶次數）：
+ * 右欄的跨庫頁面用。按鈕上的書名用 corpus 的短名（「般若經講記」→「般若」）。
  */
 async function revBarHtml(db: string, pageId: string): Promise<string> {
-  const items = await reverseItemsForPage(db, pageId);
+  const items = await reverseItemsForPage(db, pageId, 'freq');
+  (globalThis as any).__revBar = { db, pageId, count: items.length, srcs: [...new Set(items.map((i) => i.src))] };
   if (!items.length) return '';
-  const srcs = esc([...new Set(items.map((e) => e.src))].join('、'));
-  return '<div class="xrefRevBar"><span class="dim">回連結（' + srcs + '）：</span>'
-    + revButtonsHtml(items) + '</div>';
+  const srcList = [...new Set(items.map((e) => e.src))];
+  const srcs = esc(srcList.map((s) => srcLabels.get(s) ?? s).join('、'));
+  const tr = await readerFor(db);
+  const hostName = esc(tr?.header.dbcname || db);
+  const total = items.reduce((n, it) => n + it.count, 0);
+  const singleSrc = srcList.length === 1 ? srcList[0] : '';
+  return '<div class="xrefRevBar" data-revhost="' + esc(db) + '" data-revpage="' + esc(pageId) + '">'
+    + '<div class="revTop">'
+    + '<span class="revTitle">反鏈 <b>' + total + '</b></span>'
+    + '<span class="dim revFrom" title="' + srcs + ' → ' + hostName + '">' + srcs + ' → ' + hostName + '</span>'
+    + '<span class="revSortSeg" role="group" aria-label="反鏈排序">'
+    + '<button type="button" data-revsort="freq" class="active" title="引用次數多的在前">頻次</button>'
+    + '<button type="button" data-revsort="src" title="按來源庫的閱讀次序">來源序</button>'
+    + '<button type="button" data-revsort="host" title="按目標庫的閱讀次序">目標序</button>'
+    + '</span>'
+    + '<button type="button" class="mini revHeatBtn" data-revheat="' + esc(db) + '"'
+    + (singleSrc ? ' data-revsrc="' + esc(singleSrc) + '"' : '') + ' title="引用分布熱圖">分布</button>'
+    + '<button type="button" class="mini revListBtn" data-revlisthost="' + esc(db) + '" data-revlistpage="' + esc(pageId) + '" data-revlistname="' + hostName + '" title="完整反鏈清單">清單</button>'
+    + '</div>'
+    + '<div class="revChips">' + revButtonsHtml(items) + '</div></div>';
 }
 
 /** 本文中間那一頁的頁 id（給中間的「回連結」用） */
@@ -647,14 +992,281 @@ export async function reverseBarForPage(pageId: string): Promise<string> {
   return revBarHtml(reader.header.dbname, pageId);
 }
 
-/** 中間本文用的版本：回傳這一頁的回連結清單（由 doc-pane 逐條嵌進經文） */
+/** 中間本文用的版本：回傳這一頁的反鏈清單（由 doc-pane 逐條嵌進經文） */
 export async function reverseItemsOf(pageId: string): Promise<RevItem[]> {
   if (!reader || !pageId) return [];
   await ensureReverse();
   return reverseItemsForPage(reader.header.dbname, pageId);
 }
 
-async function handleXref(value: string, fromRight: boolean, newTab: boolean, quote?: string): Promise<void> {
+// ---------------------------------------------------------------- 引用分布（熱圖）
+
+export interface RevHeatAxis { label: string; total: number; key: number }
+export type HeatGrain = 'volume' | 'sutra' | 'juan';
+export interface RevHeatData {
+  hostDb: string; hostName: string; srcDb: string; srcName: string;
+  grain: HeatGrain;
+  rowTag: string; colTag: string;
+  rows: RevHeatAxis[]; cols: RevHeatAxis[];
+  cells: number[][];
+  rowVas: number[]; colVas: number[];
+  total: number; hostPages: number; srcPages: number;
+  topRows: RevHeatAxis[]; topCols: RevHeatAxis[];
+  sources: { db: string; name: string; total: number }[];
+}
+
+/** 目前開啟的來源庫中，有哪些對 hostDb 有 <聯>（給熱圖的來源選單） */
+export async function reverseHeatSources(hostDb: string): Promise<{ db: string; name: string; total: number }[]> {
+  await ensureReverse();
+  const m = new Map<string, { db: string; name: string; total: number }>();
+  for (const e of allEntries) {
+    if (e.db !== hostDb) continue;
+    const hit = m.get(e.src) ?? { db: e.src, name: srcLabels.get(e.src) ?? e.src, total: 0 };
+    hit.total++;
+    m.set(e.src, hit);
+  }
+  return [...m.values()].sort((a, b) => b.total - a.total);
+}
+
+/** 有 <聯> 指向的目標庫（給「引紋」頁籤的 host 選單） */
+export async function reverseHosts(): Promise<{ db: string; name: string; total: number }[]> {
+  await ensureReverse();
+  const m = new Map<string, { db: string; name: string; total: number }>();
+  for (const e of allEntries) {
+    const hit = m.get(e.db) ?? { db: e.db, name: e.db, total: 0 };
+    hit.total++;
+    m.set(e.db, hit);
+  }
+  const out: { db: string; name: string; total: number }[] = [];
+  for (const v of m.values()) {
+    const r = await readerFor(v.db);
+    if (!r) continue;
+    v.name = r.header.dbcname || v.db;
+    out.push(v);
+  }
+  return out.sort((a, b) => b.total - a.total);
+}
+
+/**
+ * 引用分布：host 的「部（冊）／經（書）／卷」× 來源庫的「書」。
+ *
+ * 列的次序＝host 的自然次序（冊 1→85、書的 VA、卷的 VA），欄的次序＝來源庫的
+ * 自然次序（書的 VA）；格子是 <聯> 的數量。這正是「作者思想指紋」要看的分佈。
+ */
+export async function reverseHeat(hostDb: string, srcDb?: string, grain: HeatGrain = 'volume'): Promise<RevHeatData | null> {
+  await ensureReverse();
+  const all = allEntries.filter((e) => e.db === hostDb);
+  if (!all.length) return null;
+  const sources = await reverseHeatSources(hostDb);
+  const useSrc = srcDb && sources.some((s) => s.db === srcDb) ? srcDb : sources[0]?.db;
+  if (!useSrc) return null;
+  const entries = all.filter((e) => e.src === useSrc);
+  if (!entries.length) return null;
+
+  const hostR = await readerFor(hostDb);
+  const srcR = await readerFor(useSrc);
+  if (!hostR || !srcR) return null;
+  const hostIdx = await anchorIndex(hostR);
+  const srcIdx = await anchorIndex(srcR);
+  if (!hostIdx || !srcIdx) return null;
+
+  // 部＝<冊>（大正 85 冊）；經＝<書>；卷＝<卷>。沒有冊就退回書。
+  let rowTag = '書';
+  let rowVas = hostIdx.bookVas;
+  if (grain === 'volume' && hostIdx.volVas.length) { rowTag = '冊'; rowVas = hostIdx.volVas; }
+  else if (grain === 'juan' && hostIdx.juanVas.length) { rowTag = '卷'; rowVas = hostIdx.juanVas; }
+  const colTag0 = '書';
+  let colTag = colTag0;
+  let colVas = srcIdx.bookVas;
+  if (!colVas.length) {
+    // 太虛全書沒有 <書>（用 <集>/<編>/<文>）；挑第一個「夠細」的層級當來源欄。
+    let fallbackTag = '';
+    let fallbackVas: number[] = [];
+    for (const t of ['集', '編', '篇', '章', '節', '文', '類']) {
+      const ti = srcIdx.tags.indexOf(t);
+      if (ti < 0) continue;
+      const vas = await srcR.decodeBlockList('tags', ti);
+      if (!vas.length) continue;
+      if (!fallbackTag) { fallbackTag = t; fallbackVas = vas; }
+      if (vas.length >= 4) { colTag = t; colVas = vas; break; }
+    }
+    if (!colVas.length && fallbackTag) { colTag = fallbackTag; colVas = fallbackVas; }
+  }
+  const rowNames = await hostR.cachedStrings(rowTag).catch(() => [] as string[]);
+  const colNames = await srcR.cachedStrings(colTag).catch(() => [] as string[]);
+  const bookNames = rowTag === '卷' ? await hostR.cachedStrings('書').catch(() => [] as string[]) : [];
+  const pageVa = await pageVaMapOf(hostDb);
+  const rowCount = new Map<number, number>();
+  const colCount = new Map<number, number>();
+  const cellMap = new Map<string, number>();
+  const hostPages = new Set<string>();
+  const srcPages = new Set<string>();
+  for (const e of entries) {
+    const tva = pageVa.get(e.targetPage);
+    if (tva == null) continue;
+    const ri = lastLEof(rowVas, tva);
+    const ci = lastLEof(colVas, e.va);
+    if (ri < 0 || ci < 0) continue;
+    rowCount.set(ri, (rowCount.get(ri) ?? 0) + 1);
+    colCount.set(ci, (colCount.get(ci) ?? 0) + 1);
+    const key = ri + ',' + ci;
+    cellMap.set(key, (cellMap.get(key) ?? 0) + 1);
+    hostPages.add(e.targetPage);
+    srcPages.add(e.src + ':' + e.pageId);
+  }
+  const rowLabel = (v: number): string => {
+    const name = rowNames[v] || '';
+    if (rowTag === '冊') return name ? '第' + (v + 1) + '冊 ' + name : '第' + (v + 1) + '冊';
+    if (rowTag === '卷') {
+      const bi = lastLEof(hostIdx.bookVas, rowVas[v]);
+      const book = bi >= 0 ? (bookNames[bi] || '') : '';
+      const jn = name || '卷' + (v + 1);
+      // 大正藏的 <卷> 快取常已含書名（佛說長阿含經卷第一），不要重複加。
+      return book && !jn.includes(book) ? book + ' ' + jn : jn;
+    }
+    return name || String(v + 1);
+  };
+  const rowIdx = [...rowCount.keys()].sort((a, b) => a - b);
+  const colIdx = [...colCount.keys()].sort((a, b) => a - b);
+  const rowPos = new Map(rowIdx.map((v, i) => [v, i]));
+  const colPos = new Map(colIdx.map((v, i) => [v, i]));
+  const rows: RevHeatAxis[] = rowIdx.map((v) => ({
+    key: v,
+    label: rowLabel(v),
+    total: rowCount.get(v) ?? 0,
+  }));
+  const cols: RevHeatAxis[] = colIdx.map((v) => ({
+    key: v,
+    label: shortTitle(colNames[v] || srcR.header.dbcname || String(v + 1)),
+    total: colCount.get(v) ?? 0,
+  }));
+  const cells: number[][] = rows.map(() => new Array(cols.length).fill(0));
+  for (const [key, n] of cellMap) {
+    const [r, c] = key.split(',').map(Number);
+    const rp = rowPos.get(r), cp = colPos.get(c);
+    if (rp != null && cp != null) cells[rp][cp] = n;
+  }
+  const topRows = rows.slice().sort((a, b) => b.total - a.total).slice(0, 8);
+  const topCols = cols.slice().sort((a, b) => b.total - a.total).slice(0, 8);
+  return {
+    hostDb, hostName: hostR.header.dbcname || hostDb,
+    srcDb: useSrc, srcName: srcR.header.dbcname || useSrc,
+    grain,
+    rowTag, colTag, rows, cols, cells,
+    rowVas, colVas,
+    total: entries.length, hostPages: hostPages.size, srcPages: srcPages.size,
+    topRows, topCols, sources,
+  };
+}
+
+function shortHeatLabel(s: string, n = 10): string {
+  const t = s.replace(/[（(].*$/, '').trim();
+  return t.length > n ? t.slice(0, n) + '…' : t;
+}
+
+/** 點熱圖一格 → 這一格（某個目標範圍 × 某部來源書）的所有反鏈。 */
+export async function reverseHeatCellItems(data: RevHeatData, ri: number, ci: number): Promise<RevItem[]> {
+  return reverseHeatRangeItems(data, ri, ri + 1, ci, ci + 1);
+}
+
+/** 點縮圖的合併格 → 該範圍（列 r0..r1-1、欄 c0..c1-1）內的所有反鏈。 */
+export async function reverseHeatRangeItems(data: RevHeatData, r0: number, r1: number, c0: number, c1: number): Promise<RevItem[]> {
+  const rowKey0 = data.rows[r0]?.key;
+  const rowKey1 = data.rows[Math.max(r0, r1 - 1)]?.key;
+  const colKey0 = data.cols[c0]?.key;
+  const colKey1 = data.cols[Math.max(c0, c1 - 1)]?.key;
+  if (rowKey0 == null || rowKey1 == null || colKey0 == null || colKey1 == null) return [];
+  const hostR = await readerFor(data.hostDb);
+  const srcR = await readerFor(data.srcDb);
+  if (!hostR || !srcR) return [];
+  const srcIdx = await anchorIndex(srcR);
+  if (!srcIdx) return [];
+  const pageVa = await pageVaMapOf(data.hostDb);
+  const groups = new Map<string, { e: RevEntry; count: number; tqs: Set<string>; firstVa: number; hostVa: number }>();
+  for (const e of allEntries) {
+    if (e.db !== data.hostDb || e.src !== data.srcDb) continue;
+    const tva = pageVa.get(e.targetPage);
+    if (tva == null) continue;
+    const ri = lastLEof(data.rowVas, tva);
+    const ci = lastLEof(data.colVas, e.va);
+    if (ri < rowKey0 || ri > rowKey1 || ci < colKey0 || ci > colKey1) continue;
+    const k = e.src + '\u0000' + e.pageId;
+    let g = groups.get(k);
+    if (!g) { g = { e, count: 0, tqs: new Set(), firstVa: e.va, hostVa: data.rowVas[rowKey0] }; groups.set(k, g); }
+    if (e.va < g.firstVa) { g.e = e; g.firstVa = e.va; }
+    const ck = e.tq || e.quote || 'va:' + e.va;
+    if (!g.tqs.has(ck)) { g.tqs.add(ck); g.count++; }
+  }
+  const out: RevItem[] = [];
+  for (const g of groups.values()) {
+    const e = g.e;
+    const name = (await sourceLabelAt(srcR, srcIdx, e.va)) || srcR.header.dbcname || e.src;
+    out.push({
+      src: e.src, va: e.va, pageId: e.pageId, label: '', book: shortTitle(name), page: shortPage(e.pageId),
+      full: name, tq: e.tq, cite: e.cite, quote: e.quote,
+      count: g.count, srcVa: g.firstVa, hostVa: g.hostVa, hostPage: e.targetPage,
+    });
+  }
+  const sorted = sortRevItems(out, 'freq');
+  let last = '';
+  for (const it of sorted) {
+    const bk = it.src + '|' + it.book;
+    it.label = bk === last ? it.page : it.book + ' ' + it.page;
+    last = bk;
+  }
+  return sorted;
+}
+
+/** 畫熱圖（右欄「分布」按鈕）。用 fixed overlay，不开新分頁，避免打斷閱讀位置。 */
+export async function openRevHeat(hostDb: string, srcDb?: string): Promise<void> {
+  const box = document.getElementById('revHeat') as HTMLElement | null;
+  const body = document.getElementById('revHeatBody') as HTMLElement | null;
+  if (!box || !body) return;
+  body.innerHTML = '<p class="dim">計算中…</p>';
+  box.hidden = false;
+  const data = await reverseHeat(hostDb, srcDb);
+  if (!data) { body.innerHTML = '<p class="dim">這個庫目前沒有可用的 <聯> 反鏈。</p>'; return; }
+  const title = document.getElementById('revHeatTitle');
+  const sub = document.getElementById('revHeatSub');
+  const sel = document.getElementById('revHeatSrc') as HTMLSelectElement | null;
+  if (title) title.textContent = '引用分布：' + data.srcName + ' → ' + data.hostName;
+  if (sub) sub.textContent = '共 ' + data.total.toLocaleString() + ' 條 · 來源頁 ' + data.srcPages.toLocaleString() + ' · 目標頁 ' + data.hostPages.toLocaleString();
+  if (sel) {
+    sel.innerHTML = data.sources.map((s) => '<option value="' + esc(s.db) + '"' + (s.db === data.srcDb ? ' selected' : '') + '>' + esc(s.name) + '（' + s.total.toLocaleString() + '）</option>').join('');
+    sel.hidden = data.sources.length < 2;
+    sel.onchange = () => { void openRevHeat(hostDb, sel.value); };
+  }
+  const max = Math.max(1, ...data.cells.flat());
+  const cellColor = (n: number): string => {
+    if (!n) return '';
+    const a = 0.10 + 0.90 * Math.sqrt(n / max);
+    return 'background:rgba(198,84,54,' + a.toFixed(3) + ');color:' + (a > 0.55 ? '#fff' : 'var(--fg)');
+  };
+  const colW = 30, rowW = 150;
+  let grid = '<div class="revHeatGrid" style="grid-template-columns:' + rowW + 'px repeat(' + data.cols.length + ',' + colW + 'px) 56px">';
+  grid += '<div class="hgCorner">' + esc(data.rowTag) + ' ＼ ' + esc(data.colTag) + '</div>';
+  for (const c of data.cols) {
+    grid += '<div class="hgCol" title="' + esc(c.label) + '（' + c.total + ' 條）">' + esc(shortHeatLabel(c.label, 4)) + '</div>';
+  }
+  grid += '<div class="hgCorner hgCornerTot"></div>';
+  data.rows.forEach((r, ri) => {
+    grid += '<div class="hgRow" title="' + esc(r.label) + '">' + esc(shortHeatLabel(r.label, 10)) + '</div>';
+    data.cells[ri].forEach((n, ci) => {
+      grid += n
+        ? '<div class="hgCell" style="' + cellColor(n) + '" title="' + esc(r.label) + ' × ' + esc(data.cols[ci].label) + '：' + n + ' 條">' + n + '</div>'
+        : '<div class="hgCell"></div>';
+    });
+    grid += '<div class="hgTot">' + r.total + '</div>';
+  });
+  grid += '</div>';
+  const topList = (xs: RevHeatAxis[]): string => '<ol>' + xs.map((x) => '<li><span>' + esc(x.label) + '</span><b>' + x.total + '</b></li>').join('') + '</ol>';
+  body.innerHTML = '<div class="revHeatMain"><div class="revHeatWrap">' + grid + '</div>'
+    + '<div class="revHeatTops"><div><h4>引用最多的目標</h4>' + topList(data.topRows) + '</div>'
+    + '<div><h4>引用最多的來源</h4>' + topList(data.topCols) + '</div></div></div>'
+    + '<p class="dim revHeatNote">列＝' + esc(data.hostName) + '的自然次序；欄＝' + esc(data.srcName) + '的自然次序。格內數字是 <聯> 條數，顏色越深代表引用越集中；右側是總量最高的目標／來源。</p>';
+}
+
+async function handleXref(value: string, fromRight: boolean, newTab: boolean, quote?: string, j?: string): Promise<void> {
   const q = value.indexOf('?');
   const db = q >= 0 ? value.slice(0, q) : '';
   const anchor = q >= 0 ? value.slice(q + 1) : value;
@@ -669,15 +1281,15 @@ async function handleXref(value: string, fromRight: boolean, newTab: boolean, qu
   const short = db === 'taisho' ? 'T' : db.slice(0, 4);
   if (!fromRight) {
     if (db === mainName) { await linkTo(va, anchor, 1, { newTab, exact: true }); return; }
-    openForeignTab(db, va, short + ' ' + anchor, newTab, anchor, quote);
+    openForeignTab(db, va, short + ' ' + anchor, newTab, anchor, quote, j);
     return;
   }
   if (db === mainName) { await linkTo(va, anchor, 1, { newTab, exact: true }); return; }
-  openForeignTab(db, va, short + ' ' + anchor, newTab, anchor, quote);
+  openForeignTab(db, va, short + ' ' + anchor, newTab, anchor, quote, j);
 }
 
-export async function xrefJump(value: string, fromRight = false, newTab = false, quote?: string): Promise<void> {
-  await handleXref(value, fromRight, newTab, quote);
+export async function xrefJump(value: string, fromRight = false, newTab = false, quote?: string, j?: string): Promise<void> {
+  await handleXref(value, fromRight, newTab, quote, j);
 }
 
 /* ------------------------------------------------------------------ 大正藏引用
@@ -808,29 +1420,135 @@ export async function xrefProbe(db: string, anchor: string) {
   const idx = await anchorIndex(r);
   if (!idx) return { error: 'no index' };
   const va = await anchorVa(r, anchor);
-  let blk = 0;
-  for (let k = 0; k < idx.bv.length; k++) { if (idx.bv[k] <= (va ?? 0)) blk = k; else break; }
-  const raw = va == null ? '' : (await r.sourceText(blk)).slice(va - idx.bv[blk], va - idx.bv[blk] + 60);
+  const blk = va == null ? 0 : blockOf(idx, va);
+  const text = va == null ? '' : await r.sourceText(blk);
+  const at = text.indexOf('<頁 id="' + anchor + '"');
+  const raw = at >= 0 ? text.slice(at, at + 60) : text.slice(Math.max(0, (va ?? 0) - idx.bv[blk] - 20), (va ?? 0) - idx.bv[blk] + 60);
   return { va, blk, bv0: idx.bv[blk], raw };
 }
 
-export async function previewForeign(db: string, anchor: string, quote?: string) {
+/**
+ * `<嵌>` 的內容：只取目標頁上「被引用的那一段」，不是整頁。
+ *
+ *   <嵌 i="jingang?33p158a" q="佛言善哉…" j="61-123" n="纂要"/>
+ *
+ * `j` 是目標頁的漢字索引（0 起，end 不含）；和 `q` 對不上時退回 q 比對。
+ * 回傳的 HTML 只包含一段 `.embedDoc`，由 embed.ts 插在晶片後面。
+ */
+export async function renderEmbed(db: string, anchor: string, quote = '', range = '', label = ''): Promise<{ html: string; title: string }> {
+  const r = await readerFor(db);
+  if (!r) return { html: '<p class="dim">請先開啟 ' + esc(db) + '.adb（同一個瀏覽器工作階段）。</p>', title: label || db };
+  const idx = await anchorIndex(r);
+  if (!idx) return { html: '<p class="dim">這個庫沒有頁碼表。</p>', title: label || db };
+  const va = await anchorVa(r, anchor);
+  if (va == null) return { html: '<p class="dim">找不到頁碼 ' + esc(anchor) + '。</p>', title: label || db };
+
+  const blk0 = blockOf(idx, va);
+  let blk = blk0;
+  let blockText = await r.sourceText(blk);
+  let startAt = Math.max(0, va - idx.bv[blk]);
+  // VA 與 source block 的邊界不一定對得剛好（作者的 adb 有這個情形）；
+  // 直接在附近 block 找 `<頁 id="anchor">`，找到就以它為起點。
+  for (const off of [0, -1, 1, -2, 2, -3, 3]) {
+    const b = blk0 + off;
+    if (b < 0 || b >= idx.bv.length) continue;
+    const t = off === 0 ? blockText : await r.sourceText(b);
+    const k = t.indexOf('<頁 id="' + anchor + '"');
+    if (k >= 0) { blk = b; blockText = t; startAt = k; break; }
+  }
+  let raw = blockText.slice(startAt);
+  if (raw.startsWith('<頁')) {
+    const gt = raw.indexOf('>');
+    if (gt > 0) raw = raw.slice(gt + 1);
+  }
+  for (let b = blk + 1; raw.length < 5000 && b < idx.bv.length; b++) raw += await r.sourceText(b);
+  const cut = raw.indexOf('<頁 ');
+  if (cut > 0) raw = raw.slice(0, cut);
+
+  // 漢字 → 原始字元位置；標籤跳過
+  const chars: string[] = [];
+  const rawAt: number[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === '<') {
+      const gt = raw.indexOf('>', i);
+      if (gt < 0) break;
+      i = gt;
+      continue;
+    }
+    if (HAN_RE.test(raw[i])) { chars.push(raw[i]); rawAt.push(i); }
+  }
+  const pn = foldVariants(chars.join(''));
+  let from = 0;
+  let to = Math.min(pn.length, 300);
+  if (quote) {
+    const qn = foldVariants(Array.from(quote).filter((c) => HAN_RE.test(c)).join(''));
+    if (qn) {
+      let hit = pn.indexOf(qn);
+      if (hit < 0 && qn.length >= 10) hit = pn.indexOf(qn.slice(0, 10));
+      if (hit >= 0) { from = hit; to = Math.min(pn.length, hit + qn.length); }
+    }
+  }
+  // j 優先；但 q 必須大致對得上，否則 j 可能是舊資料
+  const mm = /^(\d+)-(\d+)$/.exec(range);
+  if (mm) {
+    const a = Number(mm[1]), b = Number(mm[2]);
+    if (a >= 0 && b > a && b <= pn.length) {
+      const piece = pn.slice(a, b);
+      const qn = foldVariants(Array.from(quote).filter((c) => HAN_RE.test(c)).join(''));
+      if (!qn || piece.slice(0, Math.min(12, qn.length)) === qn.slice(0, Math.min(12, qn.length))) {
+        from = a; to = b;
+      }
+    }
+  }
+
+  // 擴到句子邊界（前後各找 60 字內的句號／分號），讓引文讀得通
+  let a = rawAt[from] ?? 0;
+  let b = (rawAt[Math.max(0, to - 1)] ?? raw.length - 1) + 1;
+  const back = raw.slice(Math.max(0, a - 80), a);
+  const bi = Math.max(back.lastIndexOf('。'), back.lastIndexOf('！'), back.lastIndexOf('？'), back.lastIndexOf('；'));
+  if (bi >= 0) a = Math.max(0, a - 80) + bi + 1;
+  const fwd = raw.slice(b, b + 80);
+  const fi = [fwd.indexOf('。'), fwd.indexOf('！'), fwd.indexOf('？')].filter((x) => x >= 0).sort((x, y) => x - y)[0];
+  if (fi !== undefined) b = b + fi + 1;
+  if (b - a > 900) b = a + 900;
+
+  const piece = raw.slice(a, b);
+  const markFrom = raw.slice(a, rawAt[from] ?? a).replace(/<[^>]*>/g, '').split('').filter((c) => HAN_RE.test(c)).length;
+  const markTo = markFrom + Math.max(0, to - from);
+  const book = await bookAt(r, idx, va).catch(() => ({ title: '', no: '' }));
+  const head = (label || book.title || db) + (book.title && label ? ' · ' + book.title : '');
+  return {
+    html: '<div class="embedDoc">'
+      + '<div class="embedHead"><span class="embedSrc">' + esc(head) + '</span>'
+      + '<span class="embedPage">' + esc(anchor) + '</span></div>'
+      + '<div class="embedText reflow">' + lineHtml(piece, markFrom, markTo) + '</div>'
+      + '</div>',
+    title: head,
+  };
+}
+
+export async function previewForeign(db: string, anchor: string, quote?: string, j?: string) {
   const r = await readerFor(db);
   if (!r) return 'no db';
   const va = await anchorVa(r, anchor);
   if (va == null) return 'no va';
-  const out = await renderForeign(db, va, anchor, quote);
+  const out = await renderForeign(db, va, anchor, quote, j);
   const dm = /data-q="([^"]+)"/.exec(out.html);
   return { mark: out.html.includes('<mark'), dbg: (globalThis as any).__xrefLast ?? null, dataQ: dm ? dm[1].slice(0, 40) : null, xrefSnippet: (out.html.match(/<a[^>]*data-xref[^>]*>/) || [''])[0].slice(0, 120), head: out.html.slice(0, 120) };
 }
 
 export function xrefDebug() {
+  const bySrc: Record<string, number> = {};
+  for (const e of allEntries) bySrc[e.src] = (bySrc[e.src] ?? 0) + 1;
   return {
     main: reader?.header.dbname ?? '',
     slots: openDbs.map((s) => ({ name: s.name, file: s.file.name })),
     foreign: [...foreignReaders.keys()],
     linked: [...linkedDbs],
     revKeys: revIndex.size,
+    revSample: [...revIndex.keys()].filter((k) => k.includes('49p15')).slice(0, 12),
+    allEntries: allEntries.length,
+    bySrc,
     hasXref: !!reader?.containers.has('xref'),
     baked: bakedQuotes?.size ?? -1,
   };
@@ -863,6 +1581,47 @@ function quoteNear(a: HTMLElement): string {
 
 let bound = false;
 
+/** 伺服器端重排：重算 items（含次數、同書省略書名）後換掉 chips，比只搬 DOM 可靠。 */
+async function resortRevBar(box: HTMLElement, mode: RevSort): Promise<void> {
+  const host = box.dataset.revhost ?? '';
+  const page = box.dataset.revpage ?? '';
+  const holder = box.querySelector<HTMLElement>('.revChips');
+  if (!host || !page || !holder) return;
+  // 先亮起按鈕，讓讀者知道有反應；資料是非同步重算的。
+  box.querySelectorAll<HTMLElement>('[data-revsort]').forEach((b) => b.classList.toggle('active', b.dataset.revsort === mode));
+  const items = await reverseItemsForPage(host, page, mode);
+  if (!items.length) return;
+  holder.innerHTML = revButtonsHtml(items);
+  relabelRevRows();
+}
+
+/** 依 data-* 重排一排反鏈按鈕，重新套用「一次 10 顆」的分批。 */
+function sortRevBox(box: HTMLElement, mode: RevSort): void {
+  const holder = box.querySelector<HTMLElement>('.revChips') ?? box;
+  const chips = [...holder.querySelectorAll<HTMLElement>('.xrefRev')];
+  const num = (el: HTMLElement, k: string): number => Number(el.dataset[k] ?? 0) || 0;
+  const srcOf = (el: HTMLElement): string => (el.dataset.rrev ?? '').split('|')[0] ?? '';
+  chips.sort((a, b) => {
+    if (mode === 'src') return srcOf(a).localeCompare(srcOf(b)) || num(a, 'srcva') - num(b, 'srcva') || num(b, 'count') - num(a, 'count');
+    if (mode === 'host') return num(a, 'hostva') - num(b, 'hostva') || srcOf(a).localeCompare(srcOf(b)) || num(a, 'srcva') - num(b, 'srcva');
+    return num(b, 'count') - num(a, 'count') || srcOf(a).localeCompare(srcOf(b)) || num(a, 'srcva') - num(b, 'srcva');
+  });
+  holder.querySelectorAll('.xrefRev,[data-revmore]').forEach((el) => el.remove());
+  chips.forEach((el, i) => { el.classList.toggle('is-hidden', i >= REV_BATCH); holder.append(el); });
+  const rest = Math.max(0, chips.length - REV_BATCH);
+  if (rest) {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'mini xrefMore';
+    more.dataset.revmore = String(rest);
+    more.title = '再顯示 ' + Math.min(rest, REV_BATCH) + ' 條';
+    more.textContent = '＋' + rest;
+    holder.append(more);
+  }
+  box.querySelectorAll<HTMLElement>('[data-revsort]').forEach((b) => b.classList.toggle('active', b.dataset.revsort === mode));
+  relabelRevRows();
+}
+
 export function initXref(): void {
   setForeignRender(renderForeign);
   if (bound) return;
@@ -878,7 +1637,36 @@ export function initXref(): void {
     window.addEventListener('resize', soon);
   }
   document.addEventListener('click', (ev) => {
-    // 「＋N」：同一組回連結再放一批（超過 10 顆才分批，作者 2026-10-28）
+    // 反鏈排序：頻次／來源序／目標序（2026-10-28）
+    const sortBtn = (ev.target as Element | null)?.closest?.('[data-revsort]') as HTMLElement | null;
+    if (sortBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const box = sortBtn.closest('.xrefRevBar') as HTMLElement | null;
+      if (box) void resortRevBar(box, (sortBtn.dataset.revsort as RevSort) || 'freq');
+      return;
+    }
+    // 完整反鏈清單抽屜
+    const listBtn = (ev.target as Element | null)?.closest?.('[data-revlisthost]') as HTMLElement | null;
+    if (listBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      document.dispatchEvent(new CustomEvent('accelon26:revlist', {
+        detail: { host: listBtn.dataset.revlisthost ?? '', page: listBtn.dataset.revlistpage ?? '', name: listBtn.dataset.revlistname ?? '' },
+      }));
+      return;
+    }
+    // 引用分布熱圖
+    const heatBtn = (ev.target as Element | null)?.closest?.('[data-revheat]') as HTMLElement | null;
+    if (heatBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      document.dispatchEvent(new CustomEvent('accelon26:heat', {
+        detail: { host: heatBtn.dataset.revheat ?? '', src: heatBtn.dataset.revsrc || undefined },
+      }));
+      return;
+    }
+    // 「＋N」：同一組反鏈再放一批（超過 10 顆才分批，作者 2026-10-28）
     const more = (ev.target as Element | null)?.closest?.('[data-revmore]') as HTMLElement | null;
     if (more) {
       ev.preventDefault();
@@ -901,6 +1689,8 @@ export function initXref(): void {
       const [db, vaStr] = (rev.dataset.rrev ?? '').split('|');
       if (!db || !vaStr) return;
       const va = Number(vaStr);
+      const inList = !!rev.closest('#revList');
+      if (inList) setTimeout(() => { const box = document.getElementById('revList'); if (box) box.hidden = true; }, 50);
       // 回連結指回「主庫」（例如中間讀印順、右欄讀大正，按鈕指回印順的另一個地方）：
       // 直接在中間開一個新分頁，不必按 Ctrl（作者 2026-10-28）。指到別的庫才放右欄。
       if (reader && db === reader.header.dbname) {
@@ -917,10 +1707,25 @@ export function initXref(): void {
     ev.preventDefault();
     ev.stopPropagation();
     const fromRight = !!a.closest('#textBody');
-    void handleXref(a.dataset.xref ?? '', fromRight, ev.ctrlKey || ev.metaKey, (a.dataset.q || (fromRight ? '' : quoteNear(a))));
+    void handleXref(a.dataset.xref ?? '', fromRight, ev.ctrlKey || ev.metaKey,
+      (a.dataset.q || (fromRight ? '' : quoteNear(a))), a.dataset.j || undefined);
   }, true);
   // 主庫換了（或第一次載入）就重建反連表
   document.addEventListener('accelon26:db', () => { revKey = ''; void buildReverseIfPossible(); });
+  // 熱圖關閉：✕、點背景、Esc
+  document.getElementById('revHeatClose')?.addEventListener('click', () => {
+    const box = document.getElementById('revHeat');
+    if (box) box.hidden = true;
+  });
+  document.getElementById('revHeat')?.addEventListener('click', (ev) => {
+    if (ev.target === ev.currentTarget) (ev.currentTarget as HTMLElement).hidden = true;
+  });
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') {
+      const box = document.getElementById('revHeat');
+      if (box && !box.hidden) box.hidden = true;
+    }
+  });
   void buildReverseIfPossible();
 }
 

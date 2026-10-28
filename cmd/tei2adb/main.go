@@ -3,6 +3,7 @@
 // 用法：
 //   go run ./cmd/tei2adb -tei D:\2023\sat2018\T -vol 1 -out build\tei-T01.txt
 //   go run ./cmd/tei2adb -tei D:\2023\sat2018\T -vol 1-85 -out build\tei-all.txt
+//   go run ./cmd/tei2adb -tei E:\3rd\XML\X -canon X -vol 1-88 -out build\wxzj-tei.txt
 //
 // 標記沿用舊 taisho.adb：檔／冊／段／書／頁／卷／序／經／品／分／會／其他。
 // 校勘：取 <app><lem> 的文字（＝CBETA 採用的讀法），<note>/<rdg> 一律丟棄。
@@ -25,6 +26,9 @@ import (
 // 舊 taisho.adb 的檔頭（7 棵樹的宣告照抄；只有來源說明改成 2025 版）。
 const fileHeader = `<檔 n="taisho.xml"><集 c="hidden">大正新脩大藏經</集><英文名>Taisho Tripitaka</英文名>本資料庫內容來自CBETA 2025.2 版 TEI XML，並為中華電子佛典協會授權非營利使用。最新資料請到<聯 l="http://www.cbeta.org">www.cbeta.org</聯><隱><樹 s="*" l="序,分,跋,會,其他,附文,經,other,xu" t="冊,書,品." pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;-">經目</樹></隱><隱><樹 s="$書" pf="$頁.id;)" sf="-$書.id;">書名</樹><樹 s="*書" pf="$頁.id;)" sf="-$書.id;">分書頻次</樹></隱><隱><樹 s="*" t="冊,卷." pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;">分卷</樹></隱><隱><樹 s="*卷" pf="$頁.id;)" sf="-$書.id;">分卷頻次</樹></隱><隱><樹 s="~00602000">西文</樹></隱><隱><樹 s="%"t="冊,書" pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;-">反連結</樹></隱><隱><引>《$書;》：「$_;」( 大正 $*頁; )</引><摘要頭>$書;($頁;)</摘要頭></隱></檔>`
 
+// 舊 wxzj.adb 的檔頭；來源改成 2025 TEI，樹／引文格式沿用。
+const xHeader = `<檔 n="wxzj.xml"><集 c="hidden">卍新纂續藏經</集><英文名>Wanzi Xuzangjing</英文名>本資料庫內容來自CBETA 2025.2 版 TEI XML，並為中華電子佛典協會授權非營利使用。最新資料請到<聯 l="http://www.cbeta.org">www.cbeta.org</聯><隱><樹 s="*" l="序,分,跋,會,其他,附文,經,other,xu,科判" t="冊,書,品." pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;-">經目</樹></隱><隱><樹 s="$書" pf="$頁.id;)" sf="-$書.id;">書名</樹><樹 s="*書" pf="$頁.id;)" sf="-$書.id;">分書頻次</樹></隱><隱><樹 s="*" t="冊,卷." pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;">分卷</樹></隱><隱><樹 s="*卷" pf="$頁.id;)" sf="-$書.id;">分卷頻次</樹></隱><隱><樹 s="~00602000">西文</樹></隱><隱><樹 s="%" t="冊,書" pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;-">反連結</樹></隱><隱><引>《$書;》：「$_;」( 卍新續 $*頁; )</引><摘要頭>$書;($頁;)</摘要頭></隱></檔>`
+
 // 舊 taisho.adb 的 56 個冊名（1–55、85）。
 var oldVolTitles = map[int]string{
 	1: "阿含部上", 2: "阿含部下", 3: "本緣部上", 4: "本緣部下", 5: "般若部一", 6: "般若部二",
@@ -43,8 +47,7 @@ var oldVolTitles = map[int]string{
 var partRanges = []struct {
 	from, to int
 	name     string
-}{
-	{2185, 2245, "續經疏部"},
+}{	{2185, 2245, "續經疏部"},
 	{2246, 2247, "續律疏部"},
 	{2248, 2295, "續論疏部"},
 	{2296, 2700, "續諸宗部"},
@@ -52,8 +55,52 @@ var partRanges = []struct {
 	{2732, 2920, "古逸部"},
 }
 
+func cnNum(n int) string {
+	digits := []string{"〇", "一", "二", "三", "四", "五", "六", "七", "八", "九"}
+	switch {
+	case n < 10:
+		return digits[n]
+	case n < 20:
+		if n == 10 { return "十" }
+		return "十" + digits[n%10]
+	case n < 100:
+		s := digits[n/10] + "十"
+		if n%10 != 0 { s += digits[n%10] }
+		return s
+	}
+	return strconv.Itoa(n)
+}
+
+// 舊 wxzj.adb 的 86 個冊名；X06、X52 在來源沒有檔。
+func xVolTitle(v int) string {
+	switch v {
+	case 1:
+		return "x01.經部、律部"
+	case 2:
+		return "x02.論集部、密經儀軌部"
+	case 74:
+		return "x74.禮懺部"
+	}
+	switch {
+	case v >= 3 && v <= 37:
+		return fmt.Sprintf("x%02d.大小乘釋經部%s", v, cnNum(v-2))
+	case v >= 38 && v <= 44:
+		return fmt.Sprintf("x%02d.大小乘釋律部%s", v, cnNum(v-37))
+	case v >= 45 && v <= 51:
+		return fmt.Sprintf("x%02d.大小乘釋論部%s", v, cnNum(v-44))
+	case v == 53:
+		return "x53.大小乘釋論部九"
+	case v >= 54 && v <= 73:
+		return fmt.Sprintf("x%02d.諸宗著述部%s", v, cnNum(v-53))
+	case v >= 75 && v <= 88:
+		return fmt.Sprintf("x%02d.史傳部%s", v, cnNum(v-74))
+	}
+	return fmt.Sprintf("x%02d", v)
+}
+
 type emitter struct {
 	out   *bufio.Writer
+	canon string
 	line  strings.Builder
 	head  strings.Builder
 	nHead bool
@@ -69,6 +116,7 @@ type emitter struct {
 	book  int
 	seq   int
 	stats map[string]int
+	seenPages map[string]bool
 	count int
 }
 
@@ -93,6 +141,15 @@ func (e *emitter) emitTag(tag, text string) {
 	}
 	e.emit("<" + tag + ">" + text + "</" + tag + ">")
 	e.stats[tag]++
+}
+
+func (e *emitter) emitPage(id string) {
+	if id == "" || e.seenPages[id] {
+		return
+	}
+	e.seenPages[id] = true
+	e.emit(`<頁 id="` + id + `"/>`)
+	e.stats["頁"]++
 }
 
 func pageID(vol int, n string) string {
@@ -132,12 +189,21 @@ func escapeText(s string) string {
 func main() {
 	tei := flag.String("tei", `D:\2023\sat2018\T`, "TEI 根目錄")
 	vols := flag.String("vol", "1", "冊範圍，如 1 或 1-85")
+	nos := flag.String("no", "", "只輸出指定經號（逗號分隔，如 235,1698,1510a）")
 	linesPath := flag.String("lines", "", "輸出「卷起始行」TSV（sutra/juan/line）")
 	pclPath := flag.String("pcl", "", "輸出「每一行的 pcl」TSV（line/vol/page/col/line）")
 	out := flag.String("out", "build/tei.txt", "輸出文字檔")
+	canon := flag.String("canon", "T", "藏別：T（大正藏）或 X（卍續藏）")
 	flag.Parse()
+	canonValue := strings.ToUpper(strings.TrimSpace(*canon))
 
 	lo, hi := parseRange(*vols)
+	only := map[string]bool{}
+	for _, s := range strings.Split(*nos, ",") {
+		if s = strings.TrimSpace(strings.ToLower(s)); s != "" {
+			only[normSutraKey(s)] = true
+		}
+	}
 	f, err := os.Create(*out)
 	if err != nil {
 		panic(err)
@@ -168,14 +234,18 @@ func main() {
 		defer pclOut.Flush()
 	}
 
-	e := &emitter{out: w, stats: map[string]int{}}
-	e.emit(fileHeader)
+	e := &emitter{out: w, canon: canonValue, stats: map[string]int{}, seenPages: map[string]bool{}}
+	if canonValue == "X" {
+		e.emit(xHeader)
+	} else {
+		e.emit(fileHeader)
+	}
 	e.flush()
 	_ = linesOut
 
 	bookSeq := 0
 	for v := lo; v <= hi; v++ {
-		dir := filepath.Join(*tei, fmt.Sprintf("T%02d", v))
+		dir := filepath.Join(*tei, fmt.Sprintf("%s%02d", canonValue, v))
 		ents, err := os.ReadDir(dir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "skip %s: %v\n", dir, err)
@@ -188,11 +258,20 @@ func main() {
 			}
 		}
 		sort.Strings(files)
+		if len(only) > 0 {
+			keep := files[:0]
+			for _, name := range files {
+				if only[normSutraKey(sutraKey(name))] {
+					keep = append(keep, name)
+				}
+			}
+			files = keep
+		}
 		if len(files) == 0 {
 			continue
 		}
 		e.vol = v
-		title := volTitle(v, files)
+		title := volTitle(v, files, canonValue)
 		e.emit(fmt.Sprintf(`<冊 id="%d">%s</冊>`, v, title))
 		e.stats["冊"]++
 		e.flush()
@@ -203,6 +282,9 @@ func main() {
 			sutra := name
 			if i := strings.Index(sutra, "_"); i > 0 {
 				sutra = sutra[:i]
+			}
+			if len(only) > 0 && !only[normSutraKey(sutraKey(name))] {
+				continue
 			}
 			if sutra != prevSutra {
 				prevSutra = sutra
@@ -221,7 +303,7 @@ func main() {
 		panic(err)
 	}
 	fmt.Fprintf(os.Stderr, "lines=%d", e.stats["lines"])
-	for _, k := range []string{"冊", "書", "卷", "序", "經", "品", "分", "會", "其他", "附文"} {
+	for _, k := range []string{"冊", "書", "卷", "序", "經", "品", "分", "會", "其他", "附文", "科判"} {
 		fmt.Fprintf(os.Stderr, " %s=%d", k, e.stats[k])
 	}
 	fmt.Fprintln(os.Stderr)
@@ -237,7 +319,10 @@ func parseRange(s string) (int, int) {
 	return n, n
 }
 
-func volTitle(v int, files []string) string {
+func volTitle(v int, files []string, canon string) string {
+	if canon == "X" {
+		return xVolTitle(v)
+	}
 	if t, ok := oldVolTitles[v]; ok {
 		return t
 	}
@@ -258,8 +343,29 @@ func volTitle(v int, files []string) string {
 	return strings.Join(names, ",")
 }
 
+// sutraKey：T08n0235_001.xml → "0235"；T25n1510a_001.xml → "1510a"
+func sutraKey(file string) string {
+	base := file
+	if i := strings.Index(base, "_"); i > 0 {
+		base = base[:i]
+	}
+	if i := strings.Index(base, "n"); i >= 0 {
+		return strings.ToLower(base[i+1:])
+	}
+	return ""
+}
+
+// normSutraKey：去掉前導零，"0235" → "235"、"01510a" → "1510a"
+func normSutraKey(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	i := 0
+	for i < len(s)-1 && s[i] == '0' {
+		i++
+	}
+	return s[i:]
+}
+
 func sutraNo(file string) int {
-	// T56n2185_001.xml → 2185
 	base := file
 	if i := strings.LastIndex(base, "_"); i > 0 {
 		base = base[:i]
@@ -302,6 +408,30 @@ func sutraTitle(path string) string {
 		rest := head[i+len(key):]
 		if j := strings.Index(rest, "</title>"); j >= 0 {
 			return cleanTitle(rest[:j])
+		}
+	}
+	// 56–84 冊的檔頭只有「大正新脩大藏經數位版, No. N 題名」，沒有 level="m"。
+	// 少了這段，541 部書的 <書> 題名會是空的（目錄整批空白）。
+	i = strings.Index(head, `<title xml:lang="zh-Hant">`)
+	if i >= 0 {
+		rest := head[i+len(`<title xml:lang="zh-Hant">`):]
+		if j := strings.Index(rest, "</title>"); j >= 0 {
+			t := rest[:j]
+			if k := strings.Index(t, "No. "); k >= 0 {
+				t = t[k+len("No. "):]
+				// 跳過經號（數字＋可選 a/b 後綴）與空白；不要吃掉題名開頭的拉丁字母
+				p := 0
+				for p < len(t) && (t[p] == ' ' || t[p] >= '0' && t[p] <= '9') {
+					p++
+				}
+				if p < len(t) && (t[p] >= 'a' && t[p] <= 'z' || t[p] >= 'A' && t[p] <= 'Z') {
+					p++
+				}
+				for p < len(t) && t[p] == ' ' {
+					p++
+				}
+				return cleanTitle(strings.TrimSpace(t[p:]))
+			}
 		}
 	}
 	return ""
@@ -362,11 +492,15 @@ func (e *emitter) parseFile(path, sutra string, juan int, linesOut, pclOut *bufi
 				// 校勘／夾註裡偶爾夾著真正的換頁標記（例 T01 0731b 在 note 內），
 				// 文字不收，但頁碼要留下，否則 yinshun 的 taisho?1p731b 會斷。
 				if name == "pb" && e.skipKind == "note" {
+					if e.canon == "X" && attr(t, "ed") != "" && attr(t, "ed") != "X" {
+						e.sawPB = true
+						e.skip++
+						continue
+					}
 					pc := attr(t, "n")
 					e.sawPB = true
 					e.lastPageCol = pc
-					e.emit(`<頁 id="` + pageID(e.vol, pc) + `"/>`)
-					e.stats["頁"]++
+					e.emitPage(pageID(e.vol, pc))
 				}
 				e.skip++
 				continue
@@ -394,14 +528,17 @@ func (e *emitter) parseFile(path, sutra string, juan int, linesOut, pclOut *bufi
 			case "lb":
 				e.flush()
 				if e.pendingPage != "" {
-					e.emit(`<頁 id="` + e.pendingPage + `"/>`)
-					e.stats["頁"]++
+					e.emitPage(e.pendingPage)
 					e.pendingPage = ""
 				} else if !e.sawPB {
+					// X 藏同一行常同時有 ed="X" 與 ed="R" 的 lb；頁碼只認 X。
+					if e.canon == "X" && attr(t, "ed") != "" && attr(t, "ed") != "X" {
+						continue
+					}
 					pc := lbPageCol(attr(t, "n"))
 					if pc != "" && pc != e.lastPageCol {
-						e.emit(`<頁 id="` + pageID(e.vol, pc) + `"/>`)
-						e.stats["頁"]++
+						p := pageID(e.vol, pc)
+						e.emitPage(p)
 						e.lastPageCol = pc
 					}
 				}
@@ -417,14 +554,19 @@ func (e *emitter) parseFile(path, sutra string, juan int, linesOut, pclOut *bufi
 					}
 				}
 			case "pb":
+				// X 藏同時有 ed="X"（卍續藏頁碼）與 ed="R"（嘉興藏對照頁碼）；
+				// 頁 id 只採用 X 的，否則同一頁碼會在 R 欄重複數十次。
+				if e.canon == "X" && attr(t, "ed") != "" && attr(t, "ed") != "X" {
+					e.sawPB = true
+					continue
+				}
 				pc := attr(t, "n")
 				e.sawPB = true
 				e.lastPageCol = pc
 				// 頁碼先記著，下一個 lb 換行後再放：頁碼要落在新頁第一行，
 				// 不能黏在上一頁最後一行（否則 yinshun 的 taisho?… 錨點會差一行）。
 				if e.pendingPage != "" {
-					e.emit(`<頁 id="` + e.pendingPage + `"/>`)
-					e.stats["頁"]++
+					e.emitPage(e.pendingPage)
 				}
 				e.pendingPage = pageID(e.vol, pc)
 			case "juan":
@@ -500,8 +642,7 @@ func (e *emitter) parseFile(path, sutra string, juan int, linesOut, pclOut *bufi
 		}
 	}
 	if e.pendingPage != "" {
-		e.emit("<頁 id=\"" + e.pendingPage + "\"/>")
-		e.stats["頁"]++
+		e.emitPage(e.pendingPage)
 		e.pendingPage = ""
 	}
 	return linesOut
@@ -518,6 +659,9 @@ func divTag(ty string) string {
 	case "fen":
 		return "分"
 	case "other":
+		return "其他"
+	case "commentary", "orig", "w", "note":
+		// X 藏 TEI 的正文／註解／音義段落；舊 wxzj 以「其他」為主。
 		return "其他"
 	case "fu":
 		return "附文"

@@ -56,6 +56,25 @@ export const NOTE_BODY_TAGS = new Set(['釋']);
 export const HIDDEN_TAGS = new Set(['樹', '隱']);
 
 /**
+ * `<圖 n="x.svg"/>` 的 SVG 原文 → inline `<svg>`。
+ *
+ * 作者 2026-10-28：不必為 accelon3 相容，所以直接 inline —— 字形跟著字色／主題走，
+ * 也能用 CSS 縮放（`img` 載入的 SVG 不能繼承顏色，只能鋪白底硬上）。
+ * viewBox 用檔案自己的（每個字的 bbox 不同），`preserveAspectRatio` 讓它置中。
+ */
+function inlineSvgHtml(src: string, label: string): string {
+  const m = /<svg\b([^>]*)>([\s\S]*?)<\/svg>/i.exec(src);
+  if (!m) return `<span class="inlineImgMissing" title="${esc(label)}">▢</span>`;
+  const vb = /\bviewBox\s*=\s*"([^"]*)"/i.exec(m[1])?.[1] ?? '0 0 1000 1000';
+  const inner = m[2]
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, '');
+  return `<svg class="inlineSvg" viewBox="${esc(vb)}" role="img" aria-label="${esc(label)}"`
+    + ` preserveAspectRatio="xMidYMid meet">${inner}</svg>`;
+}
+
+/**
  * 每一層加多少（px）。
  *
  * 作者 2026-10：標題不要放大太多，「每往上一層 +2pt 就好」。
@@ -107,12 +126,34 @@ export function tierContext(): RenderContext {
   return current;
 }
 
+/** 天干／地支序：目錄的「甲一、乙一…」即使同一個標籤、同一層，也依序換色。 */
+const STEMS = '甲乙丙丁戊己庚辛壬癸';
+const BRANCHES = '子丑寅卯辰巳午未申酉戌亥';
+
+export function labelDepthIndex(label?: string): number | null {
+  const ch = [...(label ?? '').trim()][0];
+  if (!ch) return null;
+  const s = STEMS.indexOf(ch);
+  if (s >= 0) return s % 8;
+  const b = BRANCHES.indexOf(ch);
+  if (b >= 0) return (b + 2) % 8;
+  return null;
+}
+
 /**
  * 標籤的色號（0–7，作者 2026-10-18）：有 `tagChroma` 就依標籤，否則退回深度。
  * 內文標題、breadcrumb、目錄樹的 tDot 都用這一個，顏色才會一致。
+ *
+ * 2026-10-28：同一標籤若出現在不同深度（ys 的「甲一／乙一…」都是 <項>），
+ * 不能再只用標籤色，否則整排同色；改用深度。標題本身以天干／地支開頭時，
+ * 直接依那個序換色。
  */
-export function tagChromaIndex(tag: string, depth: number, ctx: RenderContext = current): number {
-  const n = ctx.tagChroma?.get(tag) ?? depth;
+export function tagChromaIndex(tag: string, depth: number, ctx: RenderContext = current, label?: string): number {
+  const semantic = label ? labelDepthIndex(label) : null;
+  if (semantic != null) return semantic;
+  const tagDepth = ctx.depthOf?.get(tag);
+  const tc = ctx.tagChroma?.get(tag);
+  const n = tc != null && tagDepth === depth ? tc : depth;
   return ((n % 8) + 8) % 8;
 }
 
@@ -169,6 +210,12 @@ export interface RenderOptions {
    * 古文字形往往就嵌在句子中間），但不該因為讀不到就讓整行消失。
    */
   imageUrl?: ((name: string) => string | null) | null;
+  /**
+   * `<圖 n="…"/>` 指向 SVG 時，直接拿原文 inline 成 `<svg>`（作者 2026-10-28）。
+   * 這樣字形跟著字色／主題走（`currentColor`），也能用 CSS 縮放；
+   * 回 null 就退回 `imageUrl` 的 blob URL。
+   */
+  svgText?: ((name: string) => string | null) | null;
 }
 
 /** 一行的渲染結果（給分塊用） */
@@ -215,6 +262,7 @@ export class Accelon3Renderer {
     primary: string;
     depthSteps: Map<number, number> | null;
     imageUrl: ((name: string) => string | null) | null;
+    svgText: ((name: string) => string | null) | null;
   };
 
   constructor(private ctx: RenderContext = current, opts: RenderOptions = {}) {
@@ -228,6 +276,7 @@ export class Accelon3Renderer {
       convert: opts.convert ?? null,
       primary: opts.primary ?? '',
       imageUrl: opts.imageUrl ?? null,
+      svgText: opts.svgText ?? null,
     };
   }
 
@@ -353,6 +402,22 @@ export class Accelon3Renderer {
         if (!closing && this.opts.pageMarks) { html += this.pageMark(attrs); this.sawText = true; }
         continue;
       }
+      // `<嵌 i="db?page" q="引文" j="12-34" n="智顗疏"/>`：文內嵌入（transclusion）。
+      // 本文只長出晶片；點擊後由 embed.ts 取目標頁的引文插在後面，再點一次收合。
+      if (name === '嵌' || name === '_嵌') {
+        const xref = attrValue(attrs, 'i');
+        const q = attrValue(attrs, 'q');
+        const j = attrValue(attrs, 'j');
+        const label = attrValue(attrs, 'n') || '嵌';
+        if (!closing && xref) {
+          html += `<button type="button" class="embedChip" data-embed="${esc(xref)}"`
+            + (q ? ` data-q="${esc(q)}"` : '')
+            + (j ? ` data-j="${esc(j)}"` : '')
+            + ` data-label="${esc(label)}" title="嵌入 ${esc(label)} 的引文">▸ ${esc(label)}</button>`;
+          this.sawText = true;
+        }
+        continue;
+      }
       // `<聯 n="詞條">`：Accelon 的條目連結（LINK，pair，SKIP）。本文只負責長出
       // 可點的錨點；目標怎麼解析成 VA 由 link.ts 的 linkToEntry 做。
       // `<聯 i="taisho?51p185b">`：跨庫／跨頁錨點（作者 2026-10），點擊由 xref.ts 處理。
@@ -360,11 +425,15 @@ export class Accelon3Renderer {
         const target = attrValue(attrs, 'n');
         const xref = attrValue(attrs, 'i');
         const xq = attrValue(attrs, 'q');
+        const xj = attrValue(attrs, 'j');
         if (closing) {
           if (this.xrefLinks > 0) { html += '</a>'; this.xrefLinks--; }
           else if (this.entryLinks > 0) { html += '</a>'; this.entryLinks--; }
         } else if (xref && !selfClose) {
-          html += `<a class="entryLink xrefLink" href="#" data-xref="${esc(xref)}"` + (xq ? ` data-q="${esc(xq)}"` : '') + ` title="${esc(xref)}">`;
+          html += `<a class="entryLink xrefLink" href="#" data-xref="${esc(xref)}"`
+            + (xq ? ` data-q="${esc(xq)}"` : '')
+            + (xj ? ` data-j="${esc(xj)}"` : '')
+            + ` title="${esc(xref)}">`;
           this.xrefLinks++;
         } else if (target && !selfClose) {
           html += `<a class="entryLink" href="#" data-entry="${esc(target)}" title="${esc(target)}">`;
@@ -378,8 +447,11 @@ export class Accelon3Renderer {
       if (IMAGE_TAGS.has(name)) {
         if (!closing) {
           const src = attrValue(attrs, 'n') || attrValue(attrs, 'id');
-          const url = src ? this.opts.imageUrl?.(src) ?? null : null;
-          if (url) html += `<img class="inlineImg" src="${esc(url)}" alt="${esc(src)}" title="${esc(src)}">`;
+          // SVG 優先 inline：跟著字色走、可用 CSS 縮放（作者 2026-10-28）
+          const svg = src ? this.opts.svgText?.(src) ?? null : null;
+          const url = src && !svg ? this.opts.imageUrl?.(src) ?? null : null;
+          if (svg) html += inlineSvgHtml(svg, src);
+          else if (url) html += `<img class="inlineImg" src="${esc(url)}" alt="${esc(src)}" title="${esc(src)}">`;
           else html += `<span class="inlineImgMissing" title="${esc(src || '圖')}">▢</span>`;
           this.sawText = true;
         }

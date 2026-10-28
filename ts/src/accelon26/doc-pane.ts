@@ -50,6 +50,9 @@ export function setRenderRaw(on: boolean): void {
  * 就整批撤銷 —— blob URL 不撤銷會一直佔著記憶體。
  */
 const imageUrls = new Map<string, string>();
+/** SVG 資源直接留原文，渲染時 inline 成 `<svg>`（作者 2026-10-28：不必為 accelon3 相容，
+ *  inline 才會跟著字色／主題走，也能用 CSS 縮放）。 */
+const svgTexts = new Map<string, string>();
 let imageUrlsDb: unknown = null;
 let imageNameIndex: Map<string, number> | null = null;
 
@@ -59,6 +62,7 @@ async function resolvePageImages(lines: readonly string[]): Promise<void> {
   if (imageUrlsDb !== reader) {
     for (const url of imageUrls.values()) URL.revokeObjectURL(url);
     imageUrls.clear();
+    svgTexts.clear();
     imageNameIndex = null;
     imageUrlsDb = reader;
   }
@@ -73,12 +77,17 @@ async function resolvePageImages(lines: readonly string[]): Promise<void> {
     for (let i = 0; i < (c?.count ?? 0); i++) imageNameIndex.set(c!.names[i], i);
   }
   for (const name of names) {
-    if (imageUrls.has(name)) continue;
+    if (imageUrls.has(name) || svgTexts.has(name)) continue;
     const i = imageNameIndex.get(name);
     if (i === undefined) continue;
     const { bytes } = await reader.resourceBytes(i);
     const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
-    const type = ext === 'svg' ? 'image/svg+xml' : ext === 'jpg' ? 'image/jpeg' : `image/${ext || 'png'}`;
+    if (ext === 'svg') {
+      // SVG：留原文（下面 inline 進 DOM），不建 blob URL
+      svgTexts.set(name, new TextDecoder('utf-8').decode(bytes));
+      continue;
+    }
+    const type = ext === 'jpg' ? 'image/jpeg' : `image/${ext || 'png'}`;
     imageUrls.set(name, URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type })));
   }
 }
@@ -86,6 +95,11 @@ async function resolvePageImages(lines: readonly string[]): Promise<void> {
 /** 給渲染器的查表函式（渲染是同步的，查不到就畫佔位方塊） */
 function imageUrlOf(name: string): string | null {
   return imageUrls.get(name) ?? null;
+}
+
+/** SVG 原文（有就 inline，沒有就退回 blob URL／佔位方塊） */
+function svgTextOf(name: string): string | null {
+  return svgTexts.get(name) ?? null;
 }
 
 /** 重畫目前這一頁（切換渲染模式用） */
@@ -465,8 +479,8 @@ const TRAIL_SEP = /[\s\u3000、，。：；·｜|／/\-—–_~]+/;
 const MAX_INLINE_SIBS = 5;
 
 /** breadcrumb 的顏色：標籤樣式有自訂就用它，否則用主題的 tag 字色（作者 2026-10-22） */
-const trailColor = (tag: string, depth: number): string =>
-  tagColorOf(tag) ?? `var(--tag-text-${tagChromaIndex(tag, depth)})`;
+const trailColor = (tag: string, depth: number, label?: string): string =>
+  tagColorOf(tag) ?? `var(--tag-text-${tagChromaIndex(tag, depth, undefined, label)})`;
 
 export function trailLabel(text: string): string {
   const full = (text ?? '').trim();
@@ -486,7 +500,7 @@ function renderAncestorTrail(s: DocSession): string {
     return `<span class="trailWrap" data-va="${a.va}">`
       + `<button type="button" class="trail" data-va="${a.va}" data-tag="${escapeHtml(a.tag)}"`
       + ` title="「${full}」：點一下換同一層的其他節點"`
-      + ` style="--tagtext:${trailColor(a.tag, a.depth)}">${short}<span class="trailCaret">▾</span></button>`
+      + ` style="--tagtext:${trailColor(a.tag, a.depth, a.label)}">${short}<span class="trailCaret">▾</span></button>`
       + '</span>';
   });
   // 目前文件內容的 siblings（作者 2026-10）：直接排在路徑後面，短標籤、可點就換節。
@@ -501,13 +515,13 @@ function renderAncestorTrail(s: DocSession): string {
       sibHtml = `<span class="trailSibs"><span class="trailWrap">`
         + `<button type="button" class="trail trailMore" data-va="${self.va}" data-tag="${escapeHtml(self.tag)}"`
         + ` title="「${full}」：同層 ${sibs.length} 個節點，點一下選"`
-        + ` style="--tagtext:${trailColor(self.tag, self.depth)}">${short}<span class="trailCaret">▾</span></button>`
+        + ` style="--tagtext:${trailColor(self.tag, self.depth, self.label)}">${short}<span class="trailCaret">▾</span></button>`
         + `</span><span class="trailCount">同層 ${sibs.length}</span></span>`;
     } else {
       sibHtml = '<span class="trailSibs">' + sibs.map((n) => {
         const full = escapeHtml(n.label);
         const short = escapeHtml(trailLabel(n.label));
-        const style = `--tagtext:${trailColor(n.tag, n.depth)}`;
+        const style = `--tagtext:${trailColor(n.tag, n.depth, n.label)}`;
         if (n.va === self.va) {
           return `<span class="trailSib cur" data-va="${n.va}" title="「${full}」（目前這一節）" style="${style}">${short}</span>`;
         }
@@ -588,7 +602,7 @@ function wireTrail(): void {
         item.dataset.va = String(n.va);
         item.dataset.tag = n.tag;
         item.textContent = n.label;
-        item.style.setProperty('--tagtext', trailColor(n.tag, n.depth));
+        item.style.setProperty('--tagtext', trailColor(n.tag, n.depth, n.label));
         item.onclick = (e2) => {
           e2.stopPropagation();
           closeMenus();
@@ -1214,6 +1228,7 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
     : renderPageBlocks(viewDt.lines, viewDt.lineNumbers, {
       hardBreaks, marks: hardBreaks ? [] : kwMarks(), convert: simConverter(), pageMarks: pageMarksOn(),
       imageUrl: imageUrlOf,
+      svgText: svgTextOf,
     });
   const rows = renderBlocks(blocks, s);
   const b = pageBounds(s.realm, s.page);
@@ -1267,52 +1282,62 @@ const docScrollWired = new WeakSet<Element>();
  * 退回頁首的 `<頁>` 分隔後面，一條都不會丟。
  */
 async function paintReverseBar(): Promise<void> {
-  const pb = document.querySelector<HTMLElement>('#docText .docBody .pageBreak[data-page], #docText .docBody .pageMark[data-page]');
-  const pageId = pb?.dataset.page ?? '';
   const body = document.querySelector<HTMLElement>('#docText .docBody');
-  if (!body || !pageId) return;
+  if (!body) return;
   document.querySelectorAll('#docText .xrefRevInline').forEach((el) => el.remove());
-  let items: RevItem[] = [];
-  try {
-    items = await reverseItemsOf(pageId);
-  } catch { return; }
-  if (!items.length || !body.isConnected) return;
-  // 行文（去掉標籤、只留漢字）→ 每一行在整頁字串裡的起點
+  // 一個文件可能含很多頁（整部經）；回連結要掛在「那一頁」，不是文件第一頁。
+  const markers = [...body.querySelectorAll<HTMLElement>('.pageBreak[data-page], .pageMark[data-page]')];
+  if (!markers.length) return;
   const lines = [...body.querySelectorAll<HTMLElement>('.docLine')];
-  const keys = lines.map((el) => cjkOnly(el.dataset.src ?? el.textContent ?? ''));
-  const text = keys.join('');
-  const starts: number[] = [];
-  for (let i = 0, at = 0; i < keys.length; i++) { starts.push(at); at += keys[i].length; }
-  const lineAt = (pos: number): number => {
-    let lo = 0, hi = starts.length - 1, k = 0;
-    while (lo <= hi) { const m = (lo + hi) >> 1; if (starts[m] <= pos) { k = m; lo = m + 1; } else hi = m - 1; }
-    return k;
-  };
-  const hits = new Map<number, RevItem[]>();   // 行索引 → 按鈕
-  const rest: RevItem[] = [];
-  for (const it of items) {
-    const q = cjkOnly(it.tq);
-    let at = -1;
-    for (const n of [14, 10, 8]) {
-      if (q.length < n) continue;
-      at = text.indexOf(q.slice(0, n));
-      if (at >= 0) break;
+  const lineIdx = new Map<HTMLElement, number>();
+  lines.forEach((el, i) => lineIdx.set(el, i));
+  const markerLine = markers.map((m) => lineIdx.get(m.closest('.docLine') as HTMLElement) ?? 0);
+  for (let mi = 0; mi < markers.length; mi++) {
+    const pageId = markers[mi].dataset.page ?? '';
+    if (!pageId) continue;
+    const from = markerLine[mi];
+    const to = mi + 1 < markers.length ? markerLine[mi + 1] : lines.length;
+    const pageLines = lines.slice(from, to);
+    if (!pageLines.length) continue;
+    let items: RevItem[] = [];
+    try {
+      items = await reverseItemsOf(pageId);
+    } catch { continue; }
+    if (!items.length || !body.isConnected) continue;
+    // 行文（去掉標籤、只留漢字）→ 每一行在這一頁字串裡的起點
+    const keys = pageLines.map((el) => cjkOnly(el.dataset.src ?? el.textContent ?? ''));
+    const text = keys.join('');
+    const starts: number[] = [];
+    for (let i = 0, at = 0; i < keys.length; i++) { starts.push(at); at += keys[i].length; }
+    const lineAt = (pos: number): number => {
+      let lo = 0, hi = starts.length - 1, k = 0;
+      while (lo <= hi) { const m = (lo + hi) >> 1; if (starts[m] <= pos) { k = m; lo = m + 1; } else hi = m - 1; }
+      return k;
+    };
+    const hits = new Map<number, RevItem[]>();   // 這一行 → 按鈕
+    const rest: RevItem[] = [];
+    for (const it of items) {
+      const q = cjkOnly(it.tq);
+      let at = -1;
+      for (const n of [14, 10, 8]) {
+        if (q.length < n) continue;
+        at = text.indexOf(q.slice(0, n));
+        if (at >= 0) break;
+      }
+      if (at < 0) { rest.push(it); continue; }
+      const li = lineAt(at);
+      const arr = hits.get(li);
+      if (arr) arr.push(it); else hits.set(li, [it]);
     }
-    if (at < 0) { rest.push(it); continue; }
-    const li = lineAt(at);
-    const arr = hits.get(li);
-    if (arr) arr.push(it); else hits.set(li, [it]);
-  }
-  for (const [li, list] of hits) {
-    const host = lines[li]?.querySelector('.lineText') ?? lines[li];
-    host?.insertAdjacentHTML('afterbegin', '<span class="xrefRevInline">' + revButtonsHtml(list) + '</span>');
-  }
-  if (rest.length) {
-    const mark = document.querySelector<HTMLElement>(`#docText .docBody .pageBreak[data-page="${pageId}"], #docText .docBody .pageMark[data-page="${pageId}"]`);
-    const html = '<span class="xrefRevInline" title="這一頁的引用（未能定位到某一行）">回連結：'
-      + revButtonsHtml(rest) + '</span>';
-    if (mark) mark.insertAdjacentHTML('afterend', html);
-    else document.querySelector<HTMLElement>('#docText .docTop')?.insertAdjacentHTML('afterend', html);
+    for (const [li, list] of hits) {
+      const host = pageLines[li]?.querySelector('.lineText') ?? pageLines[li];
+      host?.insertAdjacentHTML('afterbegin', '<span class="xrefRevInline">' + revButtonsHtml(list) + '</span>');
+    }
+    if (rest.length) {
+      const html = '<span class="xrefRevInline" title="這一頁的引用（未能定位到某一行）">反鏈：'
+        + revButtonsHtml(rest) + '</span>';
+      markers[mi].insertAdjacentHTML('afterend', html);
+    }
   }
 }
 

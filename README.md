@@ -48,31 +48,71 @@ bun run test/index-match.ts # 反向索引認證
 網頁版把建好的 adb **下載**到「下載」資料夾；桌面版寫到**執行檔旁邊**（捷徑的開始位置
 不同也找得到）。兩邊都會更新 adb 清單並開啟新庫。轉換在頁面裡完成（Bun 不參與），
 與 CLI `bun run md2adb` 產生的檔案**逐位元組相同**。詳見
-[OBSIDIAN-TO-ADB.md](OBSIDIAN-TO-ADB.md) §11。
+[OBSIDIAN-TO-ADB.md](./docs/adb/OBSIDIAN-TO-ADB.md) §11。
 
 ## 網頁版編輯（2026-10-24）
 
 `build/accelon26.html` 現在可以在瀏覽器裡直接修錯字：按本文右上角的鉛筆進入編輯態，
 離開自動暫存，db 分頁會出現「n 頁修訂」；按存檔圖示重建並下載新的 `.adb`，
 修訂 diff 存在 adb 的 `revisions` 容器（舊 accelon3.exe 不會讀）。目前限制 50 MB 以下。
-詳見 [EDIT-MODE.md](EDIT-MODE.md)。
+詳見 [EDIT-MODE.md](./docs/system/EDIT-MODE.md)。
 
 ## 文件
 
-* **[ACCELON26-HANDOVER.md](ACCELON26-HANDOVER.md) — accelon26 應用（桌面版＋官網）的交接文件（先看開頭的「現況」，本輪細節在 §13）**
-* [HANDOVER.md](HANDOVER.md) — 轉換管線的技術交件：工具、驗證結果、規則摘要、限制
-* [DEPLOY.md](DEPLOY.md) — 主機、部署、更新器、回滾，以及 `bun run clean`
-* [MACOS.md](MACOS.md) — macOS 版怎麼建、怎麼簽、怎麼上傳
-* [wails3-pitfalls.md](wails3-pitfalls.md) — Wails3 桌面版共通避坑（Windows SmartScreen、WebView2、更新器、macOS Gatekeeper）
-* [yap-software-practice.md](yap-software-practice.md) — 作者預設做法（Windows／Bun／單檔 HTML／Wails3、漢字、無損簡體、主題）
-* [SPEC.md](SPEC.md) — `.adb` 協定規格（§15 索引複刻、§17 管線與驗證狀態）
-* [UPGRADE-DIRECTIONS.md](UPGRADE-DIRECTIONS.md) — 容器／索引／轉 offtext 三個方向的改進評估與優先序
-* [OFFTEXT-FACT-LAYER.md](OFFTEXT-FACT-LAYER.md) — 給 AI 編輯的事實層：claim／evidence／驗證與 12 週試點
-* [OFFTEXT-TAG-LANGUAGE.md](OFFTEXT-TAG-LANGUAGE.md) — 自定義標籤語法、註冊表、standoff 位置與 AI 調色盤
-* [accelon-vs-tei.md](accelon-vs-tei.md) — Accelon 風格 XML（H1–H6 擴充）與 TEI 巢式結構對照：轉換處方與實測陷阱
-* [PASCAL-NOTES.md](PASCAL-NOTES.md) — Delphi 原始碼逐單元筆記
-* [FORMAT.md](FORMAT.md) — 早期英文逆向筆記
-* [TODO.md](TODO.md) — 待辦與後續計畫
+文件分成兩區：`docs/adb/` 是 `.adb` 格式、轉換、語料與反鏈；`docs/system/` 是 accelon26 應用、部署、offtext 與開發規範。根目錄只留這份 README。
+
+### ADB：格式、轉換、語料、反鏈
+
+* [SPEC.md](./docs/adb/SPEC.md) — `.adb` 協定規格（§15 索引複刻、§17 管線與驗證狀態）
+* [FORMAT.md](./docs/adb/FORMAT.md) — 早期英文逆向筆記（容器格式）
+* [PASCAL-NOTES.md](./docs/adb/PASCAL-NOTES.md) — Delphi 原始碼逐單元筆記
+* [accelon-vs-tei.md](./docs/adb/accelon-vs-tei.md) — Accelon 風格 XML 與 TEI 巢式結構對照
+* [UPGRADE-DIRECTIONS.md](./docs/adb/UPGRADE-DIRECTIONS.md) — 容器／索引／轉 offtext 三個方向的改進評估
+* [HANDOVER.md](./docs/adb/HANDOVER.md) — 轉換管線的技術交件：工具、驗證、限制
+* [cbeta-adb-skill.md](./docs/adb/cbeta-adb-skill.md) — CBETA TEI → accelon `.adb` 的六步流程（含 `<聯 i q j>` 規格）
+* [old-adb-upgrade-skill.md](./docs/adb/old-adb-upgrade-skill.md) — 舊 accelon3 `.adb` 升級：保留 schema／頁碼／caches，補 `<聯 i q j>`
+* [backlink-skill.md](./docs/adb/backlink-skill.md) — 引文接回大正藏的完整 runbook（cue、單字 VA、`j`、打包、上架）
+* [xref-j-lessons.md](./docs/adb/xref-j-lessons.md) — `<聯 j>` 字元級反鏈的實戰筆記：座標、重複頁 id、驗證與工具鏈
+* [broken-quote.md](./docs/adb/broken-quote.md) — 尚無精確 `j` 的 823 條 `<聯>` 清單，待人工校正
+* [broken-quote-elsewhere.md](./docs/adb/broken-quote-elsewhere.md) — 576 條有 `q` 的全文檢索結果（0 條整句、237 條前綴、339 條找不到）
+* [taisho-steps.md](./docs/adb/taisho-steps.md) — 大正藏 1–85 冊
+* [jingqun.md](./docs/adb/jingqun.md) — 大正藏「經／論／律→注→疏」繼承表（379 部註疏、479 節點、81 群）
+* [goryeo-steps.md](./docs/adb/goryeo-steps.md) — 高麗藏
+* [lc-steps.md](./docs/adb/lc-steps.md) — 呂澂佛學著作集（1,119 個大正鏈結）
+* [ys-steps.md](./docs/adb/ys-steps.md) — 印順（Y 部）
+* [swjzz-steps.md](./docs/adb/swjzz-steps.md) — 說文解字注（含「說文／說文異／段注」三種標記怎麼判）
+* [swjzzsrc-steps.md](./docs/adb/swjzzsrc-steps.md) — 說文解字注引用書目：說文解字、爾雅、周易、尚書、廣韻（可持續加書）
+* [swjzz-citations.md](./docs/adb/swjzz-citations.md) — 段注引書統計（「X曰」與書名出現次數）
+* [swjzz-seal.md](./docs/adb/swjzz-seal.md) — 說文小篆字型 → SVG → adb resources（不必裝 TTF）
+* [pua.md](./docs/adb/pua.md) — 缺字清單（PUA／？／只有圖／U+FFFD），待逐條處理
+* [swjzz-punct.md](./docs/adb/swjzz-punct.md) — 借外部標點補進 swjz.xml（swjzzp.adb，含書名號）
+* [tx.md](./docs/adb/tx.md) — `tx.adb` 與舊版 `taixu.adb` 的差異
+* [ys.md](./docs/adb/ys.md) — `ys.adb` 與舊版 `yinshun.adb` 的差異
+* [taixu-links.md](./docs/adb/taixu-links.md) — 太虛全書的經文引用連到大正藏
+* [shared-xref-tx-ys.md](./docs/adb/shared-xref-tx-ys.md) — 太虛／印順共同引用的大正頁
+* [shared-xref-tx-ys-ylp.md](./docs/adb/shared-xref-tx-ys-ylp.md) — 太虛／印順／于淩波三庫共同引用
+* [report-fgdict.md](./docs/adb/report-fgdict.md) — `fgdict.adb` 測試報告
+* [OBSIDIAN-TO-ADB.md](./docs/adb/OBSIDIAN-TO-ADB.md) — Obsidian vault → adb 方案評估
+* [OBSIDIAN-TO-ADB-LOG.md](./docs/adb/OBSIDIAN-TO-ADB-LOG.md) — 上述方案的開發紀錄
+
+### 系統：accelon26、部署、offtext、開發規範
+
+* **[ACCELON26-HANDOVER.md](./docs/system/ACCELON26-HANDOVER.md) — accelon26 應用（桌面版＋官網）交接文件（先看「現況」）**
+* [architecture.md](./docs/system/architecture.md) — Accelon26 系統架構
+* [DEPLOY.md](./docs/system/DEPLOY.md) — 主機、部署、更新器、回滾
+* [MACOS.md](./docs/system/MACOS.md) — macOS 版建置、簽章、上傳
+* [wails3-pitfalls.md](./docs/system/wails3-pitfalls.md) — Wails3 桌面版避坑
+* [yap-software-practice.md](./docs/system/yap-software-practice.md) — 作者預設做法（Windows／Bun／單檔 HTML／Wails3）
+* [EDIT-MODE.md](./docs/system/EDIT-MODE.md) — 網頁版編輯態與修訂 diff
+* [TAG-STYLE-SETTINGS.md](./docs/system/TAG-STYLE-SETTINGS.md) — 標籤樣式設定（設計稿）
+* [adbviewer.md](./docs/system/adbviewer.md) — adb viewer
+* [adbviewer-http.md](./docs/system/adbviewer-http.md) — HTTP + Range 版架構
+* [adbviewer-sidecar.md](./docs/system/adbviewer-sidecar.md) — Sidecar 索引旁檔設計
+* [adbviewer-assessment.md](./docs/system/adbviewer-assessment.md) — 可行性評估
+* [OFFTEXT-FACT-LAYER.md](./docs/system/OFFTEXT-FACT-LAYER.md) — 給 AI 編輯的事實層
+* [OFFTEXT-TAG-LANGUAGE.md](./docs/system/OFFTEXT-TAG-LANGUAGE.md) — 自定義標籤語法與註冊表
+* [TODO.md](./docs/system/TODO.md) — 待辦與後續計畫
+* [THIRD-PARTY.md](./docs/system/THIRD-PARTY.md) — 第三方授權
 
 ## 共用規範與模塊
 
@@ -103,6 +143,8 @@ bun run check:norms    # 確認沒有 drift（發佈前跑）
 ## 注意
 
 `.adb` 是**光盤時代**的格式，seek 很貴：**新功能先查 adb 內已有的資料**（`caches` 字串表、`attributes` 實例屬性、
-`tags`／`tokens` 命中表、`tables` 行表），不要回讀內文硬算。詳見 [HANDOVER.md](HANDOVER.md) §0 與 [SPEC.md](SPEC.md) §2.1。
+`tags`／`tokens` 命中表、`tables` 行表），不要回讀內文硬算。詳見 [HANDOVER.md](./docs/adb/HANDOVER.md) §0 與 [SPEC.md](./docs/adb/SPEC.md) §2.1。
 
 `*.adb`、`*.xml`、`build/`、`sourcecode/`、`accelon3/` **不進版控**（見 `.gitignore`）——資料檔與中間產物只留在本機。
+
+

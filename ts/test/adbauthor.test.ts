@@ -143,6 +143,57 @@ describe('authorAdb', () => {
     closeSync(fd);
   });
 
+  test('cachedTags seeds the cache set from the first instance (old docdef)', async () => {
+    // 舊庫的 docdef 宣告在 adb 之外：重建時把舊 caches 的鍵傳進來，這些標記
+    // 從第一個實例就要有 cache（不必等文字裡的 t= 宣告）。
+    const result = await authorAdb({
+      dbname: 'seed', dbcname: '種子', lines: ['<節>甲</節>', '<節>乙</節>'],
+      cachedTags: ['節'],
+    });
+    const dir = mkdtempSync(join(tmpdir(), 'adbauthor-seed-'));
+    const file = join(dir, 's.adb');
+    writeFileSync(file, result.file);
+    const fd = openSync(file, 'r');
+    const outer = parseBlockSet(fd, FILE_HEADER_SIZE)!;
+    const caches = parseBlockSet(fd, blockOffsetByName(outer, 'caches')!)!;
+    expect(caches.names).toEqual(['節']);
+    const r = blockRange(caches, 0);
+    expect(innerStrings(fd, r.start)).toEqual(['甲', '乙']);
+    closeSync(fd);
+  });
+
+  test('dualSelfClosingTags also indexes /x for a self-closing <x/>', async () => {
+    const result = await authorAdb({
+      dbname: 'dual', dbcname: '雙收尾', lines: ['<平裝 id="1"/>', '正文'],
+      dualSelfClosingTags: ['平裝'],
+    });
+    const dir = mkdtempSync(join(tmpdir(), 'adbauthor-dual-'));
+    const file = join(dir, 'd.adb');
+    writeFileSync(file, result.file);
+    const fd = openSync(file, 'r');
+    const outer = parseBlockSet(fd, FILE_HEADER_SIZE)!;
+    const tags = parseBlockSet(fd, blockOffsetByName(outer, 'tags')!)!;
+    expect(tags.names).toContain('平裝');
+    expect(tags.names).toContain('/平裝');
+    closeSync(fd);
+  });
+
+  test('validTags rejects prose <書名> so the tag table does not explode', async () => {
+    const result = await authorAdb({
+      dbname: 'valid', dbcname: '白名單', lines: ['唐玄奘在 <大唐西域記> 中說'],
+      validTags: ['書'],
+    });
+    const dir = mkdtempSync(join(tmpdir(), 'adbauthor-valid-'));
+    const file = join(dir, 'v.adb');
+    writeFileSync(file, result.file);
+    const fd = openSync(file, 'r');
+    const outer = parseBlockSet(fd, FILE_HEADER_SIZE)!;
+    const tags = parseBlockSet(fd, blockOffsetByName(outer, 'tags')!)!;
+    expect(tags.names).not.toContain('大唐西域記');
+    expect(tags.names).toEqual([]);
+    closeSync(fd);
+  });
+
   test('a line containing CR/LF is refused', async () => {
     await expect(
       authorAdb({ dbname: 'x', dbcname: 'x', lines: ['ok', 'bad\nline'] }),

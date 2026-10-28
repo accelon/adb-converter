@@ -13,14 +13,14 @@ import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealC
 import { loadPosMap, parseAddress, formatAddress, type PosMap } from './posmap';
 import { initNoteLinks } from './notes';
 import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
-import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderJump, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully } from './scopes';
+import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderJump, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully, treeSnapshot } from './scopes';
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 import { backendKind, goQueryCount, lastGoAnswer } from './backend';
 import { isDictDb } from './db-kind';
 import { closeSearchAll, initSearchAll, openSearchAll, runSearchAll, searchAllState } from './allsearch';
 import { dictLookupAt, dictPaneState, initDictPane } from './dict-pane';
 import { listDicts, type DictListEntry } from './dict-lookup';
-import { autoDictOn, dictOnlyIsdict, dictOrder, orderByFile, selectionDictOn, setAutoDict, setDictOnlyIsdict, setDictOrder, setSelectionDict } from './dict-settings';
+import { dictOnlyIsdict, dictOrder, orderByFile, setDictOnlyIsdict, setDictOrder } from './dict-settings';
 import { setDictHooks } from './dict-hooks';
 import { initTour, openTourMenu, play as playTour, startTour, stopTour, tourState } from './tour';
 import { toggleInspect } from './inspect';
@@ -213,6 +213,7 @@ function showTab(name: string, col: 'left' | 'right' = 'left') {
   root.querySelectorAll('.tabPane').forEach((p) => p.classList.toggle('active', (p as HTMLElement).dataset.tab === name));
   // the right column's 文字內容 pane draws itself (text-pane owns that rendering)
   if (col === 'right' && name === 'text') void renderTextPane();
+  if (col === 'right' && name === 'heat') void renderHeatTab();
   if (col === 'right' && name === 'revisions') void renderRevisions();
   // left panes are built on demand: each one walks its own tree/attribute table
   if (col === 'left') {
@@ -220,6 +221,7 @@ function showTab(name: string, col: 'left' | 'right' = 'left') {
     else if (name === 'terms') void renderTerms();
     else if (name === 'folio') void renderFolio();
     else if (name === 'jump') void renderJump();
+    else if (name === 'bookmark') void renderBookmarks();
     else if (name === 'latin') void renderLatin();
   }
 }
@@ -340,10 +342,6 @@ function updateSettingsUi(): void {
     btn.classList.toggle('on', custom);
     btn.title = custom ? '設置（有不是預設的設定）' : '設置（進階模式、繁簡通檢、文字顯示）';
   }
-  const dictAuto = $('#setDictAuto') as HTMLInputElement | null;
-  if (dictAuto) dictAuto.checked = autoDictOn();
-  const dictSelection = $('#setDictSelection') as HTMLInputElement | null;
-  if (dictSelection) dictSelection.checked = selectionDictOn();
   const dictOnly = $('#dictOnlyIsdict') as HTMLInputElement | null;
   if (dictOnly) dictOnly.checked = dictOnlyIsdict();
 }
@@ -591,16 +589,6 @@ async function renderDictOrder(force = false): Promise<void> {
 }
 
 function wireDictOrder(): void {
-  const auto = $('#setDictAuto') as HTMLInputElement | null;
-  auto?.addEventListener('change', () => {
-    setAutoDict(auto.checked);
-    setStatus(auto.checked ? '查字典：開啟' : '查字典：關閉', 'info');
-  });
-  const selection = $('#setDictSelection') as HTMLInputElement | null;
-  selection?.addEventListener('change', () => {
-    setSelectionDict(selection.checked);
-    setStatus(selection.checked ? '選取區自動查：開啟' : '選取區自動查：關閉', 'info');
-  });
   $('#dictRefresh')?.addEventListener('click', () => { void renderDictOrder(true); });
   // 只列出 c="isdict"（作者 2026-10-26）：清單與查詢一起過濾（dictLookup 也看這個旗標）
   const only = $('#dictOnlyIsdict') as HTMLInputElement | null;
@@ -1320,6 +1308,21 @@ function boot() {
     else enterEdit(s);
   };
   window.addEventListener('keydown', (ev) => {
+    const mod = ev.ctrlKey || ev.metaKey;
+    if (!mod || ev.shiftKey || ev.repeat || ev.defaultPrevented) return;
+    if (ev.key.toLowerCase() !== 'b') return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (anyModalOpen()) return;
+    if (ev.altKey) {
+      toggleSide('right');
+      setStatus('右欄：' + (readCols().right > 0 ? '開' : '關') + '（Ctrl+Alt+B）', 'info');
+    } else {
+      toggleSide('left');
+      setStatus('左欄：' + (readCols().left > 0 ? '開' : '關') + '（Ctrl+B）', 'info');
+    }
+  }, true);
+  window.addEventListener('keydown', (ev) => {
     if (ev.defaultPrevented || ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
     switch (ev.key) {
       case 'F1':
@@ -1545,6 +1548,10 @@ function boot() {
   });
   initTextPane();   // Ctrl+點樹節點／本文分頁 → 右欄文字內容
   initXref();       // <聯 i="db?anchor"> 跨庫錨點（本文 ⇄ 右欄）
+  initEmbed();      // <嵌 i="db?anchor"> 文內嵌入（transclusion）
+  initHeatTab();    // 右欄「引紋」：反鏈的引用分布熱圖
+  initRevList();    // 反鏈清單抽屜
+  initBookmarks();  // 左欄書籤＋選取文字選單
   setEnsureRight(() => setSide('right', true));
   renderDbPick();   // 下拉第一項是「加入 adb」（file:// 版）
   void bootDesktop();   // desktop build: catalogue + open the adbs next to the exe
@@ -1573,6 +1580,8 @@ async function posmapOf(): Promise<PosMap | null> {
 export function installDebugApi(): void {
 (window as unknown as Record<string, unknown>).__accelon26 = {
   openFile, showLine, showToken, revealHit, vapaProbe, showTab, toggleSide,
+  bookmarkState, citationForSelection,
+  sutraLookup: (q: string) => lookupBook('taisho', q),
   /** 大正藏 ⇄ 高麗藏 換址（需要開著帶 align 的 goryeo.adb） */
   /** 跨庫錨點：模擬點 <聯 i="db?anchor">（測試／診斷用） */
   xrefJump: async (v: string, fromRight = false, newTab = false, quote = '') => { await xrefJump(v, fromRight, newTab, quote); return true; },
@@ -1632,6 +1641,7 @@ export function installDebugApi(): void {
   status: () => statusText(),
   /** mount every 目錄樹 row (rows are mounted lazily; tests assert on the whole tree) */
   growTree: growTreeFully,
+  treeSnapshot,
   setDocFont, autoFitFont, docFont: () => readDocFont(),
   setAdvanced, isAdvanced: () => advanced,
   openBreakdown: () => lastOpen,
@@ -1664,9 +1674,7 @@ export function installDebugApi(): void {
     tagStyles: tagStyleCounts(),
     settings: (() => { const l = settingsLocation(); return l ? { kind: l.kind, path: l.path } : null; })(),
     settingsError: settingsError(),
-    /** 查字典（作者 2026-10-22；2026-10-24 加選取自動查） */
-    dictAuto: autoDictOn(),
-    dictSelection: selectionDictOn(),
+    /** 查字典：2026-10-28 起改由本文選取選單明確觸發 */
     dictOrder: dictOrder(),
     dictOnlyIsdict: dictOnlyIsdict(),
     dbLog,
@@ -1781,7 +1789,12 @@ import { editCount, findSession, sourceKey } from './edit-session';
 import { extraRevisions } from './revisions-store';
 import { rebuildAndDownload, rollbackAndDownload, runRebuild } from './rebuild-ui';
 import { initTextPane, renderTextPane, resetTextPane, setEnsureRight, textState } from './text-pane';
-import { initXref, previewForeign, refreshReverse, xrefDebug, xrefJump, xrefProbe } from './xref';
+import { initXref, lookupBook, previewForeign, refreshReverse, xrefDebug, xrefJump, xrefProbe } from './xref';
+import { initEmbed } from './embed';
+import { initHeatTab, renderHeatTab, syncHeatTab } from './heat-tab';
+import { initRevList } from './rev-list';
+import { initBookmarks, renderBookmarks } from './bookmarks';
+import { bookmarkState, citationForSelection } from './bookmarks';
 import { initVaultImport, vaultImportState } from './vault-import';
 import { hasLogoResource, hideDocLogo, logoState, updateDocLogo } from './logo';
 import { hostState } from './host';
@@ -1822,6 +1835,7 @@ function refreshAll(): void {
   else { $('#dirTree').innerHTML = '<p class="dim">此庫沒有左欄分頁。</p>'; }
   const rt = $('#colRight .tabBtn.active')?.getAttribute('data-tab');
   if (rt) showTab(rt, 'right');
+  void syncHeatTab();
   setStatus(`${reader.header.dbcname || reader.header.dbname}：${fmtInt(tokens.length)} 詞、${fmtInt(docs.length)} 文件`, 'info');
 }
 
@@ -1830,7 +1844,7 @@ function clearDbUi(): void {
   document.body.classList.remove('loaded');
   renderDocs();
   for (const sel of ['#meta', '#headerText', '#capacity', '#docs', '#resources', '#dirTree', '#termsList',
-    '#freqList', '#folioList', '#latinList', '#searchList', '#tokenRows']) {
+    '#freqList', '#folioList', '#latinList', '#searchList', '#tokenRows', '#bookmarkList', '#bookmarkMeta']) {
     const el = $(sel);
     if (el) el.innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
   }

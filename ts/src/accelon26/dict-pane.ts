@@ -13,7 +13,7 @@
  */
 import { $, escapeHtml } from './viewer';
 import { dictIndexState, dictLookup, relativesOfRow, renderEntry, rowOf, type DictRow } from './dict-lookup';
-import { autoDictOn, dictOrder, selectionDictOn } from './dict-settings';
+import { dictOrder } from './dict-settings';
 import { setDictHooks } from './dict-hooks';
 
 let rows: DictRow[] = [];
@@ -87,71 +87,19 @@ export function sentencesAtPoint(ev: MouseEvent): string[] {
   return sentencesAtElement(el, range.startOffset);
 }
 
-/** 選取查詞的上限（作者 2026-10-24：「十字以下」＝10 個字以內） */
-const SELECTION_MAX = 10;
-
-let lastSelectionText = '';
-let selectionTimer = 0;
-
-/**
- * 本文區目前選取的文字：
- *   * 選取必須整段落在 `#docText` 裡（在其他欄位選字不算）；
- *   * 去掉前後空白、把換行收斂成一個空白；
- *   * 空白或超過 10 個字 → null（太長的選取不查，避免拿一整段去查詞典）。
- */
-export function selectedDictText(): string | null {
-  const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
-  const doc = document.getElementById('docText');
-  if (!doc) return null;
-  const range = sel.getRangeAt(0);
-  const node = range.commonAncestorContainer;
-  const el = node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement;
-  if (!el || !doc.contains(el)) return null;
-  const text = sel.toString().replace(/\s+/g, ' ').trim();
-  if (!text || [...text].length > SELECTION_MAX) return null;
-  return text;
-}
-
-/** 用目前的選取查詞典；回傳 true＝這次已經（或先前已經）用選取查過 */
-function lookupSelectedText(): boolean {
-  if (!selectionDictOn()) {
-    lastSelectionText = '';
-    return false;
-  }
-  const text = selectedDictText();
-  if (!text) return false;
-  if (text === lastSelectionText) return true;
-  lastSelectionText = text;
-  void dictLookupAt(text);
-  return true;
-}
-
-/** 新的滑鼠動作或選取收起來：允許同樣的文字再查一次 */
-function resetSelectionLookup(): void {
-  lastSelectionText = '';
-}
-
 function renderList(): void {
   const list = $('#dictList');
   if (!list) return;
   const idx = dictIndexState();
   if (!idx.length) {
     list.innerHTML = '<div class="note">目前沒有詞典型 adb（有 <code>&lt;樹 s="$詞"&gt;</code> 宣告的庫）；'
-      + '右欄這頁會在中間本文點字時查詞條。</div>';
+      + '這裡會列出詞條。</div>';
     return;
   }
   if (!rows.length) {
-    const clickOn = autoDictOn();
-    const selOn = selectionDictOn();
-    const how = clickOn && selOn
-      ? '在本文點一個詞，或選取 10 個字以內'
-      : clickOn
-        ? '在本文點一個詞'
-        : selOn
-          ? '在本文選取 10 個字以內'
-          : '「查字典」已關閉（設置 → 介面）';
-    list.innerHTML = `<div class="note">${how}——這裡會列出以它開頭的詞條。</div>`;
+    list.innerHTML = sentence
+      ? `<div class="note">「${escapeHtml(sentence)}」查無詞條；可換短一點的詞，或改用選單「搜尋」。</div>`
+      : '<div class="note">選一段本文 → 選單「查字典」，這裡會列出以它開頭的詞條。</div>';
     return;
   }
   const byDict = dictOrder().length > 0;
@@ -213,7 +161,7 @@ async function showEntry(i: number): Promise<void> {
   body.scrollTop = 0;
 }
 
-/** 對一句話查所有詞典型 adb，並更新右欄（作者：點一下本文就查） */
+/** 對一段文字查所有詞典型 adb，並更新右欄（由選取選單「查字典」呼叫）。 */
 export async function dictLookupAt(text: string): Promise<void> {
   sentence = text;
   rows = await dictLookup(text);
@@ -223,9 +171,20 @@ export async function dictLookupAt(text: string): Promise<void> {
   if (rows.length) setDictHooks.current?.();
 }
 
+/** 選取選單「查字典」：切到右欄詞典分頁，再用整段選取文字查。 */
+export async function openDictLookup(text: string): Promise<void> {
+  const right = document.getElementById('colRight');
+  if (right && right.getBoundingClientRect().width < 10) {
+    document.getElementById('toggleRight')?.click();
+  }
+  const tab = document.querySelector<HTMLElement>('#colRight .tabBtn[data-tab="dict"]');
+  tab?.click();
+  await dictLookupAt(text);
+}
+
 /**
- * 點本文：試幾個候選句子，取第一個查得到詞條的（作者 2026-10：
- * 「但又不落於順世者的斷見」點在 順世 上時 caret 可能落在 者，所以不能只試一個起點）。
+ * 診斷用：從滑鼠位置取候選句子查詞（2026-10-28 起不再自動呼叫；
+ * 一般讀者請用本文選取選單「查字典」）。
  */
 export async function dictLookupAtPoint(ev: MouseEvent): Promise<void> {
   const cands = sentencesAtPoint(ev);
@@ -248,37 +207,10 @@ export async function dictLookupAtPoint(ev: MouseEvent): Promise<void> {
   }
 }
 
-/** 開機接線：分頁被切到「詞典」時重畫；本文任何地方被點到就查詞條 */
+/** 開機接線：分頁被切到「詞典」時重畫；查詞由選取選單明確觸發。 */
 export function initDictPane(): void {
   document.body.dataset.dictInit = '1';
   renderList();
   const btn = document.querySelector('#colRight .tabBtn[data-tab="dict"]') as HTMLElement | null;
   btn?.addEventListener('click', () => renderList());
-  // 用**捕捉階段**掛在 document 上：內文的列／塗紅／游標都有自己的處理，
-  // 任何一層 stopPropagation 都不該讓查詞失效（作者 2026-10）
-  // 作者 2026-10-22：設置 → 介面可以關掉「自動查字典」；關掉後點字完全不查。
-  // 作者 2026-10-24：選取 10 字以內就自動查（「選取區十字以下自動查」）。
-  document.addEventListener('mousedown', resetSelectionLookup, true);
-  document.addEventListener('mouseup', () => {
-    window.setTimeout(() => { lookupSelectedText(); }, 0);
-  }, true);
-  document.addEventListener('selectionchange', () => {
-    // 編輯態不要用選取文字查詞（使用者是在改字，不是在閱讀）
-    if (document.querySelector('.cm-editor')) return;
-    window.clearTimeout(selectionTimer);
-    if (!selectedDictText()) {
-      resetSelectionLookup();
-      return;
-    }
-    // 拖曳選取時 selectionchange 會連續觸發；停 180ms 再查，避免中途的半截選取
-    selectionTimer = window.setTimeout(() => { lookupSelectedText(); }, 180);
-  });
-  document.addEventListener('click', (ev) => {
-    const target = ev.target as HTMLElement | null;
-    if (target?.closest?.('.cm-editor') || target?.closest?.('.editBar')) return;
-    if (!target?.closest?.('#docText')) return;
-    if (lookupSelectedText()) return;
-    if (!autoDictOn()) return;
-    void dictLookupAtPoint(ev as MouseEvent);
-  }, true);
 }
