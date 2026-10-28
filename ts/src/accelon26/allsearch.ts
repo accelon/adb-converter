@@ -78,6 +78,7 @@ const TAB_INPUT: Record<string, string> = {
   terms: 'termsQuery',
   freq: 'freqQuery',
   folio: 'folioQuery',
+  jump: 'jumpQuery',
   latin: 'latinQuery',
 };
 

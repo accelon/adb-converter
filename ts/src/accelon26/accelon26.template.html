@@ -1268,6 +1268,7 @@
       <button class="tabBtn" data-tab="terms" hidden>名詞</button>
       <button class="tabBtn" data-tab="freq" hidden>頻次</button>
       <button class="tabBtn" data-tab="folio" hidden>原書分頁</button>
+      <button class="tabBtn" data-tab="jump" hidden>跳至</button>
       <button class="tabBtn" data-tab="latin" hidden>西文</button>
       <button class="tabBtn advOnly" data-tab="token">token</button>
       <!-- 左欄字級：黑底白字的「小 T / 大 T」，點一下 +2px、Alt+點 −2px（作者 2026-10） -->
@@ -1315,6 +1316,16 @@
         </div>
         <div id="folioMeta" class="note"></div>
         <div id="folioList" class="scrollArea"></div>
+      </div>
+      <!-- 跳至：任何有 <頁> 標記的庫都能用（不必宣告 `s="頁.n"` 樹）。
+           輸入頁 id 的一部份（例：49p15、0065a）就列出符合的頁；按 Enter 直接跳到最接近的一頁。 -->
+      <div class="tabPane" data-tab="jump">
+        <div class="searchBar">
+          <input type="search" id="jumpQuery" placeholder="輸入頁 id（例：49p15、0065a）後按 Enter" title="依 <頁 id> 跳到那一頁；按 Enter 直接跳到最接近的符合項" autocomplete="off" spellcheck="false">
+          <button id="jumpClear" title="清除">✕</button>
+        </div>
+        <div id="jumpMeta" class="note"></div>
+        <div id="jumpList" class="scrollArea"></div>
       </div>
       <div class="tabPane" data-tab="latin">
         <div class="searchBar">

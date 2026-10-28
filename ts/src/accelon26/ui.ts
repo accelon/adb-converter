@@ -13,7 +13,7 @@ import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealC
 import { loadPosMap, parseAddress, formatAddress, type PosMap } from './posmap';
 import { initNoteLinks } from './notes';
 import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
-import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully } from './scopes';
+import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderJump, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully } from './scopes';
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 import { backendKind, goQueryCount, lastGoAnswer } from './backend';
 import { isDictDb } from './db-kind';
@@ -219,6 +219,7 @@ function showTab(name: string, col: 'left' | 'right' = 'left') {
     if (name === 'freq') void renderFreq();
     else if (name === 'terms') void renderTerms();
     else if (name === 'folio') void renderFolio();
+    else if (name === 'jump') void renderJump();
     else if (name === 'latin') void renderLatin();
   }
 }
@@ -1468,6 +1469,21 @@ function boot() {
   wireOwnSearch('#latinQuery', '#latinClear', () => void renderLatin());
   wireOwnSearch('#termsQuery', '#termsClear', () => void renderTerms());
   wireOwnSearch('#folioQuery', '#folioClear', () => void renderFolio());
+  // 跳至（作者 2026-10）：邊打邊列符合的頁 id，Enter 直接跳到最接近的一頁。
+  {
+    const input = $('#jumpQuery') as HTMLInputElement | null;
+    if (input) {
+      let t = 0;
+      const run = (enter: boolean) => void renderJump(enter);
+      input.oninput = () => { window.clearTimeout(t); t = window.setTimeout(() => run(false), 120); };
+      input.onkeydown = (ev) => {
+        if (ev.key === 'Enter') { window.clearTimeout(t); ev.preventDefault(); run(true); }
+        if (ev.key === 'Escape') ev.preventDefault();
+      };
+      const clear = $('#jumpClear') as HTMLButtonElement | null;
+      if (clear) clear.onclick = () => { input.value = ''; run(false); input.focus(); };
+    }
+  }
   const termsMode = $('#termsMode') as HTMLButtonElement | null;
   if (termsMode) {
     // 三態 toggle（作者 2026-10）：開頭 → 中間 → 結尾 → 開頭，不用下拉

@@ -363,11 +363,19 @@ function syncTreeTabs() {
       btn.title = 's="' + hit.scope + '"' + (hit.caption ? '｜' + hit.caption : '');
     }
   }
+  // 跳至不看樹宣告：只要庫裡有 <頁> 實例就出現（作者 2026-10）
+  const jumpBtn = $('#colLeft .tabBtn[data-tab="jump"]') as HTMLButtonElement | null;
+  if (jumpBtn) {
+    const has = hasPageTags();
+    jumpBtn.hidden = !has;
+    if (has) jumpBtn.title = '依 <頁 id> 跳到某一頁（例：49p15、20p0065a）';
+  }
   syncTreePickers(declared);
   // keep the active tab sane: a dictionary has no 目錄 pane at all
   const active = $('#colLeft .tabBtn.active') as HTMLButtonElement | null;
   if (!active || active.hidden) {
-    const first = ['dir', 'terms', 'freq', 'folio', 'latin'].find((k) => present.has(k));
+    const first = ['dir', 'terms', 'freq', 'folio', 'latin'].find((k) => present.has(k))
+      ?? (hasPageTags() ? 'jump' : undefined);
     if (first) showTab(first, 'left');
   }
 }
@@ -1425,9 +1433,89 @@ async function renderFolio(): Promise<void> {
     },
   });
 }
+/* ------------------------------------------------------------------ 跳至（頁 id）
+ *
+ * 原書分頁（folio）要資料庫自己宣告 `<樹 s="頁.n">` 才出現；很多庫有 `<頁 id=…>` 卻沒宣告。
+ * 這一頁改成直接讀 `attributes/頁.id`，所以「有 <頁> 標記的 adb」都有跳至可用。
+ * 頁 id 是讀者認得的座標（大正藏 `49p15`、印順 `20p0065a`），輸入片段就能找。
+ */
+let jumpCache: { label: string; va: number }[] | null = null;
+
+/** 這個庫有沒有 `<頁>` 實例（有的話左欄才顯示「跳至」分頁） */
+export function hasPageTags(): boolean {
+  return !!reader?.containers.get('tags')?.names.includes('頁');
+}
+
+async function jumpEntries(): Promise<{ label: string; va: number }[]> {
+  if (jumpCache) return jumpCache;
+  if (!reader) return [];
+  const av = await reader.attributeValues('頁.id');
+  const tagsC = reader.containers.get('tags');
+  if (!av?.values?.length || !av.pointers || !tagsC) return [];
+  const at = tagsC.names.indexOf('頁');
+  if (at < 0) return [];
+  const vas = await reader.decodeBlockList('tags', at);
+  const out: { label: string; va: number }[] = [];
+  for (let i = 0; i < av.values.length; i++) {
+    const ptr = av.pointers[i];
+    if (tagsC.names[(ptr >>> 24) & 0xff] !== '頁') continue;
+    const va = vas[(ptr & 0xffffff) - 1];
+    if (va === undefined) continue;
+    out.push({ label: av.values[i], va });
+  }
+  jumpCache = out;
+  return out;
+}
+
+/** 符合程度：完全相同 → 開頭 → 結尾（例：`0065a` 對 `20p0065a`）→ 中間 */
+function jumpRank(label: string, q: string): number {
+  if (label === q) return 0;
+  if (label.startsWith(q)) return 1;
+  if (label.endsWith(q)) return 2;
+  return 3;
+}
+
+/**
+ * 跳至：列出（符合的）頁 id；`enter` 為真時直接跳到最接近的一頁。
+ * 捲動分批載入，行為與原書分頁一致。
+ */
+export async function renderJump(enter = false): Promise<void> {
+  const meta = $('#jumpMeta');
+  const list = $('#jumpList');
+  if (!reader) { list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>'; return; }
+  const entries = await jumpEntries();
+  if (!entries.length) {
+    meta.textContent = '';
+    list.innerHTML = '<p class="dim">此庫沒有 <code>&lt;頁 id="…"&gt;</code> 的頁標記。</p>';
+    return;
+  }
+  const q = ($('#jumpQuery') as HTMLInputElement | null)?.value.trim() ?? '';
+  let hit = entries;
+  if (q) {
+    hit = entries.filter((e) => e.label.includes(q));
+    hit.sort((a, b) => jumpRank(a.label, q) - jumpRank(b.label, q)
+      || a.label.localeCompare(b.label, 'en', { numeric: true }));
+  }
+  const go = (e: { label: string; va: number }) =>
+    void revealHit(e.va, e.label, 1, { mode: 'node', noMark: true });
+  if (enter && hit.length) { go(hit[0]); return; }
+  meta.textContent = `${fmtInt(entries.length)} 頁`
+    + (q ? `；「${q}」符合 ${fmtInt(hit.length)} 頁（Enter 跳到最接近的一頁）` : '（輸入頁 id 的一部份即可；Enter 直接跳）');
+  if (!hit.length) {
+    list.innerHTML = '<p class="dim">沒有符合的頁 id。</p>';
+    return;
+  }
+  await renderChunked(list, hit, {
+    html: (e) => `<div class="snippet${q && e.label === q ? ' active' : ''}" data-va="${e.va}">
+      <div><b>${escapeHtml(e.label)}</b></div></div>`,
+    bind: (el, e) => {
+      el.onclick = (ev) => void revealHit(e.va, e.label, 1, { ...(mods(ev) ?? {}), mode: 'node', noMark: true });
+    },
+  });
+}
+
 /** mount every row of the current tree (tests assert on the whole list) */
-export async function growTreeFully(): Promise<number> {
-  const box = $('#dirTree');
+export async function growTreeFully(): Promise<number> {  const box = $('#dirTree');
   if (!box) return 0;
   await growUntil(box, () => !box.querySelector('.moreRows'));
   return box.querySelectorAll('.tRow').length;
@@ -1445,6 +1533,7 @@ export function resetScopes(): void {
   freqTree = -1;
   treeCaptions.clear();      // keyed by VA: a VA is another node in another database
   folioCache = null;
+  jumpCache = null;
   labelTables.clear();
   treePhases = {};
   setTierContext(null);      // 換庫：上一個庫的層級不能留在渲染器裡
@@ -1464,7 +1553,7 @@ onEditsChange(() => {
 
 /** the trees of ONE database (labelTables is a pure cache: dropped on switch) */
 function snapshotScopes() {
-  return { dirTrees, dirActive, dirError, treePhases, folioCache, freqTree };
+  return { dirTrees, dirActive, dirError, treePhases, folioCache, jumpCache, freqTree };
 }
 function restoreScopes(s: any): void {
   dirTrees = s.dirTrees ?? [];
@@ -1472,6 +1561,7 @@ function restoreScopes(s: any): void {
   dirError = s.dirError ?? '';
   treePhases = s.treePhases ?? {};
   folioCache = s.folioCache ?? null;
+  jumpCache = s.jumpCache ?? null;
   freqTree = s.freqTree ?? -1;
   labelTables.clear();
   dirLoading = false;
