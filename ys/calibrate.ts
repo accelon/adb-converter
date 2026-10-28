@@ -131,27 +131,59 @@ for (const [, arr] of byVolume) {
 console.log('accepted', accepted.length);
 type Ev = { line: number; pos: number; open?: string; close?: number };
 const evs: Ev[] = [];
+/** 行內第 k 個漢字在原始字串裡的位置（標記與標點都不算） */
+function hanToRaw(line: string): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '<') { const gt = line.indexOf('>', i); if (gt < 0) break; i = gt; continue; }
+    if (isHan(c)) out.push(i);
+  }
+  return out;
+}
+/** 漢字序號 → 原始字元位置（超出就接到行尾） */
+function rawAt(line: number, han: number): number {
+  const map = hanToRaw(lines[line]);
+  return han < map.length ? map[han] : lines[line].length;
+}
+/** 引文的結尾通常在標點上（作者 2026-10-28）：把緊接的標點一起吃進 <聯> */
+const TAIL_PUNCT = /[，。！？；：、）」』】》〉…—·]/;
+function extendEnd(line: number, raw: number): number {
+  const s = lines[line];
+  let k = raw;
+  while (k < s.length && s[k] !== '<' && TAIL_PUNCT.test(s[k])) k++;
+  return k;
+}
 for (const s of accepted) {
   const a = locate(s.vol, s.start), b = locate(s.vol, s.end - 1);
   if (!a || !b) continue;
-  if (a.line === b.line) { evs.push({ line: a.line, pos: a.cjk, open: s.tag }); evs.push({ line: b.line, pos: b.cjk + 1 }); }
+  if (a.line === b.line) {
+    evs.push({ line: a.line, pos: rawAt(a.line, a.cjk), open: s.tag });
+    evs.push({ line: b.line, pos: extendEnd(b.line, rawAt(b.line, b.cjk + 1)) });
+  }
   else {
-    evs.push({ line: a.line, pos: a.cjk, open: s.tag });
-    evs.push({ line: a.line, pos: lineCjk[a.line].length });
-    for (let m = a.line + 1; m < b.line; m++) { evs.push({ line: m, pos: 0, open: s.tag }); evs.push({ line: m, pos: lineCjk[m].length }); }
+    evs.push({ line: a.line, pos: rawAt(a.line, a.cjk), open: s.tag });
+    evs.push({ line: a.line, pos: lines[a.line].length });
+    for (let m = a.line + 1; m < b.line; m++) { evs.push({ line: m, pos: 0, open: s.tag }); evs.push({ line: m, pos: lines[m].length }); }
     evs.push({ line: b.line, pos: 0, open: s.tag });
-    evs.push({ line: b.line, pos: b.cjk + 1 });
+    evs.push({ line: b.line, pos: extendEnd(b.line, rawAt(b.line, b.cjk + 1)) });
   }
 }
 const byLine = new Map<number, Ev[]>();
 for (const e of evs) { const arr = byLine.get(e.line) ?? []; arr.push(e); byLine.set(e.line, arr); }
+/** 位置一律用「原始字元」索引（連標點一起算），否則引文裡的標點會把 </聯> 提前關掉 */
 function wrap(line: string, list: Ev[]): string {
   const opens = new Map<number, string[]>(), closes = new Map<number, number>();
   for (const e of list) { if (e.open) { const a = opens.get(e.pos) ?? []; a.push(e.open); opens.set(e.pos, a); } else closes.set(e.pos, (closes.get(e.pos) ?? 0) + 1); }
-  let out = '', i = 0, cjk = 0;
+  let out = '', i = 0;
   const fire = (p: number) => { for (let k = 0; k < (closes.get(p) ?? 0); k++) out += '</聯>'; for (const t of opens.get(p) ?? []) out += t; };
-  while (i < line.length) { if (line[i] === '<') { const gt = line.indexOf('>', i); if (gt < 0) break; out += line.slice(i, gt + 1); i = gt + 1; continue; } fire(cjk); out += line[i]; i++; cjk++; }
-  fire(cjk); return out;
+  while (i < line.length) {
+    // 先處理「這個位置」的事件：行首若正好是標籤（<段/>…），位置 0 的 <聯> 也不能漏掉
+    fire(i);
+    if (line[i] === '<') { const gt = line.indexOf('>', i); if (gt < 0) break; out += line.slice(i, gt + 1); i = gt + 1; continue; }
+    out += line[i]; i++;
+  }
+  fire(i); return out;
 }
 for (const [idx, list] of byLine) lines[idx] = wrap(lines[idx], list);
 writeFileSync('D:/2026/adb-converter/build/ys-linked.txt', lines.join('\n') + '\n');
