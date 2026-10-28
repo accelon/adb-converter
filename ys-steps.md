@@ -9,7 +9,7 @@
 |---|---|---|
 | 來源 | 舊的 accelon 版 corpus（`D:\2023\yinshun-corpus`） | CBETA Y 部 TEI P5 |
 | 流通 | 很廣，**保持原樣** | 新能力都在這裡 |
-| 內容 | 44 冊＋卷首附錄 | 44 冊（CBETA）＋序文＋附錄（舊版卷首） |
+| 內容 | 44 冊＋卷首附錄 | 44 冊（CBETA）＋附錄（舊版卷首）＋後記 |
 | 大正鏈結 | 13,920 個（頁欄級為主） | 25,920 個（字元級，含 `q` 引文） |
 
 `ys.adb` 的檔頭（`<集>`、`<隱>`、`<樹>`、`<引>`、`<摘要頭>`、`<參考資料>`、
@@ -66,7 +66,7 @@ go run ./cmd/y2adb -src 'D:\2026\xml-p5\Y' `
 | `<body>` 開始 | `<檔 n="Y01n0001.xml">` |
 | 冊標題（`title level="m"`） | `<書 l="目次" t="記" id="1">般若經講記</書>` |
 | `<milestone unit="juan">` | `<卷 n="N">N</卷>` |
-| `pb` 前綴類別改變 | `<頁元 n="書名" t="頁.">序分頁／正文／附錄</頁元>` |
+| `pb` 前綴類別改變 | `<頁元 n="書名" t="頁.">正文／附錄／後記</頁元>` |
 | `<pb n="0065a"/>`（非 `type="old"`） | `<頁 id="22p0065a"/>`（`冊號`＋`p`＋`pb`） |
 | `<lb/>`（非 `type="old"`） | 換行 |
 | `<p>` | `<段/>` |
@@ -101,7 +101,7 @@ lines=305522 卷=460 書=44 段=31882 註=5230 頁=17510 頁元=73
 
 ---
 
-## 3. 序文與附錄：`ys/prep.ts`
+## 3. 附錄與後記：`ys/prep.ts`
 
 ```powershell
 bun run ys/prep.ts
@@ -111,15 +111,16 @@ bun run ys/prep.ts
 
 ```text
 檔頭
-  ＋ 序文（書 id 0，頁 0p1）
   ＋ 44 冊（上一步的產物）
   ＋ 附錄（書 id 99，5 頁，ys/appendix.txt）
+  ＋ 後記（書 id 100，頁 0p1，ys/ys-epilog26.txt）
 ```
 
-### 3.1 序文
+### 3.1 後記
 
-「2026 年 AI 版序」，約 1,250 字，獨立成書、**沒有大正鏈結**。
-內容三段：
+「2026年AI版後記」，約 1,250 字，獨立成書、放在**全書最後**、**沒有大正鏈結**。
+書名與章名不重複：書名「2026年AI版後記」，章名「後記」。
+內容五節：
 
 1. 保存歷史文獻原貌（時代背景、不作刪改、與中華書局 2009 簡體版不同、
    僅供學術研究、遵守當地法規）
@@ -132,7 +133,7 @@ bun run ys/prep.ts
 結語：「願此資料庫有助佛法的研究與流傳，也願讀者不忘前人的辛勞。年輕人有了 AI 神器，
 更要勇於實現夢想，承擔起續佛慧命的責任。」
 
-序文原始檔是 **`ys/ys-foreword.txt`**，**已含 Accelon3 標記**（`<章>`、`<節>`、
+後記原始檔是 **`ys/ys-epilog26.txt`**，**已含 Accelon3 標記**（`<章>`、`<節>`、
 `<段/>` 等，一行一個 adb 行）；`ys/prep.ts` 每次重建都直接讀這個檔，改字改它即可。
 
 ### 3.2 附錄（自動補入）
@@ -232,12 +233,13 @@ bun run ys/pack.ts
 ```
 
 - 讀 `build/ys-linked.txt`，以 `authorAdb`（`dbtype 0`）打包
-- 資源：`logo/ys_logo.png`，資源名 `ys_logo.png`（Accelon26 會依
-  `<dbname>_logo.png` 找封面）
+- 資源：`logo/ys_logo.png`（資源名 `ys_logo.png`，Accelon26 會依
+  `<dbname>_logo.png` 找封面）、`logo/yinshunfoundation.png`（年表頁的 `<嵌圖>`）
 - 打包後把 header 的 `andtagid` 設回 0（與 `yinshun.adb` 一致）
+- 打包前檢查每一行 ≤ 4,096 字（Accelon3 `MAXLINELEN`），超過直接報錯
 - 輸出 `build/ys.adb`，並複製到 `D:\accelon3\ys.adb`
 
-預期：`dbname ys`、`linecount 305551`、`25.1 MiB`、`resources 1`。
+預期：`dbname ys`、`linecount 307120`、`25.2 MiB`、`resources 2`。
 
 ---
 
@@ -248,10 +250,10 @@ go run ./cmd/abx inspect 'D:\accelon3\ys.adb'
 bun run ts/tools/probe-adb.ts --adb 'D:\accelon3\ys.adb' --query 涅槃
 ```
 
-應看到：`dbname "ys"`、`linecount 305551`、`andtagid 0`，
+應看到：`dbname "ys"`、`linecount 307120`、`andtagid 0`，
 檢索有結果且 `consoleErrors: null`。
 
-目錄第一項是「2026 年 AI 版序」，最後一項是「附錄（舊版卷首資料）」。
+目錄第一項是「般若經講記」，最後一項是「2026年AI版後記」（章名「後記」）。
 
 鏈結回歸（需同時開 `ys.adb` 與 `taisho.adb`）：
 
@@ -305,10 +307,10 @@ pwsh D:\2026\adb-converter\ys\build.ps1
 
 | 檔案 | 說明 |
 |---|---|
-| `ys/ys-foreword.txt` | 序文原始檔（含 Accelon3 標記） |
+| `ys/ys-epilog26.txt` | 後記原始檔（含 Accelon3 標記） |
 | `build/ys-text.txt` | y2adb 輸出（44 冊，含註） |
 | `build/ys.lbs.tsv` | 行號 → 冊／lb |
-| `build/ys-text-full.txt` | ＋序文＋附錄 |
+| `build/ys-text-full.txt` | ＋附錄＋後記 |
 | `build/ys-linked.txt` | ＋`<聯>` 鏈結 |
 | `build/ys.adb` | 打包結果 |
 | `D:\accelon3\ys.adb` | 部署位置 |
@@ -316,7 +318,7 @@ pwsh D:\2026\adb-converter\ys\build.ps1
 | `logo/ys_logo.png` | 封面圖 |
 | `cmd/y2adb/main.go` | 轉換器 |
 | `ys/appendix.txt` | 舊版卷首五頁（含標記） |
-| `ys/prep.ts` | 序文＋附錄 |
+| `ys/prep.ts` | 附錄＋後記 |
 | `ys/calibrate.ts` | 鏈結定位 |
 | `ys/pack.ts` | 打包 |
 | `ys/build.ps1` | 一鍵重建 |

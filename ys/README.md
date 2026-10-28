@@ -7,11 +7,12 @@
 
 | 檔案 | 說明 |
 |---|---|
-| `ys-foreword.txt` | 「2026 年 AI 版序」原始檔，**含 Accelon3 標記**（`<檔>`、`<書>`、`<卷>`、`<頁元>`、`<頁>`、`<章>`、`<節>`、`<段/>`）。一行一個 adb 行，改字直接改這個檔。 |
-| `appendix.txt` | 舊版卷首五頁（參與人員名單、印順導師略傳、略譜、著作出版年表、基金會簡介），含 `<頁>` 與內文標記。 |
-| `prep.ts` | 把序文、CBETA 內文、附錄併成 `build/ys-text-full.txt`。 |
+| `ys-epilog26.txt` | 「2026年AI版後記」原始檔，**含 Accelon3 標記**（`<檔>`、`<書>`、`<卷>`、`<頁元>`、`<頁>`、`<章>`、`<節>`、`<段/>`）。一行一個 adb 行，改字直接改這個檔。書名「2026年AI版後記」、章名「後記」，全書最後一本。 |
+| `appendix.txt` | 舊版卷首五頁（參與人員名單、印順導師略傳、略譜、著作出版年表、基金會簡介），含 `<頁>` 與內文標記，保留原來的分行（1,552 行）。 |
+| `prep.ts` | 把 CBETA 內文、附錄、後記併成 `build/ys-text-full.txt`。 |
+| `extract-appendix.ts` | 一次性工具：從 `yinshun.adb` 重抽附錄（保留分行）。 |
 | `calibrate.ts` | 依對照表把 `<聯 i="taisho?…" q="…">` 插入文字（字元級鏈結）。 |
-| `pack.ts` | 用 `authorAdb` 打包 `ys.adb`（含 `logo/ys_logo.png`）。 |
+| `pack.ts` | 用 `authorAdb` 打包 `ys.adb`（含 `logo/ys_logo.png`、`logo/yinshunfoundation.png`）；行長超過 4,096 字會報錯。 |
 | `build.ps1` | 一鍵重建：`y2adb` → `prep` → `calibrate` → `pack`。 |
 
 ## appendix.txt 的來源
@@ -30,16 +31,20 @@
 CBETA 的 Y 部 XML（`cbeta-org/xml-p5` 的 `Y/`）沒有這五頁；把它們放進版本控制，
 是為了讓 `ys.adb` 永久可重建，不必假設本機還留著舊的 `yinshun.adb`。
 
-若要從某個 `yinshun.adb` 重新抽出（例如日後找到更完整的版本），頁面結構是：
+若要從某個 `yinshun.adb` 重新抽出（例如日後找到更完整的版本），跑
+`bun run ys/extract-appendix.ts`，或照頁面結構手工處理：
 
 ```text
 <檔 n="appendix.xml">
-<書 l="附錄" t="記" id="99">附錄（舊版卷首資料）</書>
+<書 l="附錄" t="章,節." id="99">附錄（舊版卷首資料）</書>
 <卷 n="1">1</卷>
 <頁元 n="附錄" t="頁.">舊版卷首</頁元>
 <頁 id="00p…"/>（該頁文字，標記照舊）
 …
 ```
+
+> 附錄的長行（例如出版年表）**必須保持原本的分行**：單行超過 4,096 字會超過
+> Accelon3 的 `MAXLINELEN`，行表與內文錯開，附錄尾巴就定位不到。
 
 ## 重建
 
@@ -53,9 +58,9 @@ pwsh D:\2026\adb-converter\ys\build.ps1
 ## 建置結果（2026-10-28）
 
 ```text
-linecount 305551
-卷 460、書 44（CBETA）＋書 0（序文）＋書 99（附錄）
-頁 17510、頁元 73（CBETA 的 a/b/y/z 前綴）
+linecount 307120
+卷 462、書 44（CBETA）＋書 99（附錄）＋書 100（後記）
+頁 17516、頁元 75
 <聯> 25920
 dbname ys、dbcname 印順法師佛學著作集、dbtype 0、andtagid 0
 ```
