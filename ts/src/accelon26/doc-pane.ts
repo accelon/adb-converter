@@ -1305,12 +1305,12 @@ async function paintReverseBar(): Promise<void> {
   }
   for (const [li, list] of hits) {
     const host = lines[li]?.querySelector('.lineText') ?? lines[li];
-    host?.insertAdjacentHTML('afterbegin', '<span class="xrefRevInline">' + list.map(revButtonHtml).join('') + '</span>');
+    host?.insertAdjacentHTML('afterbegin', '<span class="xrefRevInline">' + revButtonsHtml(list) + '</span>');
   }
   if (rest.length) {
     const mark = document.querySelector<HTMLElement>(`#docText .docBody .pageBreak[data-page="${pageId}"], #docText .docBody .pageMark[data-page="${pageId}"]`);
     const html = '<span class="xrefRevInline" title="這一頁的引用（未能定位到某一行）">回連結：'
-      + rest.map(revButtonHtml).join('') + '</span>';
+      + revButtonsHtml(rest) + '</span>';
     if (mark) mark.insertAdjacentHTML('afterend', html);
     else document.querySelector<HTMLElement>('#docText .docTop')?.insertAdjacentHTML('afterend', html);
   }
@@ -1760,7 +1760,7 @@ import { DocRow } from './adb';
 
 import { VaPaMapper } from './vapa';
 import { updateDocLogo } from './logo';
-import { RevItem, revButtonHtml, reverseItemsOf } from './xref';
+import { RevItem, revButtonsHtml, reverseItemsOf } from './xref';
 import { inJumpRange, jumpRange, setJumpRange } from './jump-band';
 
 /** everything the document pane keeps for ONE database */

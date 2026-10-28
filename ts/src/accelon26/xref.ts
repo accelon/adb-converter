@@ -578,9 +578,22 @@ function shortPage(id: string): string {
 }
 
 /** 一顆回連結按鈕（按鈕上文字很短，完整書名與頁碼放 title／data） */
-export function revButtonHtml(it: RevItem): string {
-  return '<button class="mini xrefRev" type="button" title="《' + esc(it.full) + '》 ' + esc(it.pageId) + '" data-rrev="' + esc(it.src + '|' + it.va) + '" data-rrev-label="' + esc(it.full + ' ' + it.pageId) + '" data-rpage="' + esc(it.pageId) + '" data-rcite="' + esc(it.cite) + '" data-rquote="' + esc(it.quote) + '">'
+export function revButtonHtml(it: RevItem, hidden = false): string {
+  return '<button class="mini xrefRev' + (hidden ? ' is-hidden' : '') + '" type="button" title="《' + esc(it.full) + '》 ' + esc(it.pageId) + '" data-rrev="' + esc(it.src + '|' + it.va) + '" data-rrev-label="' + esc(it.full + ' ' + it.pageId) + '" data-rpage="' + esc(it.pageId) + '" data-rcite="' + esc(it.cite) + '" data-rquote="' + esc(it.quote) + '">'
     + esc(it.label) + '</button>';
+}
+
+/** 一次顯示幾顆；超過就分批，按「＋N」再放一批（作者 2026-10-28） */
+const REV_BATCH = 10;
+
+/** 一整組回連結按鈕（含分批的「＋N」） */
+export function revButtonsHtml(items: RevItem[]): string {
+  const btns = items.map((it, i) => revButtonHtml(it, i >= REV_BATCH)).join('');
+  const rest = items.length - REV_BATCH;
+  const more = rest > 0
+    ? '<button class="mini xrefMore" type="button" data-revmore="' + rest + '" title="再顯示 ' + Math.min(rest, REV_BATCH) + ' 條">＋' + rest + '</button>'
+    : '';
+  return btns + more;
 }
 
 /**
@@ -590,11 +603,9 @@ export function revButtonHtml(it: RevItem): string {
 async function revBarHtml(db: string, pageId: string): Promise<string> {
   const items = await reverseItemsForPage(db, pageId);
   if (!items.length) return '';
-  const shown = items.slice(0, 12);
-  const more = items.length > shown.length ? '<span class="dim">…共 ' + items.length + ' 條</span>' : '';
   const srcs = esc([...new Set(items.map((e) => e.src))].join('、'));
   return '<div class="xrefRevBar"><span class="dim">回連結（' + srcs + '）：</span>'
-    + shown.map(revButtonHtml).join('') + more + '</div>';
+    + revButtonsHtml(items) + '</div>';
 }
 
 /** 本文中間那一頁的頁 id（給中間的「回連結」用） */
@@ -835,6 +846,21 @@ export function initXref(): void {
   if (bound) return;
   bound = true;
   document.addEventListener('click', (ev) => {
+    // 「＋N」：同一組回連結再放一批（超過 10 顆才分批，作者 2026-10-28）
+    const more = (ev.target as Element | null)?.closest?.('[data-revmore]') as HTMLElement | null;
+    if (more) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const box = more.parentElement;
+      if (!box) return;
+      box.querySelectorAll<HTMLElement>('.xrefRev.is-hidden').forEach((el, i) => {
+        if (i < 10) el.classList.remove('is-hidden');
+      });
+      const left = box.querySelectorAll('.xrefRev.is-hidden').length;
+      if (left > 0) more.textContent = '＋' + left;
+      else more.remove();
+      return;
+    }
     const rev = (ev.target as Element | null)?.closest?.('[data-rrev]') as HTMLElement | null;
     if (rev) {
       ev.preventDefault();

@@ -812,7 +812,7 @@
   /* 引文塗紅（<mark class="xrefHit">）：跨庫引文在目標頁上的位置 */
   mark.xrefHit { background: #ffd166; color: #1a1a1a; border-radius: 2px; padding: 0 1px; }
   .xrefRevBar { margin: 6px 0 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .xrefRev { font-size: 12px; }
+  .xrefRev { font-size: 12px; }`r`n  /* 回連結分批：第 11 顆以後先藏起來，按「＋N」再放一批（作者 2026-10-28） */`r`n  .xrefRev.is-hidden { display: none; }`r`n  .xrefMore { font-size: 12px; color: var(--dim); }
   /* 回連結嵌在經文裡（作者 2026-10-28）：跟在 <頁> 分隔後面，隨文字捲動 */
   .xrefRevInline { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 2px 0 10px; font-size: 12px; color: var(--dim); }`r`n  /* 嵌在經文行首的版本（作者 2026-10-28）：跟著那一行，不佔一整列 */`r`n  .docLine .xrefRevInline, .lineText .xrefRevInline { display: inline-flex; margin: 0 6px 0 0; vertical-align: middle; }
   .xrefRevInline .mini { font-size: 11px; }
