@@ -35,7 +35,17 @@ const SITE_URL = 'https://shutonggui.cn/accelon26/';
 const raw = /^https?:/.test(INDEX_URL)
   ? await (await fetch(INDEX_URL, { headers: { 'cache-control': 'no-cache' } })).text()
   : readFileSync(resolve(INDEX_URL), 'utf8');
-const names = raw.split(/\r?\n/).map((s) => s.trim()).filter((s) => s && !s.startsWith('#'));
+// 一行一筆：`檔名.adb`，可選第二欄（TAB 分隔）是「說明頁」的檔名，例如 ys.html。
+// 有說明頁的資料庫，清單上會多一個「改版說明」連結（作者 2026-10-28）。
+const entries = raw.split(/\r?\n/)
+  .map((s) => s.trim())
+  .filter((s) => s && !s.startsWith('#'))
+  .map((s) => {
+    const [file, doc] = s.split(/\t+|\s{2,}/);
+    return { file: file.trim(), doc: (doc ?? '').trim() };
+  });
+const names = entries.map((e) => e.file);
+const docOf = new Map(entries.filter((e) => e.doc).map((e) => [e.file, e.doc]));
 
 // ---- 本機的 .adb：同名取最淺層那一份（D:\accelon3\13j.adb 優先於 sub\13j.adb）----
 const local = new Map<string, { path: string; depth: number }>();
@@ -119,7 +129,7 @@ const totalSize = rows.reduce((a, r) => a + r.size, 0);
 const known = rows.filter((r) => r.chars !== null).length;
 
 const body = rows.map((r) => `        <tr>
-          <td class="db"><b>${esc(r.name)}</b><span class="file">${esc(r.fileName)}</span></td>
+          <td class="db"><b>${esc(r.name)}</b><span class="file">${esc(r.fileName)}</span>${docOf.has(r.fileName) ? `<a class="docLink" href="${esc(docOf.get(r.fileName)!)}">改版說明</a>` : ''}</td>
           <td class="num">${r.chars === null ? '—' : fmtInt(r.chars)}</td>
           <td class="num">${fmtDate(r.mtime)}</td>
           <td class="num">${r.size ? fmtSize(r.size) : '—'}</td>
@@ -148,6 +158,7 @@ const html = `<!DOCTYPE html>
   .dbTable .db { min-width: 12em; }
   .dbTable .db b { font-weight: 700; }
   .dbTable .db .file { display: block; color: var(--dim); font-size: 12.5px; font-family: ui-monospace, Consolas, monospace; }
+  .dbTable .db .docLink { display: inline-block; margin-top: 3px; font-size: 12.5px; color: var(--accent); }
   .dbTable .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); }
   .dbTable .dl { text-align: right; white-space: nowrap; }
   .dbNote { margin: 22px 0 8px; padding: 14px 18px; background: var(--panel); border: 1px solid var(--line);
@@ -240,7 +251,7 @@ ${body}
 `;
 
 mkdirSync(OUT, { recursive: true });
-writeFileSync(join(OUT, 'index.txt'), names.join('\n') + '\n', 'utf8');
+writeFileSync(join(OUT, 'index.txt'), entries.map((e) => e.doc ? `${e.file}\t${e.doc}` : e.file).join('\n') + '\n', 'utf8');
 writeFileSync(join(OUT, 'index.html'), html, 'utf8');
 console.log(`\n寫好 ${join(OUT, 'index.html')}（${(html.length / 1024).toFixed(1)} KiB）與 index.txt`);
 console.log(`上傳：cd ts && bun run tools/deploy.ts --site-only   （會一起傳 www/adb/）`);

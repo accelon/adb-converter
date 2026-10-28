@@ -2,4 +2,4 @@
 fgdict.adb
 taixu.adb
 yulinpo.adb
-ys.adb
+ys.adb	ys.html
