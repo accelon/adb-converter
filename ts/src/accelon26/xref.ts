@@ -536,7 +536,8 @@ function shortTitle(name: string): string {
 /** 回連結按鈕上要顯示的東西（書名短名＋頁碼＋大正原文 tq，給中間本文定位用） */
 export interface RevItem {
   src: string; va: number; pageId: string;
-  label: string; full: string; tq: string; cite: string; quote: string;
+  label: string; book: string; page: string;
+  full: string; tq: string; cite: string; quote: string;
 }
 
 /**
@@ -567,7 +568,7 @@ export async function reverseItemsForPage(db: string, pageId: string): Promise<R
     // 同一本書的連續幾條只寫頁碼，讓按鈕群短一些（作者 2026-10-28）
     const label = short === lastBook ? page : short + ' ' + page;
     lastBook = short;
-    out.push({ src: e.src, va: e.va, pageId: e.pageId, label, full: name, tq: e.tq, cite: e.cite, quote: e.quote });
+    out.push({ src: e.src, va: e.va, pageId: e.pageId, label, book: short, page, full: name, tq: e.tq, cite: e.cite, quote: e.quote });
   }
   return out;
 }
@@ -579,8 +580,29 @@ function shortPage(id: string): string {
 
 /** 一顆回連結按鈕（按鈕上文字很短，完整書名與頁碼放 title／data） */
 export function revButtonHtml(it: RevItem, hidden = false): string {
-  return '<button class="mini xrefRev' + (hidden ? ' is-hidden' : '') + '" type="button" title="《' + esc(it.full) + '》 ' + esc(it.pageId) + '" data-rrev="' + esc(it.src + '|' + it.va) + '" data-rrev-label="' + esc(it.full + ' ' + it.pageId) + '" data-rpage="' + esc(it.pageId) + '" data-rcite="' + esc(it.cite) + '" data-rquote="' + esc(it.quote) + '">'
-    + esc(it.label) + '</button>';
+  return '<button class="mini xrefRev' + (hidden ? ' is-hidden' : '') + '" type="button" title="《' + esc(it.full) + '》 ' + esc(it.pageId) + '" data-rrev="' + esc(it.src + '|' + it.va) + '" data-rrev-label="' + esc(it.full + ' ' + it.pageId) + '" data-rpage="' + esc(it.pageId) + '" data-rcite="' + esc(it.cite) + '" data-rquote="' + esc(it.quote) + '"'
+    + ' data-rbook="' + esc(it.book) + '" data-rp="' + esc(it.page) + '"'
+    + '>' + esc(it.label) + '</button>';
+}
+
+/**
+ * 換行處補回書名（作者 2026-10-28）：同一本書的按鈕只寫頁碼，但一排排到折行時，
+ * 新的一行開頭若只剩「69a」，讀者就得回頭找是哪一本。這裡按實際版面（offsetTop）
+ * 把每一行第一顆補上書名。
+ */
+export function relabelRevRows(): void {
+  document.querySelectorAll<HTMLElement>('.xrefRevBar, .xrefRevInline').forEach((box) => {
+    let lastTop = Number.NaN;
+    box.querySelectorAll<HTMLElement>('.xrefRev:not(.is-hidden)').forEach((btn) => {
+      const top = btn.offsetTop;
+      if (top !== lastTop) {
+        const book = btn.dataset.rbook;
+        const page = btn.dataset.rp;
+        if (book && page) { const want = book + ' ' + page; if (btn.textContent !== want) btn.textContent = want; }
+        lastTop = top;
+      }
+    });
+  });
 }
 
 /** 一次顯示幾顆；超過就分批，按「＋N」再放一批（作者 2026-10-28） */
@@ -845,6 +867,16 @@ export function initXref(): void {
   setForeignRender(renderForeign);
   if (bound) return;
   bound = true;
+  // 版面一變（右欄換頁、中間換頁、視窗縮放）就重算「每一行第一顆按鈕」的書名
+  {
+    let t = 0;
+    const soon = (): void => { window.clearTimeout(t); t = window.setTimeout(() => relabelRevRows(), 60); };
+    for (const id of ['textBody', 'docText']) {
+      const box = document.getElementById(id);
+      if (box) new MutationObserver(soon).observe(box, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    }
+    window.addEventListener('resize', soon);
+  }
   document.addEventListener('click', (ev) => {
     // 「＋N」：同一組回連結再放一批（超過 10 顆才分批，作者 2026-10-28）
     const more = (ev.target as Element | null)?.closest?.('[data-revmore]') as HTMLElement | null;
@@ -859,6 +891,7 @@ export function initXref(): void {
       const left = box.querySelectorAll('.xrefRev.is-hidden').length;
       if (left > 0) more.textContent = '＋' + left;
       else more.remove();
+      relabelRevRows();
       return;
     }
     const rev = (ev.target as Element | null)?.closest?.('[data-rrev]') as HTMLElement | null;
