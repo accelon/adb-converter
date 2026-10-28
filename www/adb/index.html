@@ -109,6 +109,23 @@
   .themeBtn:hover { color: var(--fg); border-color: var(--dim); }
   .themeBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .themeBtn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+  /* GitHub 圖示（作者 2026-10-22）：右上角，點一下開原始碼庫 */
+  .ghLink {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 50%;
+    color: var(--muted); border: 1px solid var(--line); background: var(--panel);
+  }
+  .ghLink:hover { color: var(--fg); border-color: var(--dim); text-decoration: none; }
+  .ghLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ghLink svg { width: 17px; height: 17px; fill: currentColor; }
+  /* 最新版本號＋更新說明（作者 2026-10-22） */
+  .verLine { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; font-size: 13px; color: var(--dim); }
+  .verLine .vBadge {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 10px;
+  }
+  .verLine .vBadge b { color: var(--fg); font-weight: 600; }
+  .verLine a { color: var(--accent); }
 
   /* ---------------------------------------------------------------- 主視覺 */
   /* 錨點捲動時不要被上面那條 sticky 標頭蓋住（作者 2026-10-18）。 */
@@ -258,6 +275,17 @@
     section { padding: 40px 0; }
     .btn { font-size: 16px; padding: 12px 22px; }
   }
+  /* 窄螢幕：右上角的主題與 GitHub 不能超出畫面（作者 2026-10-22） */
+  @media (max-width: 640px) {
+    header.top .wrap { height: auto; min-height: 54px; flex-wrap: wrap; padding: 7px 24px; }
+    nav {
+      flex: 1 1 100%; width: 100%; min-width: 0;
+      flex-wrap: wrap; justify-content: flex-end; gap: 6px 10px; white-space: normal;
+    }
+    .themeBtn { padding: 5px 9px; }
+    .themeBtn #themeLabel { display: none; }
+    .ghLink { width: 28px; height: 28px; }
+  }
 
   /* ---- 這一頁自己的（公開數據庫） ---- */
   .dbHead { padding: 34px 0 8px; }
@@ -305,7 +333,7 @@
     <h1>公開數據庫</h1>
     <p>這些 <code>.adb</code> 都可以直接下載：放進 <code>accelon3.exe</code> 同一個資料夾，
       accelon26 開啟時就會自動列出來；也可以在程式裡用 <code>📁</code> 或拖進視窗。</p>
-    <p class="dbMeta">共 5 個資料庫 · 合計約 25,135,279 字 · 下載約 75.2 MB</p>
+    <p class="dbMeta">共 6 個資料庫 · 合計約 32,471,629 字 · 下載約 100.4 MB</p>
   </section>
 
   <table class="dbTable">
@@ -347,6 +375,13 @@
           <td class="num">2008-04-07</td>
           <td class="num">23.8 MB</td>
           <td class="dl"><a href="yinshun.adb" download>下載</a></td>
+        </tr>
+        <tr>
+          <td class="db"><b>印順法師佛學著作集</b><span class="file">ys.adb</span></td>
+          <td class="num">7,336,350</td>
+          <td class="num">2026-10-28</td>
+          <td class="num">25.2 MB</td>
+          <td class="dl"><a href="ys.adb" download>下載</a></td>
         </tr>
     </tbody>
   </table>

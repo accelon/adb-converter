@@ -3,3 +3,4 @@ fgdict.adb
 taixu.adb
 yulinpo.adb
 yinshun.adb
+ys.adb
