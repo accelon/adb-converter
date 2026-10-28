@@ -1486,13 +1486,16 @@ export async function renderJump(enter = false): Promise<void> {
   const list = $('#jumpList');
   if (!reader) { list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>'; return; }
   const q = ($('#jumpQuery') as HTMLInputElement | null)?.value.trim() ?? '';
-  // 大正藏引用（作者 2026-10-28）：「大正2，206a15-b13」「2，206a15」「大正二，206a15-b13」。
+  // 大正藏引用（作者 2026-10-28）：
+  //   「大正2，206a15-b13」「2，206a15」「大正二，206a15-b13」
+  //   「(CBETA 2025.R1, T02, no. 99, p. 1a7-9)」「T02, no. 99, p. 1a7-9」
   // 這一種直接跳頁並把整段塗上色帶，不走下面的頁 id 清單。
   const cite = parseTaishoCite(q);
   if (cite) {
-    meta.textContent = `大正 ${cite.vol} 冊 ${cite.page}${cite.col}${cite.line}`
-      + (cite.endCol ? `–${cite.endPage ?? cite.page}${cite.endCol}${cite.endLine ?? ''}` : '')
-      + '：按 Enter 跳到這一段';
+    const tail = cite.endCol
+      ? `–${cite.endPage ?? cite.page}${cite.endCol}${cite.endLine ?? ''}`
+      : (cite.endLine != null ? `–${cite.endLine}` : '');
+    meta.textContent = `大正 ${cite.vol} 冊 ${cite.page}${cite.col}${cite.line}${tail}：按 Enter 跳到這一段`;
     list.innerHTML = '';
     if (enter) await jumpTaishoCite(cite);
     return;

@@ -622,9 +622,29 @@ function numOf(s: string): number | null {
 }
 
 export function parseTaishoCite(raw: string): TaishoCite | null {
-  // 全形 → 半形，並去掉空白（讀者常從 PDF／網頁複製，逗號是「，」）
-  const s = raw.replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/\s+/g, '');
-  const m = /^(?:大正|T)?([0-9]+|[一二三四五六七八九十百〇零]+)[,，](\d+)([abc])(\d{1,2})(?:[-–—~至](\d+)?([abc])(\d{1,2}))?$/i.exec(s);
+  // 全形 → 半形，去掉空白與最外層括號（讀者多半是整段複製：(CBETA 2025.R1, T02, no. 99, p. 1a7-9)）
+  const s = raw
+    .replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/\s+/g, '')
+    .replace(/^[(（]+|[(）)]+$/g, '');
+  // ① CBETA style：CBETA 2025.R1, T02, no. 99, p. 1a7-9（版本段可省略、T 可省略）
+  const cb = /^(?:(?:CBETA|C)[\d.A-Za-z]*[,，])?T?(\d{1,2})[,，]no\.?(\d+)[,，]p\.?(\d+)([abc])(\d{1,2})(?:[-–—~至](?:(\d+)?([abc])(\d{1,2})|(\d{1,2})))?$/i.exec(s);
+  if (cb) {
+    const vol = Number(cb[1]);
+    // 「1a7-9」只有行號（同欄）；「1a7-2b3」才跨頁跨欄
+    const sameColEnd = cb[9] ? Number(cb[9]) : undefined;
+    return {
+      vol,
+      page: cb[3],
+      col: cb[4].toLowerCase(),
+      line: Number(cb[5]),
+      endPage: cb[6] ?? undefined,
+      endCol: cb[7] ? cb[7].toLowerCase() : undefined,
+      endLine: cb[7] ? Number(cb[8]) : sameColEnd,
+    };
+  }
+  // ② 大正 style：大正2，206a15-b13
+  const m = /^(?:大正|T)?([0-9]+|[一二三四五六七八九十百〇零]+)[,，](\d+)([abc])(\d{1,2})(?:[-–—~至](?:(\d+)?([abc])(\d{1,2})|(\d{1,2})))?$/i.exec(s);
   if (!m) return null;
   const vol = numOf(m[1]);
   if (vol == null) return null;
@@ -635,7 +655,7 @@ export function parseTaishoCite(raw: string): TaishoCite | null {
     line: Number(m[4]),
     endPage: m[5] ?? undefined,
     endCol: m[6]?.toLowerCase(),
-    endLine: m[7] ? Number(m[7]) : undefined,
+    endLine: m[6] ? Number(m[7]) : (m[8] ? Number(m[8]) : undefined),
   };
 }
 
@@ -665,6 +685,9 @@ export async function jumpTaishoCite(c: TaishoCite): Promise<boolean> {
     const eid = `${c.vol}p${c.endPage ?? c.page}${c.endCol}`;
     const eva = await anchorVa(reader, eid);
     if (eva != null) endLine = m.lineOfVa(eva) + Math.max(0, (c.endLine ?? 1) - 1);
+  } else if (c.endLine != null) {
+    // 同一欄的行範圍（CBETA 的「p. 1a7-9」）
+    endLine = m.lineOfVa(va) + Math.max(0, c.endLine - 1);
   }
   markLineRange(startLine, endLine);
   return true;
