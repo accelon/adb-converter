@@ -77,11 +77,11 @@ go run ./cmd/y2adb -src 'D:\2026\xml-p5\Y' `
 
 `<anchor>`、`<g>`、`<cb:mulu>`、`<back>` 一律跳過。
 
-#### 補 `u="文"`：外部規則檔 `ys/u-attrs.tsv`
+#### 補 `u="文"`：外部規則檔 `ys/u-attrs.txt`
 
 CBETA 的 Y 部 XML 沒有 accelon 的 `u=` 屬性，少了它節點就不會進「頻次」
 （`<樹 s="*u=文">`），那幾段文字在頻次裡等於不存在。所以 `ys/prep.ts` 每次重建
-都會讀 **`ys/u-attrs.tsv`**（一行：標籤 → u 值）把缺的補上，已經有 `u=` 的不動：
+都會讀 **`ys/u-attrs.txt`**（一行：標籤 → u 值）把缺的補上，已經有 `u=` 的不動：
 
 ```text
 章	文	CBETA 的 <head> 一律是「文」

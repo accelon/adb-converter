@@ -16,7 +16,7 @@ const readAppendix = (p: string) =>
 
 /**
  * 補屬性：CBETA 的 Y 部 XML 沒有 accelon 的 `u=`，少了它節點不進「頻次」。
- * 規則寫在外部檔 ys/u-attrs.tsv（標籤 → u 值），重建時套用（作者 2026-10-28）。
+ * 規則寫在外部檔 ys/u-attrs.txt（標籤 → u 值），重建時套用（作者 2026-10-28）。
  */
 const readUAttrs = (p: string): Map<string, string> => {
   const map = new Map<string, string>();
@@ -54,7 +54,7 @@ if (lines[lines.length - 1] === '') lines.pop();
 const header = lines[0];
 const rest = lines.slice(1);
 const all = [header, ...rest, ...app, ...ep];
-const fixed = applyUAttrs(all, readUAttrs('D:/2026/adb-converter/ys/u-attrs.tsv'));
+const fixed = applyUAttrs(all, readUAttrs('D:/2026/adb-converter/ys/u-attrs.txt'));
 const out = all.join('\n') + '\n';
 writeFileSync('D:/2026/adb-converter/build/ys-text-full.txt', out);
 console.log('appendix lines', app.length, 'epilogue lines', ep.length,
