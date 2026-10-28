@@ -14,10 +14,11 @@
  * 目標庫必須已在同一工作階段開過（file:// 不能自己讀硬碟）。
  */
 import { AdbReader, BlobIO } from './adb';
-import { openDbs } from './dbs';
-import { reader, setStatus } from './viewer';
+import { openDbs, switchTo } from './dbs';
+import { mapper, reader, setStatus } from './viewer';
 import { ensureRightPane, openForeignTab, setForeignRender } from './text-pane';
 import { linkTo } from './link';
+import { markLineRange } from './doc-pane';
 import { VaPaMapper } from './vapa';
 import { variantGroupOf } from './variants';
 
@@ -513,6 +514,88 @@ async function handleXref(value: string, fromRight: boolean, newTab: boolean, qu
 
 export async function xrefJump(value: string, fromRight = false, newTab = false, quote?: string): Promise<void> {
   await handleXref(value, fromRight, newTab, quote);
+}
+
+/* ------------------------------------------------------------------ 大正藏引用
+ *
+ * 「大正2，206a15-b13」＝第二冊、206 頁 a 欄第 15 行，到同頁 b 欄第 13 行。
+ * 冊號有時寫成國字（大正二），所以數字兩種都吃。
+ * 頁 id 在 taisho.adb 就是 `2p206a`，a 欄的行號 1..N 對應 `<頁 id="2p206a">` 那一行起算的 N 行。
+ */
+export interface TaishoCite {
+  vol: number;
+  page: string;
+  col: string;
+  line: number;
+  endPage?: string;
+  endCol?: string;
+  endLine?: number;
+}
+
+const CN_NUM: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+
+/** 「二」「二十四」「一百零五」→ 24 / 105；阿拉伯數字原樣 */
+function numOf(s: string): number | null {
+  if (/^\d+$/.test(s)) return Number(s);
+  let total = 0, cur = 0, seen = false;
+  for (const ch of s) {
+    if (ch === '百') { total += (cur || 1) * 100; cur = 0; seen = true; }
+    else if (ch === '十') { total += (cur || 1) * 10; cur = 0; seen = true; }
+    else if (CN_NUM[ch]) { cur = CN_NUM[ch]; seen = true; }
+    else if (ch === '〇' || ch === '零') continue;
+    else return null;
+  }
+  if (!seen) return null;
+  return total + cur;
+}
+
+export function parseTaishoCite(raw: string): TaishoCite | null {
+  // 全形 → 半形，並去掉空白（讀者常從 PDF／網頁複製，逗號是「，」）
+  const s = raw.replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/\s+/g, '');
+  const m = /^(?:大正|T)?([0-9]+|[一二三四五六七八九十百〇零]+)[,，](\d+)([abc])(\d{1,2})(?:[-–—~至](\d+)?([abc])(\d{1,2}))?$/i.exec(s);
+  if (!m) return null;
+  const vol = numOf(m[1]);
+  if (vol == null) return null;
+  return {
+    vol,
+    page: m[2],
+    col: m[3].toLowerCase(),
+    line: Number(m[4]),
+    endPage: m[5] ?? undefined,
+    endCol: m[6]?.toLowerCase(),
+    endLine: m[7] ? Number(m[7]) : undefined,
+  };
+}
+
+const taishoDbSlot = () => openDbs.find((d) => d.name.includes('大正') || /^taisho/i.test(d.file.name));
+
+/**
+ * 跳到「大正 V，P C L[-C L]」並把整段塗上色帶。
+ * 目前開的庫裡沒有這個頁時，會切到已開啟的大正藏（讀者常在印順的頁上抄大正藏座標）。
+ */
+export async function jumpTaishoCite(c: TaishoCite): Promise<boolean> {
+  const id = `${c.vol}p${c.page}${c.col}`;
+  let va = reader ? await anchorVa(reader, id) : null;
+  if (va == null) {
+    const slot = taishoDbSlot();
+    if (slot) {
+      switchTo(slot.id);
+      va = reader ? await anchorVa(reader, id) : null;
+    }
+  }
+  if (va == null || !reader) { setStatus('找不到 ' + id + '（這個庫沒有這一頁）', 'err'); return false; }
+  await linkTo(va, '', 1, { mode: 'node', noMark: true, name: id });
+  const m = mapper;
+  if (!m) return true;
+  const startLine = m.lineOfVa(va) + Math.max(0, c.line - 1);
+  let endLine = startLine;
+  if (c.endCol) {
+    const eid = `${c.vol}p${c.endPage ?? c.page}${c.endCol}`;
+    const eva = await anchorVa(reader, eid);
+    if (eva != null) endLine = m.lineOfVa(eva) + Math.max(0, (c.endLine ?? 1) - 1);
+  }
+  markLineRange(startLine, endLine);
+  return true;
 }
 
 export async function xrefProbe(db: string, anchor: string) {

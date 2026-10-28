@@ -734,6 +734,8 @@
   .docLine:hover { background: var(--row-hover); }
   /* 目前釘住的那一行：淡淡一層就好，免得標題（現在是彩色字）看起來像有底色 */
   .docLine.hitLine { background: rgba(255, 212, 121, .10); }
+/* 跳至：大正藏引用「2，206a15-b13」指到的整段（作者 2026-10） */
+.docLine.jumpHit { background: rgba(255, 209, 102, .16); box-shadow: inset 3px 0 0 rgba(255, 209, 102, .55); }
   .lineText { white-space: pre; flex: 1 1 auto; min-width: 0; }   /* hard-wrapped lines: never soft wrap by default */
   /* 本文上方的 breadcrumb（作者 2026-10）：字級同內文、顏色同標題；
      點一個節點下拉同層 siblings，並突顯目前這一個。

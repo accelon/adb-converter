@@ -253,9 +253,26 @@ export async function revealDocLine(line: number): Promise<void> {
   requestAnimationFrame(() => document.getElementById('L' + target)?.scrollIntoView({ block: 'center' }));
 }
 
+/**
+ * 跳至的色帶：把 adb 行 [from, to] 塗上 `jumpHit`，並捲到起點。
+ * `null` 清掉。呼叫端（xref 的大正藏引用）只需要給行號。
+ */
+export function markLineRange(from: number | null, to?: number): void {
+  setJumpRange(from, to);
+  const band = jumpRange();
+  const box = document.getElementById('docText') ?? document.getElementById('textBody');
+  if (!box) return;
+  box.querySelectorAll<HTMLElement>('.docLine').forEach((el) => {
+    el.classList.toggle('jumpHit', inJumpRange(Number(el.id.slice(1))));
+  });
+  if (band) {
+    requestAnimationFrame(() =>
+      document.getElementById('L' + band.from)?.scrollIntoView({ block: 'center' }));
+  }
+}
+
 /** the whole-database realm (used when no document row owns the VA) */
-function wholeRealm(): { from: number; to: number } {
-  return { from: 0, to: reader?.header.maxBlockOffset ?? 0 };
+function wholeRealm(): { from: number; to: number } {  return { from: 0, to: reader?.header.maxBlockOffset ?? 0 };
 }
 
 /** the `<檔>` that owns a VA (single-file databases have none → one whole doc) */
@@ -507,15 +524,16 @@ function renderAncestorTrail(s: DocSession): string {
 
 /** 把一頁的版面塊變成 HTML：保留硬換行＝每行一列；不保留＝整段連排 */
 function renderBlocks(blocks: RenderBlock[], s: DocSession): string {
+
   return blocks.map((block) => {
     if (block.kind === 'line') {
       const l = block.lines[0];
-      const cls = 'docLine' + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '');
+      const cls = 'docLine' + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
       return '<div class="' + cls + '" id="L' + l.no + '" data-src="' + escapeHtml(l.raw) + '">'
         + '<div class="lineText">' + l.html + '</div></div>';
     }
     const inner = block.lines.map((l, i) => {
-      const cls = 'docLine' + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '');
+      const cls = 'docLine' + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
       // 英文行接起來要留一個空白，中文不用（作者 2026-10：把硬換行去掉）
       const prev = i > 0 ? block.lines[i - 1].raw : '';
       const join = i > 0 && /[A-Za-z0-9]$/.test(prev) && /^[A-Za-z0-9]/.test(l.raw) ? ' ' : '';
@@ -1664,6 +1682,7 @@ export function resetDocPane(): void {
   paintAsked.clear();
   lastDocLines = [];
   lastLink = null;
+  setJumpRange(null);
   pagerLog.length = 0;
 }
 
@@ -1677,6 +1696,7 @@ import { DocRow } from './adb';
 
 import { VaPaMapper } from './vapa';
 import { updateDocLogo } from './logo';
+import { inJumpRange, jumpRange, setJumpRange } from './jump-band';
 
 /** everything the document pane keeps for ONE database */
 function snapshotDocPane() {

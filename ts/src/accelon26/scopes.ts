@@ -9,6 +9,8 @@ import { $, altKey, currentFile, currentSource, displayName, docs, escapeHtml, f
 import { advanced, showTab } from './ui';
 import { showToken } from './panes';
 import { paintTreeActive, revealHit } from './link';
+import { jumpTaishoCite, parseTaishoCite } from './xref';
+import { setJumpRange } from './jump-band';
 import { growUntil, mounted, renderChunked } from './lazy-list';
 import { lastResult, showNodeHits } from './summary';
 import { parseQuery, namePattern } from './query';
@@ -1429,7 +1431,7 @@ async function renderFolio(): Promise<void> {
       // 原書分頁 is a milestone, not a hit: jump to the <頁> node itself
       // (mode:'node' gives the page its own realm, so the tab is named 1/2/… and a
       // repeat click reuses it instead of opening a second tab) and paint nothing.
-      el.onclick = (ev) => void revealHit(e.va, e.label, 1, { ...(mods(ev) ?? {}), mode: 'node', noMark: true });
+      el.onclick = (ev) => { setJumpRange(null); void revealHit(e.va, e.label, 1, { ...(mods(ev) ?? {}), mode: 'node', noMark: true }); };
     },
   });
 }
@@ -1483,21 +1485,34 @@ export async function renderJump(enter = false): Promise<void> {
   const meta = $('#jumpMeta');
   const list = $('#jumpList');
   if (!reader) { list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>'; return; }
+  const q = ($('#jumpQuery') as HTMLInputElement | null)?.value.trim() ?? '';
+  // 大正藏引用（作者 2026-10-28）：「大正2，206a15-b13」「2，206a15」「大正二，206a15-b13」。
+  // 這一種直接跳頁並把整段塗上色帶，不走下面的頁 id 清單。
+  const cite = parseTaishoCite(q);
+  if (cite) {
+    meta.textContent = `大正 ${cite.vol} 冊 ${cite.page}${cite.col}${cite.line}`
+      + (cite.endCol ? `–${cite.endPage ?? cite.page}${cite.endCol}${cite.endLine ?? ''}` : '')
+      + '：按 Enter 跳到這一段';
+    list.innerHTML = '';
+    if (enter) await jumpTaishoCite(cite);
+    return;
+  }
   const entries = await jumpEntries();
   if (!entries.length) {
     meta.textContent = '';
     list.innerHTML = '<p class="dim">此庫沒有 <code>&lt;頁 id="…"&gt;</code> 的頁標記。</p>';
     return;
   }
-  const q = ($('#jumpQuery') as HTMLInputElement | null)?.value.trim() ?? '';
   let hit = entries;
   if (q) {
     hit = entries.filter((e) => e.label.includes(q));
     hit.sort((a, b) => jumpRank(a.label, q) - jumpRank(b.label, q)
       || a.label.localeCompare(b.label, 'en', { numeric: true }));
   }
-  const go = (e: { label: string; va: number }) =>
+  const go = (e: { label: string; va: number }) => {
+    setJumpRange(null);            // 換頁就收起上一段的大正藏色帶
     void revealHit(e.va, e.label, 1, { mode: 'node', noMark: true });
+  };
   if (enter && hit.length) { go(hit[0]); return; }
   meta.textContent = `${fmtInt(entries.length)} 頁`
     + (q ? `；「${q}」符合 ${fmtInt(hit.length)} 頁（Enter 跳到最接近的一頁）` : '（輸入頁 id 的一部份即可；Enter 直接跳）');
@@ -1509,7 +1524,7 @@ export async function renderJump(enter = false): Promise<void> {
     html: (e) => `<div class="snippet${q && e.label === q ? ' active' : ''}" data-va="${e.va}">
       <div><b>${escapeHtml(e.label)}</b></div></div>`,
     bind: (el, e) => {
-      el.onclick = (ev) => void revealHit(e.va, e.label, 1, { ...(mods(ev) ?? {}), mode: 'node', noMark: true });
+      el.onclick = (ev) => { setJumpRange(null); void revealHit(e.va, e.label, 1, { ...(mods(ev) ?? {}), mode: 'node', noMark: true }); };
     },
   });
 }
