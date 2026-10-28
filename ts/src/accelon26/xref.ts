@@ -21,6 +21,7 @@ import { linkTo } from './link';
 import { markLineRange } from './doc-pane';
 import { VaPaMapper } from './vapa';
 import { variantGroupOf } from './variants';
+import { SHORT_TITLES } from './short-titles';
 
 interface AnchorIndex {
   values: string[];
@@ -506,10 +507,11 @@ export async function renderForeign(db: string, va: number, anchor?: string, quo
 }
 
 /**
- * 「回連結」那一列按鈕（作者 2026-10-28）：右欄的跨庫頁面與中間的本文都用它，
- * 所以抽成一支。目標庫沒有被連過就回空字串。
+ * 「回連結」按鈕（作者 2026-10-28）：右欄的跨庫頁面與中間的本文都用它。
+ * `inline` 給中間本文用——嵌在經文的那一頁開頭，所以不畫整條 bar。
+ * 按鈕上的書名用 corpus 的短名（「般若經講記」→「般若」），也不加《》。
  */
-async function revBarHtml(db: string, pageId: string): Promise<string> {
+async function revBarHtml(db: string, pageId: string, inline = false): Promise<string> {
   if (!revIndex.size || !pageId) return '';
   // 先看這一欄；整頁（a/b/c 三欄）如果還有別的欄被引用，就一併列出（作者 2026-10-28）
   const colEntries = revIndex.get(db + '?' + pageId) ?? [];
@@ -532,17 +534,23 @@ async function revBarHtml(db: string, pageId: string): Promise<string> {
     const srcR = await readerFor(e.src);
     const srcIdx = srcR ? await anchorIndex(srcR) : null;
     const name = (srcR && srcIdx ? (await cachedLabel(srcR, '書', srcIdx.bookVas, e.va)) : '') || e.src;
-    const label = '《' + name + '》 ' + e.pageId;
+    const short = SHORT_TITLES[name] ?? name;
+    const label = short + ' ' + e.pageId;
     if (seenLabel.has(label)) continue;
     seenLabel.add(label);
     n++;
-    btns.push('<button class="mini xrefRev" type="button" data-rrev="' + esc(e.src + '|' + e.va) + '" data-rrev-label="' + esc(label) + '" data-rpage="' + esc(e.pageId) + '" data-rcite="' + esc(e.cite) + '" data-rquote="' + esc(e.quote) + '">'
+    btns.push('<button class="mini xrefRev" type="button" title="《' + esc(name) + '》 ' + esc(e.pageId) + '" data-rrev="' + esc(e.src + '|' + e.va) + '" data-rrev-label="' + esc(label) + '" data-rpage="' + esc(e.pageId) + '" data-rcite="' + esc(e.cite) + '" data-rquote="' + esc(e.quote) + '">'
       + esc(label) + '</button>');
   }
   const more = total > btns.length ? '<span class="dim">…共 ' + total + ' 條</span>' : '';
-  const scope = wholePage ? '本頁（含其他欄）' : '';
-  return '<div class="xrefRevBar"><span class="dim">回連結' + (scope ? '·' + scope : '')
-    + '（' + esc([...new Set(entries.map((e) => e.src))].join('、')) + '）：</span>' + btns.join('') + more + '</div>';
+  const scope = wholePage ? '·本頁' : '';
+  const srcs = esc([...new Set(entries.map((e) => e.src))].join('、'));
+  if (inline) {
+    return '<span class="xrefRevInline" title="' + esc(srcs) + ' 引用此頁的位置">回連結'
+      + (scope ? '<span class="dim">' + scope + '</span>' : '') + '：' + btns.join('') + more + '</span>';
+  }
+  return '<div class="xrefRevBar"><span class="dim">回連結' + scope
+    + '（' + srcs + '）：</span>' + btns.join('') + more + '</div>';
 }
 
 /** 本文中間那一頁的頁 id（給中間的「回連結」用） */
@@ -560,6 +568,13 @@ export async function reverseBarForPage(pageId: string): Promise<string> {
   if (!reader || !pageId) return '';
   await ensureReverse();
   return revBarHtml(reader.header.dbname, pageId);
+}
+
+/** 中間本文用的版本：同一組按鈕，但嵌在經文裡（inline，不畫整條 bar） */
+export async function reverseInlineForPage(pageId: string): Promise<string> {
+  if (!reader || !pageId) return '';
+  await ensureReverse();
+  return revBarHtml(reader.header.dbname, pageId, true);
 }
 
 async function handleXref(value: string, fromRight: boolean, newTab: boolean, quote?: string): Promise<void> {

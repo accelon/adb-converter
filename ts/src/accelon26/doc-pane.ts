@@ -1260,22 +1260,27 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
 const docScrollWired = new WeakSet<Element>();
 
 /**
- * 中間的「回連結」：頁面畫好後非同步取（反連表要讀別的庫）。
- * 頁碼取這一段第一個 `<頁>` 分隔上的 data-page——不是釘選那一頁，
- * 所以翻頁、跳段之後按鈕都跟著眼前的頁走。
+ * 中間的「回連結」：**嵌在經文裡**，就放在那一頁的 `<頁>` 分隔後面（作者 2026-10-28）。
+ *
+ * 頁碼取這一段第一個 `<頁>` 分隔上的 data-page——不是釘選那一頁，所以翻頁、跳段之後
+ * 按鈕都跟著眼前的頁走。頁碼分隔被關掉（設定裡不顯示原書頁碼）時，退回標題下面。
  */
 async function paintReverseBar(): Promise<void> {
   const pb = document.querySelector<HTMLElement>('#docText .docBody .pageBreak[data-page], #docText .docBody .pageMark[data-page]');
   const pageId = pb?.dataset.page ?? '';
+  document.querySelectorAll('#docText .xrefRevInline, #docText .xrefRevBar').forEach((el) => el.remove());
   let html = '';
   try {
-    html = await reverseBarForPage(pageId);
+    html = await reverseInlineForPage(pageId);
   } catch { return; }
+  if (!html) return;
+  // 同一個 id 的頁分隔可能不只一個（重複渲染）；插在第一個後面
+  const mark = pageId
+    ? document.querySelector<HTMLElement>(`#docText .docBody .pageBreak[data-page="${pageId}"], #docText .docBody .pageMark[data-page="${pageId}"]`)
+    : null;
+  if (mark) { mark.insertAdjacentHTML('afterend', html); return; }
   const host = document.querySelector<HTMLElement>('#docText .docTop');
-  if (!host) return;
-  const old = host.nextElementSibling;
-  if (old?.classList.contains('xrefRevBar')) old.remove();
-  if (html) host.insertAdjacentHTML('afterend', html);
+  host?.insertAdjacentHTML('afterend', html);
 }
 
 function scheduleCursorSync(): void {
@@ -1717,7 +1722,7 @@ import { DocRow } from './adb';
 
 import { VaPaMapper } from './vapa';
 import { updateDocLogo } from './logo';
-import { reverseBarForPage } from './xref';
+import { reverseInlineForPage } from './xref';
 import { inJumpRange, jumpRange, setJumpRange } from './jump-band';
 
 /** everything the document pane keeps for ONE database */

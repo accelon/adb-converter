@@ -813,6 +813,9 @@
   mark.xrefHit { background: #ffd166; color: #1a1a1a; border-radius: 2px; padding: 0 1px; }
   .xrefRevBar { margin: 6px 0 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .xrefRev { font-size: 12px; }
+  /* 回連結嵌在經文裡（作者 2026-10-28）：跟在 <頁> 分隔後面，隨文字捲動 */
+  .xrefRevInline { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 2px 0 10px; font-size: 12px; color: var(--dim); }
+  .xrefRevInline .mini { font-size: 11px; }
   /* <註 n="…"/> ↔ <釋 n="…">：像 Markdown 腳注（作者 2026-10-26）。
      註是上標的小連結，hover 顯示釋文；點註跳到釋、點釋（或它的編號）跳回註。 */
   .lineText .noteRef {
