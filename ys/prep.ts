@@ -7,8 +7,15 @@ const readBlock = (p: string) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
+// 附錄的表格靠行首空格對齊，所以只去行尾空白，不 trim 行首
+const readAppendix = (p: string) =>
+  readFileSync(p, 'utf8')
+    .split(/\r?\n/)
+    .map((s) => s.replace(/\s+$/, ''))
+    .filter((s) => s.trim().length > 0);
+
 const fw = readBlock('D:/2026/adb-converter/ys/ys-foreword.txt');
-const app = readBlock('D:/2026/adb-converter/ys/appendix.txt');
+const app = readAppendix('D:/2026/adb-converter/ys/appendix.txt');
 
 const text = readFileSync('D:/2026/adb-converter/build/ys-text.txt', 'utf8');
 const lines = text.split('\n');
