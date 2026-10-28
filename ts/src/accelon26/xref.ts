@@ -164,16 +164,43 @@ function lineHtml(s: string, markFrom = -1, markTo = -1): string {
 // ---------------------------------------------------------------- 逆鏈結表
 
 interface RevEntry { src: string; db: string; va: number; pageId: string; bookVa: number; cite: string; quote: string }
-let revSource: AdbReader | null = null;
+let revKey = '';
 let revIndex: Map<string, RevEntry[]> = new Map();
 const linkedDbs = new Set<string>();
 
-/** 由「主庫」的 聯.i 建反連表：taisho?anchor → 來源的書／頁。只讀屬性，不讀全文。 */
-async function buildReverse(r: AdbReader): Promise<void> {
-  if (revSource === r) return;
-  revSource = r;
+/**
+ * 反連表的來源：**每一個開著的庫**，不只主庫。
+ *
+ * 原本只掃主庫的 `聯.i`，所以把大正藏當成主庫（例如用「跳至」跳過去）時，
+ * 大正藏自己沒有 `聯` 屬性，表就空著——明明右邊還開著印順，卻看不到回連結按鈕。
+ * 現在主庫優先，其餘開啟中的庫依序補上；同一個庫只掃一次。
+ */
+function reverseSources(): AdbReader[] {
+  const out: AdbReader[] = [];
+  const seen = new Set<AdbReader>();
+  const push = (r: AdbReader | null | undefined): void => {
+    if (!r || seen.has(r)) return;
+    seen.add(r);
+    out.push(r);
+  };
+  push(reader);
+  for (const s of openDbs) push((s.core as { reader?: AdbReader } | undefined)?.reader);
+  return out;
+}
+
+async function ensureReverse(): Promise<void> {
+  const sources = reverseSources();
+  // 只讀屬性就能判斷「要不要重建」：庫的組合或行數變了才重建
+  const key = sources.map((r) => r.header.dbname + ':' + r.header.lineCount).join('|');
+  if (key === revKey) return;
+  revKey = key;
   revIndex = new Map();
   linkedDbs.clear();
+  for (const r of sources) await addReverseFrom(r);
+}
+
+/** 把一個庫的 `聯.i` 併進反連表：目標頁碼 → 來源的書／頁。只讀屬性，不讀全文。 */
+async function addReverseFrom(r: AdbReader): Promise<void> {
   const idx = await anchorIndex(r);
   if (!idx) return;
   const av = await r.attributeValues('聯.i');
@@ -222,6 +249,13 @@ async function buildReverse(r: AdbReader): Promise<void> {
     const key = db + '?' + anchor;
     const arr = revIndex.get(key);
     if (arr) arr.push(entry); else revIndex.set(key, [entry]);
+    // 大正藏一頁有三欄（a/b/c）：讀者在 a 欄時，連到 b、c 欄的引文也該看得到，
+    // 所以另外用「頁」為鍵收一份（作者 2026-10-28）。
+    const pageKey = db + '?' + anchor.replace(/[a-z]$/, '');
+    if (pageKey !== key) {
+      const parr = revIndex.get(pageKey);
+      if (parr) parr.push(entry); else revIndex.set(pageKey, [entry]);
+    }
   }
 }
 
@@ -371,7 +405,7 @@ export async function renderForeign(db: string, va: number, anchor?: string, quo
   if (!r) return { html: '<p class="dim">請先把 ' + esc(db) + '.adb 開起來（同一個瀏覽器工作階段）。</p>', title: db };
   const idx = await anchorIndex(r);
   if (!idx) return { html: '<p class="dim">這個庫沒有頁碼表。</p>', title: db };
-  if (reader && revSource !== reader) await buildReverse(reader);
+  await ensureReverse();
   const maxChars = 2000;
   let blk = 0;
   for (let k = 0; k < idx.bv.length; k++) { if (idx.bv[k] <= va) blk = k; else break; }
@@ -465,29 +499,67 @@ export async function renderForeign(db: string, va: number, anchor?: string, quo
     + ' <span class="dim">' + esc(pageId) + '</span></div>';
 
   // 逆鏈結：這一頁被哪些庫／書連過
-  let rev = '';
-  if (revIndex.size) {
-    const entries = revIndex.get(db + '?' + pageId) ?? [];
-    if (entries.length) {
-      const uniq = new Map<string, RevEntry>();
-      for (const e of entries) uniq.set(e.src + ':' + e.va, e);
-      const btns: string[] = [];
-      let n = 0;
-      for (const e of uniq.values()) {
-        if (n++ >= 12) break;
-        const srcR = await readerFor(e.src);
-        const srcIdx = srcR ? await anchorIndex(srcR) : null;
-        const name = (srcR && srcIdx ? (await cachedLabel(srcR, '書', srcIdx.bookVas, e.va)) : '') || e.src;
-        const label = '《' + name + '》 ' + e.pageId;
-        btns.push('<button class="mini xrefRev" type="button" data-rrev="' + esc(e.src + '|' + e.va) + '" data-rrev-label="' + esc(label) + '" data-rpage="' + esc(e.pageId) + '" data-rcite="' + esc(e.cite) + '" data-rquote="' + esc(e.quote) + '">'
-          + esc(label) + '</button>');
-      }
-      rev = '<div class="xrefRevBar"><span class="dim">回連結（' + esc([...new Set(entries.map((e) => e.src))].join('、')) + '）：</span>' + btns.join('') + '</div>';
-    }
-  }
+  const rev = await revBarHtml(db, pageId);
 
   const html = head + rev + '<div class="docBody reflow"><p class="docPara">' + bodyHtml + '</p></div>';
   return { html, title: db + ' ' + pageId };
+}
+
+/**
+ * 「回連結」那一列按鈕（作者 2026-10-28）：右欄的跨庫頁面與中間的本文都用它，
+ * 所以抽成一支。目標庫沒有被連過就回空字串。
+ */
+async function revBarHtml(db: string, pageId: string): Promise<string> {
+  if (!revIndex.size || !pageId) return '';
+  // 先看這一欄；整頁（a/b/c 三欄）如果還有別的欄被引用，就一併列出（作者 2026-10-28）
+  const colEntries = revIndex.get(db + '?' + pageId) ?? [];
+  const pageEntries = revIndex.get(db + '?' + pageId.replace(/[a-z]$/, '')) ?? [];
+  const wholePage = pageEntries.length > colEntries.length;
+  const entries = wholePage ? pageEntries : colEntries;
+  if (!entries.length) return '';
+  // 同一本書同一頁常常被引用好幾次：按鈕只留一個（按下去到的地方一樣），總數另外寫
+  const uniq = new Map<string, RevEntry>();
+  for (const e of entries) {
+    const k = e.src + ':' + e.pageId + ':' + e.va;
+    uniq.set(k, e);
+  }
+  const total = uniq.size;
+  const btns: string[] = [];
+  const seenLabel = new Set<string>();
+  let n = 0;
+  for (const e of uniq.values()) {
+    if (n >= 12) break;
+    const srcR = await readerFor(e.src);
+    const srcIdx = srcR ? await anchorIndex(srcR) : null;
+    const name = (srcR && srcIdx ? (await cachedLabel(srcR, '書', srcIdx.bookVas, e.va)) : '') || e.src;
+    const label = '《' + name + '》 ' + e.pageId;
+    if (seenLabel.has(label)) continue;
+    seenLabel.add(label);
+    n++;
+    btns.push('<button class="mini xrefRev" type="button" data-rrev="' + esc(e.src + '|' + e.va) + '" data-rrev-label="' + esc(label) + '" data-rpage="' + esc(e.pageId) + '" data-rcite="' + esc(e.cite) + '" data-rquote="' + esc(e.quote) + '">'
+      + esc(label) + '</button>');
+  }
+  const more = total > btns.length ? '<span class="dim">…共 ' + total + ' 條</span>' : '';
+  const scope = wholePage ? '本頁（含其他欄）' : '';
+  return '<div class="xrefRevBar"><span class="dim">回連結' + (scope ? '·' + scope : '')
+    + '（' + esc([...new Set(entries.map((e) => e.src))].join('、')) + '）：</span>' + btns.join('') + more + '</div>';
+}
+
+/** 本文中間那一頁的頁 id（給中間的「回連結」用） */
+export async function pageIdAtVa(va: number): Promise<string> {
+  if (!reader) return '';
+  const idx = await anchorIndex(reader);
+  if (!idx) return '';
+  let lo = 0, hi = idx.vas.length - 1, k = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (idx.vas[m] <= va) { k = m; lo = m + 1; } else hi = m - 1; }
+  return k >= 0 ? idx.values[k] : '';
+}
+
+/** 中間那一頁的回連結列（doc-pane 畫完頁面後呼叫；沒有就回空字串） */
+export async function reverseBarForPage(pageId: string): Promise<string> {
+  if (!reader || !pageId) return '';
+  await ensureReverse();
+  return revBarHtml(reader.header.dbname, pageId);
 }
 
 async function handleXref(value: string, fromRight: boolean, newTab: boolean, quote?: string): Promise<void> {
@@ -682,18 +754,18 @@ export function initXref(): void {
     void handleXref(a.dataset.xref ?? '', fromRight, ev.ctrlKey || ev.metaKey, (a.dataset.q || (fromRight ? '' : quoteNear(a))));
   }, true);
   // 主庫換了（或第一次載入）就重建反連表
-  document.addEventListener('accelon26:db', () => { revSource = null; void buildReverseIfPossible(); });
+  document.addEventListener('accelon26:db', () => { revKey = ''; void buildReverseIfPossible(); });
   void buildReverseIfPossible();
 }
 
 async function buildReverseIfPossible(): Promise<void> {
   if (!reader) return;
-  await buildReverse(reader);
+  await ensureReverse();
   void linkedTargets();
 }
 
 /** 由 UI 在開庫後呼叫：建立反連表（很快，只讀屬性）。 */
 export async function refreshReverse(): Promise<void> {
-  revSource = null;
+  revKey = '';
   await buildReverseIfPossible();
 }

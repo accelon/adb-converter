@@ -1242,6 +1242,8 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   wireDocMetaTips();
   const body = document.querySelector<HTMLElement>('#docText .docBody');
   body?.scrollTo(0, 0);
+  // 中間這一頁若被別的庫（印順）引用過，就在標題下畫「回連結」按鈕（作者 2026-10-28）
+  void paintReverseBar();
   // the middle-line cursor follows the pane, so re-read it after every render and
   // after every programmatic scroll (paintHit) — throttled to one frame
   if (body && !docScrollWired.has(body)) {
@@ -1256,6 +1258,25 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
 
 /** the .docBody elements that already carry the scroll listener (one per render) */
 const docScrollWired = new WeakSet<Element>();
+
+/**
+ * 中間的「回連結」：頁面畫好後非同步取（反連表要讀別的庫）。
+ * 頁碼取這一段第一個 `<頁>` 分隔上的 data-page——不是釘選那一頁，
+ * 所以翻頁、跳段之後按鈕都跟著眼前的頁走。
+ */
+async function paintReverseBar(): Promise<void> {
+  const pb = document.querySelector<HTMLElement>('#docText .docBody .pageBreak[data-page], #docText .docBody .pageMark[data-page]');
+  const pageId = pb?.dataset.page ?? '';
+  let html = '';
+  try {
+    html = await reverseBarForPage(pageId);
+  } catch { return; }
+  const host = document.querySelector<HTMLElement>('#docText .docTop');
+  if (!host) return;
+  const old = host.nextElementSibling;
+  if (old?.classList.contains('xrefRevBar')) old.remove();
+  if (html) host.insertAdjacentHTML('afterend', html);
+}
 
 function scheduleCursorSync(): void {
   if (cursorPending) return;
@@ -1696,6 +1717,7 @@ import { DocRow } from './adb';
 
 import { VaPaMapper } from './vapa';
 import { updateDocLogo } from './logo';
+import { reverseBarForPage } from './xref';
 import { inJumpRange, jumpRange, setJumpRange } from './jump-band';
 
 /** everything the document pane keeps for ONE database */
