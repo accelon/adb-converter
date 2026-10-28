@@ -117,7 +117,7 @@ func main() {
 		}
 		e.write(fmt.Sprintf(`<檔 n="%s">`, filepath.Base(path)))
 		e.nl()
-		e.write(fmt.Sprintf(`<書 l="目次" t="記" id="%d">%s</書>`, vol, esc(title)))
+		e.write(fmt.Sprintf(`<書 l="目次" t="章,節,項." id="%d">%s</書>`, vol, esc(title)))
 		e.stats["書"]++
 		e.nl()
 		dec := xml.NewDecoder(strings.NewReader(string(raw)))
