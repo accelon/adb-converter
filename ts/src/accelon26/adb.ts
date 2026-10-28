@@ -211,6 +211,20 @@ export interface Container {
 const latin1 = new TextDecoder('latin1');
 
 /**
+ * 容器裡的名字（token、標籤…）：舊的 Delphi 版把名字寫在固定長度的格子裡，
+ * 用 `\0` 結尾，後面的空間留著上一次的字或 `U+ABAB` 填塞。
+ * 2026-10-28：swjz.adb（2011）就是這樣——不切掉尾巴，詞條清單會出現
+ * `⿰羽\u0000_note`、`⿰⿱大亐䐀ꮫꮫꮫꮫ` 這種東西。
+ */
+export function cleanName(raw: string): string {
+  const z = raw.indexOf('\u0000');
+  let s = z >= 0 ? raw.slice(0, z) : raw;
+  // 去掉尾端的填塞（U+ABAB＝Delphi 的除錯填充），但不要把名字本身的字吃掉
+  s = s.replace(/[\uABAB]+$/g, '');
+  return s;
+}
+
+/**
  * UTF-16LE decode that keeps unpaired surrogates intact.
  *
  * `TextDecoder('utf-16le')` is NOT safe here: Bun's implementation replaces a
@@ -237,8 +251,7 @@ export function decodeUtf16(bytes: Uint8Array): string {
   return out;
 }
 
-export function decodePackedList(buf: Uint8Array): number[] {
-  const view = dv(buf);
+export function decodePackedList(buf: Uint8Array): number[] {  const view = dv(buf);
   const added = view.getUint32(0, true);
   let off = 4 + Math.floor(added / MILE_DISTANCE) * 8;
   const end = off + added;
@@ -409,7 +422,7 @@ export class AdbReader {
             ? { start: nb.dataStart + (i > 0 ? nb.ends[i - 1] : 0), end: nb.dataStart + nb.ends[i] }
             : { start: nb.dataStart + i * nb.blockSize, end: nb.dataStart + (i + 1) * nb.blockSize };
           const len = r.end - r.start - 2;
-          if (len > 0) c.names.push(decodeUtf16(await this.io.read(r.start, len)));
+          if (len > 0) c.names.push(cleanName(decodeUtf16(await this.io.read(r.start, len))));
         }
         c.count = count - 1;
       } else if (!ends) {

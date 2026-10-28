@@ -59,9 +59,14 @@ export function displayName(name: string): string {
   const nul = name.indexOf('\0');
   const cut = nul >= 0 ? name.slice(0, nul) : name;
   const units = [...cut].map((ch) => {
-    const c = ch.charCodeAt(0);
-    if (c >= 0xd800 && c <= 0xdfff) return '\u25a1';
-    if (c < 0x20) return '\u2400' + String.fromCharCode(c + 0x40);
+    // `[...s]` 給的是「字」（可能是代理對）；只有長度 1 的才是真正的孤代理。
+    // 舊寫法用 ch.charCodeAt(0) 判斷，於是所有增補平面字（𢁓、𠀀…）都被當成
+    // 孤代理換成 □——swjz 的 2,009 個字頭就是這樣變成豆腐塊的（2026-10-28 修）。
+    if (ch.length === 1) {
+      const c = ch.charCodeAt(0);
+      if (c >= 0xd800 && c <= 0xdfff) return '\u25a1';
+      if (c < 0x20) return '\u2400' + String.fromCharCode(c + 0x40);
+    }
     return ch;
   }).join('');
   return nul >= 0 ? units + '…' : units;
