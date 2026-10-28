@@ -148,7 +148,23 @@ ok('Esc 關閉卡片', esc.closed === true);
 ok('再從 About 進得去', esc.again === true);
 ok('✕ 也關得掉', esc.closedByX === true);
 
-// 4) 沒有 console 錯誤
+// 5) 卡片上寫的行為要真的成立：Alt+點目錄節點 = 完全展開子孫（作者 2026-10-29 指出的漏項）
+const altExpand = await run(`(async () => {
+  const rows = () => [...document.querySelectorAll('#dirTree .tRow')];
+  const before = rows().length;
+  // 找第一個「未展開、有子節點」的列（有 .tTwisty），Alt+點它的名稱
+  const target = rows().find((r) => r.querySelector('.tTwisty'));
+  if (!target) return { error: 'no node with children' };
+  const name = target.querySelector('.tName') ?? target;
+  name.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, altKey: true }));
+  await new Promise((r) => setTimeout(r, 1200));
+  const after = rows().length;
+  return { before, after, name: name.textContent ?? '' };
+})()`);
+ok('Alt+點目錄節點會展開子孫', !!altExpand && altExpand.after > altExpand.before + 1,
+  altExpand?.error ?? `${altExpand?.name} 列數 ${altExpand?.before} → ${altExpand?.after}`);
+
+// 6) 沒有 console 錯誤
 const errs = await run(`(() => (window.__accelon26ConsoleErrors ?? null))()`);
 console.log(`\n${pass} passed, ${fail} failed${errs ? '  consoleErrors=' + JSON.stringify(errs) : ''}`);
 console.log('shot ' + SHOT);

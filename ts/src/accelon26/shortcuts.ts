@@ -56,13 +56,16 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
-    title: '本文、目錄與連結',
-    note: '修飾鍵＝Ctrl（Mac ⌘）。',
+    title: 'Ctrl／Alt ＋ 點擊',
+    note: 'Mac 的 Ctrl 是 ⌘、Alt 是 ⌥。目錄節點不加鍵也有兩種意思：未展開→展開一層並跳過去，'
+      + '已展開→收合（本文不動）。',
     rows: [
       { keys: 'Ctrl+點目錄節點', what: '把那一節的文字放右欄，本文不動（對照用）' },
+      { keys: 'Alt+點目錄節點', what: '完全展開所有子孫節點（本文同時跳過去）；已展開時不變，點一下仍是收合' },
       { keys: 'Ctrl+點本文分頁', what: '分頁複製到右欄' },
       { keys: 'Ctrl+Shift+點本文分頁', what: '分頁搬到右欄（本文收起來）' },
       { keys: 'Ctrl+點連結', what: '`<聯>`／回連結按鈕：在新分頁開啟' },
+      { keys: 'Alt+點字級按鈕', what: '字級 −2px（平常點是 +2px）；「T」三顆按鈕各管左欄／正文／右欄' },
     ],
   },
   {
