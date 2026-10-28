@@ -519,6 +519,20 @@ export async function renderForeign(db: string, va: number, anchor?: string, quo
   return { html, title: db + ' ' + pageId };
 }
 
+/**
+ * 按鈕上的書名：corpus 的短名（「般若經講記」→「般若」）。
+ * CBETA 的書名寫「華雨集（二）」，corpus 寫「華雨集第二冊」，去掉「第、冊、括號」再比一次。
+ */
+function shortTitle(name: string): string {
+  const hit = SHORT_TITLES[name];
+  if (hit) return hit;
+  const k = name.replace(/[\s第冊（）()]/g, '');
+  for (const full of Object.keys(SHORT_TITLES)) {
+    if (full.replace(/[\s第冊（）()]/g, '') === k) return SHORT_TITLES[full];
+  }
+  return name;
+}
+
 /** 回連結按鈕上要顯示的東西（書名短名＋頁碼＋大正原文 tq，給中間本文定位用） */
 export interface RevItem {
   src: string; va: number; pageId: string;
@@ -540,21 +554,32 @@ export async function reverseItemsForPage(db: string, pageId: string): Promise<R
   for (const e of entries) uniq.set(e.src + ':' + e.pageId + ':' + e.va, e);
   const out: RevItem[] = [];
   const seen = new Set<string>();
+  let lastBook = '';
   for (const e of uniq.values()) {
     const srcR = await readerFor(e.src);
     const srcIdx = srcR ? await anchorIndex(srcR) : null;
     const name = (srcR && srcIdx ? (await cachedLabel(srcR, '書', srcIdx.bookVas, e.va)) : '') || e.src;
-    const label = (SHORT_TITLES[name] ?? name) + ' ' + e.pageId;
-    if (seen.has(label)) continue;
-    seen.add(label);
+    const key = name + '|' + e.pageId;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const short = shortTitle(name);
+    const page = shortPage(e.pageId);
+    // 同一本書的連續幾條只寫頁碼，讓按鈕群短一些（作者 2026-10-28）
+    const label = short === lastBook ? page : short + ' ' + page;
+    lastBook = short;
     out.push({ src: e.src, va: e.va, pageId: e.pageId, label, full: name, tq: e.tq, cite: e.cite, quote: e.quote });
   }
   return out;
 }
 
-/** 一顆回連結按鈕 */
+/** 按鈕上的頁碼：去掉冊號前綴與前導 0（`11p0035a` → `35a`、`2p206a` → `206a`） */
+function shortPage(id: string): string {
+  return id.replace(/^\d+p/, '').replace(/^0+(?=\d)/, '');
+}
+
+/** 一顆回連結按鈕（按鈕上文字很短，完整書名與頁碼放 title／data） */
 export function revButtonHtml(it: RevItem): string {
-  return '<button class="mini xrefRev" type="button" title="《' + esc(it.full) + '》 ' + esc(it.pageId) + '" data-rrev="' + esc(it.src + '|' + it.va) + '" data-rrev-label="' + esc(it.label) + '" data-rpage="' + esc(it.pageId) + '" data-rcite="' + esc(it.cite) + '" data-rquote="' + esc(it.quote) + '">'
+  return '<button class="mini xrefRev" type="button" title="《' + esc(it.full) + '》 ' + esc(it.pageId) + '" data-rrev="' + esc(it.src + '|' + it.va) + '" data-rrev-label="' + esc(it.full + ' ' + it.pageId) + '" data-rpage="' + esc(it.pageId) + '" data-rcite="' + esc(it.cite) + '" data-rquote="' + esc(it.quote) + '">'
     + esc(it.label) + '</button>';
 }
 

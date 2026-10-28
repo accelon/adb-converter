@@ -20,7 +20,9 @@ for (const f of readdirSync(SRC)) {
   if (!/^y\d+\.xml$/i.test(f)) continue;
   const text = readFileSync(join(SRC, f), 'utf8');
   for (const m of text.matchAll(/<articlegroup[^>]*label="([^"]*)"/g)) {
-    const [short, full] = m[1].split(';');
+    const [rawShort, full] = m[1].split(';');
+    // 有一筆短名寫成「\n華一」（字面的反斜線 n），那是換行，去掉
+    const short = (rawShort ?? '').replace(/\\n/g, '').replace(/\s+/g, '');
     if (!short || !full) continue;
     if (!map[full]) map[full] = short;
   }
