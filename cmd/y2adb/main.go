@@ -26,6 +26,10 @@ type emitter struct {
 	vol    int
 	noteSeq int
 	lbOut  *bufio.Writer
+	// <cb:mulu level="N"> 的層級：1＝章、2＝節、3＝項（CBETA 只用這個標記目次層級）
+	muluLevel int
+	// 目前開著的標題標籤（章／節／項），</章> 要對上同一個名字
+	headTag string
 }
 
 func (e *emitter) nl() {
@@ -37,6 +41,30 @@ func (e *emitter) nl() {
 }
 
 func (e *emitter) write(s string) { e.line.WriteString(s) }
+
+/**
+ * 開一個標題。層級來自前面的 <cb:mulu level="N">：
+ *   1 → <章 t="節,項.">（章底下可以有節、項）
+ *   2 → <節 t="項.">
+ *   3 → <項>
+ * 目錄樹靠 `t=` 宣告「這一層的小孩是哪一種標籤」，沒有 `t=` 就只能當葉節點。
+ * 2026-10-28：先前一律寫 <章>，於是「第一章」「第一節」在目錄裡同屬一層。
+ */
+func (e *emitter) openHeading() {
+	tag, t := "章", `t="節,項."`
+	switch e.muluLevel {
+	case 2:
+		tag, t = "節", `t="項."`
+	case 3, 4:
+		tag, t = "項", ""
+	}
+	e.headTag = tag
+	if t == "" {
+		e.write("<" + tag + ` u="文">`)
+	} else {
+		e.write("<" + tag + " " + t + ` u="文">`)
+	}
+}
 
 func esc(s string) string {
 	s = strings.ReplaceAll(s, "&", "&amp;")
@@ -161,7 +189,13 @@ func main() {
 					e.stats["app"]++
 				case "rdg":
 					skip = 1
-				case "anchor", "g", "mulu":
+				case "anchor", "g":
+					skip = 1
+				case "mulu":
+					// 目次層級：1＝章、2＝節、3＝項。文字另有 <head>，這裡只記層級。
+					if n := attr(t.Attr, "level"); n != "" {
+						e.muluLevel = int(n[0] - '0')
+					}
 					skip = 1
 				case "milestone":
 					if attr(t.Attr, "unit") == "juan" && inBody {
@@ -213,10 +247,10 @@ func main() {
 					e.stats["段"]++
 				case "head":
 					e.nl()
-					e.write(`<章 u="文">`)
+					e.openHeading()
 				case "jhead":
 					e.nl()
-					e.write(`<章 u="文">`)
+					e.openHeading()
 				}
 			case xml.EndElement:
 				if skip > 0 {
@@ -228,7 +262,13 @@ func main() {
 				}
 				switch t.Name.Local {
 				case "head", "jhead":
-					e.write("</章>")
+					tag := e.headTag
+					if tag == "" {
+						tag = "章"
+					}
+					e.write("</" + tag + ">")
+					e.headTag = ""
+					e.muluLevel = 0
 				case "note":
 					e.nl()
 				case "body":

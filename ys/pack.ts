@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { authorAdb } from '../ts/src/adbauthor';
 import { MAXLINELEN } from '../ts/src/index-builder';
 
@@ -33,5 +33,9 @@ const out = await authorAdb({
 });
 const buf = Buffer.from(out.file); buf.writeUInt32LE(0, 100);
 writeFileSync('D:/2026/adb-converter/build/ys-linked.adb', buf);
-writeFileSync('D:/accelon3/ys.adb', buf);
+// 直接覆寫 D:\accelon3\ys.adb 偶爾會拿到 EUNKNOWN（檔案被 Accelon26 開著、
+// 或 Defender 正在掃 26 MB 的新檔）。先寫 .new 再改名，是同一顆磁碟上的原子替換。
+const deployed = 'D:/accelon3/ys.adb';
+writeFileSync(deployed + '.new', buf);
+renameSync(deployed + '.new', deployed);
 console.log('wrote ys.adb', (buf.length / 1048576).toFixed(1), 'MiB, lines', lines.length);

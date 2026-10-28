@@ -48,3 +48,5 @@ wails/*.syso
 wails/wails.exe
 build/windows/
 build/darwin/
+
+y2adb.exe

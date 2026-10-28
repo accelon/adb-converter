@@ -662,19 +662,20 @@ async function renderDirTree(): Promise<void> {
           return;
         }
 
-        // 聯動本文（點色塊/名稱/開合箭頭都是同一個「打開並聯動」動作）
+        // 作者 2026-10-28 定下的兩態行為：
+        //   未展開（不管點箭頭、色塊、名稱）→ 展開一層子節點，本文跳到這個節點
+        //   Alt ＋ 未展開 → 展開所有子孫，本文照樣跳過去
+        //   已展開（到任何深度）→ 收合所有子孫，**不移動本文**
         const link = () => void revealHit(va, label, 1, { newTab: wantsNewTab, mode: 'node' });
         const open = d.open.has(va);
 
-        if (altKey(ev) && (t?.closest('.tTwisty') || t?.closest('.tName'))) {
-          // Alt：展開全部子孫（舊版是 Ctrl）；沒有子節點時退回一般開合
-          if (hasKids) { openAll(); link(); return; }
-        }
-        // 箭頭收合時只收合，不動本文；點名稱／色塊仍是「跳到這個節點」。
-        // 可開就開並聯動本文（作者 2026-10-25）。
-        if (open) {
-          if (t?.closest('.tTwisty')) { setOpen(false); return; }
+        if (altKey(ev) && hasKids && !open) {
+          openAll();
           link();
+          return;
+        }
+        if (open) {
+          setOpen(false);
           return;
         }
         if (hasKids) setOpen(true);
