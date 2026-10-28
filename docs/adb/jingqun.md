@@ -7,6 +7,9 @@
 > 覆蓋釋經論部、經疏部、續經疏部、論疏部、續論疏部、律疏部、續律疏部，以及諸宗部／古逸部中
 > 可判定的註疏。成品在 [`jingqun/jingqun.tsv`](../../jingqun/jingqun.tsv)，
 > 可離線看的樹在 `build/jingqun/jingqun.html`。
+>
+> 逐句的註疏引用與 `<嵌>` 文內嵌入，見
+> [jingqun-embed-skill.md](./jingqun-embed-skill.md)。
 
 ## 1. 為什麼要做
 

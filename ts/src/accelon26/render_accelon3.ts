@@ -406,10 +406,17 @@ export class Accelon3Renderer {
       // 本文只長出晶片；點擊後由 embed.ts 取目標頁的引文插在後面，再點一次收合。
       if (name === '嵌' || name === '_嵌') {
         const xref = attrValue(attrs, 'i');
+        const targets = attrValue(attrs, 't');
         const q = attrValue(attrs, 'q');
         const j = attrValue(attrs, 'j');
         const label = attrValue(attrs, 'n') || '嵌';
-        if (!closing && xref) {
+        if (!closing && targets) {
+          // 群組式：q = 經文段落，t = 多家註疏的目標清單
+          html += `<button type="button" class="embedChip embedGroupChip" data-embed-targets="${esc(targets)}"`
+            + (q ? ` data-q="${esc(q)}"` : '')
+            + ` data-label="${esc(label)}" title="展開 ${esc(label)} 對這段經文的解釋">▸ ${esc(label)}</button>`;
+          this.sawText = true;
+        } else if (!closing && xref) {
           html += `<button type="button" class="embedChip" data-embed="${esc(xref)}"`
             + (q ? ` data-q="${esc(q)}"` : '')
             + (j ? ` data-j="${esc(j)}"` : '')

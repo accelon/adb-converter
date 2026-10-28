@@ -77,6 +77,7 @@ bun run test/index-match.ts # 反向索引認證
 * [broken-quote-elsewhere.md](./docs/adb/broken-quote-elsewhere.md) — 576 條有 `q` 的全文檢索結果（0 條整句、237 條前綴、339 條找不到）
 * [taisho-steps.md](./docs/adb/taisho-steps.md) — 大正藏 1–85 冊
 * [jingqun.md](./docs/adb/jingqun.md) — 大正藏「經／論／律→注→疏」繼承表（379 部註疏、479 節點、81 群）
+* [jingqun-embed-skill.md](./docs/adb/jingqun-embed-skill.md) — 金剛經經群：註疏引用對齊與 `<嵌>` 文內嵌入（transclusion）
 * [goryeo-steps.md](./docs/adb/goryeo-steps.md) — 高麗藏
 * [lc-steps.md](./docs/adb/lc-steps.md) — 呂澂佛學著作集（1,119 個大正鏈結）
 * [ys-steps.md](./docs/adb/ys-steps.md) — 印順（Y 部）

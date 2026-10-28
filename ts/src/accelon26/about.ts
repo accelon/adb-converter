@@ -19,6 +19,7 @@
 import { desktopAppInfo, desktopCheckUpdate, desktopInstallUpdate, desktopOpenExternal, desktopRevealInFolder } from './host';
 import type { DesktopAppInfo } from './host';
 import { startTour } from './tour';
+import { keySummary, openShortcuts, shortcutCount } from './shortcuts';
 import { exportSettingsFile, initSettings, settingsLocation, settingsVersion } from './settings';
 import { getUserId, setUserId } from './user-id';
 
@@ -329,6 +330,18 @@ export function initAbout(): void {
     closeAbout();
     startTour();
   });
+  // 「⌨ 快速鍵」（作者 2026-10-29）：關掉這一頁，開快速鍵卡片（全部快速鍵集中一頁）
+  el<HTMLElement>('aboutKeys')?.addEventListener('click', () => {
+    closeAbout();
+    void openShortcuts();
+  });
+  // About 那一行摘要從快速鍵清單生，不另外維護（改 shortcuts.ts 就好）
+  const keyLine = el<HTMLElement>('aboutKeysLine');
+  if (keyLine) {
+    const n = shortcutCount();
+    keyLine.innerHTML = `快速鍵 <b>${n}</b> 個：<b>${keySummary().replace(/\+/g, '＋')}</b>…`
+      + '全部在「快速鍵」卡片';
+  }
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && state.open) { ev.stopPropagation(); closeAbout(); }
   }, true);

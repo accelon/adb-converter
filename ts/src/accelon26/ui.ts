@@ -1166,6 +1166,8 @@ function boot() {
   initTour(TOUR_APP);
   // 軟件說明（About）：點左上角 accelon26 開啟，順便檢查更新
   initAbout();
+  // 快速鍵卡片（作者 2026-10-29）：About →「⌨ 快速鍵」；✕／背景／Esc 由它自己接
+  initShortcuts();
   // 加入 Obsidian（作者 2026-10-25）：vault → adb，選單與兩個隱藏 input 都在這裡接線
   initVaultImport();
   // 🪾 left of the 文件內容 title: only on demand does the tree open up to the node
@@ -1631,6 +1633,9 @@ export function installDebugApi(): void {
   vaultImport: vaultImportState,
   /** 軟件說明（About） */
   openAbout, closeAbout, aboutState,
+  /** 快速鍵卡片（作者 2026-10-29）：About →「⌨ 快速鍵」 */
+  openShortcuts, closeShortcuts,
+  shortcutsState: () => ({ open: shortcutsOpen(), count: shortcutCount() }),
   /** 修訂者 ID（About 頁／測試） */
   setUserId, userId: getUserId,
   cols: () => ({ ...readCols(), css: {
@@ -1800,6 +1805,7 @@ import { hasLogoResource, hideDocLogo, logoState, updateDocLogo } from './logo';
 import { hostState } from './host';
 import { setVariantSearch, variantSearchOn } from './variants';
 import { aboutState, closeAbout, initAbout, openAbout, showAboutOnStartup } from './about';
+import { initShortcuts, openShortcuts, closeShortcuts, shortcutCount, shortcutsOpen } from './shortcuts';
 import { initTheme, THEME_LABEL, themeOf } from './theme';
 import { simplifiedStats, toSimplified } from './lossless';
 import { initDesktopBrand } from './update-ui';

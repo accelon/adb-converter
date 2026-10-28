@@ -264,10 +264,14 @@ function lineHtml(s: string, markFrom = -1, markTo = -1): string {
       if (me) {
         const attrs = me[1];
         const xref = /\bi="([^"]*)"/.exec(attrs)?.[1];
+        const targets = /\bt="([^"]*)"/.exec(attrs)?.[1];
         const xq = /\bq="([^"]*)"/.exec(attrs)?.[1];
         const xj = /\bj="([^"]*)"/.exec(attrs)?.[1];
         const label = /\bn="([^"]*)"/.exec(attrs)?.[1] ?? '嵌';
-        if (xref) {
+        if (targets) {
+          out += `<button type="button" class="embedChip embedGroupChip" data-embed-targets="${esc(targets)}"`
+            + (xq ? ` data-q="${esc(xq)}"` : '') + ` data-label="${esc(label)}" title="展開 ${esc(label)}">▸ ${esc(label)}</button>`;
+        } else if (xref) {
           out += `<button type="button" class="embedChip" data-embed="${esc(xref)}"`
             + (xq ? ` data-q="${esc(xq)}"` : '') + (xj ? ` data-j="${esc(xj)}"` : '')
             + ` data-label="${esc(label)}" title="嵌入 ${esc(label)} 的引文">▸ ${esc(label)}</button>`;
@@ -1435,7 +1439,7 @@ export async function xrefProbe(db: string, anchor: string) {
  * `j` 是目標頁的漢字索引（0 起，end 不含）；和 `q` 對不上時退回 q 比對。
  * 回傳的 HTML 只包含一段 `.embedDoc`，由 embed.ts 插在晶片後面。
  */
-export async function renderEmbed(db: string, anchor: string, quote = '', range = '', label = ''): Promise<{ html: string; title: string }> {
+export async function renderEmbed(db: string, anchor: string, quote = '', range = '', label = '', bare = false): Promise<{ html: string; title: string }> {
   const r = await readerFor(db);
   if (!r) return { html: '<p class="dim">請先開啟 ' + esc(db) + '.adb（同一個瀏覽器工作階段）。</p>', title: label || db };
   const idx = await anchorIndex(r);
@@ -1511,19 +1515,56 @@ export async function renderEmbed(db: string, anchor: string, quote = '', range 
   const fi = [fwd.indexOf('。'), fwd.indexOf('！'), fwd.indexOf('？')].filter((x) => x >= 0).sort((x, y) => x - y)[0];
   if (fi !== undefined) b = b + fi + 1;
   if (b - a > 900) b = a + 900;
+  // 去掉開頭的收引號／標點（引文常從句子中間開始）
+  while (a < b && /[」』）】〉》\s、，。；：]/.test(raw[a])) a++;
 
   const piece = raw.slice(a, b);
   const markFrom = raw.slice(a, rawAt[from] ?? a).replace(/<[^>]*>/g, '').split('').filter((c) => HAN_RE.test(c)).length;
   const markTo = markFrom + Math.max(0, to - from);
   const book = await bookAt(r, idx, va).catch(() => ({ title: '', no: '' }));
   const head = (label || book.title || db) + (book.title && label ? ' · ' + book.title : '');
+  const body = lineHtml(piece, markFrom, markTo);
+  if (bare) {
+    return { html: '<div class="embedText reflow">' + body + '</div>', title: head };
+  }
   return {
     html: '<div class="embedDoc">'
       + '<div class="embedHead"><span class="embedSrc">' + esc(head) + '</span>'
       + '<span class="embedPage">' + esc(anchor) + '</span></div>'
-      + '<div class="embedText reflow">' + lineHtml(piece, markFrom, markTo) + '</div>'
+      + '<div class="embedText reflow">' + body + '</div>'
       + '</div>',
     title: head,
+  };
+}
+
+/**
+ * `<嵌 q="經文段落" t="db?page@start-end@label|…" n="3 家注疏"/>`
+ *
+ * 同一段經文的所有註疏一次展開；每一家只取目標頁的引文，標上來源。
+ */
+export async function renderEmbedGroup(segment: string, targets: string, label = ''): Promise<{ html: string; title: string }> {
+  const items = targets.split('|').map((s) => s.trim()).filter(Boolean);
+  const parts: string[] = [];
+  for (const item of items) {
+    const at = item.indexOf('@');
+    const ref = at >= 0 ? item.slice(0, at) : item;
+    const rest = at >= 0 ? item.slice(at + 1) : '';
+    const dash = rest.lastIndexOf('@');
+    const range = dash >= 0 ? rest.slice(0, dash) : rest;
+    const name = dash >= 0 ? rest.slice(dash + 1) : '';
+    const q = ref.indexOf('?');
+    const db = q >= 0 ? ref.slice(0, q) : '';
+    const page = q >= 0 ? ref.slice(q + 1) : ref;
+    const res = await renderEmbed(db, page, '', range, name, true).catch((e) => ({ html: '<div class="embedText">讀取失敗：' + esc(String(e)) + '</div>', title: name }));
+    parts.push('<div class="embedItem"><div class="embedSrc">' + esc(name || res.title) + '</div>' + res.html + '</div>');
+  }
+  return {
+    html: '<div class="embedDoc embedGroup">'
+      + '<div class="embedHead"><span class="embedSrc">' + esc(label || items.length + ' 家注疏') + '</span></div>'
+      + '<div class="embedSegment">「' + esc(segment) + '」</div>'
+      + '<div class="embedItems">' + parts.join('') + '</div>'
+      + '</div>',
+    title: label,
   };
 }
 

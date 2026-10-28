@@ -33,6 +33,23 @@
 | `render.ts` | JSON → `build/jingqun/jingqun.html`（可離線看的樹） |
 | `summary.ts` | 產生文件用的族群統計表 |
 | `check.ts` | 驗證 parent／root／depth／cf／目標覆蓋（目前 0 fail） |
+| `align.ts` | 舊版：逐筆註疏引文對齊 → `<db>-links.tsv` |
+| `inject.ts` | 舊版：逐筆注入 `<嵌 i>` → `<db>-embed.txt` |
+| `group.ts` | 逐筆對齊後依經文段落分群 → `<db>-groups.tsv` |
+| `inject-group.ts` | 注入群組 `<嵌 q t n>` → `<db>-embed-group.txt` |
+| `inject-full.ts` | 把單一 `<嵌>` 注入完整 `build/tei-all.txt`（實驗） |
+
+## 文內嵌入 `<嵌>`
+
+在經文段落前插：
+
+```text
+<嵌 q="如是我聞：一時，佛在舍衛國…" t="jingang?33p228b@318-360@註解|jingang?25p781b@97-127@天親論|jingang?33p155c@271-300@纂要" n="3 家注疏"/>
+```
+
+點「▸ 3 家注疏」→ 在該段下方列出三家對同一段經文的解釋；再點或按「收合」移除。
+金剛經 pilot：7 部書、92 群、成品 `build/jingang-group.adb`。
+完整流程與限制見 [`docs/adb/jingqun-embed-skill.md`](../docs/adb/jingqun-embed-skill.md)。
 
 ## 資料模型
 

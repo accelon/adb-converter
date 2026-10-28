@@ -1,6 +1,6 @@
 13j.adb
 fgdict.adb
-swjzz.adb
+swjzz.adb	swjzz.html
 tx.adb	tx.html
 yulinpo.adb
 ys.adb	ys.html

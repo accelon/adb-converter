@@ -490,6 +490,47 @@
   .aboutFoot { margin: 10px 0 0; font-size: 12px; color: var(--dim); }
   .aboutKeys { margin: 8px 0 0; font-size: 12px; color: var(--dim); }
   .aboutKeys b { color: var(--fg); font-variant-numeric: tabular-nums; }
+  /* 「⌨ 快速鍵」：About 的入口（作者 2026-10-29）。所有快速鍵集中在一張卡片，見 shortcuts.ts */
+  #aboutKeys {
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 7px;
+    font: inherit; font-size: 14px; font-weight: 600; padding: 6px 14px; cursor: pointer;
+  }
+  #aboutKeys:hover { border-color: var(--accent); color: var(--accent); }
+  /* 按鈕上的「F1」小鍵帽：不用 ⌨（U+2328）這種要有字型才畫得出來的符號，
+     與卡片裡的 <kbd> 同一個樣子 */
+  .aboutKbd {
+    font: inherit; font-size: 11px; line-height: 1.4; padding: 0 5px; margin-right: 2px;
+    border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--dim);
+  }
+  #shortcutBackdrop { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); }
+  #shortcutBackdrop[hidden], #shortcutBox[hidden] { display: none; }
+  #shortcutBox {
+    position: fixed; z-index: 91; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(780px, 94vw); max-height: 88vh; overflow: auto;
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.65); padding: 16px 20px 12px;
+  }
+  .skTop { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 12px; }
+  .skTop h2 { margin: 0; font-size: 19px; font-weight: 700; color: var(--link); }
+  .skTop .skCount { font-size: 12px; color: var(--dim); }
+  .skTop .aboutClose { margin-left: auto; }
+  #shortcutBody { columns: 2; column-gap: 28px; }
+  @media (max-width: 720px) { #shortcutBody { columns: 1; } }
+  .skGroup { break-inside: avoid; margin: 0 0 14px; }
+  .skGroup h3 { margin: 0 0 6px; font-size: 13px; font-weight: 700; letter-spacing: .02em; color: var(--gold); }
+  .skNote { margin: 0 0 6px; font-size: 11.5px; line-height: 1.55; color: var(--dim); }
+  .skRow { display: flex; gap: 10px; padding: 3px 0; }
+  .skKeys { flex: 0 0 auto; min-width: 6.2em; display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+  .skKeys kbd {
+    font: inherit; font-size: 11.5px; line-height: 1.5; padding: 1px 6px; border-radius: 5px;
+    border: 1px solid var(--line); background: var(--panel2); color: var(--fg);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .skKeys kbd.skLit { font-size: 11px; }
+  .skPlus { font-size: 11px; color: var(--dim); }
+  .skWhat { flex: 1 1 auto; font-size: 12.5px; line-height: 1.55; }
+  .skFoot { margin: 2px 0 0; font-size: 11.5px; color: var(--dim); column-span: all; }
+  .skFoot code { background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
   /* the database name lives on the chip (#dbTabs); this rule went with #dbname */  #file { display: none; }   /* the picker is driven by #dbAdd */
 .dbAdd { border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink);
   cursor: pointer; font-size: 13px; padding: 1px 7px; line-height: 1.5; }
@@ -823,14 +864,23 @@
   .embedBlock {
     margin: 3px 0 6px 1.2em; padding: 5px 9px 6px; border-left: 3px solid var(--accent);
     background: color-mix(in srgb, var(--accent) 6%, var(--panel)); border-radius: 0 5px 5px 0;
-    font-size: .92em; line-height: 1.6;
+    font-size: .92em; line-height: 1.6; white-space: normal; word-break: break-word;
   }
+  .embedBlock .embedText, .embedBlock .embedSegment, .embedBlock .embedItem { white-space: normal; overflow-wrap: anywhere; }
   .embedHead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; color: var(--dim); font-size: .82em; }
   .embedSrc { color: var(--accent); font-weight: 600; }
   .embedPage { font-family: ui-monospace, monospace; }
   .embedClose { margin-left: auto; border: 0; background: transparent; color: var(--dim); font: inherit; font-size: .9em; cursor: pointer; }
   .embedClose:hover { color: var(--fg); text-decoration: underline; }
   .embedText { color: var(--fg); }
+  .embedGroup .embedSegment {
+    margin: 2px 0 6px; padding: 3px 6px; border-radius: 4px;
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+    color: var(--dim); font-size: .9em; line-height: 1.55;
+  }
+  .embedItems { display: flex; flex-direction: column; gap: 7px; }
+  .embedItem { border-top: 1px dashed var(--line); padding-top: 5px; }
+  .embedItem .embedSrc { display: block; margin-bottom: 1px; font-size: .8em; }
   .embedText mark.embedHit, .embedText mark.xrefHit { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
   .embedLoading, .embedError { color: var(--dim); font-size: .9em; padding: 4px 0; }
   .embedError { color: var(--err); }
@@ -1851,11 +1901,12 @@
        版本上面——這兩個入口比版本資訊更常按）。這頁預設「啟動時顯示」。 -->
   <div class="aboutActions">
     <button id="aboutTour" class="primary" title="一步一步教你用：開庫、查詞、看本文、目錄、設置、詞典">▶ 操作導覽</button>
+    <button id="aboutKeys" type="button" title="所有快速鍵一覽（一張卡片，Esc 關閉）"><kbd class="aboutKbd">F1</kbd> 快速鍵</button>
     <label class="aboutToggle" for="aboutStartup">
       <input type="checkbox" id="aboutStartup"> <span>啟動時顯示本頁面</span>
     </label>
   </div>
-  <p class="aboutKeys">快速鍵：<b>Ctrl+B</b> 開關左欄；<b>Ctrl+Alt+B</b> 開關右欄（Mac：⌘B／⌘⌥B）。</p>
+  <p class="aboutKeys" id="aboutKeysLine">快速鍵：<b>Ctrl+B</b> 開關左欄；<b>Ctrl+Alt+B</b> 開關右欄（Mac：⌘B／⌘⌥B）。</p>
   <div class="aboutMeta">
     <div><span>版本</span><b id="aboutBuild">—</b></div>
     <div><span>執行環境</span><b id="aboutMode">—</b></div>
@@ -1885,6 +1936,18 @@
   </div>
   <!-- 操作導覽的入口已移到官網下面（見上方 .aboutActions） -->
   <p class="aboutFoot">原始碼與操作說明見官網；有問題請在官網回報。</p>
+</div>
+
+<!-- 快速鍵卡片（作者 2026-10-29）：About →「⌨ 快速鍵」開啟；內容由 shortcuts.ts 的
+     SHORTCUT_GROUPS 產生（單一真相，About 那一行摘要也從它來）。 -->
+<div id="shortcutBackdrop" hidden></div>
+<div id="shortcutBox" role="dialog" aria-modal="true" aria-labelledby="shortcutTitle" hidden>
+  <div class="skTop">
+    <h2 id="shortcutTitle">快速鍵</h2>
+    <span class="skCount" id="shortcutCount"></span>
+    <button id="shortcutClose" class="aboutClose" title="關閉（Esc）">✕</button>
+  </div>
+  <div id="shortcutBody"></div>
 </div>
 
 <!-- 操作導覽（作者 2026-10）：從「關於」的「▶ 操作導覽」開始，播放器一步一步做給你看。

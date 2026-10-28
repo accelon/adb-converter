@@ -6,7 +6,7 @@
  * 再點一次（或按「收合」）移除。概念參考 offtext 的 `^[引用]`：
  * 正文不動，展開的內容是另一份 offtext，可以再引用。
  */
-import { renderEmbed } from './xref';
+import { renderEmbed, renderEmbedGroup } from './xref';
 
 function closeEmbed(btn: HTMLElement): void {
   const next = btn.nextElementSibling as HTMLElement | null;
@@ -16,15 +16,14 @@ function closeEmbed(btn: HTMLElement): void {
 }
 
 async function openEmbed(btn: HTMLElement): Promise<void> {
-  const log = (globalThis as any).__embedLog as string[] | undefined;
-  log?.push('start ' + (btn.dataset.embed ?? ''));
   const next = btn.nextElementSibling as HTMLElement | null;
   if (next?.classList.contains('embedBlock')) { closeEmbed(btn); return; }
   const value = btn.dataset.embed ?? '';
+  const targets = btn.dataset.embedTargets ?? '';
   const q = value.indexOf('?');
   const db = q >= 0 ? value.slice(0, q) : '';
   const anchor = q >= 0 ? value.slice(q + 1) : value;
-  if (!db || !anchor) return;
+  if (!targets && (!db || !anchor)) return;
   const label = btn.dataset.label ?? '';
 
   const block = document.createElement('div');
@@ -35,8 +34,9 @@ async function openEmbed(btn: HTMLElement): Promise<void> {
   btn.setAttribute('aria-expanded', 'true');
 
   try {
-    const res = await renderEmbed(db, anchor, btn.dataset.q ?? '', btn.dataset.j ?? '', label);
-    log?.push('resolved ' + res.html.length + ' connected=' + block.isConnected);
+    const res = targets
+      ? await renderEmbedGroup(btn.dataset.q ?? '', targets, label)
+      : await renderEmbed(db, anchor, btn.dataset.q ?? '', btn.dataset.j ?? '', label);
     block.innerHTML = res.html;
     const head = block.querySelector('.embedHead') as HTMLElement | null;
     if (head) {
@@ -54,7 +54,6 @@ async function openEmbed(btn: HTMLElement): Promise<void> {
     }
     // 讓行內 <聯> 等既有事件照常運作；<嵌> 內若再有 <嵌>，事件代理也會接到。
   } catch (err) {
-    log?.push('error ' + String(err));
     block.innerHTML = '<div class="embedError">讀取失敗：' + escapeHtml(String(err)) + '</div>';
   }
 }
@@ -68,8 +67,6 @@ let bound = false;
 export function initEmbed(): void {
   if (bound) return;
   bound = true;
-  (globalThis as any).__renderEmbed = renderEmbed;
-  (globalThis as any).__embedLog = [];
   document.addEventListener('click', (ev) => {
     const btn = (ev.target as Element | null)?.closest?.('button.embedChip') as HTMLElement | null;
     if (!btn) return;
@@ -78,3 +75,4 @@ export function initEmbed(): void {
     void openEmbed(btn);
   }, true);
 }
+
