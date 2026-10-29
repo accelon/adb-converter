@@ -324,10 +324,10 @@
 <tr><td>頁</td><td>16,994</td><td>17,516</td></tr>
 <tr><td>頁元</td><td>63</td><td>75</td></tr>
 <tr><td>行數</td><td>266,916</td><td>307,141</td></tr>
-<tr><td>大正鏈結</td><td>13,918（頁欄級為主）</td><td>25,918（字元級，另帶大正原文 <code>q</code>）</td></tr>
+<tr><td>大正鏈結</td><td>13,918（頁欄級為主）</td><td>17,870（字元級，另帶大正原文 <code>q</code>）</td></tr>
 <tr><td>插圖</td><td>456 張點陣圖（<code>images/y01-18.png</code>）</td><td>75 張圖版（64 svg ＋ 11 gif，資源名 <code>svg/YNN/…</code>）</td></tr>
-<tr><td>字元範圍 <code>j</code></td><td>沒有</td><td>25,095 個（2026-10-28 補；2,104 用寬鬆對位：頁內 1,189、前後頁 915）</td></tr>
-<tr><td>檔案大小</td><td>約 24.9 MB</td><td>25.9 MiB</td></tr>
+<tr><td>字元範圍 <code>j</code></td><td>沒有</td><td>16,683 個（2026-10-29 重建後重算；1,730 用寬鬆對位）</td></tr>
+<tr><td>檔案大小</td><td>約 24.9 MB</td><td>24.9 MiB</td></tr>
 <tr><td>更新方式</td><td>手動</td><td>一個腳本從 CBETA 重建（見 <code>ys-steps.md</code>）</td></tr></tbody></table></div>
 <h2>一、資料來源不同</h2>
 <p>舊版是作者自己把紙本逐字錄入、再標記而成的 corpus；新版直接吃 <b>CBETA Y 部 TEI P5</b>，</p>
@@ -339,11 +339,10 @@
 </ul>
 <p>  CBETA 沒有收，新版自動補回，另立「附錄」一書，逐行保存表格。</p>
 <ul>
-  <li><b>字元級大正鏈結</b>：25,918 條，比舊版多將近一倍；每一條都記著大正藏原文，</li>
+  <li><b>字元級大正鏈結</b>：17,870 條，每一條都記著大正藏原文，</li>
 </ul>
-<p>  所以能反過來在大正藏頁面上顯示「回連結」。其中 25,095 條另帶 <code>j=&quot;起-訖&quot;</code></p>
-<p>  （2026-10-28 補），點下去只塗那一小段；沒有 <code>j</code> 的仍可用 <code>q</code> 比對，</p>
-<p>  清單見 <a href="./broken-quote.md"><code>broken-quote.md</code></a>。</p>
+<p>  所以能反過來在大正藏頁面上顯示「回連結」。其中 16,683 條另帶 <code>j=&quot;起-訖&quot;</code></p>
+<p>  （2026-10-29 重建時重算），點下去只塗那一小段；沒有 <code>j</code> 的仍可用 <code>q</code> 比對。</p>
 <ul>
   <li><b>回連結</b>：讀大正藏時，被印順引用過的那一行直接出現「般若 114a」這樣的按鈕，</li>
 </ul>
@@ -353,7 +352,7 @@
 </ul>
 <p>  CBETA 的 <code>(CBETA 2025.R1, T02, no. 99, p. 1a7-9)</code>，跳到那一段並整段塗色。</p>
 <ul>
-  <li><b>正確的目錄層級</b>：章、節、項依 CBETA 的 <code>cb:mulu level</code> 分層，不再同層並排。</li>
+  <li><b>正確的目錄層級</b>：部、章、節、項、干、一…依 CBETA 的 <code>cb:mulu level</code> 分層（最多 18 層），不再同層並排。</li>
   <li><b>註記不再被藏起來</b>：CBETA 的 <code>&lt;note&gt;</code> 一律輸出成獨立的〔註n〕行。</li>
   <li><b>圖版</b>：CBETA 的 <code>&lt;graphic&gt;</code> 轉成 <code>&lt;圖 n=&quot;svg/YNN/…&quot; t=&quot;圖版&quot;/&gt;</code>，圖檔取自</li>
 </ul>
@@ -381,8 +380,8 @@
 <p><b>不需要</b> <code>yinshun.adb</code>——附錄與後記都進了版控。</p>
 <h2>五、這一版</h2>
 <ul>
-  <li>版本：2026-10-29（加入圖版）</li>
-  <li>下載：<code>ys.adb</code>（25.9 MiB）</li>
+  <li>版本：2026-10-29（加入圖版；引文與目次重建）</li>
+  <li>下載：<code>ys.adb</code>（24.9 MiB）</li>
   <li>授權：程式與增值標記 CC BY；原著作權利屬原權利人</li>
 </ul>
 </main>
