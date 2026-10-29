@@ -14,14 +14,19 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
 
 - 這個工作區只改 **accelon26** 與**官網管理**；已移出的 adb 專案不要在這裡改。
 - 要改已移出的 adb，先確認使用者要回哪個工作區；不要跨區複製檔案。
+- **`ys.adb` 的建置與部署（含上傳官網）由 `D:\2026\ys` 工作區負責**（作者 2026-10-29）：
+  本工作區不改 ys 的正文／資料、不部署 ys.adb。ys 工作區也可能直接修改本區的
+  `docs/adb/ys*.md`，那些檔案以那邊為準；本區只改閱讀器與官網。
 - 還在這裡的 adb 實驗（例如 `jingqun`）可以改，但要知道它將來可能搬走。
 
 ## 2. 目前的重要狀態（2026-10-29）
 
-- 官網公開數據庫只列 **5 個 <30 MB** 的庫：`13j`、`swjzz`、`tx`、`yulinpo`、`ys`。
-- `taisho.adb`、`wxzj.adb`：**施工中**（`status:wip`、`downloadable:false`），
-  官網與桌面版都不提供下載；兩站檔案已刪除（404）。
-  **不要**在沒有使用者明確指示下把它們改成 available 或重新上傳。
+- 官網公開數據庫 **6 個**：`13j`、`swjzz`、`tx`、`yulinpo`、`ys`（都 <30 MB）
+  ＋ `taisho`（331 MB 大檔）。
+- `taisho.adb`：2026-10-29 起 **available／可下載**（`large:true`、不列入「全部更新」，
+  只能整檔下載）；製作說明是 `www/adb/taisho.html`（來源 `docs/adb/taisho-about.md`）。
+- `wxzj.adb`：**施工中**（`status:wip`、`downloadable:false`），官網與桌面版都不提供下載；
+  兩站檔案已刪除（404）。**不要**在沒有使用者明確指示下把它改成 available 或重新上傳。
 - `fgdict.adb`：作者要大修，已下架（不在 index／manifest，兩站 404）。
 - T56–T84 的文本與底本為 public domain；數位文字取自 SAT 2018，依其授權標注；
   TEI 標記按 CBETA convention 整理。詳見 `docs/adb/stable-adb.md`。
@@ -100,7 +105,7 @@ bun run tools/cbeta-base.ts --check
 - 歷史 release ZIP 不刪；`deploy.ts --site` 只補站上沒有的。
 - 發佈後兩站都要同步，並驗證線上 `versions.json`、exe sha、歷史 ZIP 與 404 狀態。
 - 不要未經指示改 `deploy/adb-status.json` 的 `wip`／`revision`，也不要把
-  `taisho.adb`／`wxzj.adb`／`fgdict.adb` 重新上傳。
+  `wxzj.adb`／`fgdict.adb` 重新上傳（`taisho.adb` 已於 2026-10-29 開放，見 §2）。
 
 ## 6. 改動與回報
 

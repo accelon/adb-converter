@@ -2,7 +2,7 @@
 
 > **來源與權利（2026-10-29）**：Taisho 的文本與底本已屬 **public domain**；
 > T56–T84 的數位文字取自 **SAT 2018**，依 SAT 2018 的授權標注；TEI 標記是按
-> CBETA convention 整理的。taisho／wxzj 目前仍在施工中，先不提供下載。
+> CBETA convention 整理的。**taisho 已於 2026-10-29 開放整檔下載**；`wxzj` 仍在施工中。
 >
 > 作者要求：`taisho.adb`、`wxzj.adb` 要像 CBETA 一樣**一年只更新兩三次**；
 > 我們做的高級功能放**獨立的 adb**，不要讓使用者每次改功能就重新下載 300 MB。
@@ -50,9 +50,9 @@
 * **<30 MB** 的 adb 可以經常更新；**>30 MB** 的底座仍可整檔下載，但只在 CBETA 換版等
   重大更新時才換版，且不列入桌面版的「全部更新」。伺服器每月 1 TB 流量，所以大檔要省著換。
 * `publish-adb.ts` 對 >30 MB 的檔要求明確加 `--allow-large`；wip／revision 一律不上傳。
-* 不列在「公開數據庫」頁面的大檔（taisho／wxzj）仍納入 manifest 版本記錄：清單來源是
-  `www/adb/index.txt` ＋ `deploy/adb-extra.txt`；施工中時 `downloadable:false`，
-  整理完成後可改成 available，讓使用者整檔下載。
+* `taisho.adb`（331 MB）已列入 `www/adb/index.txt`，狀態 available、`downloadable:true`、
+  `large:true`、不列入桌面版的「全部更新」；`wxzj.adb` 仍是施工中，只留在 manifest 的
+  版本記錄（清單來源是 `www/adb/index.txt` ＋ `deploy/adb-extra.txt`）。
 
 ### B. 標注 adb（annotated canon，過渡期）
 
@@ -76,7 +76,7 @@
 
 | adb | CBETA | 檔案 | 頁 id | 備註 |
 |---|---|---:|---:|---|
-| `taisho.adb` | 2026R2（T01–55、85）＋SAT 2018（T56–84） | 315.7 MiB | 238,278（全唯一） | 舊 2026 建置 311.3 MiB；2008 舊檔 230.4 MiB |
+| `taisho.adb` | 2026R2（T01–55、85）＋SAT 2018（T56–84） | 315.7 MiB | 238,278（全唯一） | 2026-10-29 重建修行表（331,018,737 bytes、6,745,533 行）；舊 2026 建置 311.3 MiB；2008 舊檔 230.4 MiB |
 | `wxzj.adb` | 2026R2（X 全藏） | 235.3 MiB | 172,794（全唯一） | 舊 2026 建置 229.1 MiB；2008 舊檔 268.2 MiB |
 | `ys.adb` | Y 2026R2 | 25.2 MiB | — | 只把 8 處 `27p661c` 改指 `27p661b`（頁界變動） |
 
@@ -89,7 +89,7 @@ bun run tools/cbeta-base.ts --check
 # ✗ …                              → 見下面「換版」
 
 # CBETA 換版後才重建底座，重建完記帳：
-bun run tools/cbeta-base.ts --record taisho.adb build/taisho-2026R2.adb T
+bun run tools/cbeta-base.ts --record taisho.adb build/taisho-rebuild.adb T
 bun run tools/cbeta-base.ts --record wxzj.adb build/wxzj-2026R2.adb X
 ```
 
