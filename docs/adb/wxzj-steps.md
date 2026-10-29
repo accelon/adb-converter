@@ -1,31 +1,32 @@
 # wxzj.adb（卍新纂續藏經）產生步驟
 
-> 2026-10-28 依新版 CBETA TEI 管線重建。來源是 `E:\3rd\XML\X` 的 X 藏 TEI；
+> 2026-10-29 依 **CBETA XML-P5 2026.R2** 重建。來源是 `D:\2026\xml-p5\X` 的 X 藏 TEI；
 > 產物部署到 `D:\accelon3\wxzj.adb`。
 
-## 成品
+## 成品（2026-10-29，CBETA 2026.R2）
 
 | 項目 | 數值 |
 |---|---|
-| 檔案 | 229.1 MiB（240,208,125 bytes） |
-| SHA-256 | `2D0FDDA169E6EEEE818DDE6F3451D4D92769CFBA0606852839C8F532D061DE9F` |
-| 文字 | 163.85 MiB（UTF-16LE） |
-| 行 | 4,265,479 |
-| 冊／書／卷 | 86／1,236／5,294 |
-| 頁欄（`<頁 id>`） | 172,795 |
-| tokens | 17,783 種／81,368,606 筆 |
+| 檔案 | 235.3 MiB（246,706,405 bytes） |
+| SHA-256 | `f4f1cbc999535d51362ed432073df3d5919555465920171b622c967eb8ba1ad9` |
+| 文字 | 4,262,487 行 |
+| 冊／書／卷 | 86／1,236／8,937 |
+| 頁欄（`<頁 id>`） | 172,794（全部唯一） |
+| tokens | 23,391 種／83,654,260 筆 |
 | 標記 | 30 種 |
 | resources | `wxzj_logo.png`（273,121 bytes） |
 | 檔頭 | `dbname=wxzj`、`dbcname=卍新纂續藏經`、`dbtype=4`、`srcBlockSize=16384`、`compression=1` |
+
+> **純經文底座**：只跟 CBETA 換版；本專案的功能標記不放這裡。
 
 ## 指令
 
 ```bat
 :: 1) X TEI → 文字（約 5 分鐘；X06、X52 是空目錄，會自動跳過）
-go run ./cmd/tei2adb -tei E:\3rd\XML\X -canon X -vol 1-88 -out build\wxzj-tei.txt
+build\tei2adb.exe -tei D:\2026\xml-p5\X -canon X -vol 1-88 -release 2026.R2 -out build\wxzj-tei-2026R2.txt
 
 :: 2) 文字 → adb（最後一個空字串＝不加 posmap align）
-bun run ts/tools/tei-pack.ts build\wxzj-tei.txt build\wxzj.adb wxzj 卍新纂續藏經 logo\wxzj_logo.png ""
+bun run ts/tools/tei-pack.ts build\wxzj-tei-2026R2.txt build\wxzj-2026R2.adb wxzj 卍新纂續藏經 logo\wxzj_logo.png ""
 ```
 
 `-canon X` 會：
@@ -52,7 +53,7 @@ bun run ts/tools/tei-pack.ts build\wxzj-tei.txt build\wxzj.adb wxzj 卍新纂續
 6. **冊名不是放諸四海皆準**：X 冊名要用舊 wxzj 的 `x01.經部、律部` … `x88.史傳部十四`，
    不能拿 T 藏的部名表。
 7. **驗收要看頁 id 唯一性**：`attributes/頁.id` 的 unique 數要等於 tag 數；
-   這次 172,795 頁、unique 172,795。
+   這次 172,794 頁、unique 172,794。
 
 ## 驗證
 
@@ -84,7 +85,7 @@ copy /Y build\wxzj.adb D:\accelon3\wxzj.adb
 
 ## 與 2008 舊檔的差異
 
-- 文字、頁欄、書名來自 CBETA 2025 TEI，不再沿用 2008 XML。
-- 舊檔 281,237,612 bytes／4.4M 行／1,253 書；新檔 231.8 MiB／4,296,167 行／1,236 書。
-- 頁欄 172,662 → 172,795（只取 X 頁碼，R 對照頁不進 adb）。
+- 文字、頁欄、書名來自 CBETA XML-P5 2026.R2，不再沿用 2008 XML。
+- 舊檔 281,237,612 bytes／4.4M 行／1,253 書；新檔 235.3 MiB／4,262,487 行／1,236 書。
+- 頁欄 172,662 → 172,794（只取 X 頁碼，R 對照頁不進 adb；全部唯一）。
 - 校勘只取 CBETA 採用讀法；缺字仍是 `&CB…;` 佔位。

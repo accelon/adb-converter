@@ -1,0 +1,23 @@
+{
+  "_comment": "公開資料庫的狀態。status: available（可下載）／wip（施工中，不下載）／revision（整修中）。downloadable:false 的庫只記在 manifest 版本歷史裡，官網與桌面版都不提供下載。source／licenseNote 是給使用者看的出處與授權說明。",
+  "taisho.adb": {
+    "status": "wip",
+    "label": "施工中",
+    "source": "T01–T55、T85：CBETA XML-P5 2026R2；T56–T84：SAT 2018",
+    "licenseNote": "T01–T55、T85 依 CBETA XML-P5 使用條款；T56–T84 文本與底本為 public domain，數位文字取自 SAT 2018 並依其授權標注。TEI 標記按 CBETA convention 整理。",
+    "note": "2026-10-29 已重建底座（85 冊）。T56–84 文本／底本為 public domain，數位文字依 SAT 2018 標注；底座仍在整理與驗證，暫不公開下載。",
+    "crossCheck": "T2250《阿毘達磨俱舍論指要鈔》（T63，頁 807a）亦見 Kanseki Repository，可作獨立文字核對。"
+  },
+  "wxzj.adb": {
+    "status": "wip",
+    "label": "施工中",
+    "source": "CBETA XML-P5 2026R2（X 藏）",
+    "licenseNote": "文字依 CBETA XML-P5 的授權。",
+    "note": "2026-10-29 已用 CBETA XML-P5 2026R2 重建 X 藏底座（86 冊、172,794 頁）。先整理目錄與驗證，暫不公開下載。"
+  },
+  "fgdict.adb": {
+    "status": "revision",
+    "label": "整修中",
+    "note": "作者要大修，先下架，暫不公開下載。"
+  }
+}

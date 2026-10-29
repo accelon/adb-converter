@@ -37,6 +37,8 @@
 | `inject.ts` | 舊版：逐筆注入 `<嵌 i>` → `<db>-embed.txt` |
 | `group.ts` | 逐筆對齊後依經文段落分群 → `<db>-groups.tsv` |
 | `inject-group.ts` | 注入群組 `<嵌 q t n>` → `<db>-embed-group.txt` |
+| `notes.ts` | 由 groups 產生作者源檔 `jingqun/jingang.txt`（只有 `<融>`／`<嵌>`／說明） |
+| `build-notes.ts` | 填 `<融>`；由 groups 補 `<嵌>` 的 q/t 並改成 taisho 目標 |
 | `inject-full.ts` | 把單一 `<嵌>` 注入完整 `build/tei-all.txt`（實驗） |
 
 ## 文內嵌入 `<嵌>`
@@ -47,9 +49,37 @@
 <嵌 q="如是我聞：一時，佛在舍衛國…" t="jingang?33p228b@318-360@註解|jingang?25p781b@97-127@天親論|jingang?33p155c@271-300@纂要" n="3 家注疏"/>
 ```
 
-點「▸ 3 家注疏」→ 在該段下方列出三家對同一段經文的解釋；再點或按「收合」移除。
+點「▸ 3 家注疏」→ 面板標題顯示「本段經文共有 3 家注疏」，正文那一整段亮起，
+下方只列各家解釋（不再重複經文）；再點或按「收合」移除，亮起也取消。
+每家名稱旁有 `大正↗`：點一下在右欄開原文並塗紅目標段落，Ctrl+點在本側開新分頁。
 金剛經 pilot：7 部書、92 群、成品 `build/jingang-group.adb`。
 完整流程與限制見 [`docs/adb/jingqun-embed-skill.md`](../docs/adb/jingqun-embed-skill.md)。
+
+## 注疏讀本小庫 `<融>`
+
+源檔 `jingqun/jingang.txt` 只有：
+
+```text
+<融 i="taisho?8p748c" j="0-181"></融>
+<嵌 i="taisho?8p748c" j="19-90"/>
+```
+
+`<融>` 等於 Obsidian `![[…]]`：建置時若空殼，就從母庫 `taisho` 抽該頁填入
+`<融 i="taisho?…" j="…">經文</融>`；包住的文字會留在 adb 裡供檢索，讀者看到的就是一般文字。
+用戶可編輯內文；留空再建置就會重抽。
+
+目錄不沿用大正藏的冊／部：源檔沒有 `<冊>`，`<樹 s="*" t="書">金剛經</樹>`
+讓「金剛經」成為第一層，下面只有「金剛經注疏讀本」一本。
+本讀本**依賴 `taisho.adb`**：`<嵌>` 的目標頁在母庫，閱讀時要同時開著；
+建置後得到 `build/jingang.adb`（0.06 MiB，正文只有 13 頁 T235）。
+
+```powershell
+bun run jingqun/notes.ts
+bun run jingqun/build-notes.ts
+bun run ts/tools/tei-pack.ts build/jingqun/jingang-notes.txt build/jingang.adb jingang 金剛經經論群 "" ""
+```
+
+詳見 [`docs/adb/jingqun-notes-skill.md`](../docs/adb/jingqun-notes-skill.md)。
 
 ## 資料模型
 
@@ -124,5 +154,6 @@ bun run jingqun/check.ts     # 驗證
   在 `note` 說明。
 - 律群只有四分律（T1428／T1429／T1430）與梵網經（T1484）兩個根；其他律部在大正藏沒有疏。
 - 低信心 4 部、medium 12 部，見 `conf` 欄。
+
 
 

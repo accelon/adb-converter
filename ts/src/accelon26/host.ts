@@ -145,6 +145,10 @@ export interface DesktopAppInfo {
   note: string;
   /** 非空＝這次是被更新後重啟的，值是舊版的建置時間（用來顯示改版說明） */
   updatedFrom: string;
+  /** 更新鏡像（作者 2026-10-29）：目前設定、這次實際用的站、是否回退到另一站 */
+  mirror?: string;
+  mirrorUsed?: string;
+  mirrorFallback?: boolean;
 }
 
 /** 一版的功能說明（wails/release_notes.json）。 */
@@ -419,6 +423,144 @@ export async function desktopFonts(): Promise<string[]> {
     return Array.isArray(list) ? list : [];
   } catch {
     return [];
+  }
+}
+
+// ---- 公開資料庫（.adb）的更新（作者 2026-10-29） ------------------------------
+//
+// 清單（manifest.json）與 adb 本體都由 Go 下載：WebView 直接 fetch 官網會被 CORS
+// 擋住，而且下載完要把檔案寫回 exe 旁邊，只有宿主做得到。進度用輪詢，放棄用取消。
+
+/** 一個 .adb 下載的進度（wails/adbupdate.go 的 AdbDownloadStatus）。 */
+export interface DesktopAdbDownloadStatus {
+  id: string;
+  path: string;
+  /** running | done | cancelled | error */
+  state: 'running' | 'done' | 'cancelled' | 'error';
+  received: number;
+  total: number;
+  error?: string;
+}
+
+/** 清單網址（正式版是官網；測試用 ACCELON26_ADB_MANIFEST 覆寫）。 */
+export async function desktopAdbManifestUrl(): Promise<string> {
+  const c = await hostCall();
+  if (!c) return '';
+  try {
+    return String(await c.ByName('main.AdbHost.AdbManifestURL') ?? '');
+  } catch {
+    return '';
+  }
+}
+
+/** 抓一個小文字檔（manifest.json）；連不上就回 null，不擋任何閱讀操作。 */
+export async function desktopFetchText(url: string): Promise<string | null> {
+  const c = await hostCall();
+  if (!c) return null;
+  try {
+    const s = await c.ByName('main.AdbHost.FetchText', url) as string;
+    return typeof s === 'string' ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 本機 .adb 的 sha256（Go 串流算，不必把 20 MB 搬進 JS）。 */
+export async function desktopFileSha256(path: string): Promise<string | null> {
+  const c = await hostCall();
+  if (!c) return null;
+  try {
+    const s = await c.ByName('main.AdbHost.FileSha256', path) as string;
+    return typeof s === 'string' && s ? s.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 開始下載並替換；回傳下載 id（用 AdbDownloadStatus 輪詢）。 */
+export async function desktopStartAdbDownload(url: string, path: string, sha256: string, size: number): Promise<string | null> {
+  const c = await hostCall();
+  if (!c) return null;
+  try {
+    const id = await c.ByName('main.AdbHost.StartAdbDownload', url, path, sha256, size) as string;
+    return typeof id === 'string' && id ? id : null;
+  } catch (e) {
+    throw new Error(String((e as Error)?.message ?? e));
+  }
+}
+
+export async function desktopStartNewAdbDownload(url: string, name: string, sha256: string, size: number): Promise<string | null> {
+  const c = await hostCall();
+  if (!c) return null;
+  try {
+    const id = await c.ByName('main.AdbHost.StartNewAdbDownload', url, name, sha256, size) as string;
+    return typeof id === 'string' && id ? id : null;
+  } catch (e) {
+    throw new Error(String((e as Error)?.message ?? e));
+  }
+}
+
+export async function desktopAdbDownloadStatus(id: string): Promise<DesktopAdbDownloadStatus | null> {  const c = await hostCall();
+  if (!c) return null;
+  try {
+    return await c.ByName('main.AdbHost.AdbDownloadStatus', id) as DesktopAdbDownloadStatus;
+  } catch {
+    return null;
+  }
+}
+
+export async function desktopCancelAdbDownload(id: string): Promise<boolean> {
+  const c = await hostCall();
+  if (!c) return false;
+  try {
+    return (await c.ByName('main.AdbHost.CancelAdbDownload', id)) === true;
+  } catch {
+    return false;
+  }
+}
+
+// ---- 更新鏡像（作者 2026-10-29）------------------------------------------------
+//
+// 主站 shutonggui.cn（大陸）＋鏡像 nissaya.cn（境外）。由 Go 量延遲（HEAD），前端選站；
+// 選好以後 SetUpdateMirror()，之後 exe 更新與 adb manifest 都從那個站下載。
+
+export interface DesktopMirrorProbe {
+  ok: boolean;
+  ms: number;
+  error?: string;
+}
+
+/** 目前 Go 層用的更新站（base，結尾有 /）。 */
+export async function desktopUpdateMirror(): Promise<string> {
+  const c = await hostCall();
+  if (!c) return '';
+  try {
+    return String(await c.ByName('main.AdbHost.UpdateMirror') ?? '');
+  } catch {
+    return '';
+  }
+}
+
+/** 設定更新站；回傳 false＝網址不合法。 */
+export async function desktopSetUpdateMirror(base: string): Promise<boolean> {
+  const c = await hostCall();
+  if (!c) return false;
+  try {
+    return (await c.ByName('main.AdbHost.SetUpdateMirror', base)) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 量一個站點的延遲（HEAD versions.json；不重用連線）。 */
+export async function desktopProbeMirror(base: string, timeoutMs = 2000): Promise<DesktopMirrorProbe> {
+  const c = await hostCall();
+  if (!c) return { ok: false, ms: 0, error: '沒有桌面宿主' };
+  try {
+    const r = await c.ByName('main.AdbHost.ProbeMirror', base, timeoutMs) as DesktopMirrorProbe;
+    return r ?? { ok: false, ms: 0, error: '宿主沒有回應' };
+  } catch (e) {
+    return { ok: false, ms: 0, error: String((e as Error)?.message ?? e) };
   }
 }
 

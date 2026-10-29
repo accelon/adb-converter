@@ -11,7 +11,7 @@
  * desktop build lists the working folder at startup). Click a chip to switch to
  * it; the ACTIVE chip carries the ✕ that closes it (and every tab that used it).
  */
-import { $, escapeHtml, fmtInt, openFile, restoreCore, snapshotCore } from './viewer';
+import { $, escapeHtml, fmtBytes, fmtInt, openFile, restoreCore, snapshotCore } from './viewer';
 import { AdbReader, BlobIO, type AdbSource } from './adb';
 import { restoreDocPane, snapshotDocPane } from './doc-pane';
 import { restorePanes, snapshotPanes } from './panes';
@@ -235,6 +235,13 @@ function fmtDate(ms: number): string {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+/** 檔案時間 → 2026-10-29 19:24（hover 的版本資訊要含時分）。 */
+function fmtDateTime(ms: number): string {
+  const d = new Date(ms);
+  if (!Number.isFinite(d.getTime())) return '—';
+  return fmtDate(ms) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
 export function renderDbPick(): void {
   const menu = $('#dbPickMenu');
   const btn = $('#dbPickBtn');
@@ -252,9 +259,18 @@ export function renderDbPick(): void {
     const addItem = needsAddItem()
       ? '<tr class="dbPickItem dbPickAdd" data-add="1" tabindex="0" title="開啟 .adb（最多同時 5 個）"><td colspan="4">＋ 加入 adb</td></tr>'
       : '';
+    // 「取得更多 ADB」（作者 2026-10-29）：桌面版直接從官網公開資料庫下載；
+    // 一般使用者就看得到，不必先開瀏覽器。離線時變暗但**不隱藏**。
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    const storeRow = hostState().available
+      ? `<tr class="dbPickItem dbPickAdd" data-store="1" tabindex="0"${offline ? ' aria-disabled="true"' : ''}`
+        + ` title="${offline ? '目前離線；連上網路後才能取得更多 ADB' : '從官網公開資料庫下載更多 .adb'}"><td colspan="4">⬇ 取得更多 ADB</td></tr>`
+      : '';
     // 「加入 Obsidian」（作者 2026-10-25）：vault → adb，就在這裡轉。網頁版下載到
     // 「下載」資料夾，桌面版寫到執行檔旁邊；兩邊完成後都會更新下面的清單。
-    const obsidianRows = vaultAddHandlers
+    // 2026-10-29：只有進階模式才顯示，避免一般使用者被轉檔選項干擾。
+    const advanced = document.body.classList.contains('advanced');
+    const obsidianRows = advanced && vaultAddHandlers
       ? '<tr class="dbPickItem dbPickAdd" data-vault="dir" tabindex="0"'
         + ' title="把一個 Obsidian vault（整個資料夾）轉成 .adb"><td colspan="4">＋ 加入 Obsidian（資料夾）</td></tr>'
         + '<tr class="dbPickItem dbPickAdd" data-vault="zip" tabindex="0"'
@@ -277,10 +293,18 @@ export function renderDbPick(): void {
     menu.innerHTML = shown.length
       ? '<table class="dbPickTable"><thead><tr><th>檔名</th><th>庫名</th>' +
         '<th title="取自 adb 檔頭的 max VA（最大的文字位置），是近似值">字數</th><th>建置日期</th></tr></thead>'
-        + '<tbody>' + addItem + obsidianRows + rows + '</tbody></table>'
-      : (addItem || obsidianRows
-        ? '<table class="dbPickTable"><tbody>' + addItem + obsidianRows + '</tbody></table>'
+        + '<tbody>' + storeRow + addItem + obsidianRows + rows + '</tbody></table>'
+      : (storeRow || addItem || obsidianRows
+        ? '<table class="dbPickTable"><tbody>' + storeRow + addItem + obsidianRows + '</tbody></table>'
         : '<div class="dbPickEmpty">（這個資料夾沒有 .adb）</div>');
+    menu.querySelectorAll<HTMLElement>('.dbPickItem[data-store]').forEach((el) => {
+      el.onclick = (ev) => {
+        ev.stopPropagation();
+        if (el.getAttribute('aria-disabled') === 'true') return;
+        setDbPickOpen(false);
+        adbStoreHandler?.();
+      };
+    });
     menu.querySelectorAll<HTMLElement>('.dbPickItem[data-add]').forEach((el) => {
       el.onclick = (ev) => {
         ev.stopPropagation();
@@ -358,6 +382,10 @@ export interface VaultAddHandlers {
 let vaultAddHandlers: VaultAddHandlers | null = null;
 export function setVaultAddHandlers(h: VaultAddHandlers | null): void { vaultAddHandlers = h; }
 export const vaultAddReady = (): boolean => !!vaultAddHandlers;
+
+/** 「取得更多 ADB」由 adb-store.ts 註冊；與 Obsidian 同一個理由，避免循環 import。 */
+let adbStoreHandler: (() => void) | null = null;
+export function setAdbStoreHandler(h: (() => void) | null): void { adbStoreHandler = h; }
 
 /**
  * 重新列一次桌面宿主工作目錄裡的 .adb（「加入 Obsidian」寫完檔案後要更新清單）。
@@ -461,7 +489,12 @@ export function renderDbTabs(): void {
     const edit = n
       ? '<span class="dbChipEdit" data-save="' + d.id + '" title="' + n + ' 頁修訂：點一下產生新 ADB">' + SAVE_SVG + n + ' 頁修訂</span>'
       : '';
-    return '<span class="dbChip' + (on ? ' active' : '') + '" data-id="' + d.id + '" title="' + escapeHtml(d.name) + '">'
+    // hover 顯示這個庫的版本資訊（作者 2026-10-29）：檔名、大小與建置日期
+    // （檔案的修改時間；桌面版是磁碟上的 .adb，網頁版是下載下來的檔案）。
+    const built = fmtDateTime(d.file.lastModified);
+    const title = `${d.name}\n${d.file.name}（${fmtBytes(d.file.size)}）`
+      + (built !== '—' ? `\n建置日期 ${built}` : '');
+    return '<span class="dbChip' + (on ? ' active' : '') + '" data-id="' + d.id + '" title="' + escapeHtml(title) + '">'
       + escapeHtml(d.name) + edit
       + '<span class="dbChipClose" data-close="' + d.id + '" title="關閉（含它的所有本文分頁）">✕</span>'
       + '</span>';
@@ -481,6 +514,7 @@ export function renderDbTabs(): void {
       if (!cur || cur.id !== id) switchTo(id);     // clicking the active one does nothing
     };
   });
+  tabsExtra?.();   // 例：資料庫更新的「New」按鈕（adb-update.ts 註冊）
 }
 /**
  * Switch to a slot. `front` moves it to the LEFT of dbTabs — the dropdown uses that
@@ -502,6 +536,7 @@ export function switchTo(id: number, front = false): void {
   hooks.refresh();
   renderDbTabs();
   renderDbPick();
+  window.dispatchEvent(new Event('accelon-db-changed'));
 }
 
 export function closeDb(id: number): void {
@@ -522,6 +557,7 @@ export function closeDb(id: number): void {
   }
   renderDbTabs();
   renderDbPick();
+  window.dispatchEvent(new Event('accelon-db-changed'));
 }
 
 // 修訂數變動：dbChip 的「n 頁修訂」即時更新
@@ -531,4 +567,39 @@ onEditsChange(() => { try { renderDbTabs(); } catch { /* boot */ } });
 export function closeActiveDb(): void {
   const a = activeSlot();
   if (a) closeDb(a.id);
+}
+
+// ---- #dbTabs 的額外按鈕（作者 2026-10-29）------------------------------------
+//
+// 資料庫更新的「New」按鈕要住在 #dbTabs 裡；但 renderDbTabs() 每次都重畫整個
+// innerHTML，所以由 adb-update.ts 註冊一個「畫完再補上」的 hook，不在 dbs.ts
+// import 它（避免 dbs → adb-update → dbs 的循環）。
+let tabsExtra: (() => void) | null = null;
+export function setDbTabsExtra(fn: (() => void) | null): void { tabsExtra = fn; }
+
+const normPath = (p: string): string => p.replace(/\\/g, '/').toLowerCase();
+
+/** 依完整路徑找 catalog 裡的那一筆（桌面版的 file.path；網頁版沒有 path）。 */
+export function catalogByPath(path: string): CatalogEntry | null {
+  return catalog.find((e) => !!e.file.path && normPath(e.file.path) === normPath(path)) ?? null;
+}
+
+/**
+ * 更新完成後把 catalog 的那一筆換成新檔（大小／時間／Blob 都變了）。顯示名跟著
+ * 新檔頭（通常是同一個庫名），key 換成新的（openFile 的 catalogAdd 才不會重複一筆）。
+ */
+export function replaceCatalogFile(path: string, file: AdbSource): CatalogEntry | null {
+  const e = catalogByPath(path);
+  if (!e) return null;
+  e.file = file;
+  e.key = fileKey(file);
+  if (file.name) e.name = file.name;   // 新檔的庫名（通常是同一個）
+  renderDbPick();
+  return e;
+}
+
+// 離線／上線時更新「取得更多 ADB」的變暗狀態（不隱藏）。
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => renderDbPick());
+  window.addEventListener('offline', () => renderDbPick());
 }

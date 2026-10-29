@@ -75,6 +75,7 @@ func main() {
 	}
 
 	host := &AdbHost{}
+	cleanupStaleAdbTemps() // 上次中斷留下的 .accelon26-*.tmp（作者 2026-10-29）
 	host.SetUpdatedFrom(*updatedFrom)
 	// 這次是被更新程式重啟的：等重新啟動器（accelon26-prev.exe）收工後，把上一版刪掉。
 	// 新版要是在這幾秒內崩掉就不刪 —— 那時 prev 正是使用者的退路。

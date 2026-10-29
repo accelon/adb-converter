@@ -189,10 +189,14 @@ async function checkDesktop(info: DesktopAppInfo): Promise<void> {
   desktopInfo = fresh;
   state.remote = fresh.remoteBuildTime;
   const macTail = fresh.noSelfUpdate ? 'macOS 版請按「下載更新」開官網取得新版。' : '';
+  // 更新站（作者 2026-10-29）：讓使用者知道這次是從主站還是鏡像檢查／下載。
+  let src = '';
+  try { src = fresh.mirrorUsed ? new URL(fresh.mirrorUsed).host : ''; } catch { /* 忽略 */ }
+  const srcTail = src ? `｜更新站 ${src}${fresh.mirrorFallback ? '（原站連不上，已改用另一站）' : ''}` : '';
   if (fresh.updateAvailable) {
-    setUpdate('found', `發現新版本（${fresh.remoteBuildTime.slice(0, 16).replace('T', ' ')}），目前是 ${fresh.buildTimeText}。${macTail}`, true);
+    setUpdate('found', `發現新版本（${fresh.remoteBuildTime.slice(0, 16).replace('T', ' ')}），目前是 ${fresh.buildTimeText}。${macTail}${srcTail}`, true);
   } else if (fresh.checkOK) {
-    setUpdate('latest', `已是最新版本（build ${fresh.buildTimeText}）`);
+    setUpdate('latest', `已是最新版本（build ${fresh.buildTimeText}）${srcTail}`);
   } else if (fresh.devBuild) {
     setUpdate('unknown', fresh.note || '這是開發者本機建置的 exe，不檢查更新');
   } else if (!fresh.dirWritable) {

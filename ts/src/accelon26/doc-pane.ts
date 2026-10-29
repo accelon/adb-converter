@@ -6,11 +6,11 @@
  * state it declares, and other modules get/set it through that module's exports.
  */
 import { $, currentFile, currentSource, displayName, docs, escapeHtml, fmtInt, mapper, reader, session, setStatus } from './viewer';
-import { PAGE } from './panes';
+import { PAGE, openImageView } from './panes';
 import { cursorPending, hasRealmNeighbor, paintTreeActive, pinnedHit, revealHit, setCursorPending, setPinnedHit, stepRealm, syncCursorFromScroll } from './link';
 import { paintHit } from './paint';
 import { Accelon3Renderer, LEVEL_MAX_SCALE, LEVEL_STEP_PX, renderPageBlocks, tagChromaIndex, tierContext, type RenderBlock } from './render_accelon3';
-import { ancestorTrail, currentNodeAt, siblingsOf } from './scopes';
+import { ancestorTrail, currentNodeAt, siblingsOf, tagVas } from './scopes';
 import { tagColorOf } from './tag-style';
 import { kwMarks } from './kw-marks';
 import { getUserId } from './user-id';
@@ -238,6 +238,117 @@ let lastLink: { va: number; ensureMs: number; totalMs: number; rows: number } | 
 const pagerLog: string[] = [];
 
 const docSession = (): DocSession | null => docTabs[docActive] ?? null;
+
+/* ---------------------------------------------- inline SVG：點一下放大（作者 2026-10-29）
+ *
+ * 正文的 `<圖>`（小篆字形、圖版）都是 inline `<svg>`；點一下交給右欄「圖片」用的
+ * 同一個 #imgView（滾輪縮放、拖曳、0/1、存檔）。檔名由 `aria-label` 帶。
+ * hover 顯示檔名是 renderer 寫的 `title`。
+ */
+let inlineSvgBound = false;
+function bindInlineSvgZoom(): void {
+  if (inlineSvgBound) return;
+  inlineSvgBound = true;
+  document.addEventListener('click', (ev) => {
+    const svg = (ev.target as Element | null)?.closest?.('#docText svg.inlineSvg') as SVGSVGElement | null;
+    if (!svg) return;
+    // 不要讓點圖同時觸發文字的「選取／查字典」手勢
+    ev.preventDefault();
+    ev.stopPropagation();
+    const name = svg.getAttribute('aria-label') || 'inline.svg';
+    const text = new XMLSerializer().serializeToString(svg);
+    const bytes = new TextEncoder().encode(text);
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'image/svg+xml' }));
+    openImageView(name, url, bytes);
+  }, true);
+}
+
+/* ---------------------------------------------- 行的頁位置（debug，作者 2026-10-29）
+ *
+ * 連排（原書分行關閉）時看不出這一行在原書哪一頁；選項打開後，滑過本文行就浮出
+ * 「頁 8p0052a ・ 第 40433 行」。預設關閉——這只是校對用的。
+ */
+const LINE_TIP_KEY = 'accelon26.lineTip';
+let lineTipOn = false;
+try { lineTipOn = localStorage.getItem(LINE_TIP_KEY) === '1'; } catch { /* 私密模式 */ }
+
+/** `<頁>` 的 VA → 頁 id（與「跳至」同一份資料，只建一次） */
+let pageIdx: { va: number; id: string }[] | null = null;
+let pageIdxReader: unknown = null;
+
+async function ensurePageIndex(): Promise<void> {
+  if (!reader || pageIdxReader === reader) return;
+  pageIdxReader = reader;
+  pageIdx = null;
+  const av = await reader.attributeValues('頁.id');
+  const vas = await tagVas('頁');
+  if (!av?.values.length || !vas.length) { pageIdx = []; return; }
+  const list: { va: number; id: string }[] = [];
+  for (let i = 0; i < av.values.length && i < vas.length; i++) list.push({ va: vas[i], id: av.values[i] });
+  list.sort((a, b) => a.va - b.va);
+  pageIdx = list;
+}
+
+/** 這一行落在哪一頁：頁 VA 遞增，二分搜尋最後一個 ≤ 該行 VA 的頁 */
+function pageAtLine(line: number): string {
+  if (!pageIdx?.length || !mapper) return '';
+  const va = mapper.linesVirtual[line] ?? 0;
+  let lo = 0, hi = pageIdx.length - 1, at = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (pageIdx[mid].va <= va) { at = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return at >= 0 ? pageIdx[at].id : '';
+}
+
+let lineTipEl: HTMLElement | null = null;
+function lineTipBox(): HTMLElement {
+  if (!lineTipEl) {
+    lineTipEl = document.createElement('div');
+    lineTipEl.id = 'lineTip';
+    lineTipEl.className = 'lineTip';
+    lineTipEl.hidden = true;
+    document.body.appendChild(lineTipEl);
+  }
+  return lineTipEl;
+}
+function hideLineTip(): void { if (lineTipEl) lineTipEl.hidden = true; }
+function showLineTip(x: number, y: number, text: string): void {
+  const el = lineTipBox();
+  el.textContent = text;
+  el.style.left = Math.min(window.innerWidth - 16, x + 14) + 'px';
+  el.style.top = (y + 16) + 'px';
+  el.hidden = false;
+}
+
+export function lineTipEnabled(): boolean { return lineTipOn; }
+export function setLineTip(on: boolean): void {
+  lineTipOn = !!on;
+  try { localStorage.setItem(LINE_TIP_KEY, on ? '1' : '0'); } catch { /* 私密模式 */ }
+  if (!on) hideLineTip();
+}
+
+let lineTipBound = false;
+function bindLineTip(): void {
+  if (lineTipBound) return;
+  lineTipBound = true;
+  const box = $('#docText');
+  if (!box) return;
+  box.addEventListener('mousemove', (ev) => {
+    // 只在「連排」（原書分行關閉）＋選項打開時顯示：原書分行時頁碼本來就看得到
+    if (!lineTipOn || hardBreaksOn()) { hideLineTip(); return; }
+    const lineEl = (ev.target as Element | null)?.closest?.('.docLine') as HTMLElement | null;
+    if (!lineEl || !lineEl.id.startsWith('L')) { hideLineTip(); return; }
+    const line = Number(lineEl.id.slice(1));
+    if (!Number.isFinite(line)) { hideLineTip(); return; }
+    void ensurePageIndex().then(() => {
+      if (!lineTipOn) return;
+      const page = pageAtLine(line);
+      showLineTip(ev.clientX, ev.clientY, (page ? `頁 ${page} ・ ` : '') + `第 ${line} 行`);
+    });
+  });
+  box.addEventListener('mouseleave', hideLineTip);
+}
 
 /**
  * 滾到某一行（腳注連動用，作者 2026-10-26）：不塗紅、不釘選。
@@ -491,9 +602,22 @@ export function trailLabel(text: string): string {
   return chars.length <= 5 ? full : chars.slice(0, 5).join('');
 }
 
+/**
+ * breadcrumb 要從哪一個 VA 往上找祖先（作者 2026-10-29）。
+ *
+ * 由目錄點進來時 `realm` 就是那個節點、`pinned.va` 也是它，兩者相同。
+ * 由摘要／全文／聯跳進來時 `realm` 是整個 `<檔>`（這樣才能繼續往下讀），
+ * 只看 `realm.from` 就會永遠停在「書」那一層——要改看**命中所在的 VA**，
+ * 才會出現「書 › 章 › 節」與目前那一節的兄弟。
+ */
+function trailAnchor(s: DocSession): number {
+  return typeof s.pinned?.va === 'number' ? s.pinned.va : s.realm.from;
+}
+
 function renderAncestorTrail(s: DocSession): string {
-  const anc = ancestorTrail(s.realm.from);
-  const self = currentNodeAt(s.realm.from);
+  const anchor = trailAnchor(s);
+  const anc = ancestorTrail(anchor);
+  const self = currentNodeAt(anchor);
   const items = anc.map((a) => {
     const full = escapeHtml(a.label);
     const short = escapeHtml(trailLabel(a.label));
@@ -1196,6 +1320,8 @@ window.addEventListener('resize', hideDocMetaTip);
 /** render one page: tab strip, header, rows, pager. */
 function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   if (!dt) return;
+  bindInlineSvgZoom();
+  bindLineTip();
   if (s.editing && !editAllowed()) s.editing = false;
   setEditControls(s);
   if (s.editing) { renderEditPage(s, dt); return; }

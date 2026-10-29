@@ -27,7 +27,8 @@ const opt = (n: string, d = '') => { const i = args.indexOf('--' + n); return i 
 const ROOT = resolve(import.meta.dir, '../..');
 const SITE = resolve(ROOT, 'www');
 const OUT = resolve(opt('out', resolve(SITE, 'adb')));
-const INDEX_URL = opt('index', 'https://shutonggui.cn/accelon26/adb/index.txt');
+const LOCAL_INDEX = resolve(SITE, 'adb/index.txt');
+const INDEX_URL = opt('index', existsSync(LOCAL_INDEX) ? LOCAL_INDEX : 'https://shutonggui.cn/accelon26/adb/index.txt');
 const ADB_DIR = resolve(opt('adb-dir', resolve(ROOT, 'accelon3')));
 const SITE_URL = 'https://shutonggui.cn/accelon26/';
 
@@ -124,6 +125,14 @@ const fmtDate = (ms: number) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
+// 施工中的庫：manifest 有記錄，但 downloadable:false（官網不給下載連結）。
+interface ManifestDb { file: string; name?: string; size?: number; buildTime?: string; status?: string; statusLabel?: string; statusNote?: string; source?: string; licenseNote?: string; crossCheck?: string; downloadable?: boolean }
+let wip: ManifestDb[] = [];
+try {
+  const mf = JSON.parse(readFileSync(resolve(SITE, 'adb/manifest.json'), 'utf8')) as { dbs?: ManifestDb[] };
+  wip = (mf.dbs ?? []).filter((d) => d.downloadable === false || (d.status && d.status !== 'available'));
+} catch { /* 還沒有 manifest 就只列可下載的 */ }
+
 const totalChars = rows.reduce((a, r) => a + (r.chars ?? 0), 0);
 const totalSize = rows.reduce((a, r) => a + r.size, 0);
 const known = rows.filter((r) => r.chars !== null).length;
@@ -164,6 +173,20 @@ const html = `<!DOCTYPE html>
   .dbNote { margin: 22px 0 8px; padding: 14px 18px; background: var(--panel); border: 1px solid var(--line);
     border-left: 3px solid var(--gold); border-radius: 8px; color: var(--muted2); font-size: 14.5px; }
   .dbNote b { color: var(--fg); }
+  /* 施工中（2026-10-29）：manifest 有記錄，但先不提供下載 */
+  .wipSection { margin: 34px 0 0; border-top: 1px solid var(--line); padding-top: 24px; }
+  .wipSection h2 { font-size: 21px; margin: 0 0 6px; }
+  .wipSection > p { margin: 0 0 14px; color: var(--dim); font-size: 14px; max-width: 48em; }
+  .wipRow { border: 1px solid var(--line); background: var(--panel); border-left: 3px solid var(--gold);
+    border-radius: 8px; padding: 12px 16px; margin: 0 0 10px; }
+  .wipName { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .wipName b { font-size: 16px; }
+  .wipName .file { color: var(--dim); font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
+  .wipBadge { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--gold);
+    color: #fff; font-size: 11px; font-weight: 700; }
+  html[data-theme="dark"] .wipBadge { color: #231a05; }
+  .wipMeta { color: var(--dim); font-size: 12.5px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .wipNote { margin: 6px 0 0; color: var(--muted2); font-size: 13.5px; line-height: 1.65; }
   @media (max-width: 640px) {
     .dbTable th:nth-child(3), .dbTable td:nth-child(3) { display: none; }
   }
@@ -193,7 +216,7 @@ const html = `<!DOCTYPE html>
     <h1>公開數據庫</h1>
     <p>這些 <code>.adb</code> 都可以直接下載：放進 <code>accelon3.exe</code> 同一個資料夾，
       accelon26 開啟時就會自動列出來；也可以在程式裡用 <code>📁</code> 或拖進視窗。</p>
-    <p class="dbMeta">共 ${rows.length} 個資料庫${known ? ` · 合計約 ${fmtInt(totalChars)} 字` : ''} · 下載約 ${fmtSize(totalSize)}</p>
+    <p class="dbMeta">共 ${rows.length} 個可下載資料庫${wip.length ? ` · 另有 ${wip.length} 個施工中（不提供下載）` : ''}${known ? ` · 合計約 ${fmtInt(totalChars)} 字` : ''} · 下載約 ${fmtSize(totalSize)}</p>
   </section>
 
   <table class="dbTable">
@@ -205,8 +228,23 @@ ${body}
     </tbody>
   </table>
 
+  ${wip.length ? `<section class="wipSection">
+    <h2>施工中</h2>
+    <p>這些底座正在整理，<b>先不提供下載</b>；下方是我們目前做到哪裡（版本記錄仍在 manifest 裡）。</p>
+    ${wip.map((d) => `<div class="wipRow">
+      <div class="wipName"><b>${esc(d.name || d.file)}</b><span class="file">${esc(d.file)}</span><span class="wipBadge">${esc(d.statusLabel || '施工中')}</span></div>
+      <div class="wipMeta">${d.size ? fmtSize(d.size) : ''}${d.buildTime ? ` · 最新 ${fmtDate(Date.parse(d.buildTime))}` : ''}</div>
+      ${d.source ? `<div class="wipMeta">來源：${esc(d.source)}</div>` : ''}
+      ${d.licenseNote ? `<div class="wipMeta">授權：${esc(d.licenseNote)}</div>` : ''}
+      ${d.crossCheck ? `<div class="wipMeta">核對：${esc(d.crossCheck)}</div>` : ''}
+      ${d.statusNote ? `<p class="wipNote">${esc(d.statusNote)}</p>` : ''}
+    </div>`).join('')}
+  </section>` : ''}
+
   <div class="dbNote">
-    <b>關於這些資料庫</b>：由作者整理公開，歡迎自由使用。字數取自 adb 檔頭的
+    <b>關於這些資料庫</b>：由作者整理公開，歡迎自由使用。<b>小於 30 MB</b> 的庫可以經常更新；
+    <b>超過 30 MB</b> 的底座仍可整檔下載，但只在 CBETA 換版等重大更新時才換版，也不列入桌面版的
+    「全部更新」。字數取自 adb 檔頭的
     <code>maxblockoffset</code>（最大的文字位置），是<b>近似值</b>（與精確字數差幾個百分點，不必解壓整本）；
     建置日期取自檔案時間。想增補資料庫或發現錯誤，請<a href="../index.html#contact">留言給作者</a>。
   </div>

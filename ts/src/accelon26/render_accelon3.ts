@@ -62,7 +62,7 @@ export const HIDDEN_TAGS = new Set(['樹', '隱']);
  * 也能用 CSS 縮放（`img` 載入的 SVG 不能繼承顏色，只能鋪白底硬上）。
  * viewBox 用檔案自己的（每個字的 bbox 不同），`preserveAspectRatio` 讓它置中。
  */
-function inlineSvgHtml(src: string, label: string): string {
+function inlineSvgHtml(src: string, label: string, figure = false): string {
   const m = /<svg\b([^>]*)>([\s\S]*?)<\/svg>/i.exec(src);
   if (!m) return `<span class="inlineImgMissing" title="${esc(label)}">▢</span>`;
   const vb = /\bviewBox\s*=\s*"([^"]*)"/i.exec(m[1])?.[1] ?? '0 0 1000 1000';
@@ -70,8 +70,25 @@ function inlineSvgHtml(src: string, label: string): string {
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
     .replace(/\son\w+\s*=\s*'[^']*'/gi, '');
-  return `<svg class="inlineSvg" viewBox="${esc(vb)}" role="img" aria-label="${esc(label)}"`
+  // 圖版（整張插圖）照原圖的實寸顯示：Visio 匯出的 width="1.59in" 就是書上的大小。
+  // CSS 再用 max-width:100% 收窄，所以窄視窗不會爆版。字形圖（小篆）仍用 1.5em。
+  const style = figure ? svgFigureStyle(m[1]) : '';
+  return `<svg class="inlineSvg${figure ? ' figureSvg' : ''}" viewBox="${esc(vb)}" role="img" aria-label="${esc(label)}"`
+    + ` title="${esc(label)}"`
+    + (style ? ` style="${style}"` : '')
     + ` preserveAspectRatio="xMidYMid meet">${inner}</svg>`;
+}
+
+/** `<svg width="1.59in" height="1.4in">` → `width:152.6px`（96 dpi；pt/mm/cm 一起換算）。 */
+const PER_UNIT: Record<string, number> = { in: 96, pt: 96 / 72, px: 1, mm: 96 / 25.4, cm: 96 / 2.54 };
+
+function svgFigureStyle(head: string): string {
+  const w = /\bwidth\s*=\s*"([\d.]+)\s*(in|pt|px|mm|cm)?"/i.exec(head);
+  if (!w) return '';
+  const n = Number(w[1]);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  const px = n * (PER_UNIT[(w[2] ?? 'px').toLowerCase()] ?? 1);
+  return `width:${px.toFixed(1)}px`;
 }
 
 /**
@@ -402,17 +419,35 @@ export class Accelon3Renderer {
         if (!closing && this.opts.pageMarks) { html += this.pageMark(attrs); this.sawText = true; }
         continue;
       }
-      // `<嵌 i="db?page" q="引文" j="12-34" n="智顗疏"/>`：文內嵌入（transclusion）。
+      // `<融 i="db?page" j="0-N">經文…</融>`：透明容器，內容就是正文；
+      // 指針留在屬性裡，建置時可重新從母 adb 抽文。
+      if (name === '融' || name === '_融') continue;
+      // `<嵌始 i="db?page" j="12-34"/>`：段落起點零寬標記，展開時用它亮起正文。
+      if (name === '嵌始' || name === '_嵌始') {
+        const eid = attrValue(attrs, 'e');
+        const i = attrValue(attrs, 'i');
+        const j = attrValue(attrs, 'j');
+        if (!closing) {
+          if (eid) html += `<span class="embedSegStart" data-eid="${esc(eid)}"></span>`;
+          else if (i && j) html += `<span class="embedSegStart" data-key="${esc(i + '|' + j)}" data-i="${esc(i)}" data-j="${esc(j)}"></span>`;
+        }
+        continue;
+      }
+      // `<嵌 i="db?page" j="12-34" t="…" n="…"/>`：文內嵌入（transclusion）。
       // 本文只長出晶片；點擊後由 embed.ts 取目標頁的引文插在後面，再點一次收合。
       if (name === '嵌' || name === '_嵌') {
         const xref = attrValue(attrs, 'i');
         const targets = attrValue(attrs, 't');
+        const eid = attrValue(attrs, 'e');
         const q = attrValue(attrs, 'q');
         const j = attrValue(attrs, 'j');
         const label = attrValue(attrs, 'n') || '嵌';
         if (!closing && targets) {
-          // 群組式：q = 經文段落，t = 多家註疏的目標清單
+          // 群組式：i/j = 經文段落，t = 多家註疏的目標清單
+          const key = xref && j ? xref + '|' + j : '';
           html += `<button type="button" class="embedChip embedGroupChip" data-embed-targets="${esc(targets)}"`
+            + (eid ? ` data-eid="${esc(eid)}"` : '')
+            + (key ? ` data-key="${esc(key)}" data-i="${esc(xref)}" data-j="${esc(j)}"` : '')
             + (q ? ` data-q="${esc(q)}"` : '')
             + ` data-label="${esc(label)}" title="展開 ${esc(label)} 對這段經文的解釋">▸ ${esc(label)}</button>`;
           this.sawText = true;
@@ -454,11 +489,12 @@ export class Accelon3Renderer {
       if (IMAGE_TAGS.has(name)) {
         if (!closing) {
           const src = attrValue(attrs, 'n') || attrValue(attrs, 'id');
+          const figure = attrValue(attrs, 't') === '圖版';
           // SVG 優先 inline：跟著字色走、可用 CSS 縮放（作者 2026-10-28）
           const svg = src ? this.opts.svgText?.(src) ?? null : null;
           const url = src && !svg ? this.opts.imageUrl?.(src) ?? null : null;
-          if (svg) html += inlineSvgHtml(svg, src);
-          else if (url) html += `<img class="inlineImg" src="${esc(url)}" alt="${esc(src)}" title="${esc(src)}">`;
+          if (svg) html += inlineSvgHtml(svg, src, figure);
+          else if (url) html += `<img class="inlineImg${figure ? ' figureImg' : ''}" src="${esc(url)}" alt="${esc(src)}" title="${esc(src)}">`;
           else html += `<span class="inlineImgMissing" title="${esc(src || '圖')}">▢</span>`;
           this.sawText = true;
         }

@@ -108,7 +108,7 @@ for (let i = 0; i + N <= sf.length; i++) {
 
 interface Hit { comm: Work; s0: number; c0: number; len: number; quote: string }
 const hits: Hit[] = [];
-const MIN = 9;
+const MIN = Number(process.env.EMBED_MIN || 9);
 for (const w of works) {
   if (w === sutra) continue;
   const cf = w.chars.map((c) => c.ch).join('');
@@ -127,7 +127,7 @@ for (const w of works) {
       const quote = sf.slice(bestS, bestS + best);
       // 太常見的短句（例如「須菩提於意云何」）不收
       const common = (index.get(quote.slice(0, N)) ?? []).length;
-      if (best >= 9 && !quote.startsWith(ROOT_TITLE)) {
+      if (best >= MIN && !quote.startsWith(ROOT_TITLE)) {
         hits.push({ comm: w, s0: bestS, c0, len: best, quote });
         c0 += best;
         continue;
@@ -171,7 +171,7 @@ for (const h of [...kept].sort((a, b) => a.s0 - b.s0 || b.len - a.len)) {
   else groups.push({ start: h.s0, end, hits: [h] });
 }
 
-const out: string[] = ['group_id\tsutra_no\tsutra_page\tsutra_han\tsutra_len\tsutra_line\tsutra_col\tsutra_quote\ttargets\tn_works'];
+const out: string[] = ['group_id\tsutra_no\tsutra_page\tsutra_han\tsutra_len\tsutra_line\tsutra_col\tsutra_end_line\tsutra_end_col\tsutra_quote\ttargets\tn_works'];
 let gid = 0;
 for (const g of groups.sort((a, b) => a.start - b.start)) {
   // 每家註疏只留最長的一筆；最多 5 家
@@ -180,14 +180,30 @@ for (const g of groups.sort((a, b) => a.start - b.start)) {
     const prev = best.get(h.comm.no);
     if (!prev || h.len > prev.len) best.set(h.comm.no, h);
   }
-  const items = [...best.values()].sort((a, b) => b.len - a.len).slice(0, 5);
+  const maxWorks = Number(process.env.EMBED_MAX_WORKS || 5);
+  const items = [...best.values()].sort((a, b) => b.len - a.len).slice(0, maxWorks);
   if (!items.length) continue;
   const start = Math.min(...items.map((h) => h.s0));
   const end = Math.max(...items.map((h) => h.s0 + h.len));
   const sc = sutra.chars[start];
   const ec = sutra.chars[end - 1];
-  // 取原文切片（含標點），只去掉標記；q 只比對漢字，標點不影響定位
-  const quote = sutra.body.slice(sc.off, ec.off + 1).replace(/<[^>]*>/g, '').replace(/\s+/g, '');
+  // 取原文切片（含標點），只去掉標記；q 只比對漢字，標點不影響定位。
+  // 往前擴到最近的句讀／開引號，讓面板顯示完整的一句（例：「諸菩薩摩訶薩應如是降伏其心：…」）。
+  let qStart = sc.off;
+  for (let k = sc.off - 1; k >= Math.max(0, sc.off - 80); k--) {
+    if ('。！？：」』'.includes(sutra.body[k]) || '「『'.includes(sutra.body[k])) { qStart = k + 1; break; }
+  }
+  const quote = sutra.body.slice(qStart, ec.off + 1).replace(/<[^>]*>/g, '').replace(/\s+/g, '');
+  // 晶片放在整段經文之後（連同收引號／句讀），不再插在句中。
+  let endOff = ec.off + 1;
+  while (endOff < sutra.body.length && '」』）】〉》。！？：；'.includes(sutra.body[endOff])) endOff++;
+  const locAt = (off: number): { line: number; col: number } => {
+    let line = 0;
+    while (line + 1 < sutra.lineStarts.length && sutra.lineStarts[line + 1] <= off) line++;
+    return { line, col: off - sutra.lineStarts[line] };
+  };
+  const qs = locAt(qStart);
+  const qe = locAt(endOff);
   const targets = items.map((h) => {
     const cc = h.comm.chars[h.c0];
     const ce = h.comm.chars[h.c0 + h.len - 1];
@@ -196,12 +212,13 @@ for (const g of groups.sort((a, b) => a.start - b.start)) {
   }).join('|');
   out.push([
     'g' + String(++gid).padStart(3, '0'), sutra.no, sc.page, start, end - start,
-    sc.line, sc.off - sutra.lineStarts[sc.line], quote, targets, items.length,
+    qs.line, qs.col, qe.line, qe.col, quote, targets, items.length,
   ].join('\t'));
 }
 writeFileSync(join(ROOT, 'build/jingqun', `${DB}-groups.tsv`), out.join('\n') + '\n');
 console.log(`works=${works.length} sutraChars=${sutra.chars.length} hits=${hits.length} kept=${kept.length} groups=${gid}`);
 console.log(out.slice(1, 6).join('\n'));
+
 
 
 

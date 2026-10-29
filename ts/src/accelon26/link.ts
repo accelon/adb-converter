@@ -6,7 +6,7 @@
  * state it declares, and other modules get/set it through that module's exports.
  */
 import { $, displayName, docs, fmtInt, mapper, reader, setStatus } from './viewer';
-import { dirActive, dirTrees, renderDirTree, treeOrder } from './scopes';
+import { dirActive, dirTrees, renderDirTree, tagVas, treeOrder } from './scopes';
 import { growUntil } from './lazy-list';
 import { autoFitFont, boundsOfRealm, docActive, docOfVa, docSession, docTabs, ensurePage, lastLink, pageBounds, renderDocTabs, sessionFor, sessionForRealm, setDocActive, setDocFontSized, setLastLink, wholeRealm } from './doc-pane';
 import { noteLink } from './engine-stats';
@@ -167,6 +167,26 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
 /** a search/summary link: the same action, plus the "snippet" token name */
 async function revealHit(va: number, token: string, units?: number, opts: { newTab?: boolean; exact?: boolean; phrase?: string; noMark?: boolean; name?: string; mode?: 'reuse' | 'node' | 'hit'; realm?: { from: number; to: number } } = {}): Promise<void> {
   return linkTo(va, token, units, opts);
+}
+
+/**
+ * 右欄「圖片」Ctrl/Cmd+點縮圖（作者 2026-10-29）：打開「使用這張圖」的本文並捲到那一行。
+ *
+ * 不掃內文：`attributes/圖.n` 的值就是資源名，第 i 個值對應 `tags/圖` 的第 i 個 VA
+ * （與「跳至」讀 `頁.id` 同一個做法）。
+ */
+export async function revealImageUse(name: string): Promise<boolean> {
+  if (!reader) return false;
+  const av = await reader.attributeValues('圖.n');
+  if (!av?.values.length) return false;
+  const i = av.values.indexOf(name);
+  if (i < 0) return false;
+  const vas = await tagVas('圖');
+  const va = vas[i];
+  if (va === undefined) return false;
+  await revealHit(va, name, 1, { mode: 'hit' });
+  setStatus(`已跳到使用「${name}」的那一行`, 'info');
+  return true;
 }
 
 /** the public "show the document containing line `line`" entry point (文件 list) */

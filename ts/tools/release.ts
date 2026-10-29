@@ -5,8 +5,9 @@
  *   cd ts && bun run tools/release.ts --items "ASCII only;第二項" [--title "…"] [--url https://…] [--no-build]
  *   cd ts && bun run tools/release.ts --build-time 2026-10-25T03:20:00Z
  *
- * `--build-time` 是「同一天重發同一版」用的：版號／標題不變，只換程序與修訂記錄。
- * 改版說明最後一筆的 buildTime 要一起改成同一個值，更新後才看得到這次的說明。
+ * 版本＝北京時間的「日期」（一天最多一個 release）。同一天重發會覆蓋當天的
+ * `releases/accelon26-YYYY-MM-DD.zip`，並把改版說明合併到當天那一筆；不會留下 RC 檔。
+ * `--build-time` 是「同一天重發」用的：同一天的說明會合併，zip 覆蓋。
  *
  * ⚠ Windows 的 PowerShell 會把中文命令列參數弄成亂碼（實際踩過：release_notes.json 變成
  *   亂碼並被 commit）。所以中文一律用 --items-file，檔案由編輯器／工具以 UTF-8 寫入。
@@ -16,7 +17,7 @@
  *   2. 先建 HTML（build-desktop.ts）、再用 -ldflags 把建置時間烙進 exe（順序不能顛倒！）
  *   3. 用 -version 驗一次 exe 裡的建置時間
  *   4. 產生 versions.json（版本真相：buildTime ＋ sha256；更新器先讀它，讀不到才退回 Last-Modified）
- *   5. 把 exe 打包成 www/accelon26.7z（官網的下載檔；7z 不進 git）
+ *   5. 打包 www/accelon26.zip（最新）＋ www/releases/accelon26-YYYY-MM-DD.zip（歷史）
  *   6. 印出上傳指示，並確認線上的版本資訊
  *
  * 建置時間一定要用 -ldflags 注入：沒注入的 exe 只能退回「檔案修改時間」，
@@ -40,12 +41,36 @@ const EXE = resolve(OUT_DIR, 'accelon26.exe');
 const URL = opt('url', 'https://shutonggui.cn/accelon26/accelon26.exe');
 const NO_BUILD = args.includes('--no-build');
 
+/** 發佈日＝北京時間的日期（buildTime 是 UTC；晚上發佈容易跨日）。 */
+const dayOf = (iso: string): string => {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return iso.slice(0, 10);
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(d);
+};
+const dedupe = (xs: string[]): string[] => [...new Set(xs.map((x) => x.trim()).filter(Boolean))];
+/** 同一天只留一個 release：把舊的 RC1/RC2/RC3… 合併成一筆（作者 2026-10-29）。 */
+function normalizeNotes(list: { buildTime: string; title?: string; items: string[] }[]) {
+  const byDay = new Map<string, { buildTime: string; title: string; items: string[] }>();
+  for (const n of [...list].sort((a, b) => String(a.buildTime).localeCompare(String(b.buildTime)))) {
+    const day = dayOf(n.buildTime);
+    const cur = byDay.get(day);
+    if (!cur) {
+      byDay.set(day, { buildTime: n.buildTime, title: `accelon26 ${day}`, items: dedupe(n.items ?? []) });
+    } else {
+      cur.buildTime = n.buildTime;
+      cur.items = dedupe([...cur.items, ...(n.items ?? [])]);
+    }
+  }
+  return [...byDay.values()].sort((a, b) => a.buildTime.localeCompare(b.buildTime));
+}
+
 const itemsFile = opt('items-file');
 const items = (itemsFile
   ? readFileSync(resolve(process.cwd(), itemsFile), 'utf8').split(/\r?\n/).map((s) => s.trim())
   : opt('items').split(';').map((s) => s.trim())
 ).filter((s) => s && !s.startsWith('#'));
 const title = opt('title', '');
+if (title) console.log('（--title 已忽略：官網標題一律用發佈日期，一天一個 release）');
 if (!items.length && !args.includes('--no-build')) {
   console.log('（沒有 --items／--items-file：只建置，不加改版說明）');
   console.log('  加說明：bun run tools/release.ts --items-file notes.txt（一行一項，UTF-8）');
@@ -59,11 +84,31 @@ if (pinnedBuildTime && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(pinnedBuil
 }
 const buildTime = pinnedBuildTime || new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 if (pinnedBuildTime) console.log('建置時間固定為 ' + buildTime + '（同一天重發同一版）');
-const notes = existsSync(NOTES) ? JSON.parse(readFileSync(NOTES, 'utf8')) : [];
-if (items.length) {
-  notes.push({ buildTime, title: title || `accelon26 ${buildTime.slice(0, 10)}`, items });
+let notes = existsSync(NOTES) ? JSON.parse(readFileSync(NOTES, 'utf8')) as { buildTime: string; title?: string; items: string[] }[] : [];
+notes = normalizeNotes(notes);
+if (args.includes('--normalize')) {
   writeFileSync(NOTES, JSON.stringify(notes, null, 2) + '\n');
-  console.log(`改版說明已加入（${notes.length} 版）：${buildTime}`);
+  console.log(`改版說明已合併成一天一筆（${notes.length} 天）：${notes.map((n) => dayOf(n.buildTime)).join('、')}`);
+  process.exit(0);
+}
+if (items.length) {
+  const day = dayOf(buildTime);
+  const ex = notes.find((n) => dayOf(n.buildTime) === day);
+  if (ex) {
+    if (String(ex.buildTime) > buildTime) {
+      console.error(`✗ ${day} 已經有更新的 release（${ex.buildTime}）——每天最多一個，請確認建置時間。`);
+      process.exit(1);
+    }
+    ex.buildTime = buildTime;
+    ex.items = dedupe([...ex.items, ...items]);
+    ex.title = `accelon26 ${day}`;
+    console.log(`同日重發：更新 ${day} 的條目（合併後 ${ex.items.length} 項）`);
+  } else {
+    notes.push({ buildTime, title: `accelon26 ${day}`, items: dedupe(items) });
+    console.log(`改版說明已加入（${notes.length} 天）：${buildTime}`);
+  }
+  notes.sort((a, b) => String(a.buildTime).localeCompare(String(b.buildTime)));
+  writeFileSync(NOTES, JSON.stringify(notes, null, 2) + '\n');
   for (const it of items) console.log('  · ' + it);
   // 中文有沒有變成亂碼，肉眼確認一下（Windows 命令列很容易）
   if (items.some((it) => /[\uFFFD\uE000-\uF8FF]/.test(it) || it.includes('\uFFFD'))) {
@@ -156,7 +201,7 @@ const manifest = {
   size,
   sha256,
   releasedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
-};
+} as Record<string, unknown>;
 const manifestPath = resolve(OUT_DIR, 'versions.json');
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 console.log(`\nversions.json → ${manifestPath}`);
@@ -166,10 +211,10 @@ console.log(`  size      ${size}`);
 
 // ---- 壓縮檔裡的使用說明（作者 2026-10-18）--------------------------------------
 // 文字在 tools/readme-text.ts（一份簡體、一份繁體，UTF-8 帶 BOM ＋ CRLF）；
-// tools/pack-7z.ts 也共用同一份，只改說明時不必重建 exe。
+// tools/pack-7z.ts 也共用同一份，只改說明時不必重建 exe；官網下載檔已改 ZIP。
 
-// 4) 官網下載檔：www/accelon26.7z（作者 2026-10-18）
-//    官網 index.html 直接連到這個檔；7z 是發佈產物，不進 git（.gitignore 有 www/*.7z）。
+// 4) 官網下載檔：www/accelon26.zip（作者 2026-10-29 改 ZIP，Windows 內建可解）
+//    官網 index.html 直接連到這個檔；zip 是發佈產物，不進 git（.gitignore）。
 //    壓縮檔裡除了 exe，還附兩份說明（作者 2026-10-18）：README.txt（簡體）、
 //    README-tc.txt（繁體），都是 **UTF-8 帶 BOM ＋ CRLF**（Windows 記事本才不會亂碼）。
 const SEVEN_ZIP = 'C:\\Program Files\\7-Zip\\7z.exe';
@@ -186,26 +231,66 @@ if (existsSync(SEVEN_ZIP)) {
   writeTextFileBom(resolve(pkg, 'README-tc.txt'), README_TRADITIONAL);
 
   mkdirSync(WWW, { recursive: true });
-  const archive = resolve(WWW, 'accelon26.7z');
+  const archive = resolve(WWW, 'accelon26.zip');
   try {
     rmSync(archive, { force: true });
   } catch {
-    console.error('✗ 無法覆蓋 ' + archive + '：可能被 7-Zip／檔案總管開著，請關掉那個視窗');
+    console.error('✗ 無法覆蓋 ' + archive + '：可能被壓縮工具／檔案總管開著，請關掉那個視窗');
     process.exit(1);
   }
-  console.log('\n[4/4] 打包官網下載檔 www/accelon26.7z（exe ＋ 兩份 README）');
-  run([SEVEN_ZIP, 'a', '-t7z', '-mx=9', '-m0=lzma2', '-md=64m', '-mfb=64', '-y', archive, ...PKG_FILES], pkg, '7z');
+  const releaseDate = dayOf(buildTime);
+  const datedName = `accelon26-${releaseDate}.zip`;
+  const releaseDir = resolve(WWW, 'releases');
+  mkdirSync(releaseDir, { recursive: true });
+  const dated = resolve(releaseDir, datedName);
+  // 穩定檔名（首頁／舊連結用）＋ 日期檔名（歷史版本用）；同一天重發就覆蓋當天那一個。
+  rmSync(dated, { force: true });
+  console.log('\n[4/4] 打包官網下載檔 www/accelon26.zip ＋ releases/' + datedName + '（exe ＋ 兩份 README）');
+  run([SEVEN_ZIP, 'a', '-tzip', '-mx=9', '-y', archive, ...PKG_FILES], pkg, 'zip');
+  copyFileSync(archive, dated);
   sevenZipOut = archive;
+
+  const zipSize = statSync(dated).size;
+  const zipSha = createHash('sha256').update(readFileSync(dated)).digest('hex');
+  const releasesPath = resolve(WWW, 'releases.json');
+  const releases = existsSync(releasesPath)
+    ? JSON.parse(readFileSync(releasesPath, 'utf8')) as { app: string; updated: string; releases: any[] }
+    : { app: 'accelon26', updated: '', releases: [] };
+  const prev = (releases.releases ?? []).find((r) => r.date === releaseDate);
+  if (prev && String(prev.buildTime) > buildTime) {
+    console.error(`✗ ${releaseDate} 已經有更新的 release（${prev.buildTime}）——每天最多一個。`);
+    process.exit(1);
+  }
+  const entry = {
+    date: releaseDate,
+    file: `releases/${datedName}`,
+    buildTime,
+    size: zipSize,
+    sha256: zipSha,
+  };
+  releases.releases = [...(releases.releases ?? []).filter((r) => r.date !== releaseDate), entry]
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  releases.updated = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  writeFileSync(releasesPath, JSON.stringify(releases, null, 2) + '\n');
+
+  // versions.json 也帶上最新 ZIP 的檔名／大小／sha（首頁與版本頁用）。
+  manifest.zip = entry.file;
+  manifest.zipSize = zipSize;
+  manifest.zipSha256 = zipSha;
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+
   console.log(`  ${archive}（${(statSync(archive).size / 1048576).toFixed(1)} MiB）`);
+  console.log(`  ${dated}（歷史版本；${entry.file}）`);
 } else {
-  console.log('\n（沒找到 7-Zip，略過 www/accelon26.7z：' + SEVEN_ZIP + '）');
+  console.log('\n（沒找到 7-Zip，略過 www/accelon26.zip：' + SEVEN_ZIP + '）');
 }
 
 // 5) 上傳指示 + 線上檢查（線上已有 versions.json 就以它為準）
 console.log('\n上傳到 ' + URL.replace(/[^/]*$/, '') + '（順序不要顛倒：先 exe，後 versions.json）');
+console.log('  （tools/deploy.ts 會同步主站與境外鏡像；鏡像的 versions.json 由 deploy 改寫下載網址）');
 console.log('  1) ' + URL);
 console.log('  2) ' + MANIFEST_URL);
-if (sevenZipOut) console.log('  3) 官網首頁與下載檔：www/index.html、www/img/、www/accelon26.7z');
+if (sevenZipOut) console.log('  3) 官網首頁與下載檔：www/index.html、www/img/、www/accelon26.zip、www/releases/<日期>.zip');
 try {
   const mres = await fetch(MANIFEST_URL, { headers: { 'cache-control': 'no-cache' } });
   if (mres.ok) {

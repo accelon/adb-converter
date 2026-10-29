@@ -4,6 +4,7 @@
 # （作者 2026-10-18：那很費時間）。改完只跑：
 #   cd ts && bun run tools/build-viewer.ts     # → build/accelon26.html（雙擊就能看）
 #
+# 一天最多一個 release；同一天重發會合併到當天那一筆（不會留 RC 檔）。
 # 作者說「發佈新版」時才：
 #   cd ts && bun run tools/release.ts --items-file ../wails/release_notes.draft.txt
 #   （release.ts 會把下面每一行 append 到 wails/release_notes.json，帶上這一版的 buildTime）
@@ -13,3 +14,4 @@
 #   字級按鈕跟著主題換色：亮色系、春綠不再是一塊突兀的黑方塊
 #
 # ---- 下一版的改動（往下加） ----
+

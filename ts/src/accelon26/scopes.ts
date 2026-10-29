@@ -544,14 +544,16 @@ export function hitTotal(): number {
  * Graded by BOTH the share of the whole result and the absolute count, so the
  * heaviest nodes shout and a big number never looks small.
  */
-function hitBadge(count: number, total: number, where = '', hint = ''): string {
+function hitBadge(count: number, total: number, where = '', hint = '', asButton = false): string {
   const share = total ? count / total : 0;
   const shareTier = share >= 0.3 ? 4 : share >= 0.1 ? 3 : share >= 0.03 ? 2 : 1;
   const absTier = count >= 1000 ? 4 : count >= 300 ? 3 : count >= 50 ? 2 : 1;
   const tier = Math.max(shareTier, absTier);
   const big = count >= 1000 ? ' big' : '';
   const title = `${where}${fmtInt(count)} 筆命中（占全體 ${(share * 100).toFixed(1)}%${hint}）`;
-  return `<span class="tCount hit t${tier}${big}" title="${title}">${fmtInt(count)}</span>`;
+  // 目錄樹的命中數要像按鈕（作者 2026-10-29：純數字不直觀，讀者不知道可以點）；
+  // 頻次／全文清單是整列可點，就不加按鈕外框。
+  return `<span class="tCount hit t${tier}${big}${asButton ? ' tBtn' : ''}" title="${title}">${fmtInt(count)}</span>`;
 }
 
 /**
@@ -619,7 +621,7 @@ async function renderDirTree(): Promise<void> {
       const hits = searching ? (exact ? cachedRealmCount(n.va, n.vaEnd) : realmHits(n.va, n.vaEnd)) : 0;
       let badge = '';
       if (searching) {
-        if (hits > 0) badge = hitBadge(hits, totalHits, '此節點範圍內 ', '；點一下顯示這些命中');
+        if (hits > 0) badge = hitBadge(hits, totalHits, '此節點範圍內 ', '；點一下顯示這些命中', true);
       } else if (r.hasChildren && !open) {
         badge = `<span class="tCount">${fmtInt(n.children.length)}</span>`;
       }
@@ -1511,6 +1513,13 @@ function embeddedPage(entries: { label: string; va: number }[], q: string): { la
  * 跳至：列出（符合的）頁 id；`enter` 為真時直接跳到最接近的一頁。
  * 捲動分批載入，行為與原書分頁一致。
  */
+/** 頁 id 可以省略 `p` 之後的前導 0：`8p52a` → `8p0052a`（作者 2026-10-29）。 */
+function normalizePageQuery(q: string): string {
+  const m = /^(\d+)[pP](\d+)(.*)$/.exec(q.trim());
+  if (!m) return q.trim();
+  return `${m[1]}p${m[2].padStart(4, '0')}${m[3]}`;
+}
+
 export async function renderJump(enter = false): Promise<void> {
   const meta = $('#jumpMeta');
   const list = $('#jumpList');
@@ -1537,9 +1546,17 @@ export async function renderJump(enter = false): Promise<void> {
     return;
   }
   let hit = entries;
+  // 省略前導 0 的寫法（8p52a）也接受：短寫與補零後兩種形式都比一次
+  const qn = normalizePageQuery(q);
+  const forms = qn && qn !== q ? [qn, q] : [q];
+  const rankOf = (label: string): number => {
+    let best = 9;
+    for (const f of forms) best = Math.min(best, jumpRank(label, f));
+    return best;
+  };
   if (q) {
-    hit = entries.filter((e) => e.label.includes(q));
-    hit.sort((a, b) => jumpRank(a.label, q) - jumpRank(b.label, q)
+    hit = entries.filter((e) => forms.some((f) => e.label.includes(f)));
+    hit.sort((a, b) => rankOf(a.label) - rankOf(b.label)
       || a.label.localeCompare(b.label, 'en', { numeric: true }));
   }
   const go = (e: { label: string; va: number }) => {
@@ -1559,14 +1576,15 @@ export async function renderJump(enter = false): Promise<void> {
     return;
   }
   if (enter && hit.length) { go(hit[0]); return; }
+  const shown = qn && qn !== q ? qn : q;
   meta.textContent = `${fmtInt(entries.length)} 頁`
-    + (q ? `；「${q}」符合 ${fmtInt(hit.length)} 頁（Enter 跳到最接近的一頁）` : '（輸入頁 id 的一部份即可；Enter 直接跳）');
+    + (q ? `；「${shown}」符合 ${fmtInt(hit.length)} 頁（Enter 跳到最接近的一頁）` : '（輸入頁 id 的一部份即可；Enter 直接跳）');
   if (!hit.length) {
     list.innerHTML = '<p class="dim">沒有符合的頁 id。</p>';
     return;
   }
   await renderChunked(list, hit, {
-    html: (e) => `<div class="snippet${q && e.label === q ? ' active' : ''}" data-va="${e.va}">
+    html: (e) => `<div class="snippet${qn && e.label === qn ? ' active' : ''}" data-va="${e.va}">
       <div><b>${escapeHtml(e.label)}</b></div></div>`,
     bind: (el, e) => {
       el.onclick = (ev) => { setJumpRange(null); void revealHit(e.va, e.label, 1, { ...(mods(ev) ?? {}), mode: 'node', noMark: true }); };

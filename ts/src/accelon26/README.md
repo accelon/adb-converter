@@ -401,6 +401,54 @@ adb 內沒有當時的 docdef 可還原。這個 mapper 的用途是**把搜尋�
 - 產生的引用含頁 id；貼到左欄「跳至」時，會從整段引用字串中認出頁 id
   （例：`( LC 2p0538a )`），按 Enter 直接跳到那一頁。
 
+## 更新鏡像（2026-10-29）
+
+主站 `https://shutonggui.cn/accelon26/`（大陸）＋鏡像 `https://nissaya.cn/accelon26/`
+（境外）。大陸一般連不到 nissaya.cn；海外連鏡像比較快。
+
+- 設定頁「更新 → 鏡像站」：**自動（依連線速度）／大陸主站／境外鏡像**。
+- 自動：Go 同時對兩站的 `versions.json` 發 HEAD（2 秒上限），鏡像要明顯較快才切；
+  只有鏡像連得上（主站掛了）也切；兩站都不通就留在主站。**不是**把 IP 送到第三方
+  geolocation——「連不上 nissaya.cn」本身就是最準的國內訊號。
+- 選好以後呼叫 Go 的 `SetUpdateMirror()`：**exe 更新（versions.json／exe）與 adb
+  manifest 都從同一個站**。設定存在 settings.json 的頂層 `updateMirror`（`auto`／
+  `primary`／`overseas`），匯出／匯入會帶著走。
+- 檢查失敗會退回另一個站（例如鏡像被牆）：`AppInfo.mirrorUsed`／`mirrorFallback`
+  告訴 UI 這次到底是哪一站回答的。
+- 測試：`cd ts && bun run tools/mirror-test.ts`（需要一顆建置時間比線上舊的 exe，
+  見檔頭）；Go 端 `wails/mirror_test.go`。
+
+## 公開資料庫更新（2026-10-29）
+
+**adb 也像 exe 一樣有版本記錄**：每一次建置都記 `buildTime／sha256／size／notes`，
+使用者看得到「從我這一版到最新版之間每一次改變」，要不要更新由使用者按「更新」決定。
+
+桌面版開機時讀 `<站>/accelon26/adb/manifest.json`（schema 2），和資料夾裡同名的
+`.adb` 比對 sha256：
+
+* 在 `history`（由新到舊）找到本機那一版 → 只列出**比它新**的每一版說明（跳過幾版也
+  不會漏）；本機版本不在記錄中（自己重建的）也會說明，只顯示最新一版。
+* `#dbTabs` 平常就有一顆「資料庫版本」按鈕（有安裝公開資料庫時）；有新版會加上紅色的
+  **New**，點一下開「資料庫版本」對話盒：
+  - 「可更新」：本機版 → 最新版、每一版的說明、更新按鈕；按了才下載。
+  - 「版本記錄」：每一本已安裝公開資料庫的完整歷史（不必等有新版才看得到）。
+* 說明來源：`deploy/adb-notes.json`（目前這一版的 sha256＋notes），產生器會把它併進
+  `deploy/adb-history.json`；新版本沒有說明時產生器直接失敗。
+
+下載全部在 Go（`wails/adbupdate.go`）：WebView 直接 fetch 官網會被 CORS 擋住，而且換檔
+要寫回 exe 旁邊。流程是「先寫同目錄的 `.accelon26-*.tmp` → 邊下邊算 sha256 → 驗大小／
+sha256／adb 檔頭 → 解除 mmap → rename」。**放棄**只是把 context 取消並刪暫存檔，原檔一個
+位元組都不會動；rename 失敗（被別的程式鎖住）也是原檔不動。前端每 150 ms 輪詢
+`AdbDownloadStatus`，所以進度條與「放棄」都不需要 Wails 事件。
+
+* 清單與歷史：`cd ts && bun run tools/make-adb-manifest.ts`（→ `www/adb/manifest.json`、
+  `deploy/adb-history.json`）
+* 端到端測試（本機假官網、多版本歷史／跳版／版本記錄）：`cd ts && bun run tools/adb-update-test.ts`
+* Go 測試：`cd wails && go test -run AdbDownload .`
+* 測試用 `ACCELON26_ADB_MANIFEST=<url>` 把清單指到本機伺服器。
+
+網頁版（`file://`）沒有宿主可以寫檔，這一支不作用，按鈕不會出現。
+
 ## 尚未做
 
 * 搜尋查詢層：query 分詞 → `tokens` 容器的 posting list 求交集／相鄰（VA 差 1 = 跨行片語）→ `contextSpans` 塗紅。

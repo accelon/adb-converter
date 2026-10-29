@@ -16,9 +16,13 @@ const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return
 const ROOT = resolve(import.meta.dir, '../..');
 const HTML = resolve(ROOT, 'build/accelon26.html');
 const ADB = resolve(opt('adb', resolve(ROOT, 'build/jingang.adb')));
+const DEP = opt('dep', '') ? resolve(ROOT, opt('dep', '')) : '';
 const OUT = resolve(opt('out', resolve(ROOT, 'build/jingqun/embed-test.png')));
 const BOOK = opt('book', '金剛般若波羅蜜經');
+const PAGE = opt('page', '');
+const CHIP = opt('chip', '');
 const WAIT = Number(opt('wait', '2500'));
+const DEP_WAIT = Number(opt('dep-wait', '15000'));
 
 const BROWSERS = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -91,11 +95,15 @@ class Cdp {
 const cdp = await Cdp.attach(await devtoolsUrl());
 await cdp.openPage(pathToFileURL(HTML).href + '?v=' + Date.now());
 await Bun.sleep(800);
-const doc = await cdp.send('DOM.getDocument');
-const q = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#file' });
-await cdp.send('DOM.setFileInputFiles', { files: [ADB], nodeId: q.nodeId });
-await cdp.eval('document.querySelector("#file").dispatchEvent(new Event("change"))');
-await Bun.sleep(WAIT);
+const openDb = async (file: string, wait: number) => {
+  const d = await cdp.send('DOM.getDocument');
+  const q = await cdp.send('DOM.querySelector', { nodeId: d.root.nodeId, selector: '#file' });
+  await cdp.send('DOM.setFileInputFiles', { files: [file], nodeId: q.nodeId });
+  await cdp.eval('document.querySelector("#file").dispatchEvent(new Event("change"))');
+  await Bun.sleep(wait);
+};
+if (DEP) await openDb(DEP, DEP_WAIT);
+await openDb(ADB, WAIT);
 
 const result = await cdp.eval<string>(`
   (async () => {
@@ -105,29 +113,40 @@ const result = await cdp.eval<string>(`
     const out = {};
     const rows = () => [...document.querySelectorAll('#dirTree .tRow')];
     const bookName = ${JSON.stringify(BOOK)};
-    let bookRow = rows().find((r) => r.querySelector('.tName')?.textContent?.trim() === bookName && r.querySelector('.tDot'));
-    if (!bookRow) {
-      const vol = rows().find((r) => r.textContent.includes('般若部四'));
-      vol?.querySelector('.tTwisty')?.click();
-      await sleep(500);
-      bookRow = rows().find((r) => r.querySelector('.tName')?.textContent?.trim() === bookName && r.querySelector('.tDot'));
+    const page = ${JSON.stringify(PAGE)};
+    const chipText = ${JSON.stringify(CHIP)};
+    if (page) await window.__accelon26.xrefJump((window.__accelon26.state().db || 'jingang') + '?' + page);
+    if (!page) {
+      let bookRow = rows().find((r) => r.querySelector('.tName')?.textContent?.trim() === bookName && r.querySelector('.tDot'));
+      if (!bookRow) {
+        const vol = rows().find((r) => r.textContent.includes('般若部四'));
+        vol?.querySelector('.tTwisty')?.click();
+        await sleep(500);
+        bookRow = rows().find((r) => r.querySelector('.tName')?.textContent?.trim() === bookName && r.querySelector('.tDot'));
+      }
+      if (bookRow) bookRow.querySelector('.tDot')?.click();
+      else (rows()[0]?.querySelector('.tDot') ?? rows()[0])?.click();
     }
-    if (bookRow) bookRow.querySelector('.tDot')?.click();
-    else (rows()[0]?.querySelector('.tDot') ?? rows()[0])?.click();
     await wait(() => document.querySelectorAll('#docText .docLine').length > 0, 100);
     await sleep(1200);
 
     const chips = () => [...document.querySelectorAll('#docText .embedChip')];
+    out.dbs = window.__accelon26.state().dbs;
+    out.probe = await window.__accelon26.xrefProbe('taisho', '33p228b').catch((e) => String(e));
     out.chips = chips().length;
     out.labels = chips().slice(0, 8).map((b) => b.textContent);
     if (!chips().length) return JSON.stringify(out, null, 1);
-    chips()[0].click();
+    const pick = (chipText && chips().find((b) => b.parentElement?.textContent?.includes(chipText))) || chips()[0];\n    pick.click();
     out.opened = await wait(() => !!document.querySelector('#docText .embedBlock .embedDoc'), 100);
     const block = document.querySelector('#docText .embedBlock');
     out.head = (block?.querySelector('.embedHead')?.innerText ?? '').replace(/\\n/g, ' ').trim();
     out.text = (block?.querySelector('.embedText')?.innerText ?? '').slice(0, 120).replace(/\\n/g, ' | ');
     out.textLen = block?.querySelector('.embedText')?.innerText?.length ?? 0;
     out.mark = !!block?.querySelector('mark');
+    out.group = !!(pick.dataset.key || pick.dataset.eid);
+    out.hasSegment = !!block?.querySelector('.embedSegment');
+    out.lit = !!(CSS.highlights && CSS.highlights.has && CSS.highlights.has('embedLit'))
+      || !!document.querySelector('#docText .docLine.embedLitLine');
     out.errors = window.__accelon26?.consoleErrors?.() ?? null;
     return JSON.stringify(out, null, 1);
   })()
@@ -135,24 +154,58 @@ const result = await cdp.eval<string>(`
 console.log(result);
 const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
 await Bun.write(OUT, Buffer.from(shot.data, 'base64'));
-const closed = await cdp.eval<string>(`(async () => {
-  const b = document.querySelector('#docText .embedBlock .embedClose');
-  if (!b) return 'no close button';
-  b.click();
-  for (let i = 0; i < 30; i++) { if (!document.querySelector('#docText .embedBlock')) return 'ok'; await new Promise((r) => setTimeout(r, 100)); }
-  return 'still open';
+const extra = await cdp.eval<string>(`(async () => {
+  const out = {};
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const chips = () => [...document.querySelectorAll('#docText .embedChip')];
+  const chipText = ${JSON.stringify(CHIP)};
+  const pick = (chipText && chips().find((b) => b.parentElement?.textContent?.includes(chipText))) || chips()[0];
+  const close = document.querySelector('#docText .embedBlock .embedClose');
+  out.closed = 'no close button';
+  if (close) {
+    close.click();
+    for (let i = 0; i < 30; i++) { if (!document.querySelector('#docText .embedBlock')) { out.closed = 'ok'; break; } await sleep(100); }
+  }
+  if (out.closed === 'ok') {
+    out.unlit = !(CSS.highlights && CSS.highlights.has && CSS.highlights.has('embedLit'))
+      && !document.querySelector('#docText .docLine.embedLitLine');
+    pick?.click();
+    for (let i = 0; i < 50; i++) { if (document.querySelector('#docText .embedBlock .embedDoc')) break; await sleep(100); }
+  }
+  const link = document.querySelector('#docText .embedBlock .embedTLink');
+  out.tlink = !!link;
+  if (link) {
+    out.tlinkLabel = (link.textContent ?? '').trim();
+    const before = window.__accelon26.state().docTabs.length;
+    link.click();
+    await sleep(1200);
+    out.rightText = (document.querySelector('#textBody')?.innerText ?? '').slice(0, 100).replace(/\\n/g, ' | ');
+    out.rightMark = !!document.querySelector('#textBody mark.xrefHit');
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }));
+    await sleep(1200);
+    out.newMiddleTabs = window.__accelon26.state().docTabs.length - before;
+  }
+  return JSON.stringify(out, null, 1);
 })()`);
-console.log('close:', closed);
+console.log('extra:', extra);
 proc.kill();
 await Bun.sleep(200);
 try { rmSync(profile, { recursive: true, force: true }); } catch { /* browser may still hold it */ }
 
 const r = JSON.parse(result);
+Object.assign(r, JSON.parse(extra));
 const fails: string[] = [];
 if (!r.chips) fails.push('no <嵌> chips on the page');
 if (!r.opened) fails.push('clicking a chip did not insert .embedDoc');
 if (!r.textLen) fails.push('embedded text is empty');
+if (r.group && r.hasSegment) fails.push('group panel still repeats the sutra segment');
+if (r.group && !r.lit) fails.push('sutra segment was not highlighted');
+if (r.group && r.unlit === false) fails.push('sutra highlight was not cleared on close');
+if (r.closed !== 'ok') fails.push('close button did not collapse the block');
+if (r.tlink && !r.rightText) fails.push('大正 link did not open the right pane');
+if (r.tlink && !r.rightMark) fails.push('大正 target was not highlighted');
 if (r.errors) fails.push('console errors: ' + JSON.stringify(r.errors));
 if (fails.length) { console.error(fails.join('; ')); process.exit(1); }
 console.log('ok:', r.chips, 'chips; first =', r.head);
+
 

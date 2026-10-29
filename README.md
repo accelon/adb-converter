@@ -2,6 +2,29 @@
 
 Accelon3 `.adb` 資料庫的**解析 / 匯出 / 重建**工具（Bun + TypeScript），附規格書與驗證。
 
+## 鏡像站
+
+- **廣州**：<https://shutonggui.cn/accelon26/>
+- **境外**：<https://nissaya.cn/accelon26/>
+
+官網不顯示切換列。主站載入後以 225 KB 的 `img/search.jpg` 測速：
+主站超過約 1 秒才測 `nissaya.cn`；鏡像明顯更快（< 主站 72%）才自動切過去。
+主站正常就不打擾；偵測失敗則留在原站。
+測到 nissaya 較快時，會把 **IPv4 /24 或 IPv6 /64 網段**與時間存進 `localStorage`（30 天）；
+同一網段下次直接跳 nissaya，不再下載測試圖。網段變了（往返兩地）才重新測速。
+
+## 文件
+
+- [文件索引](docs/README.md)：軟件、各 adb、對話紀錄分開整理
+- [2026-10-29 對話總結](docs/system/2026-10-29-accelon26-session.md)
+
+## 2026-10-29 對話總結
+
+這一輪把 `jingang.adb` 擴成 `taisho-study.adb`（金剛／法華／大日）、加入逐經目錄、
+`study/index` 注疏索引、桌面版「取得更多 ADB」、頁碼選取選單，以及官網鏡像測速、
+ZIP 下載與 10-29 正式版。完整脈絡、資料格式、建置指令與已知限制見
+[2026-10-29-accelon26-session.md](./docs/system/2026-10-29-accelon26-session.md)。
+
 ## 現在能做什麼
 
 | 能力 | 指令 | 驗證狀態 |
@@ -78,9 +101,12 @@ bun run test/index-match.ts # 反向索引認證
 * [taisho-steps.md](./docs/adb/taisho-steps.md) — 大正藏 1–85 冊
 * [jingqun.md](./docs/adb/jingqun.md) — 大正藏「經／論／律→注→疏」繼承表（379 部註疏、479 節點、81 群）
 * [jingqun-embed-skill.md](./docs/adb/jingqun-embed-skill.md) — 金剛經經群：註疏引用對齊與 `<嵌>` 文內嵌入（transclusion）
+* [jingqun-notes-skill.md](./docs/adb/jingqun-notes-skill.md) — 金剛經注疏讀本小 adb：`<融>` 融入經文、`<嵌>` 段落注疏
+* [taisho-study-skill.md](./docs/adb/taisho-study-skill.md) — 大正藏研究：金剛＋法華＋大日，依賴母庫
 * [goryeo-steps.md](./docs/adb/goryeo-steps.md) — 高麗藏
 * [lc-steps.md](./docs/adb/lc-steps.md) — 呂澂佛學著作集（1,119 個大正鏈結）
-* [ys-steps.md](./docs/adb/ys-steps.md) — 印順（Y 部）
+* [ys-steps.md](./docs/adb/ys-steps.md) — 印順（Y 部）：建置已搬到 `D:\2026\ys`（本檔只留指引）
+* [stable-adb.md](./docs/adb/stable-adb.md) — 底座 adb（taisho／wxzj）怎麼跟 CBETA 版本走，功能為什麼要放獨立 adb
 * [swjzz-steps.md](./docs/adb/swjzz-steps.md) — 說文解字注（含「說文／說文異／段注」三種標記怎麼判）
 * [swjzzsrc-steps.md](./docs/adb/swjzzsrc-steps.md) — 說文解字注引用書目：說文解字、爾雅、周易、尚書、廣韻（可持續加書）
 * [swjzz-citations.md](./docs/adb/swjzz-citations.md) — 段注引書統計（「X曰」與書名出現次數）
@@ -147,5 +173,6 @@ bun run check:norms    # 確認沒有 drift（發佈前跑）
 `tags`／`tokens` 命中表、`tables` 行表），不要回讀內文硬算。詳見 [HANDOVER.md](./docs/adb/HANDOVER.md) §0 與 [SPEC.md](./docs/adb/SPEC.md) §2.1。
 
 `*.adb`、`*.xml`、`build/`、`sourcecode/`、`accelon3/` **不進版控**（見 `.gitignore`）——資料檔與中間產物只留在本機。
+
 
 

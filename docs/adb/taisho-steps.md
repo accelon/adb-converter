@@ -1,31 +1,35 @@
 # taisho.adb（大正藏 1–85 冊）產生步驟
 
-> 目的：用 CBETA 2025 的 TEI XML 重建一份 **accelon3 相容** 的 `taisho.adb`，
+> 目的：用 **CBETA XML-P5 2026.R2**（T 1–55、85）＋ SAT 2018（T56–84，public domain 文本）重建一份 **accelon3 相容** 的 `taisho.adb`，
 > 涵蓋 1–85 冊，`頁 id` 仍是 `NpMc`，讓 `yinshun.adb` 之類的舊庫用
 > `<聯 i="taisho?51p185b">` 就能跳到新檔。
 >
 > 成品：`build/taisho-85.adb`（部署時改名 `taisho.adb`）。
 
-## 0. 成品數據（2026-10-28 建置）
+## 0. 成品數據（2026-10-29 建置，CBETA 2026.R2）
 
 | 項目 | 數值 |
 |---|---|
-| 檔案 | 311.3 MiB |
-| 文字 | 126,758,057 字（UTF-16LE） |
-| 行 | 6,731,535（一行 = 一個 pcl 行） |
-| 冊／書／卷 | 85／3,000／11,540 |
-| 頁欄（`<頁 id="NpMc"/>`） | 245,948 |
-| 標記 | 36 種（`檔 冊 段 書 頁 序 卷 經 品 分 會 其他`＋檔頭與收尾） |
-| tokens | 28,039 種／119,602,263 筆 |
+| 檔案 | 315.7 MiB（331,018,733 bytes） |
+| SHA-256 | `b4ef23989feeaa017eb1e2978d0e15be00694af9928d09a73170042e24e4be1d` |
+| 文字 | 6,745,532 行（max VA 122,178,837） |
+| 冊／書／卷 | 85／3,000／17,998 |
+| 頁欄（`<頁 id="NpMc"/>`） | 238,278（全部唯一） |
+| 標記 | 36 種 |
+| tokens | 35,146 種／121,094,314 筆 |
 | resources | `taisho_logo.png`（297,879 bytes） |
 | 檔頭 | `dbname=taisho`、`dbcname=大正新脩大藏經`、`dbtype=4`、`srcBlockSize=16384`、`compression=1`、`andtagid=21`（頁） |
+
+> **這是純經文底座**：正文沒有本專案加的 `<聯>`／`<嵌>`／經群；那些放獨立 adb。
+> 只有 CBETA 換版才重建（帳本見 `deploy/cbeta-base.json`、`tools/cbeta-base.ts --check`）。
 
 ## 1. 來源
 
 | 用途 | 路徑 |
 |---|---|
-| 正文 | `D:\2023\sat2018\T`（CBETA TEI P5，2025-02-03，85 冊、11,995 個 XML，一經一卷一檔） |
-| 格式與對照 | `D:\accelon3\taisho.adb`（CBETA 2005，只有 1–55＋85 冊） |
+| 正文 T 1–55、85 | `D:\2026\xml-p5\T`（CBETA XML-P5 2026R2，commit `dbdea41`） |
+| 正文 T 56–84 | `D:\2023\sat2018\T`（SAT 2018；文本與底本為 public domain，數位文字依 SAT 2018 授權標注，TEI 標記按 CBETA convention） |
+| 格式與對照 | `D:\accelon3\taisho.adb.old-2026-10-29`（上一版） |
 | logo | `logo/taisho_logo.png` |
 
 `D:\2023\sat2018\T` 的 `cbeta` 符號連結、`t-txt`（SAT 文字）都**不是**這條管線的輸入。
@@ -43,11 +47,11 @@
 ## 3. 指令
 
 ```bat
-:: 1) TEI → 文字（約 3 分鐘）
-go run ./cmd/tei2adb -tei D:\2023\sat2018\T -vol 1-85 -out build\tei-all.txt
+:: 1) TEI → 文字（約 8 分鐘；-tei 可用 ; 串多個根目錄，同一冊取第一個找得到的）
+build\tei2adb.exe -tei "D:\2026\xml-p5\T;D:\2023\sat2018\T" -vol 1-85 -release 2026.R2 -out build\tei-all-2026R2.txt
 
-:: 2) 文字 → adb（約 90 秒）
-bun run ts/tools/tei-pack.ts build\tei-all.txt build\taisho-85.adb taisho 大正新脩大藏經 logo\taisho_logo.png
+:: 2) 文字 → adb（約 75 秒；最後的 "" 表示不要加 posmap align）
+bun run ts/tools/tei-pack.ts build\tei-all-2026R2.txt build\taisho-2026R2.adb taisho 大正新脩大藏經 logo\taisho_logo.png ""
 ```
 
 指定單冊做 pilot：
@@ -127,14 +131,15 @@ bun run build/tmp-idcheck2.ts build\taisho-85.adb 51p185b
 
 ## 7. 已知差異（不是 bug）
 
-1. **文字是 CBETA 2025**：用字（說／説）、標點（，；： vs 。）、修訂讀法都跟 2005 版不同。
+1. **文字是 CBETA 2026.R2（T01–55、85）＋SAT 2018（T56–84，public domain 文本）**：CBETA XML-P5 沒有 56–84 冊，
+   這 29 冊取 SAT 2018（文本與底本為 public domain，數位文字依 SAT 2018 授權標注）；用字、標點、修訂讀法都跟 2005 版不同。
 2. **校勘不進 adb**：`<app>` 只取 `lem`（CBETA 採用的讀法），`<note>`／`<rdg>` 全丟。
    舊 adb 也沒有校勘結構。
 3. **缺字尚未映射**：`&CB00178;` 目前是純文字，也會被 token index 收成 `&cb00178;` 這種 token；
    之後要按 `charDecl` 的 charmap 換成 PUA／glyphwiki 構形。
 4. **品／附文不刻意對齊舊 adb**：定位靠 vol/page/column/line，不靠品節點。
 5. **resources 只有 logo**：沒有缺字圖（因為缺字用 `&CB…;` 佔位）。
-6. 舊 adb 的 `其他` 標題裡有 `&lac;`（闕文）實體，CBETA 2025 沒有；兩邊節點數必然不同。
+6. 舊 adb 的 `其他` 標題裡有 `&lac;`（闕文）實體，CBETA 2026.R2 沒有；兩邊節點數必然不同。
 
 ### 7.1 2026-10-28 補：56–84 冊的書名
 
@@ -209,14 +214,20 @@ bun run build/tmp-idcheck2.ts build\taisho-85.adb 51p185b
 |---|---|
 | 冊 | 85 |
 | 書 | 3,000 |
-| 卷 | 11,540 |
-| 序 | 599 |
+| 卷 | 17,998 |
+| 序 | 601 |
 | 經 | 2,363 |
 | 品 | 5,352 |
 | 分 | 289 |
 | 會 | 102 |
-| 其他 | 24,647 |
-| 頁 | 245,948 |
+| 其他 | 24,827 |
+| 頁 | 238,278（全部唯一；舊檔有重複頁） |
+
+## 8.5 來源交叉核對
+
+T2250《阿毘達磨俱舍論指要鈔》（T63，頁 807a）在 **Kanseki Repository（漢籍リポジトリ）**
+也有收錄，可作 SAT 2018 文字之外的獨立核對。這也支持 T56–T84 的文本本身是公開可得的；
+我們的 TEI 標記則是按 CBETA convention 另外整理的。
 
 ## 9. 後續工作
 

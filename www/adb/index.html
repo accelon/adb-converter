@@ -118,14 +118,6 @@
   .ghLink:hover { color: var(--fg); border-color: var(--dim); text-decoration: none; }
   .ghLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .ghLink svg { width: 17px; height: 17px; fill: currentColor; }
-  /* 最新版本號＋更新說明（作者 2026-10-22） */
-  .verLine { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; font-size: 13px; color: var(--dim); }
-  .verLine .vBadge {
-    display: inline-flex; align-items: center; gap: 6px;
-    border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 10px;
-  }
-  .verLine .vBadge b { color: var(--fg); font-weight: 600; }
-  .verLine a { color: var(--accent); }
 
   /* ---------------------------------------------------------------- 主視覺 */
   /* 錨點捲動時不要被上面那條 sticky 標頭蓋住（作者 2026-10-18）。 */
@@ -154,6 +146,8 @@
   }
   /* 按鈕上的 OS 標誌（2026-10-18）：跟著字色，大小固定，不要被壓縮。 */
   .btn svg { width: 16px; height: 16px; fill: currentColor; flex: none; opacity: .95; }
+  .btn .bTxt { display: flex; flex-direction: column; line-height: 1.18; text-align: left; }
+  .btn .bMeta { font-size: 11.5px; font-weight: 400; opacity: .82; letter-spacing: .01em; }
   .btn:hover { text-decoration: none; filter: brightness(1.08); }
   /* 兩個下載按鈕並排（macOS 版 2026-10-18）；窄螢幕自動換行。 */
   .btnRow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
@@ -305,6 +299,20 @@
   .dbNote { margin: 22px 0 8px; padding: 14px 18px; background: var(--panel); border: 1px solid var(--line);
     border-left: 3px solid var(--gold); border-radius: 8px; color: var(--muted2); font-size: 14.5px; }
   .dbNote b { color: var(--fg); }
+  /* 施工中（2026-10-29）：manifest 有記錄，但先不提供下載 */
+  .wipSection { margin: 34px 0 0; border-top: 1px solid var(--line); padding-top: 24px; }
+  .wipSection h2 { font-size: 21px; margin: 0 0 6px; }
+  .wipSection > p { margin: 0 0 14px; color: var(--dim); font-size: 14px; max-width: 48em; }
+  .wipRow { border: 1px solid var(--line); background: var(--panel); border-left: 3px solid var(--gold);
+    border-radius: 8px; padding: 12px 16px; margin: 0 0 10px; }
+  .wipName { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .wipName b { font-size: 16px; }
+  .wipName .file { color: var(--dim); font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
+  .wipBadge { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--gold);
+    color: #fff; font-size: 11px; font-weight: 700; }
+  html[data-theme="dark"] .wipBadge { color: #231a05; }
+  .wipMeta { color: var(--dim); font-size: 12.5px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .wipNote { margin: 6px 0 0; color: var(--muted2); font-size: 13.5px; line-height: 1.65; }
   @media (max-width: 640px) {
     .dbTable th:nth-child(3), .dbTable td:nth-child(3) { display: none; }
   }
@@ -334,7 +342,7 @@
     <h1>公開數據庫</h1>
     <p>這些 <code>.adb</code> 都可以直接下載：放進 <code>accelon3.exe</code> 同一個資料夾，
       accelon26 開啟時就會自動列出來；也可以在程式裡用 <code>📁</code> 或拖進視窗。</p>
-    <p class="dbMeta">共 6 個資料庫 · 合計約 26,582,233 字 · 下載約 97.7 MB</p>
+    <p class="dbMeta">共 5 個可下載資料庫 · 另有 2 個施工中（不提供下載） · 合計約 20,423,698 字 · 下載約 80.1 MB</p>
   </section>
 
   <table class="dbTable">
@@ -350,14 +358,7 @@
           <td class="dl"><a href="13j.adb" download>下載</a></td>
         </tr>
         <tr>
-          <td class="db"><b>佛光大辭典</b><span class="file">fgdict.adb</span></td>
-          <td class="num">6,158,835</td>
-          <td class="num">2005-08-10</td>
-          <td class="num">18.2 MB</td>
-          <td class="dl"><a href="fgdict.adb" download>下載</a></td>
-        </tr>
-        <tr>
-          <td class="db"><b>說文解字注</b><span class="file">swjzz.adb</span><a class="docLink" href="swjzz.html">製作說明</a></td>
+          <td class="db"><b>說文解字注</b><span class="file">swjzz.adb</span><a class="docLink" href="swjzz.html">改版說明</a></td>
           <td class="num">1,780,312</td>
           <td class="num">2026-10-28</td>
           <td class="num">19.5 MB</td>
@@ -379,16 +380,38 @@
         </tr>
         <tr>
           <td class="db"><b>印順法師佛學著作集</b><span class="file">ys.adb</span><a class="docLink" href="ys.html">改版說明</a></td>
-          <td class="num">7,336,350</td>
-          <td class="num">2026-10-28</td>
-          <td class="num">25.3 MB</td>
+          <td class="num">7,336,650</td>
+          <td class="num">2026-10-29</td>
+          <td class="num">25.9 MB</td>
           <td class="dl"><a href="ys.adb" download>下載</a></td>
         </tr>
     </tbody>
   </table>
 
+  <section class="wipSection">
+    <h2>施工中</h2>
+    <p>這些底座正在整理，<b>先不提供下載</b>；下方是我們目前做到哪裡（版本記錄仍在 manifest 裡）。</p>
+    <div class="wipRow">
+      <div class="wipName"><b>大正新脩大藏經</b><span class="file">taisho.adb</span><span class="wipBadge">施工中</span></div>
+      <div class="wipMeta">315.7 MB · 最新 2026-10-29</div>
+      <div class="wipMeta">來源：T01–T55、T85：CBETA XML-P5 2026R2；T56–T84：SAT 2018</div>
+      <div class="wipMeta">授權：T01–T55、T85 依 CBETA XML-P5 使用條款；T56–T84 文本與底本為 public domain，數位文字取自 SAT 2018 並依其授權標注。TEI 標記按 CBETA convention 整理。</div>
+      <div class="wipMeta">核對：T2250《阿毘達磨俱舍論指要鈔》（T63，頁 807a）亦見 Kanseki Repository，可作獨立文字核對。</div>
+      <p class="wipNote">2026-10-29 已重建底座（85 冊）。T56–84 文本／底本為 public domain，數位文字依 SAT 2018 標注；底座仍在整理與驗證，暫不公開下載。</p>
+    </div><div class="wipRow">
+      <div class="wipName"><b>卍新纂續藏經</b><span class="file">wxzj.adb</span><span class="wipBadge">施工中</span></div>
+      <div class="wipMeta">268.2 MB · 最新 2008-04-07</div>
+      <div class="wipMeta">來源：CBETA XML-P5 2026R2（X 藏）</div>
+      <div class="wipMeta">授權：文字依 CBETA XML-P5 的授權。</div>
+      
+      <p class="wipNote">2026-10-29 已用 CBETA XML-P5 2026R2 重建 X 藏底座（86 冊、172,794 頁）。先整理目錄與驗證，暫不公開下載。</p>
+    </div>
+  </section>
+
   <div class="dbNote">
-    <b>關於這些資料庫</b>：由作者整理公開，歡迎自由使用。字數取自 adb 檔頭的
+    <b>關於這些資料庫</b>：由作者整理公開，歡迎自由使用。<b>小於 30 MB</b> 的庫可以經常更新；
+    <b>超過 30 MB</b> 的底座仍可整檔下載，但只在 CBETA 換版等重大更新時才換版，也不列入桌面版的
+    「全部更新」。字數取自 adb 檔頭的
     <code>maxblockoffset</code>（最大的文字位置），是<b>近似值</b>（與精確字數差幾個百分點，不必解壓整本）；
     建置日期取自檔案時間。想增補資料庫或發現錯誤，請<a href="../index.html#contact">留言給作者</a>。
   </div>

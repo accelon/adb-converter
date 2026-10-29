@@ -1,0 +1,5 @@
+# 不列在「公開數據庫」頁面、但要納入 manifest 版本記錄的 adb（作者 2026-10-29）。
+# 一行一個檔名。它們的 status 由 deploy/adb-status.json 決定；wip／revision 只記錄工作，
+# 官網與桌面版都不提供下載，也不佔伺服器流量。
+taisho.adb
+wxzj.adb

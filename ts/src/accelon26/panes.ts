@@ -7,7 +7,7 @@
  */
 import { $, displayName, docs, escapeHtml, fmtBytes, fmtInt, mapper, reader, setStatus, tokens } from './viewer';
 import { desktopExportTextImages, desktopHost, desktopRevealInFolder } from './host';
-import { revealHit, showLine } from './link';
+import { revealHit, revealImageUse, showLine } from './link';
 import { allRevisions } from './revisions-store';
 import { exportRevisions, importRevisions } from './revisions-transfer';
 import { sha256Hex } from './sha256';
@@ -215,6 +215,15 @@ async function renderHeader(): Promise<void> {
 
 const THUMB_LIMIT = 48;
 
+/**
+ * Ctrl/Cmd + 點縮圖（作者 2026-10-29）：打開「使用這張圖」的那一段本文，捲到那一行。
+ * 圖名 → `<圖 n=…>` 實例是 `attributes/圖.n` ＋ `tags/圖`，不必掃內文。
+ */
+async function showImageUse(name: string): Promise<void> {
+  const ok = await revealImageUse(name);
+  if (!ok) setStatus(`「${name}」：正文沒有引用這張圖（可能是封面或未用的圖）`, 'err');
+}
+
 async function renderResources() {
   // the reader is a GLOBAL: capturing it keeps a database switch that lands mid-render
   // from reading resources out of the wrong container ("no resources container")
@@ -244,7 +253,15 @@ async function renderResources() {
       cell.setAttribute('role', 'button');
       cell.setAttribute('aria-label', `看大圖：${name}`);
       const open = () => openImageView(name, url, bytes);
-      cell.addEventListener('click', open);
+      cell.addEventListener('click', (ev) => {
+        // Ctrl/Cmd + 點縮圖：打開「使用這張圖」的本文並捲到那一行（作者 2026-10-29）
+        if (ev.ctrlKey || ev.metaKey) {
+          ev.preventDefault();
+          void showImageUse(name);
+          return;
+        }
+        open();
+      });
       cell.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); }
       });
@@ -258,7 +275,8 @@ async function renderResources() {
     if ((i & 15) === 15) await new Promise((r) => setTimeout(r, 0));
   }
   const note = $('#thumbNote');
-  if (note) note.textContent = (c.count > n ? `已載入前 ${n} 張（共 ${c.count}）` : `已載入 ${n} 張`) + '；點縮圖看大圖';
+  if (note) note.textContent = (c.count > n ? `已載入前 ${n} 張（共 ${c.count}）` : `已載入 ${n} 張`)
+    + '；點縮圖看大圖，Ctrl+點跳到引用它的本文';
 }
 
 /* ---------------------------------------------------------- 圖片放大（作者 2026-10-26）
@@ -271,6 +289,8 @@ let ivScale = 1;
 let ivName = '';
 let ivUrl = '';
 let ivBytes: Uint8Array | null = null;
+/** 這一張是 SVG（向量）：可以放大到超過 100% 而不失真（作者 2026-10-29） */
+let ivSvg = false;
 
 function ivImg(): HTMLImageElement | null { return $('#imgViewImg') as HTMLImageElement | null; }
 function ivStage(): HTMLElement | null { return $('#imgStage') as HTMLElement | null; }
@@ -310,10 +330,11 @@ function ivFit(): void {
   const h = img.naturalHeight || 600;
   const sw = Math.max(80, stage.clientWidth - 28);
   const sh = Math.max(80, stage.clientHeight - 28);
-  ivApplyScale(Math.min(1, sw / w, sh / h));
+  // SVG 是向量：小圖也放大到填滿視窗（點 inline 字形／圖版就是為了看清）
+  ivApplyScale(Math.min(ivSvg ? 8 : 1, sw / w, sh / h));
 }
 
-function openImageView(name: string, url: string, bytes: Uint8Array): void {
+export function openImageView(name: string, url: string, bytes: Uint8Array): void {
   const box = $('#imgView') as HTMLElement | null;
   const back = $('#imgViewBackdrop') as HTMLElement | null;
   const img = ivImg();
@@ -322,6 +343,9 @@ function openImageView(name: string, url: string, bytes: Uint8Array): void {
   ivName = name;
   ivUrl = url;
   ivBytes = bytes;
+  ivSvg = /\.svg$/i.test(name);
+  // SVG 是黑墨透明底：暗色系的主題色背景下幾乎看不見，鋪一張白紙（作者 2026-10-29）
+  img.style.background = ivSvg ? '#fff' : '';
   img.onload = () => { ivFit(); };
   img.src = url;
   img.alt = name;

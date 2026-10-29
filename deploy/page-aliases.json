@@ -1,0 +1,6 @@
+{
+  "_comment": "底座換版後消失的頁 id → 新頁 id（由 ts/tools/apply-page-aliases.ts 套用到連結文字）。每一筆都要用 tools/check-pages.ts 驗過新頁真的存在。",
+  "taisho": {
+    "27p661c": "27p661b"
+  }
+}

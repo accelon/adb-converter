@@ -1,0 +1,23 @@
+{
+  "tag": "2026R2",
+  "commit": "dbdea41071e1e260ad84b72faefd4587333cf76d",
+  "date": "2026-09-06",
+  "source": "cbeta-org/xml-p5",
+  "updatedAt": "2026-10-29T01:49:49Z",
+  "files": {
+    "taisho.adb": {
+      "canon": "T",
+      "sha256": "b4ef23989feeaa017eb1e2978d0e15be00694af9928d09a73170042e24e4be1d",
+      "size": 331018733,
+      "builtAt": "2026-10-29T01:49:49Z"
+    },
+    "wxzj.adb": {
+      "canon": "X",
+      "sha256": "f4f1cbc999535d51362ed432073df3d5919555465920171b622c967eb8ba1ad9",
+      "size": 246706405,
+      "builtAt": "2026-10-29T01:49:39Z"
+    }
+  },
+  "sourceDate": "2026-09-06",
+  "note": "taisho：T01–T55、T85 取自 CBETA XML-P5 2026R2；T56–T84 CBETA XML-P5 不含，取自 accelon/sat2018。wxzj：X 全藏取自 CBETA XML-P5 2026R2。"
+}

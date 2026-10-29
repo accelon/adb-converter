@@ -119,14 +119,6 @@
   .ghLink:hover { color: var(--fg); border-color: var(--dim); text-decoration: none; }
   .ghLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .ghLink svg { width: 17px; height: 17px; fill: currentColor; }
-  /* 最新版本號＋更新說明（作者 2026-10-22） */
-  .verLine { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; font-size: 13px; color: var(--dim); }
-  .verLine .vBadge {
-    display: inline-flex; align-items: center; gap: 6px;
-    border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 10px;
-  }
-  .verLine .vBadge b { color: var(--fg); font-weight: 600; }
-  .verLine a { color: var(--accent); }
 
   /* ---------------------------------------------------------------- 主視覺 */
   /* 錨點捲動時不要被上面那條 sticky 標頭蓋住（作者 2026-10-18）。 */
@@ -155,6 +147,8 @@
   }
   /* 按鈕上的 OS 標誌（2026-10-18）：跟著字色，大小固定，不要被壓縮。 */
   .btn svg { width: 16px; height: 16px; fill: currentColor; flex: none; opacity: .95; }
+  .btn .bTxt { display: flex; flex-direction: column; line-height: 1.18; text-align: left; }
+  .btn .bMeta { font-size: 11.5px; font-weight: 400; opacity: .82; letter-spacing: .01em; }
   .btn:hover { text-decoration: none; filter: brightness(1.08); }
   /* 兩個下載按鈕並排（macOS 版 2026-10-18）；窄螢幕自動換行。 */
   .btnRow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
@@ -300,6 +294,8 @@
       <a href="#install">下載與安裝</a>
       <a href="#contact">聯絡</a>
       <a href="adb/index.html">公開數據庫</a>
+      <a href="changelog.html">更新說明</a>
+      <a href="releases.html">版本下載</a>
       <button type="button" class="themeBtn" id="themeBtn" aria-label="切換亮底／暗底" title="切換亮底／暗底">
         <svg viewBox="0 0 24 24" aria-hidden="true" id="themeIcon"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
         <span id="themeLabel">亮底</span>
@@ -324,21 +320,17 @@
           全文檢索、詞典查詢、目錄樹、原書分頁與繁簡通檢，都在同一個視窗裡完成。
         </p>
         <div class="btnRow">
-          <a class="btn" href="accelon26.7z" download>
+          <a class="btn" id="winDownload" href="accelon26.zip" download>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M0 3.449 9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
-            下載 Windows 版
+            <span class="bTxt">下載 Windows 版<span class="bMeta"><span id="winDate">2026-10-29</span> · <span id="winSize">8.5 MB</span> ZIP</span></span>
           </a>
           <a class="btn alt" href="accelon26-macos-arm64.zip" download>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
-            下載 macOS 版
+            <span class="bTxt">下載 macOS 版<span class="bMeta"><span id="macDate">2026-10-29</span> · 8.3 MB ZIP（Apple Silicon）</span></span>
           </a>
         </div>
-        <p class="verLine">
-          <span class="vBadge">最新版 <b id="verNo">2026-10-27</b></span>
-          <a href="changelog.html">更新說明 →</a>
-        </p>
         <p class="fine">
-          Windows 10／11 · 64 位元 · 免安裝 · <span id="meta">7-Zip 壓縮檔，約 7 MB</span><br>
+          Windows 10／11 · 64 位元 · 免安裝 · ZIP 壓縮檔<br>
           macOS 11 以上 · Apple Silicon／Intel · <a href="#install">第一次要右鍵「打開」</a>
         </p>
       </div>
@@ -388,7 +380,7 @@
       <ol class="steps">
         <li>
           <h3>下載並解壓縮</h3>
-          <p>下載 <a href="accelon26.7z" download>accelon26.7z</a>，用 7-Zip 解開，裡面只有一個
+          <p>下載 <a href="accelon26.zip" download>accelon26.zip</a>（舊版都在<a href="releases.html">版本下載</a>），解開後只有一個
             <code>accelon26.exe</code>，加兩份說明（<code>README.txt</code> 簡體、<code>README-tc.txt</code> 繁體）。</p>
         </li>
         <li>
@@ -402,11 +394,6 @@
             <code>.adb</code> 拖進視窗。</p>
         </li>
       </ol>
-      <div class="note">
-        <b>打不開 7z 檔？</b> 7-Zip 是免費的解壓縮工具，到
-        <a href="https://sparanoid.com/lab/7z/" target="_blank" rel="noopener noreferrer">https://sparanoid.com/lab/7z/</a>
-        下載 <b>Windows x64</b> 版即可（免安裝版解開就能用）。
-      </div>
 
       <div class="note">
         <b>macOS 版（Apple Silicon／Intel）</b>
@@ -460,50 +447,36 @@
 
 <footer>
   <div class="wrap">
-    <span>accelon26 · Accelon3 跨平台平替 · <a href="adb/index.html">公開數據庫</a> · <a href="changelog.html">更新說明</a></span>
+    <span>accelon26 · Accelon3 跨平台平替 · <a href="adb/index.html">公開數據庫</a> · <a href="changelog.html">更新說明</a> · <a href="releases.html">版本下載</a></span>
     <span class="right">授權：Apache-2.0 · 開發者微信 Sukhanika</span>
   </div>
 </footer>
 
 <script>
-  // 下載檔的實際大小與更新時間（伺服器有送 Last-Modified 才顯示）。
-  // 只是錦上添花：拿不到就維持預設文字，不影響任何功能，也不需要任何第三方服務。
+  // 下載按鈕的日期跟著 versions.json（2026-10-29）；不要寫死在 HTML 裡，
+  // 否則官網會看起來停在舊版。抓不到就保留靜態日期，不影響下載。
   (function () {
-    var out = document.getElementById('meta');
-    if (!out || !window.fetch) return;
-    fetch('accelon26.7z', { method: 'HEAD' }).then(function (r) {
-      if (!r.ok) return;
-      var len = Number(r.headers.get('content-length') || 0);
-      var lm = r.headers.get('last-modified');
-      var bits = [];
-      if (len > 0) bits.push('約 ' + Math.round(len / 1048576) + ' MB');
-      if (lm) {
-        var d = new Date(lm);
-        if (!isNaN(d.getTime())) {
-          bits.push('更新於 ' + d.getFullYear() + '-' +
-            String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'));
-        }
-      }
-      if (bits.length) out.textContent = bits.join(' · ');
-    }).catch(function () { /* file:// 或沒有 CORS：保持預設 */ });
-  }());
-
-  // 最新版本號（作者 2026-10-22）：從 versions.json 取 buildTime，連到 changelog。
-  // 讀不到就保留 HTML 的靜態值，不影響下載。
-  (function () {
-    var no = document.getElementById('verNo');
-    if (!no || !window.fetch) return;
+    if (!window.fetch) return;
     fetch('versions.json', { cache: 'no-cache' }).then(function (r) {
       return r.ok ? r.json() : null;
     }).then(function (j) {
       if (!j || !j.buildTime) return;
       var d = new Date(j.buildTime);
       if (isNaN(d.getTime())) return;
-      var p = function (n) { return String(n).padStart(2, '0'); };
-      no.textContent = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
-      no.title = 'build ' + j.buildTime +
-        (j.sha256 ? ' · sha256 ' + String(j.sha256).slice(0, 12) + '…' : '');
-    }).catch(function () { /* 保持靜態值 */ });
+      var date = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(d);
+      var win = document.getElementById('winDate');
+      var mac = document.getElementById('macDate');
+      if (win) win.textContent = date;
+      if (mac) mac.textContent = date;
+      if (j.zip) {
+        var dl = document.getElementById('winDownload');
+        if (dl) dl.href = j.zip;
+      }
+      if (j.zipSize) {
+        var sz = document.getElementById('winSize');
+        if (sz) sz.textContent = (j.zipSize / 1048576).toFixed(1) + ' MB';
+      }
+    }).catch(function () { /* 保持靜態日期 */ });
   }());
 
   // 軟件畫面圖庫（作者 2026-10-18）：3 秒換一張，小白點可點；
@@ -571,5 +544,118 @@
     }
   }());
 </script>
+<script>
+/* 測速換站（2026-10-29）：官網不顯示切換列。
+   1) 若這個網段上次測到 nissaya 較快，直接過去，不再下載測試圖。
+   2) 否則主站抓 225 KB search.jpg；主站 <1 秒就不打擾。
+   3) 主站慢才測 nissaya；明顯較快才切，並把網段記在 localStorage。 */
+(function () {
+  var host = location.hostname.toLowerCase();
+  if (!(host === 'shutonggui.cn' || host === 'www.shutonggui.cn')) return;
+  var ROUTE_KEY = 'accelon26.mirror.route.v1';
+  var SESSION_KEY = 'accelon26.mirror.checked';
+  var TTL = 30 * 24 * 60 * 60 * 1000;
+  var params = new URLSearchParams(location.search);
+  var forceSpeed = params.get('speed') === '1';
+  var stay = params.get('stay') === '1';
+
+  function ipPrefix(ip) {
+    if (!ip) return '';
+    if (ip.indexOf(':') >= 0) return ip.split(':').slice(0, 4).join(':').toLowerCase();
+    var p = ip.split('.');
+    return p.length === 4 ? p.slice(0, 3).join('.') : ip;
+  }
+  function readRoute() {
+    try {
+      var r = JSON.parse(localStorage.getItem(ROUTE_KEY) || 'null');
+      if (!r || !r.net || !r.at || Date.now() - r.at > TTL) return null;
+      return r;
+    } catch (e) { return null; }
+  }
+  function saveRoute(net) {
+    if (!net) return;
+    try { localStorage.setItem(ROUTE_KEY, JSON.stringify({ net: net, at: Date.now() })); } catch (e) { /* 無痕 */ }
+  }
+  function goNissaya(direct) {
+    var u = new URL('https://nissaya.cn/accelon26/');
+    var suffix = location.pathname.replace(/^\/accelon26\/?/, '');
+    u.pathname = '/accelon26/' + suffix;
+    u.search = location.search;
+    u.searchParams.set(direct ? 'direct' : 'speed', '1');
+    u.hash = location.hash;
+    location.replace(u.toString());
+  }
+  function getJson(url, ms) {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, ms);
+    return fetch(url, { signal: ctrl.signal, cache: 'no-store', credentials: 'omit' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .finally(function () { clearTimeout(timer); });
+  }
+  function getNet() {
+    return getJson('https://ipwho.is/', 2200).then(function (j) {
+      return { ip: j && j.ip, net: ipPrefix(j && j.ip) };
+    }).catch(function () {
+      return getJson('https://api.country.is/', 2200).then(function (j) {
+        return { ip: j && j.ip, net: ipPrefix(j && j.ip) };
+      });
+    }).catch(function () { return null; });
+  }
+
+  function testNissaya(mainMs, net) {
+    var t0 = performance.now();
+    var done = false;
+    var img = new Image();
+    function finish(ok) {
+      if (done) return;
+      done = true;
+      if (!ok) return;
+      var ms = performance.now() - t0;
+      if (ms >= 6000) return;
+      var clearlyFaster = mainMs >= 99999 ? ms < 4500 : ms < mainMs * 0.72;
+      if (!clearlyFaster) return;
+      saveRoute(net);
+      goNissaya(false);
+    }
+    img.onload = function () { finish(true); };
+    img.onerror = function () { finish(false); };
+    img.src = 'https://nissaya.cn/accelon26/img/search.jpg?speed=' + Date.now();
+    setTimeout(function () { finish(false); }, 7000);
+  }
+
+  function runSpeed(net) {
+    var t0 = performance.now();
+    fetch('/accelon26/img/search.jpg?speed=' + Date.now(), { cache: 'no-store', credentials: 'omit' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+      .then(function () {
+        var ms = performance.now() - t0;
+        if (ms < 1000) {
+          try { sessionStorage.setItem(SESSION_KEY, '1'); } catch (e) { /* 無痕 */ }
+          return;
+        }
+        testNissaya(ms, net);
+      })
+      .catch(function () { testNissaya(99999, net); });
+  }
+
+  // 同一 tab 已經確認主站夠快：不必每頁再抓一次 225 KB。
+  try {
+    if (!forceSpeed && sessionStorage.getItem(SESSION_KEY) === '1') return;
+  } catch (e) { /* 無痕 */ }
+
+  function start() {
+    getNet().then(function (info) {
+      if (!forceSpeed && !stay && info && info.net) {
+        var r = readRoute();
+        if (r && r.net === info.net) { goNissaya(true); return; }
+      }
+      runSpeed(info && info.net);
+    });
+  }
+  if (document.readyState === 'complete') setTimeout(start, 700);
+  else window.addEventListener('load', function () { setTimeout(start, 700); });
+}());
+</script>
 </body>
 </html>
+

@@ -6,7 +6,7 @@
 > | 成品 | 轉換器 | 打包 | 步驟文件 |
 > |---|---|---|---|
 > | `taisho.adb`（大正藏 1–85 冊） | `cmd/tei2adb` | `ts/tools/tei-pack.ts` | `taisho-steps.md` |
-> | `ys.adb`（印順法師佛學著作集，Y 部） | `cmd/y2adb` | `ys/pack.ts` | `ys-steps.md` |
+> | `ys.adb`（印順法師佛學著作集，Y 部） | `D:\2026\ys\cmd\y2adb` | `D:\2026\ys\pack.ts` | `ys-steps.md`（建置已搬到 `D:\2026\ys`） |
 > | `goryeo.adb`（高麗藏） | `cmd/k2adb`（k-txt，不是 TEI） | `ts/tools/goryeo-pack.ts` | `goryeo-steps.md` |
 > | `lc.adb`（呂澂佛學著作集，LC 部） | `cmd/lc2adb` | `lc/pack.ts` | `lc-steps.md` |
 >
@@ -125,8 +125,8 @@ CBETA 沒有的東西，做成**進版控的外部檔**，重建時合併：
 
 | 缺什麼 | 外部檔 | 併入方式 |
 |---|---|---|
-| 卷首附錄、後記、序（CBETA 沒收） | `ys/appendix.txt`、`ys/ys-epilog26.txt` | `ys/prep.ts`：檔頭 ＋ 正文 ＋ 附錄 ＋ 後記 |
-| `u="文"`（頻次 `s="*u=文"` 需要） | `ys/u-attrs.txt`（標籤→u 值） | `ys/prep.ts` 掃一遍，缺 `u=` 的開標籤補上 |
+| 卷首附錄、後記、序（CBETA 沒收） | `D:\2026\ys\data\appendix.txt`、`D:\2026\ys\data\ys-epilog26.txt` | `D:\2026\ys\prep.ts`：檔頭 ＋ 正文 ＋ 附錄 ＋ 後記 |
+| `u="文"`（頻次 `s="*u=文"` 需要） | `D:\2026\ys\data\u-attrs.txt`（標籤→u 值） | `D:\2026\ys\prep.ts` 掃一遍，缺 `u=` 的開標籤補上 |
 | 目錄層級（CBETA 只有 `cb:mulu level`） | 轉換器直接讀 `level` | `章`／`節`／`項` |
 
 **原則**：外部檔只放「標記」，不放正文；正文永遠從 CBETA 重建，這樣 CBETA 修字才會同步。
@@ -153,8 +153,8 @@ CBETA 沒有的東西，做成**進版控的外部檔**，重建時合併：
   * 舊 accelon3 只會多存一個 `聯.j` 屬性，不影響閱讀；`聯` 是 skip tag，
     頁碼、`VA`、`頁.id` 都不變。
 
-`<嵌 q="經文段落" t="taisho?33p158a@61-123@纂要|…" n="3 家注疏"/>` 用同一套
-頁碼／漢字範圍，但點擊是在文內列出多家注疏對這一段的解釋（transclusion），不是跳頁。
+`<嵌始 i="taisho?8p749a" j="73-145"/>經文段落…<嵌 i="taisho?8p749a" j="73-145" t="taisho?33p158a@61-123@纂要|…" n="3 家注疏"/>`
+用頁碼／漢字範圍；點擊時亮起正文，並在晶片後列出多家注疏的解釋（transclusion），不是跳頁。
 詳見 [jingqun-embed-skill.md](./jingqun-embed-skill.md)。
 * **兩種座標不要混**：
   * **來源端**（要把哪一段包進 `<聯>`）：用**原始字元索引**（連標點一起算），
@@ -162,7 +162,7 @@ CBETA 沒有的東西，做成**進版控的外部檔**，重建時合併：
   * **目標端 `j`**：用**漢字索引**，因為右欄塗紅就是按漢字在數；
     用原始字元索引會和 `lineHtml()` 對不上。
 * 做法：`ts/tools/backlink.ts`（抽引文 → 單字 posting + VA 近似搜尋 → 套用＋打包）。
-  舊的 `ys/calibrate.ts` 只做 `i`／`q`，新庫請用 `backlink.ts`，它會一併算 `j`。
+  舊的 `D:\2026\ys\calibrate.ts` 只做 `i`／`q`，新庫請用 `backlink.ts`，它會一併算 `j`。
 * 收尾多吃標點（`，。！？；：、）」』】》〉`），因為沒有人把引文斷在標點前面。
 * 已完成：`tx` 4,337/4,484、`yulinpo` 1,450/1,506、`ys` 25,095/25,918、
   `lc` 1,119/1,119 個錨點有 `j`；逐個回驗 0 bad／0 超出頁面
@@ -178,7 +178,7 @@ CBETA 沒有的東西，做成**進版控的外部檔**，重建時合併：
 
 ```powershell
 bun run ts/tools/tei-pack.ts build\tei.txt build\taisho-85.adb taisho 大正新脩大藏經 logo\taisho_logo.png
-bun run ys/pack.ts      # 印順：多了 logo、附錄圖、行長檢查
+bun run pack.ts           # 印順（在 D:\2026\ys）：多了 logo、附錄圖、行長檢查
 ```
 
 打包前**一定要檢查行長**：
@@ -263,7 +263,7 @@ bun run ts/tools/check-tabs.ts --adb build\taisho-85.adb               # 左欄�
    判斷孤代理要 `ch.length === 1`，否則 `𢁓`、`𠀀` 全部變豆腐塊。
 
 5. **`u=` 漏了就從頻次消失。**
-   CBETA 沒有 `u=`；`ys/u-attrs.txt` 補上 `<章>/<節>/<項>` 的 `u="文"`，
+   CBETA 沒有 `u=`；`D:\2026\ys\data\u-attrs.txt` 補上 `<章>/<節>/<項>` 的 `u="文"`，
    否則那幾段在 `s="*u=文"` 的頻次裡等於不存在。
 
 ---
@@ -296,3 +296,5 @@ bun run ts/tools/check-tabs.ts --adb build\taisho-85.adb               # 左欄�
 | `goryeo-steps.md` | 高麗藏：k-txt（TSV）→ adb |
 | `FORMAT.md` | adb 二進位格式（容器、packed list、檔頭） |
 | `DEPLOY.md` | 官網、exe、公開資料庫的上架流程 |
+
+

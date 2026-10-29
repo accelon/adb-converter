@@ -58,7 +58,7 @@ const (
 	// 抓版本資訊的逾時（只是一個小 JSON，不該等太久）。
 	manifestTimeout = 8 * time.Second
 	// 這個平台不能自己換檔時給使用者看的話（macOS：換的是整個 .app）。
-	noSelfUpdateNote = "macOS 版不會自己換檔，請到 https://shutonggui.cn/accelon26/ 下載新版"
+	noSelfUpdateNote = "macOS 版不會自己換檔，請到官網（主站或鏡像）下載新版"
 )
 
 // versionManifest 是線上的 versions.json（由 ts/tools/release.ts 產生、deploy 一起上傳）。
@@ -124,12 +124,15 @@ func updateURL() string {
 	if u := strings.TrimSpace(os.Getenv("ACCELON26_UPDATE_URL")); u != "" {
 		return u
 	}
-	return defaultUpdateURL
+	// 主站或鏡像（由前端探測後 SetUpdateMirror；預設主站）。
+	return currentMirrorBase() + "accelon26.exe"
 }
 
 // updateURLForced 表示更新位置是被環境變數指定的（測試／自架）：那就略過
 // 「開發者本地 exe」的保護，否則自動化測試永遠測不到檢查邏輯。
 func updateURLForced() bool { return strings.TrimSpace(os.Getenv("ACCELON26_UPDATE_URL")) != "" }
+
+func versionURLForced() bool { return strings.TrimSpace(os.Getenv("ACCELON26_VERSION_URL")) != "" }
 
 // forceUpdateCheck 由 `-check-update`（診斷用）設起來：連開發者本地建置的 exe
 // 也真的連一次網，好讓發布前可以驗線上的 versions.json。
@@ -142,9 +145,17 @@ func manifestURL() string {
 	if u := strings.TrimSpace(os.Getenv("ACCELON26_VERSION_URL")); u != "" {
 		return u
 	}
-	p, err := url.Parse(updateURL())
+	if u := strings.TrimSpace(os.Getenv("ACCELON26_UPDATE_URL")); u != "" {
+		return manifestBeside(u)
+	}
+	return currentMirrorBase() + manifestName
+}
+
+// manifestBeside 把 exe 的網址換成同資料夾的 versions.json（環境變數指定 exe 時用）。
+func manifestBeside(exeURL string) string {
+	p, err := url.Parse(exeURL)
 	if err != nil {
-		return updateURL() + "." + manifestName
+		return exeURL + "." + manifestName
 	}
 	p.RawQuery, p.Fragment = "", ""
 	if i := strings.LastIndex(p.Path, "/"); i >= 0 {
@@ -157,9 +168,11 @@ func manifestURL() string {
 
 // fetchManifest 讀 versions.json。讀不到（404、連不上、不是 JSON）就回錯誤，
 // 呼叫方會退回用 Last-Modified 判斷 —— 舊主機沒有 versions.json 也能更新。
-func fetchManifest() (versionManifest, error) {
+func fetchManifest() (versionManifest, error) { return fetchManifestAt(manifestURL()) }
+
+func fetchManifestAt(src string) (versionManifest, error) {
 	var m versionManifest
-	req, err := http.NewRequest(http.MethodGet, manifestURL(), nil)
+	req, err := http.NewRequest(http.MethodGet, src, nil)
 	if err != nil {
 		return m, err
 	}
@@ -220,6 +233,10 @@ type AppInfo struct {
 	DevBuild        bool   `json:"devBuild"`
 	UpdateURL       string `json:"updateURL"`
 	UpdateAvailable bool   `json:"updateAvailable"`
+	// 更新鏡像（作者 2026-10-29）：目前設定、這次實際用的站、是否回退到另一站。
+	Mirror          string `json:"mirror"`
+	MirrorUsed      string `json:"mirrorUsed"`
+	MirrorFallback  bool   `json:"mirrorFallback"`
 	RemoteBuildTime string `json:"remoteBuildTime"`
 	LastCheck       string `json:"lastCheck"`
 	// CheckOK＝真的拿到線上的版本時間。false 時 UI 要顯示 Note（檢查失敗），
@@ -249,6 +266,9 @@ type UpdateStatus struct {
 	SHA256      string
 	Size        int64
 	DownloadURL string
+	// 這次實際回應的站（可能因為原站連不上而回退到另一個站）。
+	BaseUsed string
+	Fallback bool
 }
 
 // shortTime 給 hover hint 用的可讀時間（本地時區）。
@@ -290,18 +310,36 @@ func (h *AdbHost) checkUpdateNow() UpdateStatus {
 		return st
 	}
 
-	// 1) versions.json
-	why := ""
-	if m, err := fetchManifest(); err != nil {
-		why = "versions.json 讀不到（" + err.Error() + "）"
-	} else if remote, err := time.Parse(time.RFC3339, m.BuildTime); err != nil {
-		why = "versions.json 的 buildTime 看不懂：" + m.BuildTime
+	// 1) versions.json：目前選的站優先；連不上再試另一個正式站（主站／鏡像）。
+	//    被環境變數指定網址時（測試／自架）只試那一個，避免偷偷連到正式站。
+	type attempt struct{ base, manifest, exe string }
+	var attempts []attempt
+	if updateURLForced() || versionURLForced() {
+		attempts = []attempt{{base: "", manifest: manifestURL(), exe: updateURL()}}
 	} else {
+		for _, b := range candidateBases() {
+			attempts = append(attempts, attempt{base: b, manifest: b + manifestName, exe: b + "accelon26.exe"})
+		}
+	}
+	why := ""
+	for _, a := range attempts {
+		m, err := fetchManifestAt(a.manifest)
+		if err != nil {
+			why = "versions.json 讀不到（" + err.Error() + "）"
+			continue
+		}
+		remote, err := time.Parse(time.RFC3339, m.BuildTime)
+		if err != nil {
+			why = "versions.json 的 buildTime 看不懂：" + m.BuildTime
+			continue
+		}
 		st.OK = true
 		st.Remote = remote
 		st.SHA256 = strings.ToLower(strings.TrimSpace(m.SHA256))
 		st.Size = m.Size
 		st.DownloadURL = strings.TrimSpace(m.URL)
+		st.BaseUsed = a.base
+		st.Fallback = a.base != "" && a.base != currentMirrorBase()
 		st.Available = remote.After(local.Add(newerSlack))
 		if !st.Available {
 			st.Note = "已是最新（線上 " + shortTime(remote) + "）"
@@ -309,41 +347,52 @@ func (h *AdbHost) checkUpdateNow() UpdateStatus {
 		return st
 	}
 
-	// 2) fallback：HEAD 取 Last-Modified（舊主機）
-	req, err := http.NewRequest(http.MethodHead, updateURL(), nil)
-	if err != nil {
-		st.Note = why + "；更新網址無效：" + err.Error()
+	// 2) fallback：HEAD 取 Last-Modified（舊主機沒有 versions.json 時）
+	for _, a := range attempts {
+		req, err := http.NewRequest(http.MethodHead, a.exe, nil)
+		if err != nil {
+			why += "；更新網址無效：" + err.Error()
+			continue
+		}
+		req.Header.Set("Cache-Control", "no-cache")
+		client := &http.Client{Timeout: 15 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			why += "；檢查失敗：" + err.Error()
+			continue
+		}
+		status := resp.StatusCode
+		lm := resp.Header.Get("Last-Modified")
+		resp.Body.Close()
+		if status != http.StatusOK {
+			why += fmt.Sprintf("；檢查失敗：HTTP %d", status)
+			continue
+		}
+		if lm == "" {
+			why += "；線上檔案沒有 Last-Modified，無法比較建置時間"
+			continue
+		}
+		remote, err := http.ParseTime(lm)
+		if err != nil {
+			why += "；Last-Modified 看不懂：" + lm
+			continue
+		}
+		st.OK = true
+		st.Remote = remote
+		st.BaseUsed = a.base
+		st.Fallback = a.base != "" && a.base != currentMirrorBase()
+		st.DownloadURL = a.exe
+		st.Available = remote.After(local.Add(newerSlack))
+		if st.Available {
+			st.Note = "沒有 versions.json，改用 Last-Modified 判斷（建議主機放一份）"
+		} else {
+			st.Note = "已是最新（線上 " + shortTime(remote) + "）"
+		}
 		return st
 	}
-	req.Header.Set("Cache-Control", "no-cache")
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		st.Note = why + "；檢查失敗：" + err.Error()
-		return st
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		st.Note = why + fmt.Sprintf("；檢查失敗：HTTP %d", resp.StatusCode)
-		return st
-	}
-	lm := resp.Header.Get("Last-Modified")
-	if lm == "" {
-		st.Note = why + "；線上檔案沒有 Last-Modified，無法比較建置時間"
-		return st
-	}
-	remote, err := http.ParseTime(lm)
-	if err != nil {
-		st.Note = why + "；Last-Modified 看不懂：" + lm
-		return st
-	}
-	st.OK = true
-	st.Remote = remote
-	st.Available = remote.After(local.Add(newerSlack))
-	if st.Available {
-		st.Note = "沒有 versions.json，改用 Last-Modified 判斷（建議主機放一份）"
-	} else {
-		st.Note = "已是最新（線上 " + shortTime(remote) + "）"
+	st.Note = why
+	if st.Note == "" {
+		st.Note = "檢查失敗（兩站都沒有回應）"
 	}
 	return st
 }
@@ -385,6 +434,14 @@ func (h *AdbHost) AppInfo() AppInfo {
 	h.mu.Lock()
 	updatedFrom := h.updatedFrom
 	h.mu.Unlock()
+	mirrorUsed := st.BaseUsed
+	if mirrorUsed == "" {
+		mirrorUsed = currentMirrorBase()
+	}
+	updateURLNow := updateURL()
+	if st.BaseUsed != "" {
+		updateURLNow = st.BaseUsed + "accelon26.exe"
+	}
 	info := AppInfo{
 		Name:            "accelon26",
 		BuildTime:       rfc3339(local),
@@ -397,8 +454,11 @@ func (h *AdbHost) AppInfo() AppInfo {
 		CanUpdate:       updatesSupported() && st.DirWritable && !st.DevBuild,
 		NoSelfUpdate:    !updatesSupported(),
 		DevBuild:        st.DevBuild,
-		UpdateURL:       updateURL(),
+		UpdateURL:       updateURLNow,
 		UpdateAvailable: st.Available,
+		Mirror:          currentMirrorBase(),
+		MirrorUsed:      mirrorUsed,
+		MirrorFallback:  st.Fallback,
 		RemoteBuildTime: rfc3339(st.Remote),
 		LastCheck:       rfc3339(st.CheckedAt),
 		CheckOK:         st.OK,
@@ -423,10 +483,17 @@ func rfc3339(t time.Time) string {
 // 連網等好幾秒，尤其是啟動時背景檢查才剛跑完。
 func (h *AdbHost) CheckUpdate() AppInfo {
 	st := h.updateStatus()
-	if st.OK && time.Since(st.CheckedAt) < 90*time.Second {
+	// 快取可用，但要是「目前這個站」的結果：剛換鏡像時不能拿舊站的下載網址。
+	if st.OK && time.Since(st.CheckedAt) < 90*time.Second &&
+		(st.BaseUsed == "" || st.BaseUsed == currentMirrorBase()) {
 		return h.AppInfo()
 	}
-	h.setUpdateStatus(h.checkUpdateNow())
+	st = h.checkUpdateNow()
+	// 檢查期間使用者換了站：用新站再查一次，免得把舊站的下載網址留下來。
+	if st.BaseUsed != "" && st.BaseUsed != currentMirrorBase() {
+		st = h.checkUpdateNow()
+	}
+	h.setUpdateStatus(st)
 	return h.AppInfo()
 }
 
@@ -437,7 +504,12 @@ func (h *AdbHost) StartUpdateChecker() {
 	go func() {
 		cleanupOldExe()
 		for {
-			h.setUpdateStatus(h.checkUpdateNow())
+			st := h.checkUpdateNow()
+			if st.BaseUsed != "" && st.BaseUsed != currentMirrorBase() {
+				time.Sleep(2 * time.Second) // 檢查期間換了鏡像：立刻用新站重查
+				continue
+			}
+			h.setUpdateStatus(st)
 			time.Sleep(updateCheckEvery)
 		}
 	}()
@@ -500,7 +572,11 @@ func (h *AdbHost) InstallUpdate() InstallResult {
 	}
 	src := st.DownloadURL
 	if src == "" {
-		src = updateURL()
+		if st.BaseUsed != "" {
+			src = st.BaseUsed + "accelon26.exe"
+		} else {
+			src = updateURL()
+		}
 	}
 
 	newPath := filepath.Join(dir, filepath.Base(self)+".new")

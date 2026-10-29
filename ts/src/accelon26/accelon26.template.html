@@ -864,19 +864,45 @@
   }
   .embedBlock .embedText, .embedBlock .embedSegment, .embedBlock .embedItem { white-space: normal; overflow-wrap: anywhere; }
   .embedHead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; color: var(--dim); font-size: .82em; }
+  .embedGroup .embedHead { font-size: .92em; }
   .embedSrc { color: var(--accent); font-weight: 600; }
   .embedPage { font-family: ui-monospace, monospace; }
   .embedClose { margin-left: auto; border: 0; background: transparent; color: var(--dim); font: inherit; font-size: .9em; cursor: pointer; }
   .embedClose:hover { color: var(--fg); text-decoration: underline; }
   .embedText { color: var(--fg); }
   .embedGroup .embedSegment {
-    margin: 2px 0 6px; padding: 3px 6px; border-radius: 4px;
-    background: color-mix(in srgb, var(--accent) 7%, transparent);
-    color: var(--dim); font-size: .9em; line-height: 1.55;
+    margin: 2px 0 7px; padding: 6px 9px; border-left: 3px solid var(--accent);
+    border-radius: 0 4px 4px 0;
+    background: var(--panel2, var(--panel));
+    color: var(--doc-body-color, var(--fg));
+    font-family: var(--doc-body-font, inherit);
+    font-size: var(--doc-body-size, var(--fsdoc, 1em));
+    line-height: 1.7;
   }
   .embedItems { display: flex; flex-direction: column; gap: 7px; }
   .embedItem { border-top: 1px dashed var(--line); padding-top: 5px; }
-  .embedItem .embedSrc { display: block; margin-bottom: 1px; font-size: .8em; }
+  .embedItem .embedSrc { display: flex; align-items: center; gap: 6px; margin-bottom: 1px; font-size: .8em; }
+  .embedSrcName { color: var(--accent); font-weight: 600; }
+  .embedTLink {
+    display: inline-flex; align-items: center; gap: 1px; padding: 0 5px;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 4px;
+    background: color-mix(in srgb, var(--accent) 9%, transparent); color: var(--accent);
+    font: inherit; font-size: .92em; line-height: 1.5; cursor: pointer;
+  }
+  .embedTLink:hover { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .embedTLink .embedTArrow { font-size: .9em; opacity: .8; }
+  .embedSegStart { display: inline; }
+  ::highlight(embedLit) {
+    background-color: color-mix(in srgb, var(--accent) 26%, transparent);
+    color: inherit;
+  }
+  .docLine.embedLitLine { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .embedHint { margin-left: auto; color: var(--dim); font-size: .95em; font-weight: 400; }
+  .embedFlash { animation: embedFlash 1.15s ease-out; }
+  @keyframes embedFlash {
+    0% { box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--accent) 70%, transparent); }
+    100% { box-shadow: inset 0 0 0 0 transparent; }
+  }
   .embedText mark.embedHit, .embedText mark.xrefHit { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
   .embedLoading, .embedError { color: var(--dim); font-size: .9em; padding: 4px 0; }
   .embedError { color: var(--err); }
@@ -1032,8 +1058,28 @@
   .lineText svg.inlineSvg {
     height: 1.5em; width: auto; vertical-align: -.35em;
     margin: 0 1px; color: inherit; fill: currentColor;
+    cursor: zoom-in;
   }
   .lineText svg.inlineSvg:hover { height: 2.4em; outline: 1px solid var(--accent); border-radius: 2px; }
+  /* 圖版（整張插圖，`<圖 t="圖版">`）：照原圖實寸（inline style 的 width）顯示，
+     不是 1.5em 的字形；窄視窗靠 max-width 收窄，長圖靠 max-height 不超出畫面。 */
+  .lineText svg.figureSvg {
+    height: auto; width: auto; max-width: 100%; max-height: 70vh;
+    vertical-align: middle; margin: .4em .35em .4em 0;
+    /* Visio 匯出的圖是黑墨透明底：深色主題會看不見，和 img.inlineImg 一樣鋪白紙 */
+    background: #fff; padding: 4px; border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .10);
+    color: #000;
+  }
+  .lineText svg.figureSvg:hover { height: auto; outline: none; }
+  /* 圖版的點陣版（`.gif`／`.png`，沒有 SVG 可 inline 時）：同樣照原寸、不鋪滿整行 */
+  .lineText img.figureImg {
+    height: auto; width: auto; max-width: 100%; max-height: 70vh;
+    vertical-align: middle; margin: .4em .35em .4em 0;
+    background: #fff; padding: 4px; border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .10);
+  }
+  .lineText img.figureImg:hover { height: auto; outline: none; }
   .lineText .inlineImgMissing {
     display: inline-block; min-width: 1em; text-align: center;
     border: 1px dashed var(--line); border-radius: 2px; color: var(--dim);
@@ -1055,10 +1101,17 @@
 
   .thumbGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
   .thumb { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 4px; text-align: center; }
-  .thumb img { max-width: 100%; max-height: 62px; display: block; margin: 0 auto 2px; }
+  .thumb img { max-width: 100%; max-height: 62px; display: block; margin: 0 auto 2px; background: #fff; }
   .thumb span { font-size: .769em; color: var(--dim); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .thumb.thumbImg { cursor: zoom-in; }
   .thumb.thumbImg:hover, .thumb.thumbImg:focus-visible { border-color: var(--accent); outline: none; }
+  /* 本文行 hover 的頁位置小提示（debug 選項，作者 2026-10-29） */
+  .lineTip {
+    position: fixed; z-index: 95; pointer-events: none;
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 4px; padding: 2px 8px; font-size: .85em;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .35); font-variant-numeric: tabular-nums;
+  }
   input[type=file] { color: var(--fg); font: inherit; font-size: 13px; }
 
   /* ---- 圖片放大（作者 2026-10-26） ---- */
@@ -1123,6 +1176,8 @@
   .snippet:hover { background: var(--panel2); }
   .snippet.active { border-left-color: var(--accent); background: var(--hl-bg); }
   .snippetHead { font-size: .885em; color: var(--dim); margin-bottom: 2px; }
+  /* 摘要最後的書名：比正文小一級、顏色暗一級（作者 2026-10-29） */
+  .snippetBook { font-size: .82em; color: var(--dim); margin-left: .6em; white-space: nowrap; }
   .snippet mark { background: hsl(var(--hue, 32) 90% 38%); color: var(--mark-fg); border-radius: 2px; padding: 0 2px; }
   .snippet mark.cur { box-shadow: 0 0 0 1px var(--fg); }
   /* search groups (tree tier 1: 書/集…) */
@@ -1150,14 +1205,21 @@
      already carries the depth, and the name would only repeat it */
   #dirTree .tTag { display: none; }
   .tName { overflow: hidden; text-overflow: ellipsis; }
-  .tCount { margin-left: auto; color: var(--dim); font-size: .846em; font-variant-numeric: tabular-nums; }
+  .tCount { margin-left: auto; color: var(--dim); font-size: 1em; font-variant-numeric: tabular-nums; }
+  /* 目錄樹的命中數＝按鈕（作者 2026-10-29：純數字看不出可以點） */
+  .tCount.tBtn {
+    padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px;
+    background: var(--panel); cursor: pointer; line-height: 1.4;
+  }
+  .tCount.tBtn:hover { border-color: var(--accent); background: var(--panel2); color: var(--fg); }
+  .tCount.tBtn:active { transform: translateY(1px); }
   /* Hit badges are graded by how much of the result sits in that realm: the
      bigger the share, the louder the colour (亮紅 for the heaviest nodes). */
   .tCount.hit { color: var(--hit-1); font-weight: 600; }
   .tCount.hit.t2 { color: var(--hit-2); }
   .tCount.hit.t3 { color: var(--hit-3); }
-  .tCount.hit.t4 { color: var(--hit-4); font-weight: 700; font-size: .962em; text-shadow: 0 0 6px rgba(255,23,68,.5); }
-  .tCount.hit.big { font-size: 1em; }
+  .tCount.hit.t4 { color: var(--hit-4); font-weight: 700; font-size: 1.05em; text-shadow: 0 0 6px rgba(255,23,68,.5); }
+  .tCount.hit.big { font-size: 1.12em; }
   /* the node whose text the middle pane currently shows, and the node the middle
      of the document pane sits on (with its ancestors lit) */
   .tRow.active { background: var(--hl-bg); }
@@ -1216,6 +1278,9 @@
 .dbPickMenu .dbPickChars { text-align: right; font-variant-numeric: tabular-nums; }
 .dbPickMenu .dbPickDate { color: var(--dim); font-variant-numeric: tabular-nums; }
 .dbPickMenu .dbPickAdd td { color: var(--gold); }
+.dbPickMenu .dbPickItem[aria-disabled="true"] { cursor: not-allowed; }
+.dbPickMenu .dbPickItem[aria-disabled="true"] td { color: var(--dim); opacity: .45; }
+.dbPickMenu .dbPickItem[aria-disabled="true"]:hover td { background: transparent; }
 .dbPickMenu .dbPickEmpty { color: var(--dim); font-size: 12px; padding: 4px 8px; }
 /* ---- 操作導覽（作者 2026-10）：聚光燈 ＋ 說明氣泡 ----
    聚光燈是「一個貼在目標上的空 div ＋ 9999px 的 box-shadow」：四周壓暗、目標亮著。
@@ -1427,6 +1492,148 @@
   #editProgressText { font-size: 13px; color: var(--fg); margin-bottom: 10px; }
   .editProgressTrack { height: 6px; background: var(--panel2); border-radius: 999px; overflow: hidden; }
   #editProgressBar { height: 100%; width: 0; background: var(--accent); transition: width .18s ease; }
+
+  /* ---- 公開資料庫更新（作者 2026-10-29） ---------------------------------- */
+  /* #dbTabs 裡的按鈕：有新版才出現，紅色的 New 是整條 header 最醒目的一點。 */
+  .adbUpBtn {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 999px; padding: 1px 8px 1px 2px; font: inherit; font-size: 12px;
+    line-height: 1.7; cursor: pointer; white-space: nowrap; flex: none;
+  }
+  .adbUpBtn.plain { padding: 1px 9px; }
+  .adbUpBtn:hover { border-color: var(--accent); color: var(--accent); }
+  .adbUpBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .adbUpNew {
+    background: #d93025; color: #fff; border-radius: 999px; padding: 0 7px;
+    font-size: 10px; font-weight: 700; letter-spacing: .02em; line-height: 16px;
+  }
+  .adbUpCount { color: var(--dim); font-variant-numeric: tabular-nums; }
+  #adbUpdateBackdrop { position: fixed; inset: 0; z-index: 97; background: rgba(0,0,0,.55); }
+  #adbUpdateBackdrop[hidden], #adbUpdateBox[hidden] { display: none; }
+  #adbUpdateBox {
+    position: fixed; z-index: 98; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(760px, 94vw); max-height: 86vh; display: flex; flex-direction: column;
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 20px 70px rgba(0,0,0,.65);
+  }
+  .adbUpTop { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+  .adbUpTop b { font-size: 17px; }
+  .adbUpTop .dim { font-size: 12.5px; }
+  .adbUpTop .err { color: var(--err); }
+  .adbUpTop .aboutClose { margin-left: 2px; }
+  #adbUpdateCheck { margin-left: auto; }
+  #adbUpdateList { overflow: auto; flex: 1 1 auto; min-height: 0; padding: 4px 18px 8px; }
+  .adbUpRow { padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .adbUpRow:last-child { border-bottom: 0; }
+  .adbUpHead { display: flex; align-items: baseline; gap: 10px; }
+  .adbUpName { font-size: 14.5px; font-weight: 600; }
+  .adbUpName .file { margin-left: 7px; font: 11px ui-monospace, Consolas, monospace; color: var(--dim); font-weight: 400; }
+  .adbUpDate { margin-left: auto; font-size: 11.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .adbUpMeta { margin: 1px 0 5px; font-size: 12.5px; color: var(--muted2); }
+  .adbUpWip { margin: 3px 0 7px; padding: 6px 10px; border-left: 3px solid var(--gold);
+    background: var(--panel2); border-radius: 4px; color: var(--muted2); font-size: 12.5px; }
+  .adbUpMeta b { color: var(--fg); }
+  .adbUpArrow { color: var(--dim); margin: 0 2px; }
+  .adbUpDoc { color: var(--accent); }
+  .adbUpNotes { margin: 4px 0 5px; padding-left: 20px; font-size: 13px; line-height: 1.65; color: var(--muted); }
+  .adbUpNotes li { margin: 1px 0; }
+  .adbUpNoNotes { margin: 2px 0 5px; font-size: 12px; color: var(--dim); }
+  .adbUpMsg { margin: 4px 0; font-size: 12.5px; color: var(--dim); }
+  .adbUpMsg.err { color: var(--err); }
+  .adbUpMsg.ok { color: #2e8b57; }
+  .adbUpAct { display: flex; justify-content: flex-end; }
+  /* 取得更多 ADB（2026-10-29） */
+  #adbStoreBackdrop { position: fixed; inset: 0; z-index: 97; background: rgba(0,0,0,.55); }
+  #adbStoreBackdrop[hidden], #adbStoreBox[hidden] { display: none; }
+  #adbStoreBox {
+    position: fixed; z-index: 98; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(860px, 95vw); max-height: 86vh; display: flex; flex-direction: column;
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 20px 70px rgba(0,0,0,.65);
+  }
+  #adbStoreList { overflow: auto; flex: 1 1 auto; min-height: 0; padding: 4px 18px 8px; }
+  .adbStoreTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .adbStoreTable th { text-align: left; color: var(--dim); font-weight: 500; font-size: 11.5px; padding: 8px 8px 6px; border-bottom: 1px solid var(--line); }
+  .adbStoreRow td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .adbStoreFile { font: 11px ui-monospace, Consolas, monospace; color: var(--dim); }
+  .adbStoreSize, .adbStoreDate { white-space: nowrap; color: var(--muted2); font-variant-numeric: tabular-nums; }
+  .adbStoreAct { text-align: right; white-space: nowrap; }
+  .adbStoreInstalled { color: #2e8b57; font-size: 12px; }
+  .adbStorePct { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .adbStoreNote { margin-top: 2px; font-size: 11.5px; color: var(--dim); }
+  .adbStoreErr { margin-top: 2px; font-size: 11.5px; color: var(--err); }
+  .adbStoreProg { height: 3px; margin-top: 5px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  .adbStoreProg i { display: block; height: 100%; background: var(--accent); }
+  /* 注疏索引（study block）：清單而不是樹 */
+  #studyIndexBackdrop { position: fixed; inset: 0; z-index: 97; background: rgba(0,0,0,.55); }
+  #studyIndexBackdrop[hidden], #studyIndexBox[hidden] { display: none; }
+  #studyIndexBox {
+    position: fixed; z-index: 98; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(940px, 96vw); max-height: 88vh; display: flex; flex-direction: column;
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 20px 70px rgba(0,0,0,.65);
+  }
+  #studyIndexFilter {
+    margin-left: auto; width: min(260px, 38vw); background: var(--panel2); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; font: inherit; font-size: 13px;
+  }
+  #studyIndexList { overflow: auto; flex: 1 1 auto; min-height: 0; padding: 2px 18px 12px; }
+  .studyIdxBook { margin: 15px 0 4px; font-size: 15px; font-weight: 700; color: var(--gold); }
+  .studyIdxChapter { margin: 13px 0 5px; font-size: 13px; font-weight: 600; color: var(--accent); }
+  .studyIdxRow { padding: 8px 0 10px; border-bottom: 1px solid var(--line); }
+  .studyIdxQuote { font-size: 13.5px; line-height: 1.55; color: var(--fg); }
+  .studyIdxPage { font: 11px ui-monospace, Consolas, monospace; color: var(--dim); margin-right: 7px; }
+  .studyIdxTargets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .studyIdxTargets button {
+    border: 1px solid var(--line); background: var(--panel2); color: var(--accent);
+    border-radius: 999px; padding: 2px 10px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  .studyIdxTargets button:hover { border-color: var(--accent); background: var(--hl-bg); }
+  .studyIdxJump { color: var(--gold) !important; }
+  .studyIdxEmpty { color: var(--dim); padding: 24px 4px; }
+  .adbUpProg { margin: 6px 0 2px; }
+  .adbUpTrack { height: 8px; border-radius: 999px; background: var(--panel2); overflow: hidden; }
+  .adbUpTrack i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s linear; }
+  .adbUpNums { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-size: 11.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .adbUpNums .speed { margin-left: auto; }
+  .adbUpNums .adbUpCancel { margin-left: 4px; }
+  /* 兩個頁籤：可更新／版本記錄（作者 2026-10-29） */
+  .adbUpTabs { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .adbUpTabs button {
+    background: transparent; color: var(--dim); border: 0; border-right: 1px solid var(--line);
+    font: inherit; font-size: 11.5px; padding: 2px 9px; cursor: pointer; white-space: nowrap;
+  }
+  .adbUpTabs button:last-child { border-right: 0; }
+  .adbUpTabs button:hover { color: var(--fg); }
+  .adbUpTabs button.active { background: var(--accent); color: var(--btn-fg, #fff); font-weight: 700; }
+  .adbUpTabs b { font-variant-numeric: tabular-nums; }
+  /* 從本機版本到最新版之間的每一版 */
+  .adbUpChanges { margin: 5px 0 6px; }
+  .adbUpVer { margin: 5px 0 8px; }
+  .adbUpVer .vdate {
+    display: block; font-size: 11px; color: var(--gold, #c9a227);
+    font-variant-numeric: tabular-nums; margin-bottom: 2px;
+  }
+  .adbUpVer .adbUpNotes { margin: 0; }
+  .adbUpMeta b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .adbUpDetails { margin-top: 5px; }
+  .adbUpDetails summary { cursor: pointer; font-size: 11.5px; color: var(--dim); }
+  .adbUpDetails summary:hover { color: var(--fg); }
+  .adbUpDetails[open] summary { color: var(--fg); }
+  .adbUpHistList { margin: 6px 0 0; padding-left: 20px; font-size: 12px; color: var(--muted2); }
+  .adbUpHistList > li { margin: 0 0 8px; }
+  .adbUpHistDate { font-family: ui-monospace, Consolas, monospace; color: var(--gold, #c9a227); font-size: 11px; }
+  .adbUpHistTag {
+    display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 999px;
+    border: 1px solid var(--line); font-size: 10px; color: var(--dim);
+  }
+  .adbUpHistTag.cur { color: var(--accent); border-color: var(--accent); }
+  .adbUpHistNotes { margin: 2px 0 0; padding-left: 16px; line-height: 1.6; }
+  .adbUpFoot { display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-top: 1px solid var(--line); }
+  .adbUpFoot .dim { flex: 1 1 auto; min-width: 0; font-size: 12px; }
+  .adbUpFoot .mini.primary { background: var(--accent); color: var(--btn-fg, #fff); border-color: var(--accent); font-weight: 700; }
+  .adbUpFoot .mini:disabled { opacity: .45; cursor: default; }
 </style>
 </head>
 <body>
@@ -1446,6 +1653,7 @@
   <input type="file" id="vaultDir" webkitdirectory multiple hidden>
   <input type="file" id="vaultZip" accept=".zip,application/zip" hidden>
   <button class="dbAdd dbAll" id="searchAllBtn" title="搜尋所有 adb：輪流查每一個庫的命中數，再決定要不要打開">🔍</button>
+  <button class="dbAdd" id="studyIndexBtn" hidden title="注疏索引：經文 → 注疏名稱 → 大正頁">注疏</button>
   <span class="dbHint" id="dbHint">← 開啟資料庫</span>
   <span class="dbTabs" id="dbTabs"></span>
   <span class="status" id="status"></span>
@@ -1747,6 +1955,11 @@
           <span>顯示原書頁碼</span>
           <span class="setHint">渲染 <code>&lt;頁&gt;</code>／<code>&lt;_頁&gt;</code>：原書分行時是右靠的頁分隔＋頁碼，連排時是行內的小頁碼；取消＝完全不出現</span>
         </label>
+        <label class="setRow" for="setLineTip">
+          <input type="checkbox" id="setLineTip">
+          <span>滑過本文顯示頁位置（debug）</span>
+          <span class="setHint">原書分行關閉時，滑過任一行就浮出「頁 8p0052a ・ 第 40433 行」；預設關閉，只給校對用</span>
+        </label>
       </section>
       <!-- 查字典（2026-10-28）：不再自動查；改由本文選取選單「查字典」明確觸發
            （原本的點本文／選取十字以下自動查已取消）。 -->
@@ -1761,6 +1974,24 @@
           <span>進階模式</span>
           <span class="setHint">顯示 token 瀏覽、META／容量／文件／圖片分頁，以及「顯示原始文件」</span>
         </label>
+      </section>
+      <!-- 更新鏡像（作者 2026-10-29）：程式更新與資料庫更新共用這一個選擇 -->
+      <section class="setSection">
+        <h3>更新</h3>
+        <div class="setRow">
+          <span>鏡像站</span>
+          <select id="setMirror" class="modeSel" title="程式更新與資料庫更新都從這裡選的站下載">
+            <option value="auto">自動（依連線速度）</option>
+            <option value="primary">大陸主站 shutonggui.cn</option>
+            <option value="overseas">境外鏡像 nissaya.cn</option>
+          </select>
+        </div>
+        <div class="setRow">
+          <span class="setHint" id="setMirrorStatus">自動：偵測中…</span>
+          <span style="flex:1"></span>
+          <button type="button" class="setBtn" id="setMirrorProbe">重新探測</button>
+        </div>
+        <p class="setHint">程式更新與資料庫更新都從選定的站下載。大陸一般連不到 nissaya.cn；「自動」只在鏡像明顯較快（或主站連不上）時切換。</p>
       </section>
     </div>
     <!-- ---- 辭典順序（作者 2026-10-26：從「介面」獨立成頁；可只列 c="isdict"） ---- -->
@@ -1850,6 +2081,8 @@
   <button type="button" data-sel="search">搜尋</button>
   <button type="button" data-sel="dict">查字典</button>
   <button type="button" data-sel="sutra" hidden></button>
+  <button type="button" data-sel="rong">融入引用</button>
+  <button type="button" data-sel="qian">嵌入引用</button>
   <button type="button" data-sel="copy">複製</button>
   <button type="button" data-sel="cite">引用複製</button>
 </div>
@@ -1880,8 +2113,51 @@
   </div>
   <div id="revListBody" class="revListBody"><p class="dim">載入中…</p></div>
 </div>
-<div id="aboutBackdrop" hidden></div>
-<div id="aboutBox" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" hidden>
+<!-- 公開資料庫更新（作者 2026-10-29）：#dbTabs 的「New」按鈕打開這一盒 -->
+<div id="adbUpdateBackdrop" hidden></div>
+<div id="adbUpdateBox" role="dialog" aria-modal="true" aria-labelledby="adbUpdateTitle" hidden>
+  <div class="adbUpTop">
+    <b id="adbUpdateTitle">資料庫版本</b>
+    <span id="adbUpdateSub" class="dim"></span>
+    <span class="adbUpTabs" id="adbUpTabs" role="tablist" aria-label="資料庫版本頁籤">
+      <button type="button" data-adbtab="updates" id="adbUpTabUpdates" class="active" role="tab">可更新 <b id="adbUpTabCount">0</b></button>
+      <button type="button" data-adbtab="history" id="adbUpTabHistory" role="tab">版本記錄</button>
+    </span>
+    <button type="button" class="mini" id="adbUpdateCheck" title="重新讀一次官網的版本清單">重新檢查</button>
+    <button type="button" class="aboutClose" id="adbUpdateClose" title="關閉（Esc）">✕</button>
+  </div>
+  <div id="adbUpdateList"><p class="dim">正在讀更新清單…</p></div>
+  <div class="adbUpFoot">
+    <span id="adbUpdateStatus" class="dim"></span>
+    <button type="button" class="mini primary" id="adbUpdateAll">全部更新</button>
+    <button type="button" class="mini" id="adbUpdateLater">稍後</button>
+  </div>
+</div>
+<div id="adbStoreBackdrop" hidden></div>
+<div id="adbStoreBox" role="dialog" aria-modal="true" aria-labelledby="adbStoreTitle" hidden>
+  <div class="adbUpTop">
+    <b id="adbStoreTitle">取得更多 ADB</b>
+    <span id="adbStoreSub" class="dim">正在探測鏡像…</span>
+    <button type="button" class="mini" id="adbStoreRefresh" title="重新探測鏡像並讀取清單">重新整理</button>
+    <button type="button" class="aboutClose" id="adbStoreClose" title="關閉（Esc）">✕</button>
+  </div>
+  <div id="adbStoreList"><p class="dim">正在讀取清單…</p></div>
+  <div class="adbUpFoot">
+    <span id="adbStoreStatus" class="dim"></span>
+  </div>
+</div>
+<div id="studyIndexBackdrop" hidden></div>
+<div id="studyIndexBox" role="dialog" aria-modal="true" aria-labelledby="studyIndexTitle" hidden>
+  <div class="adbUpTop">
+    <b id="studyIndexTitle">注疏索引</b>
+    <span id="studyIndexSub" class="dim"></span>
+    <input type="search" id="studyIndexFilter" placeholder="篩選經文、品名、注疏名…" autocomplete="off">
+    <button type="button" class="aboutClose" id="studyIndexClose" title="關閉（Esc）">✕</button>
+  </div>
+  <div id="studyIndexList"><p class="dim">正在讀取注疏索引…</p></div>
+  <div class="adbUpFoot"><span id="studyIndexStatus" class="dim"></span></div>
+</div>
+<div id="aboutBackdrop" hidden></div><div id="aboutBox" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" hidden>
   <div class="aboutTop">
     <img id="aboutLogo" alt="accelon26" hidden>
     <div class="aboutTitles">
@@ -2004,4 +2280,5 @@
 <script>/*__VIEWER_BUNDLE__*/</script>
 </body>
 </html>
+
 

@@ -1,9 +1,10 @@
 // tei2adb: CBETA TEI P5 (T 藏) → Accelon3 adb 文字（一行一個 pcl 行，標記內嵌）。
 //
 // 用法：
-//   go run ./cmd/tei2adb -tei D:\2023\sat2018\T -vol 1 -out build\tei-T01.txt
-//   go run ./cmd/tei2adb -tei D:\2023\sat2018\T -vol 1-85 -out build\tei-all.txt
-//   go run ./cmd/tei2adb -tei E:\3rd\XML\X -canon X -vol 1-88 -out build\wxzj-tei.txt
+//
+//	go run ./cmd/tei2adb -tei D:\2023\sat2018\T -vol 1 -out build\tei-T01.txt
+//	go run ./cmd/tei2adb -tei D:\2023\sat2018\T -vol 1-85 -out build\tei-all.txt
+//	go run ./cmd/tei2adb -tei E:\3rd\XML\X -canon X -vol 1-88 -out build\wxzj-tei.txt
 //
 // 標記沿用舊 taisho.adb：檔／冊／段／書／頁／卷／序／經／品／分／會／其他。
 // 校勘：取 <app><lem> 的文字（＝CBETA 採用的讀法），<note>/<rdg> 一律丟棄。
@@ -24,10 +25,10 @@ import (
 )
 
 // 舊 taisho.adb 的檔頭（7 棵樹的宣告照抄；只有來源說明改成 2025 版）。
-const fileHeader = `<檔 n="taisho.xml"><集 c="hidden">大正新脩大藏經</集><英文名>Taisho Tripitaka</英文名>本資料庫內容來自CBETA 2025.2 版 TEI XML，並為中華電子佛典協會授權非營利使用。最新資料請到<聯 l="http://www.cbeta.org">www.cbeta.org</聯><隱><樹 s="*" l="序,分,跋,會,其他,附文,經,other,xu" t="冊,書,品." pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;-">經目</樹></隱><隱><樹 s="$書" pf="$頁.id;)" sf="-$書.id;">書名</樹><樹 s="*書" pf="$頁.id;)" sf="-$書.id;">分書頻次</樹></隱><隱><樹 s="*" t="冊,卷." pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;">分卷</樹></隱><隱><樹 s="*卷" pf="$頁.id;)" sf="-$書.id;">分卷頻次</樹></隱><隱><樹 s="~00602000">西文</樹></隱><隱><樹 s="%"t="冊,書" pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;-">反連結</樹></隱><隱><引>《$書;》：「$_;」( 大正 $*頁; )</引><摘要頭>$書;($頁;)</摘要頭></隱></檔>`
+const fileHeader = `<檔 n="taisho.xml"><集 c="hidden">大正新脩大藏經</集><英文名>Taisho Tripitaka</英文名>本資料庫內容來自CBETA {{RELEASE}} 版 TEI XML，並為中華電子佛典協會授權非營利使用。最新資料請到<聯 l="http://www.cbeta.org">www.cbeta.org</聯><隱><樹 s="*" l="序,分,跋,會,其他,附文,經,other,xu" t="冊,書,品." pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;-">經目</樹></隱><隱><樹 s="$書" pf="$頁.id;)" sf="-$書.id;">書名</樹><樹 s="*書" pf="$頁.id;)" sf="-$書.id;">分書頻次</樹></隱><隱><樹 s="*" t="冊,卷." pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;">分卷</樹></隱><隱><樹 s="*卷" pf="$頁.id;)" sf="-$書.id;">分卷頻次</樹></隱><隱><樹 s="~00602000">西文</樹></隱><隱><樹 s="%"t="冊,書" pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;-">反連結</樹></隱><隱><引>《$書;》：「$_;」( 大正 $*頁; )</引><摘要頭>$書;($頁;)</摘要頭></隱></檔>`
 
 // 舊 wxzj.adb 的檔頭；來源改成 2025 TEI，樹／引文格式沿用。
-const xHeader = `<檔 n="wxzj.xml"><集 c="hidden">卍新纂續藏經</集><英文名>Wanzi Xuzangjing</英文名>本資料庫內容來自CBETA 2025.2 版 TEI XML，並為中華電子佛典協會授權非營利使用。最新資料請到<聯 l="http://www.cbeta.org">www.cbeta.org</聯><隱><樹 s="*" l="序,分,跋,會,其他,附文,經,other,xu,科判" t="冊,書,品." pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;-">經目</樹></隱><隱><樹 s="$書" pf="$頁.id;)" sf="-$書.id;">書名</樹><樹 s="*書" pf="$頁.id;)" sf="-$書.id;">分書頻次</樹></隱><隱><樹 s="*" t="冊,卷." pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;">分卷</樹></隱><隱><樹 s="*卷" pf="$頁.id;)" sf="-$書.id;">分卷頻次</樹></隱><隱><樹 s="~00602000">西文</樹></隱><隱><樹 s="%" t="冊,書" pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;-">反連結</樹></隱><隱><引>《$書;》：「$_;」( 卍新續 $*頁; )</引><摘要頭>$書;($頁;)</摘要頭></隱></檔>`
+const xHeader = `<檔 n="wxzj.xml"><集 c="hidden">卍新纂續藏經</集><英文名>Wanzi Xuzangjing</英文名>本資料庫內容來自CBETA {{RELEASE}} 版 TEI XML，並為中華電子佛典協會授權非營利使用。最新資料請到<聯 l="http://www.cbeta.org">www.cbeta.org</聯><隱><樹 s="*" l="序,分,跋,會,其他,附文,經,other,xu,科判" t="冊,書,品." pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;-">經目</樹></隱><隱><樹 s="$書" pf="$頁.id;)" sf="-$書.id;">書名</樹><樹 s="*書" pf="$頁.id;)" sf="-$書.id;">分書頻次</樹></隱><隱><樹 s="*" t="冊,卷." pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;">分卷</樹></隱><隱><樹 s="*卷" pf="$頁.id;)" sf="-$書.id;">分卷頻次</樹></隱><隱><樹 s="~00602000">西文</樹></隱><隱><樹 s="%" t="冊,書" pf1="$冊.id;." pf2="$頁.id;)" sf2="-$書.id;-">反連結</樹></隱><隱><引>《$書;》：「$_;」( 卍新續 $*頁; )</引><摘要頭>$書;($頁;)</摘要頭></隱></檔>`
 
 // 舊 taisho.adb 的 56 個冊名（1–55、85）。
 var oldVolTitles = map[int]string{
@@ -47,7 +48,7 @@ var oldVolTitles = map[int]string{
 var partRanges = []struct {
 	from, to int
 	name     string
-}{	{2185, 2245, "續經疏部"},
+}{{2185, 2245, "續經疏部"},
 	{2246, 2247, "續律疏部"},
 	{2248, 2295, "續論疏部"},
 	{2296, 2700, "續諸宗部"},
@@ -61,11 +62,15 @@ func cnNum(n int) string {
 	case n < 10:
 		return digits[n]
 	case n < 20:
-		if n == 10 { return "十" }
+		if n == 10 {
+			return "十"
+		}
 		return "十" + digits[n%10]
 	case n < 100:
 		s := digits[n/10] + "十"
-		if n%10 != 0 { s += digits[n%10] }
+		if n%10 != 0 {
+			s += digits[n%10]
+		}
 		return s
 	}
 	return strconv.Itoa(n)
@@ -99,25 +104,25 @@ func xVolTitle(v int) string {
 }
 
 type emitter struct {
-	out   *bufio.Writer
-	canon string
-	line  strings.Builder
-	head  strings.Builder
-	nHead bool
-	tag   string // 目前 <head> 要用的標題名
-	juanClose bool
-	sawPB     bool
+	out         *bufio.Writer
+	canon       string
+	line        strings.Builder
+	head        strings.Builder
+	nHead       bool
+	tag         string // 目前 <head> 要用的標題名
+	juanClose   bool
+	sawPB       bool
 	pendingPage string
-	skipKind  string
+	skipKind    string
 	lastPageCol string
-	skip  int
-	vol   int
-	page  string
-	book  int
-	seq   int
-	stats map[string]int
-	seenPages map[string]bool
-	count int
+	skip        int
+	vol         int
+	page        string
+	book        int
+	seq         int
+	stats       map[string]int
+	seenPages   map[string]bool
+	count       int
 }
 
 func (e *emitter) flush() {
@@ -187,13 +192,14 @@ func escapeText(s string) string {
 }
 
 func main() {
-	tei := flag.String("tei", `D:\2023\sat2018\T`, "TEI 根目錄")
+	tei := flag.String("tei", `D:\2023\sat2018\T`, "TEI 根目錄（多個用 ; 分隔；同一冊取第一個找得到的）")
 	vols := flag.String("vol", "1", "冊範圍，如 1 或 1-85")
 	nos := flag.String("no", "", "只輸出指定經號（逗號分隔，如 235,1698,1510a）")
 	linesPath := flag.String("lines", "", "輸出「卷起始行」TSV（sutra/juan/line）")
 	pclPath := flag.String("pcl", "", "輸出「每一行的 pcl」TSV（line/vol/page/col/line）")
 	out := flag.String("out", "build/tei.txt", "輸出文字檔")
 	canon := flag.String("canon", "T", "藏別：T（大正藏）或 X（卍續藏）")
+	release := flag.String("release", "2026.R2", "CBETA 版本字串（寫進檔頭的來源說明）")
 	flag.Parse()
 	canonValue := strings.ToUpper(strings.TrimSpace(*canon))
 
@@ -236,16 +242,29 @@ func main() {
 
 	e := &emitter{out: w, canon: canonValue, stats: map[string]int{}, seenPages: map[string]bool{}}
 	if canonValue == "X" {
-		e.emit(xHeader)
+		e.emit(strings.ReplaceAll(xHeader, "{{RELEASE}}", *release))
 	} else {
-		e.emit(fileHeader)
+		e.emit(strings.ReplaceAll(fileHeader, "{{RELEASE}}", *release))
 	}
 	e.flush()
 	_ = linesOut
 
 	bookSeq := 0
 	for v := lo; v <= hi; v++ {
-		dir := filepath.Join(*tei, fmt.Sprintf("%s%02d", canonValue, v))
+		// 一個冊可能在多個來源裡（CBETA XML-P5 的 T 藏沒有 56–84 冊，那些在 SAT2018）。
+		// 依 -tei 的順序找第一個存在的 <root>/<canon><vol>。
+		dir := ""
+		for _, root := range strings.Split(*tei, ";") {
+			cand := filepath.Join(strings.TrimSpace(root), fmt.Sprintf("%s%02d", canonValue, v))
+			if st, err := os.Stat(cand); err == nil && st.IsDir() {
+				dir = cand
+				break
+			}
+		}
+		if dir == "" {
+			fmt.Fprintf(os.Stderr, "skip %s%02d: 所有 -tei 根目錄都沒有這一冊\n", canonValue, v)
+			continue
+		}
 		ents, err := os.ReadDir(dir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "skip %s: %v\n", dir, err)
@@ -680,7 +699,7 @@ func attr(t xml.StartElement, name string) string {
 	return ""
 }
 
-func lang(t xml.StartElement) string { return attr(t, "lang") }
+func lang(t xml.StartElement) string  { return attr(t, "lang") }
 func place(t xml.StartElement) string { return attr(t, "place") }
 
 // parseLbPcl 解析 <lb n="0185b19"> → (185, b, 19)′。
@@ -716,5 +735,3 @@ func lbPageCol(n string) string {
 	}
 	return ""
 }
-
-

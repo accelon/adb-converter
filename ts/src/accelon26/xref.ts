@@ -116,7 +116,9 @@ export async function readerFor(db: string): Promise<AdbReader | null> {
   if (reader && reader.header.dbname === db) return reader;
   const cached = foreignReaders.get(db);
   if (cached) return cached;
-  const slot = openDbs.find((s) => s.file.name.replace(/\.adb$/i, '').toLowerCase() === db.toLowerCase() || s.name === db);
+  const slot = openDbs.find((s) => s.file.name.replace(/\.adb$/i, '').toLowerCase() === db.toLowerCase()
+    || s.name === db
+    || (s.core as { reader?: AdbReader } | undefined)?.reader?.header.dbname === db);
   if (!slot) return null;
   const r = await AdbReader.open(new BlobIO(slot.file));
   foreignReaders.set(db, r);
@@ -260,16 +262,30 @@ function lineHtml(s: string, markFrom = -1, markTo = -1): string {
       i = gt + 1;
       if (tag.startsWith('</聯')) { out += '</a>'; continue; }
       if (tag.startsWith('</')) continue;
+      if (tag.startsWith('<融') || tag.startsWith('</融')) continue;
+      const ms = /^<嵌始([^>]*)>/.exec(tag);
+      if (ms) {
+        const eid = /\be="([^"]*)"/.exec(ms[1])?.[1];
+        const si = /\bi="([^"]*)"/.exec(ms[1])?.[1];
+        const sj = /\bj="([^"]*)"/.exec(ms[1])?.[1];
+        if (eid) out += `<span class="embedSegStart" data-eid="${esc(eid)}"></span>`;
+        else if (si && sj) out += `<span class="embedSegStart" data-key="${esc(si + '|' + sj)}" data-i="${esc(si)}" data-j="${esc(sj)}"></span>`;
+        continue;
+      }
       const me = /^<嵌([^>]*)>/.exec(tag);
       if (me) {
         const attrs = me[1];
         const xref = /\bi="([^"]*)"/.exec(attrs)?.[1];
         const targets = /\bt="([^"]*)"/.exec(attrs)?.[1];
+        const eid = /\be="([^"]*)"/.exec(attrs)?.[1];
         const xq = /\bq="([^"]*)"/.exec(attrs)?.[1];
         const xj = /\bj="([^"]*)"/.exec(attrs)?.[1];
         const label = /\bn="([^"]*)"/.exec(attrs)?.[1] ?? '嵌';
         if (targets) {
+          const key = xref && xj ? xref + '|' + xj : '';
           out += `<button type="button" class="embedChip embedGroupChip" data-embed-targets="${esc(targets)}"`
+            + (eid ? ` data-eid="${esc(eid)}"` : '')
+            + (key ? ` data-key="${esc(key)}" data-i="${esc(xref)}" data-j="${esc(xj)}"` : '')
             + (xq ? ` data-q="${esc(xq)}"` : '') + ` data-label="${esc(label)}" title="展開 ${esc(label)}">▸ ${esc(label)}</button>`;
         } else if (xref) {
           out += `<button type="button" class="embedChip" data-embed="${esc(xref)}"`
@@ -1292,6 +1308,40 @@ async function handleXref(value: string, fromRight: boolean, newTab: boolean, qu
   openForeignTab(db, va, short + ' ' + anchor, newTab, anchor, quote, j);
 }
 
+function flashPane(id: string): void {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove('embedFlash');
+  void el.offsetWidth;
+  el.classList.add('embedFlash');
+  window.setTimeout(() => el.classList.remove('embedFlash'), 1200);
+}
+
+/**
+ * 注疏名稱旁的「大正」鏈結。
+ * 普通點：在對側（右欄）開目標頁；Ctrl/⌘+點：在本側（中間）開新分頁。
+ */
+export async function openTaishoAt(db: string, anchor: string, label: string, range = '', newTab = false): Promise<void> {
+  const r = await readerFor(db);
+  if (!r) { setStatus('請先開啟 ' + db + '.adb', 'warn'); return; }
+  const va = await anchorVa(r, anchor);
+  if (va == null) { setStatus(db + ' 找不到頁碼 ' + anchor, 'err'); return; }
+  const main = reader?.header.dbname ?? '';
+  let quote = '';
+  if (range) {
+    const page = await pageHanText(db, anchor);
+    const mm = /^(\d+)-(\d+)$/.exec(range);
+    if (mm) quote = page.slice(Number(mm[1]), Number(mm[2]));
+  }
+  if (newTab && db === main) {
+    await linkTo(va, label || anchor, 1, { newTab: true, exact: false, name: label || anchor, phrase: quote || undefined });
+    flashPane('docText');
+    return;
+  }
+  openForeignTab(db, va, label || anchor, newTab, anchor, quote || undefined, range);
+  flashPane('colRight');
+}
+
 export async function xrefJump(value: string, fromRight = false, newTab = false, quote?: string, j?: string): Promise<void> {
   await handleXref(value, fromRight, newTab, quote, j);
 }
@@ -1431,6 +1481,32 @@ export async function xrefProbe(db: string, anchor: string) {
   return { va, blk, bv0: idx.bv[blk], raw };
 }
 
+/** 目標頁的純漢字序列（給選取→`<融>`／`<嵌>` 片段算 j 用）。 */
+export async function pageHanText(db: string, anchor: string): Promise<string> {
+  const r = await readerFor(db);
+  if (!r) return '';
+  const idx = await anchorIndex(r);
+  if (!idx) return '';
+  const va = await anchorVa(r, anchor);
+  if (va == null) return '';
+  const blk0 = blockOf(idx, va);
+  let blk = blk0;
+  let blockText = await r.sourceText(blk);
+  let startAt = Math.max(0, va - idx.bv[blk]);
+  for (const off of [0, -1, 1, -2, 2, -3, 3]) {
+    const b = blk0 + off;
+    if (b < 0 || b >= idx.bv.length) continue;
+    const t = off === 0 ? blockText : await r.sourceText(b);
+    const k = t.indexOf('<頁 id="' + anchor + '"');
+    if (k >= 0) { blk = b; blockText = t; startAt = k; break; }
+  }
+  let raw = blockText.slice(startAt);
+  for (let b = blk + 1; raw.length < 20000 && b < idx.bv.length; b++) raw += await r.sourceText(b);
+  const cut = raw.indexOf('<頁 ');
+  if (cut > 0) raw = raw.slice(0, cut);
+  return Array.from(raw.replace(/<[^>]*>/g, '')).filter((c) => HAN_RE.test(c)).join('');
+}
+
 /**
  * `<嵌>` 的內容：只取目標頁上「被引用的那一段」，不是整頁。
  *
@@ -1556,12 +1632,19 @@ export async function renderEmbedGroup(segment: string, targets: string, label =
     const db = q >= 0 ? ref.slice(0, q) : '';
     const page = q >= 0 ? ref.slice(q + 1) : ref;
     const res = await renderEmbed(db, page, '', range, name, true).catch((e) => ({ html: '<div class="embedText">讀取失敗：' + esc(String(e)) + '</div>', title: name }));
-    parts.push('<div class="embedItem"><div class="embedSrc">' + esc(name || res.title) + '</div>' + res.html + '</div>');
+    const shown = name || res.title;
+    const tlink = ref
+      ? '<button type="button" class="embedTLink" data-topen="' + esc(ref) + '" data-trange="' + esc(range) + '"'
+        + ' data-tlabel="' + esc(shown) + '" title="右欄開大正原文；Ctrl+點：本側開新頁">大正<span class="embedTArrow">↗</span></button>'
+      : '';
+    parts.push('<div class="embedItem"><div class="embedSrc"><span class="embedSrcName">' + esc(shown) + '</span>' + tlink + '</div>' + res.html + '</div>');
   }
+  const firstDb = items[0]?.split('?')[0] ?? '';
+  const sameDb = firstDb === (reader?.header.dbname ?? '');
   return {
     html: '<div class="embedDoc embedGroup">'
-      + '<div class="embedHead"><span class="embedSrc">' + esc(label || items.length + ' 家注疏') + '</span></div>'
-      + '<div class="embedSegment">「' + esc(segment) + '」</div>'
+      + '<div class="embedHead"><span class="embedSrc">本段經文共有 <b>' + items.length + '</b> 家注疏</span>'
+      + '<span class="embedHint">正文已亮起 · 點：右欄 · Ctrl+點：' + (sameDb ? '本側' : '右欄新分頁') + '</span></div>'
       + '<div class="embedItems">' + parts.join('') + '</div>'
       + '</div>',
     title: label,

@@ -7,7 +7,7 @@
  */
 import { $, currentFile, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, session, setStatus, tokens, statusText } from './viewer';
 import { type AdbSource } from './adb';
-import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, readDocFont, readSideFont, openHistoryPage, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, saveLastReadNow, setDocFont, setHardBreaks, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
+import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, lineTipEnabled, pageBounds, pagerLog, readDocFont, readSideFont, openHistoryPage, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, saveLastReadNow, setDocFont, setHardBreaks, setLineTip, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
 import { renderTextPane } from './text-pane';
 import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
 import { loadPosMap, parseAddress, formatAddress, type PosMap } from './posmap';
@@ -325,6 +325,8 @@ function updateSettingsUi(): void {
   if (v) v.checked = variantSearchOn();
   const pm = $('#setPageMarks') as HTMLInputElement | null;
   if (pm) pm.checked = pageMarksOn();
+  const lt = $('#setLineTip') as HTMLInputElement | null;
+  if (lt) lt.checked = lineTipEnabled();
   const mode = simModeOf();
   document.querySelectorAll<HTMLElement>('#simSeg button').forEach((b) => {
     b.classList.toggle('active', Number(b.dataset.mode) === mode);
@@ -383,6 +385,13 @@ function initSettings(): void {
     void renderTextPane();
     updateSettingsUi();
     setStatus(on ? '顯示原書頁碼：開' : '顯示原書頁碼：關（不渲染 <頁>／<_頁>）', 'info');
+  });
+  // 滑過本文顯示頁位置（debug，作者 2026-10-29；預設關閉）
+  ($('#setLineTip') as HTMLInputElement | null)?.addEventListener('change', (ev) => {
+    const on = (ev.target as HTMLInputElement).checked;
+    setLineTip(on);
+    updateSettingsUi();
+    setStatus(on ? '滑過本文顯示頁位置：開（校對用）' : '滑過本文顯示頁位置：關', 'info');
   });
   document.querySelectorAll<HTMLElement>('#simSeg button').forEach((b) => {
     b.addEventListener('click', () => setSimDisplay(Number(b.dataset.mode) as 0 | 1 | 2));
@@ -1059,6 +1068,7 @@ async function openPicked(files: AdbSource[]): Promise<void> {
       const r = await openFile(f);
       dbLog.push('pick ' + f.name + ' -> ' + r);
       if (dbLog.length > 40) dbLog.shift();
+      refreshStudyIndexButton();
     }
   } finally {
     picking = null;
@@ -1083,6 +1093,7 @@ async function bootDesktop(): Promise<void> {
   void initDesktopBrand((msg, kind) => setStatus(msg, kind ?? 'info'));
   void initDesktopWindowKeys();   // F11 全螢幕／Esc 回視窗（全螢幕時沒有標題列）
   const srcs = await refreshHostDbs();
+  void checkAdbUpdates(true);   // 公開資料庫有沒有新版（catalog 已好；順便等鏡像探測完）
   if (!srcs.length) return;
   if (!openDbs.length) await openPicked([await pickStartupDb(srcs)]);
 }
@@ -1116,6 +1127,7 @@ const TOUR_APP = {
       case 'advanced': setAdvanced(on); return true;
       case 'variants': setVariants(on); return true;
       case 'pagemarks': setPageMarks(on); box('setPageMarks', on); rerenderDoc(); void renderTextPane(); return true;
+      case 'linetip': setLineTip(on); box('setLineTip', on); return true;
       case 'hardbreaks': setHardBreaks(on); box('showHardBreaks', on); rerenderDoc(); void renderTextPane(); return true;
       case 'raw': setRenderRaw(on); box('showRaw', on); rerenderDoc(); void renderTextPane(); return true;
       case 'simmode': setSimDisplay(Math.max(0, Math.min(2, Number(value) || 0)) as 0 | 1 | 2); return true;
@@ -1151,6 +1163,10 @@ function boot() {
   // 設置（齒輪）：主題、進階模式、繁簡通檢、文字顯示
   initVariants();
   initSettings();
+  // 更新鏡像（作者 2026-10-29）：設定頁的選項＋自動探測；選好後 adb 清單重新讀
+  initUpdateMirrorUi();
+  onMirrorApplied(() => { void checkAdbUpdates(true); });
+  void initUpdateMirror();
   // 主題（作者 2026-10-18）：暗色系／亮色系／春綠／秋黃，預設暗色系
   initTheme((name) => setStatus('主題：' + THEME_LABEL[name], 'info'));
   // 搜尋所有 adb（放大鏡，作者 2026-10）
@@ -1170,6 +1186,9 @@ function boot() {
   initShortcuts();
   // 加入 Obsidian（作者 2026-10-25）：vault → adb，選單與兩個隱藏 input 都在這裡接線
   initVaultImport();
+  // 取得更多 ADB（作者 2026-10-29）：桌面版從官網公開資料庫下載，完成後重刷 📁 清單
+  initAdbStore();
+  initStudyIndex();
   // 🪾 left of the 文件內容 title: only on demand does the tree open up to the node
   // the document pane is sitting on, and scroll it into view
   const treeReveal = $('#treeReveal') as HTMLButtonElement | null;
@@ -1554,6 +1573,7 @@ function boot() {
   initHeatTab();    // 右欄「引紋」：反鏈的引用分布熱圖
   initRevList();    // 反鏈清單抽屜
   initBookmarks();  // 左欄書籤＋選取文字選單
+  initAdbUpdate();  // #dbTabs 的資料庫更新（New）＋下載對話盒
   setEnsureRight(() => setSide('right', true));
   renderDbPick();   // 下拉第一項是「加入 adb」（file:// 版）
   void bootDesktop();   // desktop build: catalogue + open the adbs next to the exe
@@ -1633,6 +1653,11 @@ export function installDebugApi(): void {
   vaultImport: vaultImportState,
   /** 軟件說明（About） */
   openAbout, closeAbout, aboutState,
+  /** 公開資料庫更新（測試／診斷用） */
+  adbUpdate: adbUpdateState, checkAdbUpdates: () => checkAdbUpdates(true),
+  openAdbUpdate: openAdbUpdateDialog, closeAdbUpdate: closeAdbUpdateDialog, paintAdbUpdateButton,
+  /** 更新鏡像（測試／診斷用） */
+  mirror: mirrorState, setMirrorMode, reprobeMirror,
   /** 快速鍵卡片（作者 2026-10-29）：About →「⌨ 快速鍵」 */
   openShortcuts, closeShortcuts,
   shortcutsState: () => ({ open: shortcutsOpen(), count: shortcutCount() }),
@@ -1801,6 +1826,8 @@ import { initRevList } from './rev-list';
 import { initBookmarks, renderBookmarks } from './bookmarks';
 import { bookmarkState, citationForSelection } from './bookmarks';
 import { initVaultImport, vaultImportState } from './vault-import';
+import { initAdbStore } from './adb-store';
+import { initStudyIndex, refreshStudyIndexButton } from './study-index';
 import { hasLogoResource, hideDocLogo, logoState, updateDocLogo } from './logo';
 import { hostState } from './host';
 import { setVariantSearch, variantSearchOn } from './variants';
@@ -1809,6 +1836,8 @@ import { initShortcuts, openShortcuts, closeShortcuts, shortcutCount, shortcutsO
 import { initTheme, THEME_LABEL, themeOf } from './theme';
 import { simplifiedStats, toSimplified } from './lossless';
 import { initDesktopBrand } from './update-ui';
+import { adbUpdateState, checkAdbUpdates, closeAdbUpdateDialog, initAdbUpdate, openAdbUpdateDialog, paintAdbUpdateButton } from './adb-update';
+import { initUpdateMirror, initUpdateMirrorUi, mirrorState, onMirrorApplied, reprobeMirror, setMirrorMode } from './mirror';
 import { initDesktopWindowKeys } from './window-keys';
 
 export { ADV_KEY, COLS_KEY, DEFAULT_COLS, MAX_SIDE, MIN_SIDE, advanced, applyCols, attachSplitter, boot, defaultLeftTab, readAdvanced, readCols, saveCols, setAdvanced, setSide, showTab, toggleSide };

@@ -26,6 +26,13 @@ let summaryResult: SearchResult | null = null;
 
 let searchSeq = 0;
 
+/**
+ * 摘要清單自己的序號（作者 2026-10-29）：每次重畫 +1，較舊的一次畫到一半就放棄。
+ * 沒有它，輸入後還在慢慢組卡的「全體摘要」會在點完節點命中數之後才寫進 DOM，
+ * 把剛畫好的節點摘要蓋掉——讀者看到的標題是「此節點 23 筆」，卡片卻是全體的。
+ */
+let snippetSeq = 0;
+
 /** index into result.groups, -1 = all groups */
 let activeGroup = -1;
 
@@ -210,6 +217,8 @@ function snippetHtml(text: string, marks: { text: string; hue: number }[], prima
 }
 
 async function renderSnippets(seq: number) {
+  const my = ++snippetSeq;
+  const superseded = () => seq !== searchSeq || my !== snippetSeq;
   const res = summaryResult ?? lastResult;
   if (!res || !mapper) return;
   const list = $('#searchList');
@@ -224,6 +233,8 @@ async function renderSnippets(seq: number) {
   const seenLines = new Set<number>();
   let merged = 0;
   for (const hit of show) {
+    const book = bookNameOf(res.groups, hit.va);
+    const bookHtml = book ? `<span class="snippetBook">${escapeHtml(book)}</span>` : '';
     if (multi) {
       // 多詞組：這個命中屬於哪一個詞組，就用那個詞組的顏色；其餘詞組在同一段
       // 文字裡的出現也一併上色（讀者要看得出「哪個字是哪個關鍵字」）。
@@ -233,7 +244,7 @@ async function renderSnippets(seq: number) {
       const positives = multi.clauses.filter((c) => c.colorIndex >= 0).length;
       // 萬用字元（阿.漢）在文字裡找不到「阿.漢」這個字串，只能靠 VA span 取得實際文字
       const s = await searchSummary(mapper, hit.va, hit.units, wildcard ? {} : { phrase: own });
-      if (seq !== searchSeq) return;
+      if (superseded()) return;
       let body: string;
       if (!s) {
         body = `VA ${fmtInt(hit.va)}：無法定位`;
@@ -245,21 +256,22 @@ async function renderSnippets(seq: number) {
         body = snippetHtml(s.text, kwMarks(), own);
       }
       cards.push(`<div class="snippet" data-va="${hit.va}" data-units="${hit.units}" data-clause="${hit.clause ?? 0}">
-          <div>${body}</div></div>`);
+          <div>${body}${bookHtml}</div></div>`);
       continue;
     }
     // pass the query: the snippet then anchors on the line table (walk-independent)
     const s = await searchSummary(mapper, hit.va, hit.units, { phrase: res.query });
-    if (seq !== searchSeq) return;        // superseded while building snippets
+    if (superseded()) return;        // superseded while building snippets
     if (!s) { cards.push(`<div class="snippet"><div class="snippetHead">VA ${fmtInt(hit.va)}：無法定位</div></div>`); continue; }
     if (seenLines.has(s.line)) { merged++; continue; }
     seenLines.add(s.line);
     const mid = s.text.slice(s.start, s.end);
     const body = snippetHtml(s.text, [{ text: mid, hue: 0 }], mid);
     cards.push(`<div class="snippet" data-va="${hit.va}" data-units="${hit.units}">
-        <div>${body}</div>
+        <div>${body}${bookHtml}</div>
       </div>`);
   }
+  if (superseded()) return;   // 較新的一次已經開始畫：不要把舊清單寫回去
   list.innerHTML = cards.join('');
   list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
     el.onclick = (ev) => {
@@ -361,6 +373,20 @@ function inGroup(res: SearchResult, va: number, gi: number): boolean {
   return !!g && va >= g.from && va < g.to;
 }
 
+/**
+ * 命中所在的書名（作者 2026-10-29）：摘要每張卡片最後要標出這一句出自哪一本。
+ * 書名直接取自搜尋分群（`依 書` 的 groups），不必再查一次目錄。
+ */
+function bookNameOf(groups: { name: string; from: number; to: number }[], va: number): string {
+  let lo = 0, hi = groups.length - 1, at = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (groups[mid].from <= va) { at = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  const g = groups[at];
+  return g && va < g.to ? g.name : '';
+}
+
 /** a fresh database has nothing to summarise */
 export function resetSummary(): void {
   lastResult = null;
@@ -392,3 +418,4 @@ function restoreSummary(s: any): void {
   activeGroup = s.activeGroup ?? -1;
 }
 export { SNIPPET_LIMIT, activeGroup, inGroup, lastQuery, lastResult, refreshTreeHits, renderSearchResult, renderSnippets, restoreSummary, runSearch, searchSeq, showNodeHits, snapshotSummary, snippetScope, snippetScopeQuery, snippetShown, summaryResult };
+

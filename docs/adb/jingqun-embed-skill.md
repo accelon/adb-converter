@@ -5,55 +5,81 @@
 > 不必開新頁，也不必離開正在讀的經文。
 >
 > 這是 offtext `^[引用]` 的 accelon 版：正文不動，展開的內容是另一段文字。
+>
+> 要把整段經文直接融入本文、做成獨立小庫，見
+> [jingqun-notes-skill.md](./jingqun-notes-skill.md) 的 `<融>`。
 
-![金剛經頁面上的「▸ 3 家注疏」與展開的三家引文](../../build/jingqun/embed-group-test.png)
+![金剛經頁面上的「▸ 5 家注疏」、正文亮起、各家「大正↗」鏈結與展開的引文](../../build/jingqun/embed-highlight-test.png)
 
 ## 1. 兩個部分
 
 | 部分 | 位置 | 做什麼 |
 |---|---|---|
 | **資料** | `jingqun/group.ts` → `build/jingqun/<db>-groups.tsv` | 把同一段經文的所有註疏匹配收成一群 |
-| **注入** | `jingqun/inject-group.ts` → `<db>-embed-group.txt` | 在段落前插入 `<嵌 q="段落" t="多家目標" n="N 家注疏"/>` |
-| **執行期** | `render_accelon3.ts`／`embed.ts`／`xref.ts` | 晶片渲染、點擊取多家引文、插回 DOM |
-| **驗證** | `ts/tools/embed-test.ts` | 開 adb、點晶片、確認引文插入 |
+| **注入** | `jingqun/inject-group.ts` → `<db>-embed-group.txt` | 段落前放 `<嵌始>`，段落後放 `<嵌 q t n>` |
+| **執行期** | `render_accelon3.ts`／`embed.ts`／`xref.ts` | 晶片渲染、亮起正文、點擊取多家引文、插回 DOM |
+| **驗證** | `ts/tools/embed-test.ts` | 開 adb、點晶片、確認正文亮起與引文插入 |
 
 ## 2. `<嵌>` 語法
 
 ```text
-<嵌 q="經文段落" t="db?page@start-end@label|db?page@start-end@label|…" n="3 家注疏"/>
+<嵌始 i="taisho?8p749a" j="73-145"/>經文段落…<嵌 i="taisho?8p749a" j="73-145" t="db?page@start-end@label|…" n="5 家注疏"/>
 ```
 
-| 屬性 | 必填 | 說明 |
+| 標籤／屬性 | 必填 | 說明 |
 |---|---|---|
-| `q` | 是 | **被解釋的經文段落**（可含標點；定位時只算漢字） |
+| `<嵌始 i="…" j="…"/>` | 是 | 段落起點零寬標記；展開時從這裡開始亮起正文 |
+| `<嵌 i="…" j="…" …/>` | 是 | 晶片，放在**整段經文之後** |
+| `i` | 是 | 段落所在頁（與 `<融>`／`<聯>` 同一套 `db?page`） |
+| `j` | 是 | 段落的頁內漢字範圍（0 起、end 不含） |
+| `q` | 選填 | 顯式引文；沒有 `q` 時建置可由 `i`／`j` 抽出 |
 | `t` | 是 | 目標清單，`|` 分隔。每項 `db?page@start-end@label`：目標頁、該頁漢字範圍、顯示名 |
 | `n` | 建議 | 晶片文字，例如 `3 家注疏`、`5 家注疏` |
-| `i` / `j` | 舊版 | 單一目標的舊寫法（`<嵌 i="…" q="…" j="…"/>`）；新資料一律用 `q`＋`t` |
 
 例：
 
 ```text
-<嵌 q="如是我聞：一時，佛在舍衛國祇樹給孤獨園…" t="jingang?33p228b@318-360@註解|jingang?25p781b@97-127@天親論|jingang?33p155c@271-300@纂要" n="3 家注疏"/>
+佛告須菩提：「<嵌始 i="taisho?8p749a" j="73-145"/>諸菩薩摩訶薩應如是降伏其心：…實無眾生得滅度者。<嵌 i="taisho?8p749a" j="73-145" t="taisho?33p158b@14-54@纂要|…" n="5 家注疏"/>
 ```
 
-點擊後在同一頁插入：
+點擊後**不重複正文**，只在同一頁插入各家解釋：
 
 ```html
 <div class="embedBlock">
-  <div class="embedHead">3 家注疏 <button>收合</button></div>
-  <div class="embedSegment">「如是我聞：一時，佛在舍衛國…」</div>
+  <div class="embedHead">本段經文共有 5 家注疏 <button>收合</button></div>
   <div class="embedItems">
-    <div class="embedItem"><div class="embedSrc">註解</div><div class="embedText">…</div></div>
-    <div class="embedItem"><div class="embedSrc">天親論</div><div class="embedText">…</div></div>
     <div class="embedItem"><div class="embedSrc">纂要</div><div class="embedText">…</div></div>
+    <div class="embedItem"><div class="embedSrc">天親論</div><div class="embedText">…</div></div>
+    <div class="embedItem"><div class="embedSrc">註解</div><div class="embedText">…</div></div>
   </div>
 </div>
 ```
 
-- `q` 讓讀者一眼知道「這一段」是哪一句；也讓同一段的多家註疏可以分組。
-- `t` 裡每一家只取目標頁的引文所在句，不是整頁。
-- 再點晶片或按「收合」移除 `.embedBlock`。
-- 嵌入文字裡的 `<聯>` 仍可點；`<嵌>` 也會再畫成晶片（巢狀引用），目前沒有循環偵測。
+- 標題固定寫「本段經文共有 N 家注疏」；晶片仍顯示短版「N 家注疏」。
+- 正文用 `CSS.highlights` 的 `embedLit` 亮起（`::highlight(embedLit)`），跨行也可以；
+  不再顯示 `.embedSegment`，所以不會重複正文。
+- `q` 讓資料層知道「這一段」是哪一句；`t` 裡每一家只取目標頁的引文所在句。
+- 再點晶片或按「收合」移除 `.embedBlock`，同時取消正文亮起。
+- 註：小庫 `jingqun/jingang.txt` 的建置流程可只用 `i`／`j` 從 `<融>` 正文抽出 `q`；
+  `q` 可省略，也不會進入 adb。執行期只需要 `i`／`j`／`t`／`n`。
+
+### 2.1 各家注疏的「大正」鏈結
+
+群組面板裡每一家名稱旁都有一個 `大正↗` 小按鈕：
+
+| 操作 | 結果 | 視覺 |
+|---|---|---|
+| 點 `大正↗` | 在**對側**（右欄）開該註疏的大正原文頁，並塗紅目標段落 | 按鈕填色、右欄外框閃一下 |
+| Ctrl/⌘ + 點 | 在**本側**（中間）開一個新的經文分頁 | 中間外框閃一下、分頁列多一頁 |
+
+面板標題右側有「點：右欄 · Ctrl+點：本側」提示；按鈕用 `aria-label`／`title`
+說明，滑過會變成實心 accent，箭頭 `↗` 指出「往對側」。
+
+實作：`renderEmbedGroup()` 在 `.embedSrc` 產生
+`button.embedTLink[data-topen][data-trange][data-tlabel]`；
+`embed.ts` 接到 `openTaishoAt()`；`openTaishoAt()` 普通點走
+`openForeignTab()`（右欄），Ctrl 走 `linkTo(..., { newTab: true })`（中間新分頁），
+再對 `#colRight`／`#docText` 加 `.embedFlash` 動畫。
 
 ## 3. 建一個經群（以金剛經為例）
 
@@ -106,14 +132,18 @@ bun run jingqun/group.ts
 4. 去掉以經題開頭的匹配，以及同一部註疏內重疊的子句。
 5. **依經文位置重疊分群**：同一段經文的所有註疏收成一群；每群最多 5 家，
    群長上限 90 個漢字（避免一個晶片包住整頁）。
-6. 群裡的 `q` 取原文切片（含標點），`t` 列出各家目標。
+6. 群裡的 `q` 取原文切片（含標點），並往前擴到最近的句讀／開引號；
+   這就是展開時要亮起的正文範圍。`t` 列出各家目標。
 
 產出 `build/jingqun/jingang-groups.tsv`：
 
 ```text
 group_id  sutra_no  sutra_page  sutra_han  sutra_len  sutra_line  sutra_col
-sutra_quote  targets  n_works
+sutra_end_line  sutra_end_col  sutra_quote  targets  n_works
 ```
+
+`sutra_line`/`sutra_col` 是亮起範圍的起點；`sutra_end_line`/`sutra_end_col`
+是整段之後（含收引號、句讀）的晶片位置。不再有所謂「插在第一個句讀」的中間位置。
 
 金剛 pilot：**92 群**，1–5 家不等（5 家 14 群、4 家 32 群、3 家 26 群）。
 
@@ -135,7 +165,9 @@ bun run jingqun/inject-group.ts
 ```
 
 - 讀 `jingang-groups.tsv` 與 `jingang.txt`；
-- 依 `sutra_line`/`sutra_col` 把 `<嵌 q="段落" t="多家" n="N 家注疏"/>` 插在段落前；
+- 在段落起點插 `<嵌始 i="taisho?頁id" j="起-訖"/>`；
+- 在段尾插 `<嵌 i="taisho?頁id" j="起-訖" t="多家" n="N 家注疏"/>`，
+  也就是**整段經文之後**；
 - 同一行多個位置由後往前插，避免 offset 位移；
 - 輸出 `build/jingqun/jingang-embed-group.txt`。
 
@@ -149,19 +181,26 @@ bun run tools/embed-test.ts --adb ../build/jingang-group.adb --book 金剛般若
 ```
 
 `embed-test.ts` 會：開 adb → 找經文 → 數晶片 → 點第一個 → 等 `.embedDoc` →
-讀引文與 `<mark>` → 截圖。成功輸出
-`ok: 54 chips; first = 3 家注疏 收合`。
+確認**沒有重複的 `.embedSegment`**、正文 `embedLit` 有亮起 → 截圖；
+再測「收合」、`大正↗`（右欄）與 Ctrl+`大正↗`（本側新分頁）。成功輸出：
+
+```text
+ok: 53 chips; first = 本段經文共有 5 家注疏 正文已亮起 · 點：右欄 · Ctrl+點：本側 收合
+extra: { "closed": "ok", "hasSegment": false, "lit": true,
+         "tlink": true, "rightText": "金剛經經論群 | …", "newMiddleTabs": 1 }
+```
 
 ## 4. 執行期實作
 
 | 檔案 | 位置 | 說明 |
 |---|---|---|
-| `ts/src/accelon26/render_accelon3.ts` | `name === '嵌'`（約 L407） | `<嵌>` → `<button class="embedChip" data-embed-targets …>` |
-| `ts/src/accelon26/embed.ts` | `openEmbed` / `initEmbed` | 點擊、載入、插入 `.embedBlock`、收合 |
-| `ts/src/accelon26/xref.ts` | `renderEmbedGroup`（約 L1540） | 解析 `t` 清單，逐家呼叫 `renderEmbed(..., bare)`，組成 `.embedGroup` |
+| `ts/src/accelon26/render_accelon3.ts` | `name === '嵌始'`／`'嵌'`（約 L405） | `<嵌始>` → 零寬 `.embedSegStart`；`<嵌>` → `button.embedChip[data-key]` |
+| `ts/src/accelon26/embed.ts` | `openEmbed` / `lightSegment` / `closeEmbed` | 點擊、插入 `.embedBlock`、用 CSS Highlight 亮起正文、收合 |
+| `ts/src/accelon26/xref.ts` | `renderEmbedGroup`（約 L1545） | 解析 `t` 清單，逐家呼叫 `renderEmbed(..., bare)`，組成 `.embedGroup`＋`大正↗` |
+| `ts/src/accelon26/xref.ts` | `openTaishoAt`（約 L1710） | 右欄開原文；Ctrl 在本側開新分頁；觸發 `.embedFlash` |
 | `ts/src/accelon26/xref.ts` | `renderEmbed`（約 L1438） | 頁碼 → 區塊 → 引文切片 → `lineHtml`；`j`/`q` 定位 |
 | `ts/src/accelon26/xref.ts` | `lineHtml`（約 L263） | 嵌入文字裡的 `<聯>`、`<嵌>` 仍可點 |
-| `ts/src/accelon26/accelon26.template.html` | `.embedChip`／`.embedBlock` | 晶片、內嵌框、來源列、塗紅 |
+| `ts/src/accelon26/accelon26.template.html` | `.embedChip`／`.embedBlock`／`::highlight(embedLit)` | 晶片、內嵌框、正文亮起、來源列 |
 
 `renderEmbed` 的定位流程：
 
@@ -233,7 +272,7 @@ bun run tools/embed-test.ts --adb ../build/jingang-group.adb --book 金剛般若
 | `build/jingqun/jingang-embed-group.txt` | 已注入群組 `<嵌>` 的 T235 + 註疏 |
 | `build/jingang-group.adb` | 金剛經經論群 demo 庫（0.8 MiB） |
 | `ts/tools/embed-test.ts` | 端對端測試 |
-| `build/jingqun/embed-group-test.png` | 點開「3 家注疏」的截圖 |
+| `build/jingqun/embed-highlight-test.png` | 點開「5 家注疏」、正文亮起的截圖 |
 
 ## 9. 下一步
 
@@ -241,3 +280,4 @@ bun run tools/embed-test.ts --adb ../build/jingang-group.adb --book 金剛般若
 - 群組晶片目前最多 5 家；若要更多，放寬 `group.ts` 的 `slice(0, 5)`。
 - 加循環偵測與巢狀深度上限。
 - 把 `group.ts` 的 `NO_BY_TITLE` 從 `jingqun.tsv` 自動建，讓其他經群不用手寫。
+

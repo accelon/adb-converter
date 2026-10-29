@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>版本下載 — accelon26</title>
+<meta name="description" content="accelon26 的歷史版本下載：每個 ZIP 以日期命名，一天最多一個版本。">
+<script>try{var t=localStorage.getItem('accelon26.site.theme')==='dark'?'dark':'light';document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<style>
+  :root {
+    --bg: #f7f7f8; --panel: #ffffff; --fg: #1f2328; --dim: #6a7280;
+    --line: #d6d9de; --accent: #1f6feb; --gold: #b45309; --hl: #eef2f7;
+  }
+  html[data-theme="dark"] {
+    --bg: #16171a; --panel: #1e1f23; --fg: #e8e8e8; --dim: #9aa1ab;
+    --line: #2c2d31; --accent: #5aa9ff; --gold: #ffd479; --hl: #25272c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.65 "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 24px; }
+  header { border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; }
+  header .wrap { display: flex; align-items: center; gap: 16px; height: 60px; }
+  .brand { font-size: 19px; font-weight: 700; color: var(--fg); }
+  .brand b { color: var(--gold); }
+  nav { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 13px; }
+  nav a { color: var(--dim); }
+  nav a:hover { color: var(--fg); }
+  main { padding: 42px 0 64px; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: .01em; }
+  .lead { color: var(--dim); margin: 0 0 12px; }
+  .actions { display: flex; gap: 12px; margin: 0 0 26px; flex-wrap: wrap; }
+  .btn { display: inline-block; background: var(--accent); color: #fff; border-radius: 8px;
+    padding: 7px 14px; font-size: 13.5px; font-weight: 600; }
+  html[data-theme="dark"] .btn { color: #08243f; }
+  .btn:hover { text-decoration: none; filter: brightness(1.06); }
+  .btn.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-size: 12px; color: var(--dim); font-weight: 600; background: var(--hl); }
+  tr:last-child td { border-bottom: 0; }
+  .date { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .build, .size, .sha { color: var(--dim); font-size: 12.5px; white-space: nowrap; }
+  .sha code { font-size: 11.5px; }
+  .dl { text-align: right; }
+  .latestTag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px;
+    background: var(--gold); color: #fff; font-size: 10.5px; font-weight: 700; vertical-align: 1px; }
+  html[data-theme="dark"] .latestTag { color: #231a05; }
+  .note { color: var(--dim); font-size: 13px; margin: 22px 0 0; }
+  .note code { background: var(--hl); padding: 1px 5px; border-radius: 4px; }
+  @media (max-width: 720px) {
+    table, thead, tbody, tr, td, th { display: block; }
+    thead { display: none; }
+    tr { border-bottom: 1px solid var(--line); padding: 10px 0; }
+    td { border: 0; padding: 3px 12px; }
+    .dl { text-align: left; padding-top: 7px; }
+  }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <a class="brand" href="index.html">accelon<span style="color:var(--gold)">26</span></a>
+  <nav>
+    <a href="index.html">首頁</a>
+    <a href="changelog.html">更新說明</a>
+    <a href="adb/index.html">公開數據庫</a>
+    <a href="releases.html">版本下載</a>
+  </nav>
+</div></header>
+<main class="wrap">
+  <h1>版本下載</h1>
+  <p class="lead">每一個 ZIP 都用日期命名；<b>同一天最多一個版本</b>（重發會覆蓋當天那一個），
+    不另外保留 RC 檔。最新版仍在首頁，這裡可以找回舊版。</p>
+  <div class="actions">
+    <a class="btn" href="accelon26.zip" download>下載最新 ZIP</a>
+    <a class="btn ghost" href="changelog.html">看每一版改了什麼</a>
+  </div>
+  <table>
+    <thead><tr><th>版本日期</th><th>建置時間</th><th>大小</th><th>SHA-256</th><th></th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="date">2026-10-29 <span class="latestTag">最新</span></td>
+        <td class="build">2026-10-29 19:58（北京時間）</td>
+        <td class="size">8.5 MB</td>
+        <td class="sha"><code>7bbc24ec2d3f4980…</code></td>
+        <td class="dl"><a class="btn" href="releases/accelon26-2026-10-29.zip" download>下載 ZIP</a></td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="note">檔名格式：<code>accelon26-YYYY-MM-DD.zip</code>。ZIP 裡有
+    <code>accelon26.exe</code>、<code>README.txt</code>（簡體）、<code>README-tc.txt</code>（繁體）。
+    需要更舊的版本或 macOS 版，請看<a href="changelog.html">更新說明</a>或<a href="index.html">首頁</a>。</p>
+</main>
+</body>
+</html>

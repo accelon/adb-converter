@@ -76,13 +76,13 @@ bash scripts/package-macos.sh arm64          # → build/macos/accelon26-macos-a
 ## 放上官網
 
 ```bash
-cd ts && bun run tools/deploy-macos.ts        # 上傳 build/macos/*.zip，再從線上抓回來比 sha256
+cd ts && bun run tools/deploy-macos.ts        # 上傳 build/macos/*.zip 到主站＋鏡像，再從各站抓回來比 sha256
 cd ts && bun run tools/deploy-macos.ts --check  # 只驗證，不上傳
 ```
 
 Windows 這台要裝 PuTTY（`pscp`／`plink`）而且 `.local/server.env` 有帳密才會動；上傳一律先
 `xxx.tmp` 再原子改名，所以下載的人不會抓到半個檔案。首頁的連結就是
-`https://shutonggui.cn/accelon26/accelon26-macos-arm64.zip` 與 `…-x86_64.zip`
+`https://shutonggui.cn/accelon26/accelon26-macos-arm64.zip` 與 `…-x86_64.zip`（鏡像 nissaya.cn 同路徑也有一份）
 （`www/index.html` 的主視覺與「下載與安裝」都有）。
 
 ## Intel（x86_64）版

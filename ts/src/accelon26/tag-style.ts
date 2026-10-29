@@ -476,6 +476,17 @@ export function resetTagStyles(): void {
   notify();
 }
 
+/** 頂層不認得的欄位（例如 updateMirror）：原樣保留、可讀可寫（作者 2026-10-29）。 */
+export function extraSetting(key: string): unknown {
+  return extraTop[key];
+}
+
+/** 設定一個頂層欄位（寫進 settings.json；呼叫端負責 saveSettingsSoon）。 */
+export function setExtraSetting(key: string, value: unknown): void {
+  if (value === undefined) delete extraTop[key];
+  else extraTop[key] = value;
+}
+
 /** 這台機器現在要寫出去的 settings.json 內容（只留有自訂的條目） */
 export function toSettingsFile(): SettingsFile {
   const global: TagStyleProfile = cleanProfile(globalProfile);

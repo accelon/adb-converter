@@ -7,7 +7,7 @@
  *   - 產生的引用含頁 id，貼到「跳至」即可跳到那一頁（見 scopes.ts 的 embedded 頁 id）。
  */
 import { mapper, reader, setStatus } from './viewer';
-import { lookupBook, pageIdAtVa, type BookHit } from './xref';
+import { lookupBook, openTaishoAt, pageHanText, pageIdAtVa, type BookHit } from './xref';
 import { revealHit } from './link';
 import { openDictLookup } from './dict-pane';
 import { openForeignTab } from './text-pane';
@@ -31,12 +31,21 @@ interface SelInfo {
   book: string;
   page: string;
   rect: { left: number; top: number; bottom: number; width: number };
+  /** 只有「不超過 10 個字、且不含標點」的短詞才顯示「搜尋」。 */
+  searchable: boolean;
+  startLine: number;
+  endLine: number;
 }
 
 const KEY = 'accelon26.bookmarks.v1';
+/** 終點庫：只讀，不提供「引用複製」（例如金剛經研究讀本）。 */
+const TERMINAL_DBS = new Set(['jingang', 'study']);
+const isTerminalDb = (): boolean => !!reader && TERMINAL_DBS.has(reader.header.dbname);
 let inited = false;
 let pending: SelInfo | null = null;
 let sutraHit: BookHit | null = null;
+/** study 頁碼／大正引用：選單只留「打開經文」「複製」。 */
+let pendingRef: string | null = null;
 
 const $id = <T extends HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -106,14 +115,54 @@ async function selectionInfo(): Promise<SelInfo | null> {
   const book = await bookAt(va);
   const rects = range.getClientRects();
   const rect = rects.length ? rects[0] : range.getBoundingClientRect();
-  return { text, raw, va, pageId, book, page: pageId, rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width } };
+  const compact = text.replace(/\s+/g, '');
+  const searchable = Array.from(compact).length <= 10 && !/[\p{P}\p{S}]/u.test(text);
+  const endRoot = range.endContainer;
+  const endEl = endRoot.nodeType === 1 ? endRoot as Element : endRoot.parentElement;
+  const endLineEl = endEl?.closest?.('#docText .docLine') as HTMLElement | null;
+  const endN = Number((endLineEl?.id || '').slice(1));
+  const endLine = Number.isFinite(endN) && endN >= n ? endN : n;
+  return { text, raw, va, pageId, book, page: pageId, rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width }, searchable, startLine: n, endLine };
 }
 
+async function hanRange(info: SelInfo): Promise<[number, number]> {
+  const db = reader?.header.dbname ?? '';
+  const page = await pageHanText(db, info.pageId);
+  const needle = Array.from(info.raw).filter((c) => /[\u3400-\u9fff\uf900-\ufaff]/.test(c)).join('');
+  if (!needle) return [0, 0];
+  const at = page.indexOf(needle);
+  return at >= 0 ? [at, at + needle.length] : [0, Math.min(page.length, needle.length)];
+}
+
+const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** 由選取產生可貼進 jingang.txt 的片段；指針用母庫的頁＋漢字範圍。 */
+async function snippetFor(kind: 'rong' | 'qian', info: SelInfo): Promise<string> {
+  const db = reader?.header.dbname ?? 'taisho';
+  const [a, b] = await hanRange(info);
+  const i = `${db}?${info.pageId}`;
+  const q = Array.from(info.raw).filter((c) => /[\u3400-\u9fff\uf900-\ufaff]/.test(c)).join('');
+  const label = info.text.slice(0, 10) || '選文';
+  if (kind === 'rong') return `<融 i="${i}" j="${a}-${b}"></融>`;
+  return `<嵌 i="${i}" j="${a}-${b}" q="${escAttr(q)}" t="${i}@${a}-${b}@${escAttr(label)}" n="1 家注疏"/>`;
+}
 function hideMenu(): void {
   const m = $id('selMenu');
   if (m) m.hidden = true;
   pending = null;
   sutraHit = null;
+  pendingRef = null;
+}
+
+/** 認得的大正位置：18p14c、T18n0890_p0014c…；回傳可給 openTaishoAt 的頁碼。 */
+function taishoRef(text: string): string {
+  const t = text.replace(/\s+/g, '').replace(/[，。；：、！？「」『』（）()【】\[\]]/g, '');
+  let m = /^(\d{1,3})p(\d{1,4})([a-c])?$/i.exec(t);
+  if (m) return `${m[1]}p${m[2]}${(m[3] || 'a').toLowerCase()}`;
+  // CBETA 常見：T18n0890_p0014c / T18n0890_0014c
+  m = /^T(\d{1,3})n\d{3,4}[A-Za-z]?[_-]?p?(\d{1,4})([a-c])/i.exec(t);
+  if (m) return `${m[1]}p${m[2]}${m[3].toLowerCase()}`;
+  return '';
 }
 
 function sutraQuery(text: string): string {
@@ -144,6 +193,32 @@ function showMenu(info: SelInfo): void {
   const m = $id('selMenu');
   if (!m) return;
   pending = info;
+  pendingRef = reader?.header.dbname === 'study' ? taishoRef(info.text) : '';
+  const all = [...m.querySelectorAll<HTMLButtonElement>('[data-sel]')];
+  if (pendingRef) {
+    // 雙擊頁碼／大正引用：只留「打開經文」「複製」，不要 bookmark／搜尋／字典／引用模板。
+    sutraHit = null;
+    for (const b of all) b.hidden = b.dataset.sel !== 'sutra' && b.dataset.sel !== 'copy';
+    const open = m.querySelector<HTMLButtonElement>('[data-sel="sutra"]');
+    if (open) {
+      open.textContent = '打開經文';
+      open.title = '在大正藏打開 ' + pendingRef;
+      open.hidden = false;
+    }
+    m.hidden = false;
+    const w = m.offsetWidth || 120, h = m.offsetHeight || 36;
+    m.style.left = Math.max(6, Math.min(window.innerWidth - w - 6, info.rect.left)) + 'px';
+    m.style.top = Math.max(6, Math.min(window.innerHeight - h - 6, info.rect.bottom + 6)) + 'px';
+    return;
+  }
+  pendingRef = null;
+  for (const b of all) b.hidden = false;
+  const searchBtn = m.querySelector<HTMLButtonElement>('[data-sel="search"]');
+  if (searchBtn) searchBtn.hidden = !info.searchable;
+  const citeBtn = m.querySelector<HTMLButtonElement>('[data-sel="cite"]');
+  if (citeBtn) citeBtn.hidden = isTerminalDb();
+  const sutraBtn = m.querySelector<HTMLButtonElement>('[data-sel="sutra"]');
+  if (sutraBtn) sutraBtn.hidden = true;
   m.hidden = false;
   // 先顯示再量大小，才不會超出視窗
   const w = m.offsetWidth || 120, h = m.offsetHeight || 36;
@@ -299,11 +374,22 @@ export function initBookmarks(): void {
     if (!info) return;
     if (action === 'bookmark') addBookmark(info);
     else if (action === 'copy') await copyText(info.raw, '已複製選取文字');
-    else if (action === 'cite') await copyText(await citationFor(info), '已複製引用');
-    else if (action === 'search') sendSearch(info.text);
+    else if (action === 'cite' && !isTerminalDb()) await copyText(await citationFor(info), '已複製引用');
+    else if (action === 'rong') {
+      const s = await snippetFor('rong', info);
+      (window as unknown as { __lastSnippet?: string }).__lastSnippet = s;
+      await copyText(s, '已複製 <融> 片段；貼到 jingang.txt 的頁面位置');
+    } else if (action === 'qian') {
+      const s = await snippetFor('qian', info);
+      (window as unknown as { __lastSnippet?: string }).__lastSnippet = s;
+      await copyText(s, '已複製 <嵌> 模板；把 q 改成要標記的經文，貼到段落後');
+    }
+    else if (action === 'search' && info.searchable) sendSearch(info.text);
     else if (action === 'dict') await openDictLookup(info.text);
     else if (action === 'sutra') {
-      if (sutraHit) {
+      if (pendingRef) {
+        await openTaishoAt('taisho', pendingRef, '大正 ' + pendingRef);
+      } else if (sutraHit) {
         openForeignTab(sutraHit.db, sutraHit.pageVa ?? sutraHit.va, sutraHit.title, false, sutraHit.pageId);
         setStatus('右欄開啟《' + sutraHit.title + '》', 'info');
       }
@@ -339,3 +425,4 @@ export function initBookmarks(): void {
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') hideMenu(); });
   window.addEventListener('scroll', hideMenu, true);
 }
+

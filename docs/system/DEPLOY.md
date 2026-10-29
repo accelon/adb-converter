@@ -1,6 +1,7 @@
 # 部署與線上更新（accelon26）
 
-> 這份文件講兩件事：**怎麼把 exe／網站放上 `https://shutonggui.cn/accelon26/`**，以及
+> 這份文件講兩件事：**怎麼把 exe／網站放上主站 `https://shutonggui.cn/accelon26/` 與
+> 鏡像 `https://nissaya.cn/accelon26/`**，以及
 > **使用者的 accelon26.exe 怎麼判斷、下載、換檔、失敗時怎麼辦**。
 > 程式在 `wails/update.go`（Go）、`ts/src/accelon26/update-ui.ts`（UI）、
 > `ts/src/accelon26/about.ts`（檢查結果的文字）、`ts/tools/release.ts`（發佈）、
@@ -32,6 +33,7 @@
   accelon26.exe.prev    ← 上一版 exe（deploy 自動留，伺服器端回滾用）
   versions.json.prev    ← 上一版版本資訊
   img/…                 ← 首頁圖片
+  adb/…                 ← 公開數據庫：index.html／index.txt／manifest.json＋.adb 本體
 ```
 
 使用者電腦上則是 `accelon26.exe` ＋（更新後暫時存在的）`accelon26-prev.exe`
@@ -66,7 +68,7 @@ bun test test/render.test.ts      # 22 項版面／渲染測試
 cd ts
 bun run tools/release.ts --items-file ../wails/release_notes.draft.txt
 #   → 建 HTML → 建 exe（注入 buildTime）→ 追加改版說明 → versions.json → www/accelon26.7z
-bun run tools/deploy.ts --site    # exe、versions.json、www/*.html、www/img/、7z，最後驗 sha256
+bun run tools/deploy.ts --site    # exe、versions.json、www/*.html、www/img/、7z → 主站＋鏡像，最後各站驗 sha256
 
 bun run tools/deploy.ts           # 只換 exe ＋ versions.json（網站內容沒變時）
 bun run tools/deploy.ts --site-only   # 只換 www/（改了首頁但不想發新版）
@@ -142,7 +144,9 @@ bun run clean --dry-run             # 先看會刪什麼
 ## 3. 使用者的程式怎麼判斷
 
 1. 啟動時（以及每 6 小時）背景檢查一次：
-   `GET https://shutonggui.cn/accelon26/versions.json`（`Cache-Control: no-cache`）。
+   `GET <更新站>/accelon26/versions.json`（`Cache-Control: no-cache`）。更新站預設主站
+   `https://shutonggui.cn/accelon26/`，使用者可切到鏡像 `https://nissaya.cn/accelon26/`
+   （見 §7.2）；目前這一站連不上時會自動退回另一站。
 2. `buildTime` 比目前這顆 exe 晚 **60 秒以上**才算有新版本（容忍時鐘誤差）。
 3. 沒有 `versions.json`（舊主機）才退回 `HEAD accelon26.exe` 的 `Last-Modified`。
    **這是 fallback，不是主要依據** —— 伺服器的 `Last-Modified` 是上傳時間，跟 exe 裡的
@@ -270,13 +274,111 @@ cd ts && bun run tools/deploy.ts --site-only    # 連 www/adb/ 一起上傳，�
 * 產出 `www/adb/index.html`（版面直接沿用 `www/index.html` 的 `<style>` 與頁首頁尾，官網改樣式
   時這頁會跟著改）與 `index.txt`（清單存檔）。
 
-`deploy.ts --site`／`--site-only` 會把 `www/adb/*.html`、`*.txt` 一起傳上去（不會傳 `.adb`）。
+`deploy.ts --site`／`--site-only` 會把 `www/adb/*.html`、`*.txt`、`*.json` 一起傳上去（不會傳 `.adb`）。
+
+`.adb` 本體用另一支同步兩站（只上傳 sha256 不同的檔，上傳後再算一次線上 sha256）：
+
+```powershell
+cd ts && bun run tools/publish-adb.ts                # index.txt 裡的全部 adb → 兩站
+cd ts && bun run tools/publish-adb.ts --mirror-only  # 只補鏡像
+cd ts && bun run tools/publish-adb.ts --files ys.adb
+```
+
+### 7.1 程式裡的「資料庫更新」（2026-10-29）
+
+公開的 adb 換版時，桌面版要主動告訴讀者；**adb 和 exe 一樣有版本記錄**：
+每一次建置都記 buildTime／sha256／size／改版說明，使用者看得到「從我這一版到最新版
+之間每一次改變」，要不要更新由使用者按「更新」決定。
+
+清單是 `${DOCROOT}/adb/manifest.json`（schema 2）：
+
+```json
+{ "schema": 2, "generated": "…", "dbs": [
+  { "file": "ys.adb", "name": "印順法師佛學著作集", "size": 26541652,
+    "sha256": "…", "buildTime": "2026-10-28T14:29:24Z", "notes": ["這一版改了什麼", "…"],
+    "history": [
+      { "buildTime": "2026-10-28T14:29:24Z", "sha256": "…", "size": 26541652, "notes": ["…"] },
+      { "buildTime": "2026-10-27T…", "sha256": "…", "size": 26400000, "notes": ["上一版改了什麼"] }
+    ], "doc": "ys.html" }
+] }
+```
+
+* 產生：`cd ts && bun run tools/make-adb-manifest.ts`（讀 `www/adb/index.txt`、
+  `deploy/adb-notes.json`、`deploy/adb-history.json`，到 `D:\accelon3` 取大小／
+  sha256／buildTime／庫名）。
+* **版本歷史**存在 `deploy/adb-history.json`（由新到舊；第一次跑會從舊 manifest 遷移）。
+  同一個 sha256＝同一版；重建出不同內容就是新的一版。
+* 清單＝`www/adb/index.txt`（公開頁面）＋`deploy/adb-extra.txt`（不列頁面但要納入更新的
+  大檔，例如 taisho/wxzj）。App 只比對使用者資料夾裡實際有的檔。
+* **新版本一定要有說明**：把新檔的 sha256 與 notes 寫進 `deploy/adb-notes.json`；沒有
+  說明時產生器會失敗（`--allow-empty-notes` 只能緊急用）。使用者才不會「更新了卻
+  不知道改了什麼」。
+* 程式（`ts/src/accelon26/adb-update.ts` ＋ `wails/adbupdate.go`）開機時抓 manifest。
+  `#dbTabs` 平常就有「資料庫版本」按鈕（有安裝公開資料庫時），sha256 不同時加上
+  紅色的 **New**。對話盒有「可更新」與「版本記錄」兩個頁籤；「可更新」列出**本機版本之後的每一版**（跳過幾版也看得到每一次改變），
+  「版本記錄」列出每一本已安裝公開資料庫的完整歷史。
+* 下載走 Go：先寫同目錄 `.accelon26-*.tmp`，邊下邊算 sha256，**放棄或驗證失敗只刪
+  暫存檔**；全部驗過才解除 mmap 並 `rename` 原子替換。進度用輪詢
+  （`AdbDownloadStatus`），放棄用 `CancelAdbDownload`。
+* 測試：`cd ts && bun run tools/adb-update-test.ts`（本機假官網：多版本歷史、跳版
+  說明、版本記錄頁、New → 進度 → 放棄 → 原檔不變 → 再更新成功）。
+  Go 端另有 `wails/adbupdate_test.go`。
+
+### 7.2 更新鏡像：程式與 adb 都讓使用者選（2026-10-29）
+
+| 站 | 位置 | 說明 |
+|---|---|---|
+| 大陸主站 | `https://shutonggui.cn/accelon26/` | 預設；大陸使用者一般只連得到這裡 |
+| 境外鏡像 | `https://nissaya.cn/accelon26/` | 海外較快；大陸一般連不到 |
+
+* 設定頁「更新 → 鏡像站」：**自動（依連線速度）／大陸主站／境外鏡像**；存在
+  settings.json 頂層 `updateMirror`（`auto`／`primary`／`overseas`）。
+* 自動：Go 對兩站的 `versions.json` 發 HEAD（2 秒上限），鏡像要明顯較快才切；
+  只有鏡像連得上也切；兩站都不通留在主站。不是把 IP 送第三方，而是用「連不連得到
+  nissaya.cn」判斷國內外。
+* 選好後呼叫 `SetUpdateMirror()`：**exe 更新（versions.json／exe）與 adb
+  manifest 都從同一站**；檢查失敗會退回另一站（`AppInfo.mirrorUsed／mirrorFallback`）。
+* 發佈時 `deploy.ts` 預設同步兩站，並把鏡像的 `versions.json.url` 改寫成鏡像自己的
+  exe；`publish-adb.ts` 同步 adb 本體；`deploy-macos.ts` 同步 macOS zip。
+* 測試：`cd ts && bun run tools/mirror-test.ts`（見檔頭的 exe 建置指令）。
+
+### 7.3 歷史版本與「一天一個 release」（2026-10-29）
+
+* 每次發佈產生兩個一樣的 ZIP：
+  * `www/accelon26.zip`：穩定檔名，首頁「下載 Windows 版」用。
+  * `www/releases/accelon26-YYYY-MM-DD.zip`：**歷史版本**，用北京時間日期命名。
+* **同一天最多一個 release**：同日重發會覆蓋當天那個 ZIP；`release_notes.json` 也會
+  合併成當天唯一一筆（不再有 RC1／RC2 這種條目）。舊 ZIP 不會被刪。
+* 官網「版本下載」頁（`releases.html`）由 `tools/make-releases.ts` 從
+  `www/releases.json` 產生；清單有日期、建置時間、大小、sha256 與下載連結。
+* `versions.json` 多了 `zip`／`zipSize`／`zipSha256`，首頁會把下載按鈕指到最新
+  的日期 ZIP（抓不到時退回穩定的 `accelon26.zip`）。
+* `deploy.ts --site` 會把 `releases/*.zip` 一起同步；已存在且大小相同的檔跳過，
+  所以不會每次重新上傳所有歷史版本。
+* 舊的 RC 說明可以用 `cd ts && bun run tools/release.ts --normalize` 一次合併成
+  一天一筆（已於 2026-10-29 執行，10 天）。
+* macOS 的 `.zip` 目前仍是固定檔名（`accelon26-macos-arm64.zip`／`x86_64`），
+  還沒有做歷史版本；要的話可以照同一套日期命名再加。
+
+### 7.4 公開資料庫的界線（2026-10-29）
+
+* **<30 MB** 的 adb 可以經常更新；**>30 MB** 的底座仍可整檔下載，但只在 CBETA 換版等
+  重大更新時才換版，且不列入桌面版的「全部更新」。伺服器每月流量只有 **1 TB**。
+* `tools/publish-adb.ts` 對 >30 MB 的檔要求加 `--allow-large`；wip／revision 一律不上傳。
+* `taisho.adb`、`wxzj.adb` 在 `deploy/adb-extra.txt` 裡，只納入 manifest 版本記錄
+  （施工中 `status:wip`、`downloadable:false`）；官網「公開數據庫」顯示施工中，不給下載連結，
+  兩站的 `adb/taisho.adb`、`adb/wxzj.adb` 已刪除（404）。整理完成後可改成 available，
+  讓使用者整檔下載。
+* `fgdict.adb` 作者要大修：已從 index／manifest 移除，兩站檔案刪除（404）。
+* App 的 `adb-update.ts`：大型底座（>30 MB）照樣顯示「下載整檔」，但不列入「全部更新」；
+  `downloadable:false` 才完全不出現下載按鈕。
 
 ## 8. 還沒做的（刻意留著）
 
 - **Authenticode 簽章**：現在只驗 sha256，擋得住截斷／錯檔／中間被換，擋不住「主機被
   入侵」。要擋那個得買憑證並在 `release.ts` 裡簽名。
-- **下載進度**：UI 只有「正在下載新版本…」一行字；16 MB 在一般網路約幾秒，暫時夠用。
+- **exe 更新的下載進度**：程式更新只有「正在下載新版本…」一行字；16 MB 在一般網路約幾秒，
+  暫時夠用（**資料庫**更新已經有進度條與放棄，見 §7.1）。
 - **目錄不可寫時的手動下載**：現在只顯示原因（「程式所在資料夾不可寫」），官網在那裡
   可以直接下載。
 - **觀察窗只有 4 秒**：新版「起來 5 秒後才崩」抓不到（前五道關卡已經擋掉絕大多數情況）。

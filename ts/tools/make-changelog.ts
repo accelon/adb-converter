@@ -27,15 +27,30 @@ const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => (
 const raw = JSON.parse(readFileSync(NOTES, 'utf8')) as Note[];
 const notes = [...raw].sort((a, b) => String(b.buildTime).localeCompare(String(a.buildTime)));
 const latest = notes[0];
-const latestDate = latest ? String(latest.buildTime).slice(0, 10) : '';
-const stamp = (iso: string): string => String(iso).replace('T', ' ').replace(/Z$/, ' UTC');
+// 版本日期用北京時間（作者 2026-10-29）：buildTime 是 UTC，10-28T23:11Z 其實是
+// 10-29 早上；用 UTC 切日期會讓官網／更新說明看起來停在「前天」。
+const dateOf = (iso: string): string => {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return String(iso).slice(0, 10);
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(d);
+};
+const latestDate = latest ? dateOf(latest.buildTime) : '';
+const stamp = (iso: string): string => {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return String(iso).replace('T', ' ').replace(/Z$/, ' UTC');
+  const s = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(d);
+  return s + ' 北京時間';
+};
 
 const entries = notes.map((n) => {
-  const date = String(n.buildTime).slice(0, 10);
+  const date = dateOf(n.buildTime);
   const items = (n.items ?? []).map((it) => `        <li>${esc(it)}</li>`).join('\n');
   const title = n.title && n.title !== `accelon26 ${date}`
     ? `<div class="noteTitle">${esc(n.title)}</div>` : '';
-  return `      <article class="ver">
+  return `      <article class="ver" id="d-${date}">
         <h2>${esc(date)}<span class="build">${esc(stamp(n.buildTime))}</span></h2>
         ${title}
         <ul>
@@ -122,6 +137,7 @@ const html = `<!doctype html>
     <nav>
       <a href="index.html">首頁</a>
       <a href="index.html#install">下載與安裝</a>
+      <a href="releases.html">版本下載</a>
       <a href="https://github.com/accelon/adb-converter" target="_blank" rel="noopener noreferrer">GitHub</a>
       <button type="button" class="themeBtn" id="themeBtn">暗底</button>
     </nav>

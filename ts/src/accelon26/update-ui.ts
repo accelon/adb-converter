@@ -49,6 +49,22 @@ export function flashUpdate(info: DesktopAppInfo, onStatus?: (msg: string, kind?
   void onStatus;
 }
 
+/**
+ * 換了更新鏡像（或使用者手動再檢查）之後呼叫：立刻問 Go 一次並更新左上角。
+ * 平常只有開機與 10 分鐘輪詢會看快取；換站不能等下一次輪詢，否則會拿著舊站的结果。
+ */
+export async function refreshDesktopUpdate(): Promise<void> {
+  const info = await desktopCheckUpdate();
+  if (!info) return;
+  showBrandBuildTime(info);
+  const el = brandEl();
+  if (info.updateAvailable) flashUpdate(info);
+  else if (el) {
+    el.classList.remove('update');
+    el.title = brandTitle(info);
+  }
+}
+
 /** 更新後第一次啟動：把這一版新增／改進的功能顯示一次。 */
 export async function showReleaseNotes(since: string): Promise<void> {
   if (!since) return;
