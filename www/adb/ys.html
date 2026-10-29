@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ys.adb 與舊版印順資料庫有什麼不同</title>
+<title>ys.adb 與 yinshun.adb 有什麼不同</title>
 <meta name="theme-color" content="#f7f7f8" id="themeColor">
 <link rel="icon" type="image/png" href="../img/appicon.png">
 <script>
@@ -118,14 +118,6 @@
   .ghLink:hover { color: var(--fg); border-color: var(--dim); text-decoration: none; }
   .ghLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .ghLink svg { width: 17px; height: 17px; fill: currentColor; }
-  /* 最新版本號＋更新說明（作者 2026-10-22） */
-  .verLine { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; font-size: 13px; color: var(--dim); }
-  .verLine .vBadge {
-    display: inline-flex; align-items: center; gap: 6px;
-    border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 10px;
-  }
-  .verLine .vBadge b { color: var(--fg); font-weight: 600; }
-  .verLine a { color: var(--accent); }
 
   /* ---------------------------------------------------------------- 主視覺 */
   /* 錨點捲動時不要被上面那條 sticky 標頭蓋住（作者 2026-10-18）。 */
@@ -154,6 +146,8 @@
   }
   /* 按鈕上的 OS 標誌（2026-10-18）：跟著字色，大小固定，不要被壓縮。 */
   .btn svg { width: 16px; height: 16px; fill: currentColor; flex: none; opacity: .95; }
+  .btn .bTxt { display: flex; flex-direction: column; line-height: 1.18; text-align: left; }
+  .btn .bMeta { font-size: 11.5px; font-weight: 400; opacity: .82; letter-spacing: .01em; }
   .btn:hover { text-decoration: none; filter: brightness(1.08); }
   /* 兩個下載按鈕並排（macOS 版 2026-10-18）；窄螢幕自動換行。 */
   .btnRow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
@@ -331,8 +325,9 @@
 <tr><td>頁元</td><td>63</td><td>75</td></tr>
 <tr><td>行數</td><td>266,916</td><td>307,141</td></tr>
 <tr><td>大正鏈結</td><td>13,918（頁欄級為主）</td><td>25,918（字元級，另帶大正原文 <code>q</code>）</td></tr>
+<tr><td>插圖</td><td>456 張點陣圖（<code>images/y01-18.png</code>）</td><td>75 張圖版（64 svg ＋ 11 gif，資源名 <code>svg/YNN/…</code>）</td></tr>
 <tr><td>字元範圍 <code>j</code></td><td>沒有</td><td>25,095 個（2026-10-28 補；2,104 用寬鬆對位：頁內 1,189、前後頁 915）</td></tr>
-<tr><td>檔案大小</td><td>約 24.9 MB</td><td>25.3 MiB</td></tr>
+<tr><td>檔案大小</td><td>約 24.9 MB</td><td>25.9 MiB</td></tr>
 <tr><td>更新方式</td><td>手動</td><td>一個腳本從 CBETA 重建（見 <code>ys-steps.md</code>）</td></tr></tbody></table></div>
 <h2>一、資料來源不同</h2>
 <p>舊版是作者自己把紙本逐字錄入、再標記而成的 corpus；新版直接吃 <b>CBETA Y 部 TEI P5</b>，</p>
@@ -360,7 +355,11 @@
 <ul>
   <li><b>正確的目錄層級</b>：章、節、項依 CBETA 的 <code>cb:mulu level</code> 分層，不再同層並排。</li>
   <li><b>註記不再被藏起來</b>：CBETA 的 <code>&lt;note&gt;</code> 一律輸出成獨立的〔註n〕行。</li>
+  <li><b>圖版</b>：CBETA 的 <code>&lt;graphic&gt;</code> 轉成 <code>&lt;圖 n=&quot;svg/YNN/…&quot; t=&quot;圖版&quot;/&gt;</code>，圖檔取自</li>
 </ul>
+<p>  <code>cbeta-git/CBR2X-figures</code>（現行版）並補上舊 corpus 的圖，放在</p>
+<p>  <code>D:\2026\xml-p5\Y-images</code>；SVG 直接內嵌，只有點陣版的（11 張 gif）用 <code>&lt;img&gt;</code>。</p>
+<p>  例：<code>8p0052a</code> 的五趣圖 <code>svg/Y08/Y08p0052_01.svg</code>。XML 引用 75 張，全部收得到。</p>
 <h2>三、與舊版不同的地方</h2>
 <ul>
   <li><b>科判層級</b>：舊版用 <code>&lt;甲&gt;</code>、<code>&lt;乙&gt;</code>、<code>&lt;丙&gt;</code>…… 這類自製科判標籤分層；新版以 CBETA</li>
@@ -372,18 +371,18 @@
 </ul>
 <p>  對外連結一律用大正藏與印順的頁碼，不受影響。</p>
 <ul>
-  <li><b><code>u=&quot;文&quot;</code></b>：CBETA 沒有這個屬性，重建時由外部規則檔 <code>ys/u-attrs.tsv</code> 補上，</li>
+  <li><b><code>u=&quot;文&quot;</code></b>：CBETA 沒有這個屬性，重建時由外部規則檔 <code>u-attrs.txt</code> 補上，</li>
 </ul>
 <p>  頻次（<code>*u=文</code>）不會漏段。</p>
 <h2>四、怎麼重建</h2>
-<pre><code>pwsh ys\build.ps1</code></pre>
-<p>需要 Go、Bun、CBETA Y 的 sparse clone、<code>yinshun-taisho.tsv</code> 對照表與</p>
-<p><code>D:\2023\yinshun-corpus\xml</code>。<b>不需要</b> <code>yinshun.adb</code>——附錄與後記都在 <code>ys/</code> 裡進版控。</p>
-<p>完整步驟見倉庫的 <code>ys-steps.md</code>。</p>
+<pre><code>pwsh D:\2026\ys\build.ps1</code></pre>
+<p>建置腳本、來源資料（附錄、後記、u= 規則）與完整步驟都在獨立 repo <b><code>D:\2026\ys</code></b>；</p>
+<p>第一步要連同本工作區（<code>D:\2026\adb-converter</code>）一起，兩個 repo 放在同一個上層資料夾。</p>
+<p><b>不需要</b> <code>yinshun.adb</code>——附錄與後記都進了版控。</p>
 <h2>五、這一版</h2>
 <ul>
-  <li>版本：2026-10-28 RC3</li>
-  <li>下載：<code>ys.adb</code>（25.2 MiB）</li>
+  <li>版本：2026-10-29（加入圖版）</li>
+  <li>下載：<code>ys.adb</code>（25.9 MiB）</li>
   <li>授權：程式與增值標記 CC BY；原著作權利屬原權利人</li>
 </ul>
 </main>
