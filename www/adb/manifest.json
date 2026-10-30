@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-10-29T12:07:20Z",
+  "generated": "2026-10-30T02:09:18Z",
   "dbs": [
     {
       "file": "13j.adb",
@@ -121,14 +121,14 @@
     {
       "file": "ys.adb",
       "name": "印順法師佛學著作集",
-      "size": 27205727,
-      "sha256": "41288dea2e33f5184890580a317b4e858744f0775ecfca144c45cd4bd3811366",
-      "buildTime": "2026-10-29T11:56:37Z",
+      "size": 26109364,
+      "sha256": "0c91406aa0d9390c545328d0b6f5ed47d28d586147bdcedbab1a515d9236dffd",
+      "buildTime": "2026-10-29T15:41:09Z",
       "date": "2026-10-29",
       "notes": [
-        "新增 75 張原書圖版：CBETA CBR2X 的 SVG 直接內嵌（可點開放大、跟著深淺色主題），只有點陣版的 11 張用 GIF",
-        "之前缺的 21 張圖全部補齊：五趣圖（8p0052a）、年譜手書（13p0028a）、成佛之道圖（12p0187）等都看得到",
-        "經文與連結不變（CBETA Y 2026.R2；25,920 條大正連結），只多了圖檔資源"
+        "大正連結補上字元級 j（16,683 條）：點下去只塗引用那一段，不再拿整頁文字比對",
+        "修正多行引文誤用大正座標：38p0156a 那條原本包到頁末，現在只到「皆為空故」",
+        "修正 </聯> 吃掉下一句開引號的問題；圖版仍是 75 張、經文與頁碼不變"
       ],
       "doc": "ys.html",
       "status": "available",
@@ -138,6 +138,16 @@
       "large": false,
       "bulkUpdate": true,
       "history": [
+        {
+          "buildTime": "2026-10-29T15:41:09Z",
+          "sha256": "0c91406aa0d9390c545328d0b6f5ed47d28d586147bdcedbab1a515d9236dffd",
+          "size": 26109364,
+          "notes": [
+            "大正連結補上字元級 j（16,683 條）：點下去只塗引用那一段，不再拿整頁文字比對",
+            "修正多行引文誤用大正座標：38p0156a 那條原本包到頁末，現在只到「皆為空故」",
+            "修正 </聯> 吃掉下一句開引號的問題；圖版仍是 75 張、經文與頁碼不變"
+          ]
+        },
         {
           "buildTime": "2026-10-29T11:56:37Z",
           "sha256": "41288dea2e33f5184890580a317b4e858744f0775ecfca144c45cd4bd3811366",
@@ -173,26 +183,38 @@
     {
       "file": "taisho.adb",
       "name": "大正新脩大藏經",
-      "size": 331018733,
-      "sha256": "b4ef23989feeaa017eb1e2978d0e15be00694af9928d09a73170042e24e4be1d",
-      "buildTime": "2026-10-29T01:44:39Z",
+      "size": 331018737,
+      "sha256": "f03f9efecd3e9b6997513d9e4a6566d74276b7603bbbccf1da47de168880b2b3",
+      "buildTime": "2026-10-29T15:05:36Z",
       "date": "2026-10-29",
       "notes": [
-        "CBETA 2026.R2 全藏換版：T 1–55、85 冊依 CBETA XML-P5 重建；T 56–84 文本與底本為 public domain，數位文字依 SAT 2018 授權標注，TEI 標記按 CBETA convention",
-        "頁 id 仍是 NpMc；238,278 頁全部唯一（舊檔有重複頁）。ys/tx/lc/yulinpo 的 7,105 個大正頁連結全部檢查，0 個失效",
-        "這是純經文底座，不含本專案加的連結／嵌入／經群；那些放在獨立的 adb，不必跟著底座更新",
-        "體積 315.7 MiB（舊 311.3 MiB），行數 6,745,532；標記 36 種、tokens 35,146 種"
+        "大正藏 1–85 冊開放下載（331 MB 大檔）：T 1–55、85 依 CBETA XML-P5 2026R2；T 56–84 文本與底本為 public domain，數位文字依 SAT 2018 授權標注",
+        "修正行表錯位：舊版有 69,454 行把 <頁 …> 切斷，頁碼被當成文字顯示；重建後全表 0 行（內文逐字相同）",
+        "6,745,533 行、238,278 頁全部唯一、35,146 tokens；經文與 ys/tx 的頁 id 對應不變",
+        "這是純經文底座，不含本專案加的連結／嵌入／經群；那些放在獨立的 adb，不必跟著底座更新"
       ],
-      "status": "wip",
-      "statusLabel": "施工中",
-      "statusNote": "2026-10-29 已重建底座（85 冊）。T56–84 文本／底本為 public domain，數位文字依 SAT 2018 標注；底座仍在整理與驗證，暫不公開下載。",
+      "doc": "taisho.html",
+      "status": "available",
+      "statusLabel": "可下載",
+      "statusNote": "大正藏 1–85 冊純經文底座（331 MB）。2026-10-29 重建：修正行表錯位（舊版 69,454 行把 <頁 …> 切斷）。不含本專案加的連結／嵌入／經群。",
       "source": "T01–T55、T85：CBETA XML-P5 2026R2；T56–T84：SAT 2018",
       "licenseNote": "T01–T55、T85 依 CBETA XML-P5 使用條款；T56–T84 文本與底本為 public domain，數位文字取自 SAT 2018 並依其授權標注。TEI 標記按 CBETA convention 整理。",
       "crossCheck": "T2250《阿毘達磨俱舍論指要鈔》（T63，頁 807a）亦見 Kanseki Repository，可作獨立文字核對。",
-      "downloadable": false,
+      "downloadable": true,
       "large": true,
       "bulkUpdate": false,
       "history": [
+        {
+          "buildTime": "2026-10-29T15:05:36Z",
+          "sha256": "f03f9efecd3e9b6997513d9e4a6566d74276b7603bbbccf1da47de168880b2b3",
+          "size": 331018737,
+          "notes": [
+            "大正藏 1–85 冊開放下載（331 MB 大檔）：T 1–55、85 依 CBETA XML-P5 2026R2；T 56–84 文本與底本為 public domain，數位文字依 SAT 2018 授權標注",
+            "修正行表錯位：舊版有 69,454 行把 <頁 …> 切斷，頁碼被當成文字顯示；重建後全表 0 行（內文逐字相同）",
+            "6,745,533 行、238,278 頁全部唯一、35,146 tokens；經文與 ys/tx 的頁 id 對應不變",
+            "這是純經文底座，不含本專案加的連結／嵌入／經群；那些放在獨立的 adb，不必跟著底座更新"
+          ]
+        },
         {
           "buildTime": "2026-10-29T01:44:39Z",
           "sha256": "b4ef23989feeaa017eb1e2978d0e15be00694af9928d09a73170042e24e4be1d",
@@ -218,6 +240,40 @@
           "size": 241584545,
           "notes": [
             "2008 光碟舊版：大正藏 1–55＋85 冊（230.4 MiB）"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "goryeo_taisho.adb",
+      "name": "高麗⇄大正",
+      "size": 2304141,
+      "sha256": "577767fac3b47ca52a2a425321ca301e89024d48dcec2ef761ff0a4c564dd553",
+      "buildTime": "2026-10-30T00:45:36Z",
+      "date": "2026-10-30",
+      "notes": [
+        "第一個上架的高麗藏 ⇄ 大正藏對照表（2.2 MB）：6,357 卷逐字對位，不含經文",
+        "左欄「高麗⇄大正」：輸入經名／經號（1、1.2、T1）或位址，一經一筆；圈字、右邊的藏名按鈕、字元級位置",
+        "卷題尾端的 migrator 標記（^p／^half）已清除；對照表來源見 tripitaka-migrator 說明頁"
+      ],
+      "doc": "goryeo_taisho.html",
+      "status": "available",
+      "statusLabel": "可下載",
+      "statusNote": "高麗藏 ⇄ 大正藏逐字對照表（2.2 MB，6,357 卷），不含經文。開著它，左欄會多一個「高麗⇄大正」分頁：輸入經名／經號／位址或字元級位置，就能跳到另一藏的那一段。",
+      "source": "對照表由 tripitaka-migrator 產生（posmap／juaninfo）；經文仍在 goryeo.adb 與 taisho.adb",
+      "licenseNote": "對照資料由 tripitaka-migrator 產生，見 https://shutonggui.cn/tripitaka-migrator/；本檔只做打包與閱讀器介面。",
+      "downloadable": true,
+      "large": false,
+      "bulkUpdate": true,
+      "history": [
+        {
+          "buildTime": "2026-10-30T00:45:36Z",
+          "sha256": "577767fac3b47ca52a2a425321ca301e89024d48dcec2ef761ff0a4c564dd553",
+          "size": 2304141,
+          "notes": [
+            "第一個上架的高麗藏 ⇄ 大正藏對照表（2.2 MB）：6,357 卷逐字對位，不含經文",
+            "左欄「高麗⇄大正」：輸入經名／經號（1、1.2、T1）或位址，一經一筆；圈字、右邊的藏名按鈕、字元級位置",
+            "卷題尾端的 migrator 標記（^p／^half）已清除；對照表來源見 tripitaka-migrator 說明頁"
           ]
         }
       ]

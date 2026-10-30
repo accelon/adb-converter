@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>goryeo_taisho.adb：高麗藏 ⇄ 大正藏 對照表</title>
+<meta name="theme-color" content="#f7f7f8" id="themeColor">
+<link rel="icon" type="image/png" href="../img/appicon.png">
+<script>
+  // 亮底／暗底（作者 2026-10-18）：**預設亮底**（軟件的截圖是暗色的，亮底才有對比）。
+  // 選過的記在 localStorage；在畫面出現前就套上，免得先閃一下另一種底色。
+  (function () {
+    var t = 'light';
+    try { t = localStorage.getItem('accelon26.site.theme') === 'dark' ? 'dark' : 'light'; } catch (e) { /* 無痕模式 */ }
+    document.documentElement.setAttribute('data-theme', t);
+  }());
+</script>
+<style>
+  /* 亮底（預設） */
+  :root {
+    color-scheme: light;
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --panel2: #f1f3f6;
+    --line: #e2e5ea;
+    --fg: #17181c;
+    --dim: #6b7280;
+    --muted: #444a54;
+    --muted2: #454b55;
+    --accent: #2f6fd0;
+    --gold: #a9720a;
+    --btn-fg: #ffffff;
+    --btn-shadow: 0 6px 22px rgba(47,111,208,.20);
+    --msg-shadow: 0 4px 14px rgba(47,111,208,.18);
+    --code-bg: #f1f3f6;
+    --screen-bg: #eceef2;
+    --header-bg: rgba(247,247,248,.92);
+    --dot-off: rgba(0,0,0,.22);
+    --dot-off-border: rgba(0,0,0,.32);
+    --dot-hover: rgba(0,0,0,.45);
+    --dot-on: #1a1c20;
+    --dot-ring: rgba(0,0,0,.12);
+    --max: 960px;
+  }
+  /* 暗底 */
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #16171a;
+    --panel: #1e2024;
+    --panel2: #24272c;
+    --line: #2e3238;
+    --fg: #dcdee3;
+    --dim: #8f959e;
+    --muted: #c3c7ce;
+    --muted2: #b9bec6;
+    --accent: #6cb0ff;
+    --gold: #ffd479;
+    --btn-fg: #0a2338;
+    --btn-shadow: 0 6px 22px rgba(108,176,255,.22);
+    --msg-shadow: 0 4px 14px rgba(108,176,255,.18);
+    --code-bg: #26292f;
+    --screen-bg: #101113;
+    --header-bg: rgba(22,23,26,.92);
+    --dot-off: rgba(255,255,255,.28);
+    --dot-off-border: rgba(255,255,255,.40);
+    --dot-hover: rgba(255,255,255,.55);
+    --dot-on: #ffffff;
+    --dot-ring: rgba(255,255,255,.14);
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.75 system-ui, "Segoe UI", "Microsoft JhengHei", "PingFang TC",
+      "Noto Sans CJK TC", sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+  code {
+    font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+    font-size: .9em; background: var(--code-bg); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 5px;
+  }
+
+  /* ---------------------------------------------------------------- 頂端 */
+  header.top {
+    border-bottom: 1px solid var(--line);
+    background: var(--header-bg);
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(6px);
+  }
+  header.top .wrap {
+    display: flex; align-items: center; gap: 20px; height: 62px;
+  }
+  .brand { font-size: 20px; font-weight: 700; letter-spacing: .01em; color: var(--fg); }
+  .brand b { color: var(--gold); font-weight: 700; }
+  .brand span { color: var(--dim); font-weight: 400; font-size: 14px; margin-left: 10px; }
+  nav { margin-left: auto; display: flex; gap: 18px; font-size: 14px; align-items: center; }
+  nav a { color: var(--dim); }
+  nav a:hover { color: var(--fg); text-decoration: none; }
+  /* 亮底／暗底切換（作者 2026-10-18）：右上角，圖示＋tooltip */
+  .themeBtn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+    border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px;
+    cursor: pointer; line-height: 1.2;
+  }
+  .themeBtn:hover { color: var(--fg); border-color: var(--dim); }
+  .themeBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .themeBtn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+  /* GitHub 圖示（作者 2026-10-22）：右上角，點一下開原始碼庫 */
+  .ghLink {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 50%;
+    color: var(--muted); border: 1px solid var(--line); background: var(--panel);
+  }
+  .ghLink:hover { color: var(--fg); border-color: var(--dim); text-decoration: none; }
+  .ghLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ghLink svg { width: 17px; height: 17px; fill: currentColor; }
+
+  /* ---------------------------------------------------------------- 主視覺 */
+  /* 錨點捲動時不要被上面那條 sticky 標頭蓋住（作者 2026-10-18）。 */
+  section, #shots { scroll-margin-top: 78px; }
+  /* 作者 2026-10-18：一進站就要看到軟件畫面 —— 主視覺分成左右兩欄，
+     左邊文字＋下載按鈕，右邊是圖庫（約 54%）。 */
+  .hero { padding: 46px 0 54px; }
+  .heroGrid {
+    max-width: 1120px; margin: 0 auto; padding: 0 24px;
+    display: grid; grid-template-columns: minmax(0, 46fr) minmax(0, 54fr);
+    gap: 46px; align-items: center;
+  }
+  .heroText { min-width: 0; }
+  .heroArt { min-width: 0; }
+  .hero h1 {
+    font-size: clamp(24px, 2.9vw, 34px); line-height: 1.35; margin: 0 0 16px;
+    font-weight: 700; letter-spacing: .01em;
+  }
+  .hero h1 em { font-style: normal; color: var(--gold); }
+  .lead { font-size: 17px; color: var(--muted); margin: 0 0 30px; max-width: 42em; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: var(--btn-fg);
+    font-weight: 700; font-size: 15.5px; padding: 10px 22px; border-radius: 9px;
+    box-shadow: var(--btn-shadow);
+  }
+  /* 按鈕上的 OS 標誌（2026-10-18）：跟著字色，大小固定，不要被壓縮。 */
+  .btn svg { width: 16px; height: 16px; fill: currentColor; flex: none; opacity: .95; }
+  .btn .bTxt { display: flex; flex-direction: column; line-height: 1.18; text-align: left; }
+  .btn .bMeta { font-size: 11.5px; font-weight: 400; opacity: .82; letter-spacing: .01em; }
+  .btn:hover { text-decoration: none; filter: brightness(1.08); }
+  /* 兩個下載按鈕並排（macOS 版 2026-10-18）；窄螢幕自動換行。 */
+  .btnRow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn.alt {
+    background: transparent; color: var(--fg);
+    border: 1px solid var(--line); box-shadow: none;
+  }
+  .btn.alt:hover { border-color: var(--gold); color: var(--gold); filter: none; }
+  .fine { margin: 14px 0 0; color: var(--dim); font-size: 13px; }
+  .fine b { color: var(--fg); font-weight: 600; }
+
+  /* ---------------------------------------------------------------- 特色 */
+  section { padding: 54px 0; border-top: 1px solid var(--line); }
+  h2 {
+    font-size: 13px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--dim); font-weight: 600; margin: 0 0 26px;
+  }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px 22px 20px; }
+  .card svg { width: 26px; height: 26px; stroke: var(--gold); fill: none; stroke-width: 1.6; }
+  .card h3 { font-size: 17px; margin: 12px 0 8px; font-weight: 700; }
+  .card p { margin: 0; color: var(--muted2); font-size: 14.5px; line-height: 1.7; }
+  .card p b { color: var(--fg); font-weight: 600; }
+
+  /* ---------------------------------------------------------------- 截圖（圖庫） */
+  /* 四張畫面輪播：3 秒換一張，小白點可切換（作者 2026-10-18：首頁太長）。 */
+  /* 說明在圖**上方**（作者 2026-10-18），字比圖說大一點。 */
+  .installBody { max-width: 780px; }
+  #install h2 { margin-bottom: 18px; }
+  .gallery { position: relative; }
+  .slides {
+    position: relative; aspect-ratio: 16 / 9;
+    background: var(--screen-bg); border: 1px solid var(--line); border-radius: 10px;
+    overflow: hidden;
+  }
+  .slide { position: absolute; inset: 0; margin: 0; opacity: 0; transition: opacity .55s ease; }
+  .slide.on { opacity: 1; }
+  .slide img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .gcap {
+    color: var(--muted); font-size: 15px; line-height: 1.7;
+    margin: 0 0 14px; min-height: 3.5em;
+  }
+  .gcap p { margin: 0; display: none; }
+  .gcap p.on { display: block; }
+  .gcap b { color: var(--fg); font-weight: 700; }
+  .dots { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
+  .dots button {
+    width: 10px; height: 10px; padding: 0; border-radius: 50%; cursor: pointer;
+    background: var(--dot-off); border: 1px solid var(--dot-off-border);
+    transition: background .2s ease, box-shadow .2s ease;
+  }
+  .dots button:hover { background: var(--dot-hover); }
+  .dots button[aria-selected="true"] {
+    background: var(--dot-on); border-color: var(--dot-on); box-shadow: 0 0 0 3px var(--dot-ring);
+  }
+  .dots button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) {
+    .slide { transition: none; }
+  }
+
+  /* ---------------------------------------------------------------- 安裝 */
+  ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: step; }
+  ol.steps li {
+    counter-increment: step; position: relative; padding: 0 0 26px 52px;
+    border-left: 1px solid var(--line); margin-left: 15px;
+  }
+  ol.steps li:last-child { border-left: 1px solid transparent; padding-bottom: 0; }
+  ol.steps li::before {
+    content: counter(step); position: absolute; left: -16px; top: -2px;
+    width: 31px; height: 31px; border-radius: 50%;
+    background: var(--panel2); border: 1px solid var(--line); color: var(--gold);
+    font-size: 14px; font-weight: 700; display: grid; place-items: center;
+  }
+  ol.steps h3 { margin: 0 0 4px; font-size: 16px; }
+  ol.steps p { margin: 0; color: var(--muted2); font-size: 14.5px; }
+
+  .note {
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--gold);
+    border-radius: 8px; padding: 14px 18px; color: var(--muted2); font-size: 14.5px; margin-top: 26px;
+  }
+  .note b { color: var(--fg); }
+
+  /* ---------------------------------------------------------------- 聯絡 */
+  .contact { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .contact .k { color: var(--dim); font-size: 14px; }
+  .contact .v {
+    font-size: 17px; font-weight: 700; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 7px; padding: 5px 14px; user-select: all;
+  }
+  .contact small { color: var(--dim); font-size: 13px; }
+  /* 留言給作者（作者 2026-10-18）：開新視窗到 message.html */
+  .msgBtn {
+    display: inline-block; font-size: 14px; font-weight: 700; color: var(--btn-fg);
+    background: var(--accent); border-radius: 8px; padding: 6px 14px;
+    box-shadow: var(--msg-shadow);
+  }
+  .msgBtn:hover { text-decoration: none; filter: brightness(1.08); }
+
+  footer {
+    border-top: 1px solid var(--line); padding: 30px 0 46px;
+    color: var(--dim); font-size: 13px;
+  }
+  footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; }
+  footer .right { margin-left: auto; }
+
+  @media (max-width: 900px) {
+    /* 窄螢幕：文字在上、畫面在下（作者 2026-10-18） */
+    .heroGrid { grid-template-columns: 1fr; gap: 28px; }
+    .hero { padding: 34px 0 40px; }
+  }
+  @media (max-width: 780px) {
+    .cards { grid-template-columns: 1fr; }
+    .gcap { min-height: 0; }
+    header.top .wrap { height: 54px; gap: 10px; }
+    nav { gap: 10px; font-size: 12.5px; white-space: nowrap; }
+    .brand { font-size: 18px; }
+    .brand span { display: none; }
+    section { padding: 40px 0; }
+    .btn { font-size: 16px; padding: 12px 22px; }
+  }
+  /* 窄螢幕：右上角的主題與 GitHub 不能超出畫面（作者 2026-10-22） */
+  @media (max-width: 640px) {
+    header.top .wrap { height: auto; min-height: 54px; flex-wrap: wrap; padding: 7px 24px; }
+    nav {
+      flex: 1 1 100%; width: 100%; min-width: 0;
+      flex-wrap: wrap; justify-content: flex-end; gap: 6px 10px; white-space: normal;
+    }
+    .themeBtn { padding: 5px 9px; }
+    .themeBtn #themeLabel { display: none; }
+    .ghLink { width: 28px; height: 28px; }
+  }
+
+  .doc { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; }
+  .doc h1 { font-size: 1.6em; margin: .2em 0 .8em; }
+  .doc h2 { font-size: 1.2em; margin: 1.6em 0 .6em; }
+  .doc h3 { font-size: 1.05em; margin: 1.2em 0 .4em; }
+  .doc p { line-height: 1.9; margin: .7em 0; color: var(--muted); }
+  .doc li { line-height: 1.85; color: var(--muted); }
+  .doc code { background: var(--code-bg); border-radius: 4px; padding: 1px 5px; font-size: .92em; }
+  .doc pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow: auto; }
+  .doc pre code { background: none; padding: 0; }
+  .doc blockquote { margin: 1em 0; padding: .4em 1em; border-left: 3px solid var(--line); color: var(--dim); }
+  .tableWrap { overflow-x: auto; margin: 1em 0; }
+  .doc table { border-collapse: collapse; width: 100%; font-size: .94em; }
+  .doc th, .doc td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+  .doc th { background: var(--panel2); font-weight: 600; }
+  .doc a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">accelon<b>26</b><span>古籍資料庫閱讀器</span></div>
+    <nav>
+      <a href="../index.html">首頁</a>
+      <a href="index.html">公開數據庫</a>
+      <a href="../changelog.html">更新說明</a>
+    </nav>
+  </div>
+</header>
+<main class="doc">
+<h1>goryeo_taisho.adb：高麗藏 ⇄ 大正藏 對照表</h1>
+<p><code>goryeo_taisho.adb</code> 是從 <code>goryeo.adb</code> 抽出來的<b>逐字對照表</b>，不含經文（只有兩行文字）。</p>
+<p>用它可以在高麗藏與大正藏之間換算位置，並在閱讀器裡跳到另一藏的那一段。</p>
+<h2>內容</h2>
+<div class="tableWrap"><table>
+<thead><tr><th>容器</th><th>內容</th></tr></thead>
+<tbody><tr><td><code>align/posmap</code></td><td>兩藏逐字對照（6,357 卷）；raw DEFLATE 1.78 MiB（解壓 12.6 MiB）</td></tr>
+<tr><td><code>map/index</code></td><td>6,357 卷的卷目錄：兩側經號、卷號、卷題、起訖</td></tr>
+<tr><td>文字</td><td>兩行：檔頭 ＋ <code>&lt;段/&gt;</code>；檔頭宣告 <code>&lt;隱&gt;&lt;樹 m=&quot;taisho&quot;&gt;高麗⇄大正&lt;/樹&gt;&lt;/隱&gt;</code></td></tr></tbody></table></div>
+<p>檔案約 2.2 MB。對照表由 <a href="https://shutonggui.cn/tripitaka-migrator/">tripitaka-migrator</a> 產生</p>
+<p>（posmap 與 juaninfo），本檔只做打包與介面。</p>
+<h2>怎麼用</h2>
+<p>1. 開啟 <code>goryeo_taisho.adb</code>，左欄出現「高麗⇄大正」。</p>
+<p>2. 輸入：</p>
+<ul>
+  <li>經名（例：大般若）或經號：<code>1</code>、<code>1.2</code>（第 1 經第 2 卷）、<code>T1</code>、<code>K1</code></li>
+  <li>位址：<code>T05p0002c0405</code>、<code>K01p0001a0105</code>、<code>5p2c</code></li>
+  <li>選取選單「複製字元級位置」的字串：<code>taisho?5p2c j=2-8</code></li>
+  <li>範圍：<code>T05p0002c0405-0507</code>（同頁同欄到第 5 行第 7 字）、<code>T05p0002c0405-0003a</code>（到那一欄尾）</li>
+</ul>
+<p>3. 清單一經一筆：</p>
+<ul>
+  <li>圈字（大正白底紅字／高麗藍底紅字）是經名與卷從哪一藏來</li>
+  <li>按經名去圈字那一藏；按右邊的藏名去另一藏</li>
+  <li>滑過一筆顯示字元級位置；按下去本文會跳到該位置並把那一行塗色帶</li>
+</ul>
+<p>4. 要讀經文，另開 <code>taisho.adb</code> 或 <code>goryeo.adb</code>（桌面版把它們放在同一個資料夾就會自動列出）。</p>
+<p>5. 選取本文 →「查看 → 看大正藏圖版」：DIA 的網址會依選取所在的欄（a／b／c）帶 hash，</p>
+<p>   直接捲到那一欄。「看高麗藏圖版」需要本檔（KABC 要知道經號、卷、冊、頁、欄）。</p>
+<h2>版本</h2>
+<p>2026-10-30：卷題尾端的 migrator 標記（<code>^p</code>／<code>^half〔別名〕…</code>）已清除；<code>map/index</code> 428 KiB。</p>
+<p>SHA-256：<code>577767FAC3B47CA52A2A425321CA301E89024D48DCEC2EF761FF0A564DD553</code>。</p>
+</main>
+<footer>
+  <div class="wrap">
+    <span>accelon26 · Accelon3 跨平台平替 · <a href="index.html">公開數據庫</a></span>
+    <span class="right">授權：Apache-2.0</span>
+  </div>
+</footer>
+</body>
+</html>
