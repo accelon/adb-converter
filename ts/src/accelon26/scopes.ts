@@ -5,11 +5,11 @@
  * ./viewer and the other split modules as ESM live bindings; a module OWNS the
  * state it declares, and other modules get/set it through that module's exports.
  */
-import { $, altKey, currentFile, currentSource, displayName, docs, escapeHtml, fmtBytes, fmtInt, mapper, mods, newTabKey, openFile, opening, reader, session, tokens } from './viewer';
+import { $, altKey, currentFile, currentSource, displayName, docs, escapeHtml, fmtBytes, fmtInt, mapper, mods, newTabKey, openFile, opening, reader, session, setStatus, tokens } from './viewer';
 import { advanced, showTab } from './ui';
 import { showToken } from './panes';
 import { paintTreeActive, revealHit } from './link';
-import { jumpTaishoCite, parseTaishoCite } from './xref';
+import { jumpTaishoCite, openCharPosition, parseCharPosition, parseTaishoCite } from './xref';
 import { setJumpRange } from './jump-band';
 import { growUntil, mounted, renderChunked } from './lazy-list';
 import { lastResult, showNodeHits } from './summary';
@@ -128,8 +128,20 @@ async function labelFor(tag: string, va: number, vaEnd: number): Promise<string>
   return (await mapper!.nodeLabel(va, vaEnd)) || '';
 }
 
-/** `<樹>` element text per instance VA — read once per database, then reused. */
-const treeCaptions = new Map<number, string>();
+/**
+ * `<樹>` element text per database (VA → caption), read once.
+ *
+ * Keyed by READER: VA numbers are per database, so a shared Map would hand one
+ * database another's caption after a switch.
+ */
+const treeCaptions = new WeakMap<object, Map<number, string>>();
+
+function captionCache(): Map<number, string> {
+  if (!reader) return new Map();
+  let m = treeCaptions.get(reader);
+  if (!m) { m = new Map(); treeCaptions.set(reader, m); }
+  return m;
+}
 
 /**
  * Fill `SearchTree.caption` from the `<樹>…</樹>` element text.
@@ -137,21 +149,21 @@ const treeCaptions = new Map<number, string>();
  * The author's pane name (`ss.caption := removetag(getnNodeValue(dn))`); `s=` cannot
  * express it — taisho's seven trees are 經目／書名／分書頻次／分卷／分卷頻次／西文／
  * 反連結, and two pairs of them share the same `s=`. Costs one line read per
- * declaration, all of them in the first source block, and runs on the background
- * path — the tab set does not wait for it.
+ * declaration, all of them in the first source block.
  */
 async function fillTreeCaptions(trees: SearchTree[]): Promise<void> {
-  if (!mapper) return;
-  const missing = trees.filter((t) => !treeCaptions.has(t.va));
+  if (!mapper || !reader) return;
+  const cache = captionCache();
+  const missing = trees.filter((t) => !cache.has(t.va));
   if (missing.length) {
     const vas = await tagVas('樹');
     for (const t of missing) {
       let cap = '';
       try { cap = await wrappedText('樹', t.va, vas, 24); } catch { /* leave empty */ }
-      treeCaptions.set(t.va, cap);
+      cache.set(t.va, cap);
     }
   }
-  for (const t of trees) if (t.caption === undefined) t.caption = treeCaptions.get(t.va) ?? '';
+  for (const t of trees) if (t.caption === undefined) t.caption = cache.get(t.va) ?? '';
 }
 
 async function loadDirectoryTrees() {
@@ -339,11 +351,15 @@ function countNodes(ns: TreeNode[]): number {  let n = 0;
  * gets a picker (syncTreePickers); the declarations are never silently dropped.
  */
 const DEFAULT_TAB_LABEL: Record<string, string> = {
-  dir: '目錄', terms: '名詞', freq: '頻次', folio: '原書分頁', latin: '西文',
+  dir: '目錄', terms: '名詞', freq: '頻次', folio: '原書分頁', latin: '西文', map: '高麗⇄大正',
 };
 
 function syncTreeTabs() {
-  const kindOf = (scope: string): string => {
+  // `m="taisho"`／`m="goryeo"`：不是內文階層，而是「高麗藏 ⇄ 大正藏 對照」分頁
+  // （goryeo_taisho.adb，2026-10-30）。
+  const kindOf = (tree: SearchTree): string => {
+    if (tree.map) return 'map';
+    const scope = tree.scope;
     if (/^\*$/.test(scope)) return 'dir';
     if (/^\$/.test(scope)) return 'terms';
     if (/^\*u=/.test(scope) || /^\*[^u]/.test(scope)) return 'freq';
@@ -359,12 +375,19 @@ function syncTreeTabs() {
   // background build finished (taisho declares 7 trees and showed only 目錄).
   const declared = (session?.trees ?? []) as SearchTree[];
   const src = declared.length ? declared : dirTrees.map((d) => d.tree);
-  const present = new Map<string, { scope: string; caption: string }>();   // kind -> first declaration
-  for (const t of src) {
-    const k = kindOf(t.scope);
-    if (k && !present.has(k)) present.set(k, { scope: t.scope, caption: t.caption ?? '' });
+  // 沒有 `s="*"` 的庫（例如 goryeo_taisho 只有 `m="taisho"`）不會跑 loadDirectoryTrees，
+  // 分頁名就永遠是預設值。這裡補讀 `<樹>` 的文字（每個 VA 只讀一次），讀完再排一次分頁。
+  // 沒有 reader／mapper 時不要排（fillTreeCaptions 會直接返回，排了會無限重試）。
+  const needCaption = reader && mapper ? declared.filter((t) => t.caption === undefined) : [];
+  if (needCaption.length) {
+    void fillTreeCaptions(needCaption).then(() => syncTreeTabs()).catch(() => { /* 名稱退回預設 */ });
   }
-  for (const kind of ['dir', 'terms', 'freq', 'folio', 'latin']) {
+  const present = new Map<string, { scope: string; caption: string; map: string }>();   // kind -> first declaration
+  for (const t of src) {
+    const k = kindOf(t);
+    if (k && !present.has(k)) present.set(k, { scope: t.scope, caption: t.caption ?? '', map: t.map ?? '' });
+  }
+  for (const kind of ['dir', 'terms', 'freq', 'folio', 'latin', 'map']) {
     const hit = present.get(kind);
     const btn = $(`#colLeft .tabBtn[data-tab="${kind}"]`) as HTMLButtonElement | null;
     if (!btn) continue;
@@ -374,7 +397,7 @@ function syncTreeTabs() {
       // the declared `<樹>` text wins when it has one (taisho: 分書頻次)
       btn.textContent = hit.caption
         || (kind === 'freq' ? (/^\*u=/.test(hit.scope) ? '頻次' : '全文') : DEFAULT_TAB_LABEL[kind]);
-      btn.title = 's="' + hit.scope + '"' + (hit.caption ? '｜' + hit.caption : '');
+      btn.title = (hit.map ? 'm="' + hit.map + '"' : 's="' + hit.scope + '"') + (hit.caption ? '｜' + hit.caption : '');
     }
   }
   // 跳至不看樹宣告：只要庫裡有 <頁> 實例就出現（作者 2026-10）
@@ -388,7 +411,7 @@ function syncTreeTabs() {
   // keep the active tab sane: a dictionary has no 目錄 pane at all
   const active = $('#colLeft .tabBtn.active') as HTMLButtonElement | null;
   if (!active || active.hidden) {
-    const first = ['dir', 'terms', 'freq', 'folio', 'latin'].find((k) => present.has(k))
+    const first = ['dir', 'terms', 'freq', 'folio', 'latin', 'map'].find((k) => present.has(k))
       ?? (hasPageTags() ? 'jump' : undefined);
     if (first) showTab(first, 'left');
   }
@@ -1525,6 +1548,21 @@ export async function renderJump(enter = false): Promise<void> {
   const list = $('#jumpList');
   if (!reader) { list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>'; return; }
   const q = ($('#jumpQuery') as HTMLInputElement | null)?.value.trim() ?? '';
+  // 字元級位置（2026-10-30）：選取選單「複製字元級位置」的字串
+  //   taisho?5p2c j=12-34 ／ jingang?8p749a j=56-59 ／ foo?L123 j=5-12
+  // 直接跳到那一段，並只把這幾個字塗色帶。
+  const pos = parseCharPosition(q);
+  if (pos) {
+    const db = pos.db || reader.header.dbname;
+    meta.textContent = `${db} ${pos.anchor} 第 ${pos.a}–${pos.b} 個字：按 Enter 跳到這一段並高亮`;
+    list.innerHTML = '';
+    if (enter) {
+      const hit = await openCharPosition(pos);
+      if (!hit) return;
+      setStatus(`已跳到 ${hit.anchor} 第 ${hit.fromHan}–${hit.toHan} 個字`, 'info');
+    }
+    return;
+  }
   // 大正藏引用（作者 2026-10-28）：
   //   「大正2，206a15-b13」「2，206a15」「大正二，206a15-b13」
   //   「(CBETA 2025.R1, T02, no. 99, p. 1a7-9)」「T02, no. 99, p. 1a7-9」
@@ -1609,7 +1647,7 @@ export function resetScopes(): void {
   dirError = '';
   dirActive = 0;
   freqTree = -1;
-  treeCaptions.clear();      // keyed by VA: a VA is another node in another database
+  // 分頁名快取是 WeakMap（key＝reader）：換庫自然失效，不必（也不能）clear。
   folioCache = null;
   jumpCache = null;
   labelTables.clear();

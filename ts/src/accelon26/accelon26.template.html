@@ -775,6 +775,8 @@
   .docLine.hitLine { background: rgba(255, 212, 121, .10); }
 /* 跳至：大正藏引用「2，206a15-b13」指到的整段（作者 2026-10） */
 .docLine.jumpHit { background: rgba(255, 209, 102, .16); box-shadow: inset 3px 0 0 rgba(255, 209, 102, .55); }
+/* 跳至：字元級位置（`db?頁 j=a-b`）只塗那幾個字（CSS Custom Highlight，2026-10-30） */
+::highlight(accelonCharBand) { background-color: rgba(255, 209, 102, .42); color: inherit; }
   .lineText { white-space: pre; flex: 1 1 auto; min-width: 0; }   /* hard-wrapped lines: never soft wrap by default */
   /* 本文上方的 breadcrumb（作者 2026-10）：字級同內文、顏色同標題；
      點一個節點下拉同層 siblings，並突顯目前這一個。
@@ -1033,6 +1035,21 @@
   .selMenu[hidden] { display: none; }
   .selMenu button { background: transparent; color: var(--fg); border: 0; border-radius: 4px; font: inherit; font-size: 12.5px; text-align: left; padding: 5px 9px; cursor: pointer; }
   .selMenu button:hover { background: var(--hl-bg, rgba(255,255,255,.08)); color: var(--accent); }
+  /* 兩層選單（2026-10-30）：第一層 搜尋／複製／查看，第二層在右邊展開 */
+  .selGroup { position: relative; }
+  .selGroupBtn { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; }
+  .selCaret { color: var(--dim); font-size: 10px; line-height: 1; }
+  .selGroup.open > .selGroupBtn { color: var(--accent); }
+  .selSub {
+    position: absolute; top: -5px; left: calc(100% - 2px); z-index: 101;
+    display: flex; flex-direction: column; min-width: 152px; padding: 4px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 7px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.55);
+  }
+  .selSub[hidden] { display: none; }
+  .selMenu.flip .selSub { left: auto; right: calc(100% - 2px); }
+  .selDivider { height: 1px; margin: 4px 2px; background: var(--line); }
+  .selMenu .selMinor { color: var(--dim); font-size: 11.5px; }
   .bmRow { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); }
   .bmJump { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; background: transparent; color: var(--fg); border: 0; text-align: left; font: inherit; padding: 7px 4px; cursor: pointer; }
   .bmJump:hover { background: var(--hl-bg, rgba(255,255,255,.06)); }
@@ -1180,6 +1197,34 @@
   .snippetBook { font-size: .82em; color: var(--dim); margin-left: .6em; white-space: nowrap; }
   .snippet mark { background: hsl(var(--hue, 32) 90% 38%); color: var(--mark-fg); border-radius: 2px; padding: 0 2px; }
   .snippet mark.cur { box-shadow: 0 0 0 1px var(--fg); }
+  /* 對照（goryeo_taisho.adb）：一經一筆；右邊一顆藏名；位置只在 hover 顯示 */
+  .mapHelp { color: var(--dim); font-size: .92em; line-height: 1.65; }
+  .mapHelp p { margin: 0 0 7px; }
+  .mapHelp code { background: var(--panel2); border-radius: 3px; padding: 0 3px; }
+  .mapHit {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 5px;
+    padding: 0 5px; margin-bottom: 3px; cursor: pointer;
+  }
+  .mapHit:hover { background: var(--panel2); }
+  .mapHitName {
+    flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    text-align: left; background: transparent; color: var(--fg); border: 0;
+    font: inherit; font-size: 1em; padding: 2px; cursor: pointer;
+  }
+  .mapHitOpen {
+    flex: 0 0 auto; background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 4px; font: inherit; font-size: .84em; padding: 1px 8px; cursor: pointer;
+  }
+  .mapHitOpen:hover { border-color: var(--accent); color: var(--accent); }
+  /* 圈字：大正白底、高麗藍底，紅字粗體、沒有框線（2026-10-30） */
+  .mapMark {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; margin-right: 3px; border: 0; border-radius: 50%;
+    font-size: 11px; font-weight: 700; line-height: 1; color: #c62828; vertical-align: -2px;
+  }
+  .mapMarkT { background: #fff; }
+  .mapMarkK { background: #6f9fd8; }
   /* search groups (tree tier 1: 書/集…) */
   .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; max-height: 8.6em; overflow: auto; }
   .chips:empty { display: none; }
@@ -1639,12 +1684,12 @@
 <body>
 <header id="header">
   <!-- 左上角：桌面版會在這裡顯示建置時間（hover hint），有新版本時閃動並可點擊更新 -->
-  <h1 id="brand" title="Accelon26">Accelon<span class="accent">26</span></h1>
+  <h1 id="brand" title="關於 Accelon26（Alt+A）">Accelon<span class="accent">26</span></h1>
   <button class="sideToggle" id="toggleLeft" aria-keyshortcuts="Control+B" title="顯示／隱藏左欄（Ctrl+B；Mac ⌘B）">◧</button>
   <button class="sideToggle" id="toggleRight" aria-keyshortcuts="Control+Alt+B" title="顯示／隱藏右欄（Ctrl+Alt+B；Mac ⌘⌥B）">◨</button>
   <!-- adb 選單（作者 2026-10）：原本的 ＋ 按鈕收進下拉的第一項「加入 adb」 -->
   <span class="dbPickWrap">
-    <button type="button" class="dbPickBtn" id="dbPickBtn" title="adb：按一下選一個（最多同時 5 個）">📁</button>
+    <button type="button" class="dbPickBtn" id="dbPickBtn" title="adb：按一下選一個（最多同時 5 個）（Alt+O）">📁</button>
     <div class="dbPickMenu" id="dbPickMenu" hidden></div>
   </span>
   <input type="file" id="file" accept=".adb" multiple>
@@ -1652,7 +1697,7 @@
        兩者都由 vault-import.ts 接線，選完就轉成 .adb。 -->
   <input type="file" id="vaultDir" webkitdirectory multiple hidden>
   <input type="file" id="vaultZip" accept=".zip,application/zip" hidden>
-  <button class="dbAdd dbAll" id="searchAllBtn" title="搜尋所有 adb：輪流查每一個庫的命中數，再決定要不要打開">🔍</button>
+  <button class="dbAdd dbAll" id="searchAllBtn" title="搜尋所有 adb（Alt+S）：輪流查每一個庫的命中數，再決定要不要打開">🔍</button>
   <button class="dbAdd" id="studyIndexBtn" hidden title="注疏索引：經文 → 注疏名稱 → 大正頁">注疏</button>
   <span class="dbHint" id="dbHint">← 開啟資料庫</span>
   <span class="dbTabs" id="dbTabs"></span>
@@ -1671,6 +1716,7 @@
       <button class="tabBtn" data-tab="terms" hidden>名詞</button>
       <button class="tabBtn" data-tab="freq" hidden>頻次</button>
       <button class="tabBtn" data-tab="folio" hidden>原書分頁</button>
+      <button class="tabBtn" data-tab="map" hidden>對照</button>
       <button class="tabBtn" data-tab="jump" hidden>跳至</button>
       <button class="tabBtn" data-tab="latin" hidden>西文</button>
       <button class="tabBtn advOnly" data-tab="token">token</button>
@@ -1725,11 +1771,20 @@
         <div id="folioMeta" class="note"></div>
         <div id="folioList" class="scrollArea"></div>
       </div>
+      <!-- 對照：goryeo_taisho.adb 的 `<樹 m="taisho">`。輸入經名／經號／位置，
+           清單一經一筆，右邊那顆就是要去的那一藏（2026-10-30 改版）。 -->
+      <div class="tabPane" data-tab="map">
+        <div class="searchBar">
+          <input type="search" id="mapQuery" placeholder="經名、經號（1、T1.2）或位置（T05p0002c0405）" title="輸入經名找經；輸入數字找經號（大正、高麗一起找）；T／K 前綴只找那一藏；T1.2 = 第 1 經第 2 卷；也可以貼位置或字元級位置。" autocomplete="off" spellcheck="false">
+          <button id="mapClear" title="清除">✕</button>
+        </div>
+        <div id="mapList" class="scrollArea"></div>
+      </div>
       <!-- 跳至：任何有 <頁> 標記的庫都能用（不必宣告 `s="頁.n"` 樹）。
            輸入頁 id 的一部份（例：49p15、0065a）就列出符合的頁；按 Enter 直接跳到最接近的一頁。 -->
       <div class="tabPane" data-tab="jump">
         <div class="searchBar">
-          <input type="search" id="jumpQuery" placeholder="輸入頁 id（例：49p15、0065a）後按 Enter" title="依 <頁 id> 跳到那一頁；按 Enter 直接跳到最接近的符合項" autocomplete="off" spellcheck="false">
+          <input type="search" id="jumpQuery" placeholder="輸入頁 id（49p15）或字元級位置（taisho?5p2c j=12-34）後按 Enter" title="依 <頁 id> 跳到那一頁；貼上選取選單「複製字元級位置」的字串，會跳到那一段並高亮。Enter 直接跳。" autocomplete="off" spellcheck="false">
           <button id="jumpClear" title="清除">✕</button>
         </div>
         <div id="jumpMeta" class="note"></div>
@@ -2075,16 +2130,35 @@
 </div>
 <!-- 腳注提示（作者 2026-10-26）：hover <註> 時顯示對應 <釋> 的文字 -->
 <div id="noteTip" hidden></div>
-<!-- 選取文字選單（2026-10-28）：加入書籤／複製／引用複製 -->
+<!-- 選取文字選單（2026-10-30 改兩層）：第一層 複製／搜尋／查看，
+     第二層在右邊展開；滑過或點一下就開。 -->
 <div id="selMenu" class="selMenu" role="menu" hidden>
-  <button type="button" data-sel="bookmark">加入書籤</button>
-  <button type="button" data-sel="search">搜尋</button>
-  <button type="button" data-sel="dict">查字典</button>
-  <button type="button" data-sel="sutra" hidden></button>
-  <button type="button" data-sel="rong">融入引用</button>
-  <button type="button" data-sel="qian">嵌入引用</button>
-  <button type="button" data-sel="copy">複製</button>
-  <button type="button" data-sel="cite">引用複製</button>
+  <div class="selGroup" data-grp="copy">
+    <button type="button" class="selGroupBtn">複製<span class="selCaret">▸</span></button>
+    <div class="selSub" data-sub="copy">
+      <button type="button" data-sel="cite">引用複製</button>
+      <button type="button" data-sel="copy">複製文字</button>
+      <button type="button" data-sel="rong">融入引用</button>
+      <button type="button" data-sel="qian">嵌入引用</button>
+      <button type="button" data-sel="pos" title="頁 id ＋ 漢字範圍，例：taisho?5p2c j=12-34">複製字元級位置</button>
+      <button type="button" data-sel="addr" hidden title="高麗藏／大正藏位址範圍（需要對照表）">複製高麗⇄大正位址</button>
+    </div>
+  </div>
+  <div class="selGroup" data-grp="search">
+    <button type="button" class="selGroupBtn">搜尋<span class="selCaret">▸</span></button>
+    <div class="selSub" data-sub="search"></div>
+  </div>
+  <div class="selGroup" data-grp="view">
+    <button type="button" class="selGroupBtn">查看<span class="selCaret">▸</span></button>
+    <div class="selSub" data-sub="view">
+      <button type="button" data-sel="dict">查字典</button>
+      <button type="button" data-sel="sutra" hidden></button>
+      <button type="button" data-sel="plateT" hidden>看大正藏圖版</button>
+      <button type="button" data-sel="plateK" hidden>看高麗藏圖版</button>
+    </div>
+  </div>
+  <div class="selDivider"></div>
+  <button type="button" class="selMinor" data-sel="bookmark">☆ 加入書籤</button>
 </div>
 <!-- 引用分布熱圖（作者 2026-10-28）：反鏈的「分布」按鈕打開 -->
 <div id="revHeat" role="dialog" aria-modal="true" aria-labelledby="revHeatTitle" hidden>

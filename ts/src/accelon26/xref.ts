@@ -14,14 +14,17 @@
  * 目標庫必須已在同一工作階段開過（file:// 不能自己讀硬碟）。
  */
 import { AdbReader, BlobIO } from './adb';
-import { openDbs, switchTo } from './dbs';
+import { catalog, openCatalogEntry, openDbs, switchTo } from './dbs';
 import { mapper, reader, setStatus } from './viewer';
 import { ensureRightPane, openForeignTab, setForeignRender } from './text-pane';
-import { linkTo } from './link';
-import { markLineRange } from './doc-pane';
+import { linkTo, revealHit } from './link';
+import { highlightCharBand, markLineRange } from './doc-pane';
+import { setJumpRange } from './jump-band';
 import { VaPaMapper } from './vapa';
 import { variantGroupOf } from './variants';
 import { SHORT_TITLES } from './short-titles';
+import { openAdbStore } from './adb-store';
+import { hostState } from './host';
 
 interface AnchorIndex {
   values: string[];
@@ -29,7 +32,6 @@ interface AnchorIndex {
   vas: number[];
   tags: string[];
   bv: number[];
-  lv: number[];
   bookVas: number[];
   juanVas: number[];
   volVas: number[];
@@ -91,7 +93,6 @@ async function anchorIndex(r: AdbReader): Promise<AnchorIndex | null> {
     vas: await r.decodeBlockList('tags', ti),
     tags: tagsC.names,
     bv: await r.blocksVirtual(),
-    lv: await r.linesVirtual(),
     bookVas: await list('書'),
     juanVas: await list('卷'),
     volVas: await list('冊'),
@@ -120,6 +121,10 @@ export async function readerFor(db: string): Promise<AdbReader | null> {
     || s.name === db
     || (s.core as { reader?: AdbReader } | undefined)?.reader?.header.dbname === db);
   if (!slot) return null;
+  // 這個庫已經在分頁裡開著就直接用它（作者 2026-10-29）：重新 AdbReader.open 一次
+  // 會再解析容器，而且桌面版會失去宿主的 Go 解壓／查詢，第一次點聯會慢好幾秒。
+  const live = (slot.core as { reader?: AdbReader } | undefined)?.reader;
+  if (live && live.header.dbname === db) { foreignReaders.set(db, live); return live; }
   const r = await AdbReader.open(new BlobIO(slot.file));
   foreignReaders.set(db, r);
   return r;
@@ -306,7 +311,9 @@ function lineHtml(s: string, markFrom = -1, markTo = -1): string {
       }
       continue;
     }
-    if (markFrom >= 0 && !inMark && cjk >= markFrom && cjk < markTo) { out += '<mark class="xrefHit">'; inMark = true; }
+    // 開頭要落在「字」上：j／q 的起點是漢字索引，若在漢字之前就開 mark，
+    // 會把前一句的收引號、句號一起吃進來（作者 2026-10-29）。
+    if (markFrom >= 0 && !inMark && HAN_RE.test(s[i]) && cjk >= markFrom && cjk < markTo) { out += '<mark class="xrefHit">'; inMark = true; }
     if (inMark && cjk >= markTo) { out += '</mark>'; inMark = false; }
     out += esc(s[i]);
     if (HAN_RE.test(s[i])) cjk++;
@@ -662,11 +669,15 @@ function lcsSpan(a: string, b: string): { count: number; bFirst: number; bLast: 
 }
 
 export async function renderForeign(db: string, va: number, anchor?: string, quote?: string, range?: string): Promise<{ html: string; title: string }> {
+  const tA = performance.now();
   const r = await readerFor(db);
   if (!r) return { html: '<p class="dim">請先把 ' + esc(db) + '.adb 開起來（同一個瀏覽器工作階段）。</p>', title: db };
+  const tB = performance.now();
   const idx = await anchorIndex(r);
   if (!idx) return { html: '<p class="dim">這個庫沒有頁碼表。</p>', title: db };
+  const tC = performance.now();
   await ensureReverse();
+  const tD = performance.now();
   const maxChars = 2000;
   let blk = 0;
   for (let k = 0; k < idx.bv.length; k++) { if (idx.bv[k] <= va) blk = k; else break; }
@@ -722,18 +733,19 @@ export async function renderForeign(db: string, va: number, anchor?: string, quo
   const cut = raw.indexOf('<頁 ');
   if (cut > 0) raw = raw.slice(0, cut);
   if (raw.length > maxChars) raw = raw.slice(0, maxChars);
+  const tE = performance.now();
 
-  const pageId = anchor ?? idx.values.find((v, k) => idx.vas[(idx.pointers[k] & 0xffffff) - 1] === va) ?? '';
-  await ensureBaked(reader && reader.containers.has('xref') ? reader : null);
+  const pageId = anchor ?? idx.values.find((v, k) => idx.vas[(idx.pointers[k] & 0xffffff) - 1] === va) ?? '';  await ensureBaked(reader && reader.containers.has('xref') ? reader : null);
   const cands: string[] = db === 'taisho' ? bakedQuotes?.get(pageId) ?? [] : [];
 
   // 不再用 lines.virtual 切行：它與原始字元的對應不可靠，會把 <聯> 標籤切斷。
   const rawLines: string[] = [raw];
 
-  // 引文塗紅：即時引文優先；沒有就用對照表候選（單筆直接用，多筆才比相似度）
+  // 引文塗紅：有 j 就直接用 j（0 起算、end 不含），不再搜 q；沒有 j 才退回文字比對。
   let bodyHtml = '';
   let hitLen = 0;
-  if (quote || cands.length) {
+  let via: 'j' | 'quote' | 'baked' | 'none' = 'none';
+  {
     const chars: string[] = [];
     const rawAt: number[] = [];
     for (let i = 0; i < raw.length; i++) {
@@ -757,21 +769,20 @@ export async function renderForeign(db: string, va: number, anchor?: string, quo
       return ok ? { count, bFirst, bLast, qn } : null;
     };
     let hit = null as { count: number; bFirst: number; bLast: number; qn: string } | null;
-    // <聯 i="…" j="12-34">：字級範圍（相對於目標頁的漢字索引）。
-    // 只有和 q 對得上才用；對不上就退回下面的引文比對，避免標錯位置。
-    if (range && quote) {
+    // <聯 i="…" j="12-34">：目標頁的漢字索引（0 起算、end 不含）。
+    // 這是建庫時算好的座標，直接用；不要再拿 q 去全頁找一次（作者 2026-10-29）。
+    if (range) {
       const mm = /^(\d+)-(\d+)$/.exec(range);
-      const qn0 = foldVariants(Array.from(quote).filter((c) => HAN_RE.test(c)).join('').slice(0, 160));
-      if (mm && qn0) {
+      if (mm) {
         const from = Number(mm[1]), to = Number(mm[2]);
         if (from >= 0 && to > from && to <= pn.length) {
-          const piece = pn.slice(from, to);
-          if (piece && piece === qn0.slice(0, piece.length)) hit = { count: piece.length, bFirst: from, bLast: to - 1, qn: qn0 };
+          hit = { count: to - from, bFirst: from, bLast: to - 1, qn: '' };
+          via = 'j';
         }
       }
     }
-    if (!hit && quote) hit = matchOf(quote);
-    if (!hit && cands.length === 1) hit = matchOf(cands[0]);
+    if (!hit && quote) { hit = matchOf(quote); if (hit) via = 'quote'; }
+    if (!hit && cands.length === 1) { hit = matchOf(cands[0]); if (hit) via = 'baked'; }
     if (!hit && quote && cands.length > 1) {
       const qn = foldVariants(Array.from(quote).filter((c) => HAN_RE.test(c)).join('')).slice(0, 40);
       let best: { count: number; bFirst: number; bLast: number; qn: string } | null = null;
@@ -782,8 +793,9 @@ export async function renderForeign(db: string, va: number, anchor?: string, quo
         if (sim >= 8 && (!best || m.count > best.count)) best = m;
       }
       hit = best;
+      if (hit) via = 'baked';
     }
-    (globalThis as any).__xrefLast = { cands: cands.length, quoteLen: quote?.length ?? 0, hit: hit?.count ?? 0 };
+    (globalThis as any).__xrefLast = { cands: cands.length, quoteLen: quote?.length ?? 0, hit: hit?.count ?? 0, via, j: range ?? '' };
     if (hit) { hitLen = hit.count; bodyHtml = lineHtml(raw, hit.bFirst, hit.bLast + 1); }
   }
   if (!bodyHtml) bodyHtml = rawLines.map((t) => lineHtml(t)).join('<br>');
@@ -805,6 +817,13 @@ export async function renderForeign(db: string, va: number, anchor?: string, quo
   const rev = await revBarHtml(db, pageId);
 
   const html = head + rev + '<div class="docBody reflow"><p class="docPara">' + bodyHtml + '</p></div>';
+  const tEnd = performance.now();
+  // 診斷（作者 2026-10-29）：第一次點聯慢在哪一段。probe 用 globalThis.__xrefPerf 讀。
+  (globalThis as any).__xrefPerf = {
+    reader: Math.round(tB - tA), index: Math.round(tC - tB), reverse: Math.round(tD - tC),
+    page: Math.round(tE - tD), paint: Math.round(tEnd - tE), total: Math.round(tEnd - tA),
+    via: (globalThis as any).__xrefLast?.via ?? 'none', j: range ?? '',
+  };
   return { html, title: db + ' ' + pageId };
 }
 
@@ -1286,7 +1305,24 @@ export async function openRevHeat(hostDb: string, srcDb?: string): Promise<void>
     + '<p class="dim revHeatNote">列＝' + esc(data.hostName) + '的自然次序；欄＝' + esc(data.srcName) + '的自然次序。格內數字是 <聯> 條數，顏色越深代表引用越集中；右側是總量最高的目標／來源。</p>';
 }
 
+/**
+ * 少了目標庫時的引導（作者 2026-10-29）：讀者只下載了 ys.adb，點到 <聯> 才發現
+ * 沒有 taisho.adb。桌面版直接打開「取得更多 ADB」（從官網下載，不用開瀏覽器）；
+ * 網頁版開官網的公開資料庫頁，下載後用 📁 選取即可。
+ */
+function guideMissingDb(db: string): void {
+  const name = db + '.adb';
+  if (hostState().available) {
+    setStatus(name + ' 還沒開啟：已打開「取得更多 ADB」，下載後會自動出現在 📁', 'warn');
+    openAdbStore();
+    return;
+  }
+  setStatus(name + ' 還沒開啟：已開官網公開資料庫，下載後用 📁 選取', 'warn');
+  window.open('https://shutonggui.cn/accelon26/adb/', '_blank', 'noopener');
+}
+
 async function handleXref(value: string, fromRight: boolean, newTab: boolean, quote?: string, j?: string): Promise<void> {
+  const h0 = performance.now();
   const q = value.indexOf('?');
   const db = q >= 0 ? value.slice(0, q) : '';
   const anchor = q >= 0 ? value.slice(q + 1) : value;
@@ -1295,8 +1331,11 @@ async function handleXref(value: string, fromRight: boolean, newTab: boolean, qu
   const main = reader;
   const mainName = main?.header.dbname ?? '';
   const target = await readerFor(db);
-  if (!target) { setStatus('請先開啟 ' + db + '.adb（工具列資料夾圖示）', 'warn'); return; }
+  const h1 = performance.now();
+  if (!target) { guideMissingDb(db); return; }
   const va = await anchorVa(target, anchor);
+  const h2 = performance.now();
+  (globalThis as any).__xrefClick = { reader: Math.round(h1 - h0), anchorVa: Math.round(h2 - h1), db };
   if (va == null) { setStatus((db === mainName ? '本庫' : db) + ' 找不到頁碼 ' + anchor, 'err'); return; }
   const short = db === 'taisho' ? 'T' : db.slice(0, 4);
   if (!fromRight) {
@@ -1326,19 +1365,20 @@ export async function openTaishoAt(db: string, anchor: string, label: string, ra
   if (!r) { setStatus('請先開啟 ' + db + '.adb', 'warn'); return; }
   const va = await anchorVa(r, anchor);
   if (va == null) { setStatus(db + ' 找不到頁碼 ' + anchor, 'err'); return; }
-  const main = reader?.header.dbname ?? '';
   let quote = '';
   if (range) {
     const page = await pageHanText(db, anchor);
     const mm = /^(\d+)-(\d+)$/.exec(range);
     if (mm) quote = page.slice(Number(mm[1]), Number(mm[2]));
   }
-  if (newTab && db === main) {
-    await linkTo(va, label || anchor, 1, { newTab: true, exact: false, name: label || anchor, phrase: quote || undefined });
-    flashPane('docText');
+  if (newTab) {
+    // Ctrl/⌘：在「本側」（中間）開——切到那個庫再跳
+    if (await openInMain(db, { va, anchor, label: label || anchor, phrase: quote || undefined })) {
+      flashPane('docText');
+    }
     return;
   }
-  openForeignTab(db, va, label || anchor, newTab, anchor, quote || undefined, range);
+  openForeignTab(db, va, label || anchor, false, anchor, quote || undefined, range);
   flashPane('colRight');
 }
 
@@ -1466,6 +1506,165 @@ export async function jumpTaishoCite(c: TaishoCite): Promise<boolean> {
   }
   markLineRange(startLine, endLine);
   return true;
+}
+
+/* ------------------------------------------------------------------ 字元級位置
+ *
+ * 選取選單「複製字元級位置」產生的字串：
+ *
+ *   taisho?5p2c j=12-34      頁 id ＋ 這一頁第 12–34 個漢字（0 起，end 不含）
+ *   jingang?8p749a j=56-59
+ *   foo?L123 j=5-12          沒有 <頁> 的庫：行號 ＋ 這一行的第 5–12 個漢字
+ *
+ * 「跳至」貼上這串 → 切到那個庫、跳到那一頁，並把這幾個字塗成色帶。
+ */
+export interface CharPosition { db: string; anchor: string; a: number; b: number }
+
+const CHAR_POS_RE = /^\s*(?:([A-Za-z0-9_.-]+)\?)?\s*([0-9]{1,3}p[0-9]{1,4}[a-g]|L[0-9]+)\s*j\s*=\s*([0-9]+)\s*(?:[-–—]\s*([0-9]+))?\s*$/i;
+
+export function parseCharPosition(s: string): CharPosition | null {
+  const m = CHAR_POS_RE.exec(s ?? '');
+  if (!m) return null;
+  const a = Number(m[3]);
+  const b = m[4] !== undefined ? Number(m[4]) : a;
+  return { db: m[1] ?? '', anchor: m[2], a: Math.min(a, b), b: Math.max(a, b) };
+}
+
+export interface CharBandHit {
+  db: string; anchor: string; va: number;
+  fromLine: number; fromHan: number; toLine: number; toHan: number;
+}
+
+const baseNameOf = (n: string): string => n.replace(/\.adb$/i, '').toLowerCase();
+
+/** 把某個庫變成「現在這個」：已開就切過去，沒開就從 catalog 開（file:// 只能開選過的）。 */
+async function activateDb(db: string): Promise<boolean> {
+  if (!db || reader?.header.dbname === db) return true;
+  const slot = openDbs.find((d) => d.name === db || baseNameOf(d.file.name) === db
+    || (d.core as { reader?: AdbReader } | undefined)?.reader?.header.dbname === db);
+  if (slot) {
+    switchTo(slot.id);
+    return reader?.header.dbname === db;
+  }
+  const e = catalog.find((x) => x.name === db || baseNameOf(x.file.name) === db);
+  if (!e) return false;
+  await openCatalogEntry(e);
+  return reader?.header.dbname === db;
+}
+
+/**
+ * 在**中間**開啟某個庫的一頁（2026-10-30）。
+ *
+ * 中間一次只顯示一個庫，所以先切到那個庫（已開的分頁，或 catalog 裡的檔案），
+ * 再 `linkTo` 到那一頁。選取選單、對照分頁的「在大正藏／高麗藏開啟」、
+ * 右欄跨庫分頁 Ctrl+點都用這一個入口。
+ */
+export async function openInMain(
+  db: string,
+  opts: { va?: number; anchor?: string; label?: string; phrase?: string } = {},
+): Promise<boolean> {
+  if (!(await activateDb(db))) {
+    setStatus('請先開啟 ' + db + '.adb', 'warn');
+    return false;
+  }
+  const r = reader;
+  if (!r) return false;
+  const va = opts.va ?? (opts.anchor ? await anchorVa(r, opts.anchor) : null);
+  if (va == null) {
+    setStatus(db + ' 找不到 ' + (opts.anchor || '這個位置'), 'err');
+    return false;
+  }
+  const label = opts.label || opts.anchor || '';
+  const o: Record<string, unknown> = { mode: 'node', name: label };
+  if (opts.phrase) { o.exact = false; o.phrase = opts.phrase; } else o.noMark = true;
+  await linkTo(va, label, 1, o as never);
+  return true;
+}
+
+const HAN_RE_X = /[\u3400-\u9fff\uf900-\ufaff]/;
+const hanCountOf = (s: string): number => [...s.replace(/<[^>]*>/g, '')].filter((c) => HAN_RE_X.test(c)).length;
+
+/** 頁標記所在的行；標記在行尾時 `lineOfVa` 會指到下一行，所以要回頭找。 */
+async function pageMarkerLine(r: AdbReader, pageId: string, va: number): Promise<number> {
+  const m = mapper;
+  if (!m) return -1;
+  const ml = m.lineOfVa(va);
+  const has = async (i: number): Promise<boolean> => i >= 0
+    && (await r.physicalText(m.lineStartOf(i), m.lineStartOf(i + 1))).includes(`<頁 id="${pageId}"`);
+  if (await has(ml)) return ml;
+  if (await has(ml - 1)) return ml - 1;
+  return -1;
+}
+
+/**
+ * 字元級位置 → 頁 VA ＋「哪一行、行內第幾個字」。
+ *
+ * `j` 是「這一頁第幾個漢字」，切法要跟 `pageHanText` 一致：頁標記那一行只算
+ * 標記後面的字，遇到下一個 `<頁>` 就結束。
+ */
+export async function resolveCharPosition(pos: CharPosition): Promise<CharBandHit | null> {
+  if (!(await activateDb(pos.db))) {
+    setStatus('請先開啟 ' + (pos.db || '這個') + '.adb', 'warn');
+    return null;
+  }
+  const r = reader;
+  const m = mapper;
+  if (!r || !m) return null;
+  const db = r.header.dbname || pos.db;
+
+  const lm = /^L([0-9]+)$/i.exec(pos.anchor);
+  if (lm) {
+    const line = Number(lm[1]);
+    const va = m.linesVirtual[line];
+    if (va == null) { setStatus(`第 ${line} 行不存在`, 'err'); return null; }
+    return { db, anchor: pos.anchor, va, fromLine: line, fromHan: pos.a, toLine: line, toHan: pos.b };
+  }
+
+  const va = await anchorVa(r, pos.anchor);
+  if (va == null) { setStatus(db + ' 找不到頁碼 ' + pos.anchor, 'err'); return null; }
+  const ml = await pageMarkerLine(r, pos.anchor, va);
+  if (ml < 0) { setStatus('找不到 ' + pos.anchor + ' 的頁標記', 'err'); return null; }
+
+  let acc = 0;
+  let fromLine = -1, fromHan = 0, toLine = -1, toHan = 0;
+  let lastLine = ml, lastHan = 0;
+  for (let i = ml; i < ml + 400; i++) {
+    const t = await r.physicalText(m.lineStartOf(i), m.lineStartOf(i + 1));
+    let han: number;
+    if (i === ml) {
+      const at = t.indexOf(`<頁 id="${pos.anchor}"`);
+      const close = at >= 0 ? t.indexOf('>', at) : -1;
+      han = hanCountOf(close >= 0 ? t.slice(close + 1) : '');
+    } else {
+      const next = t.indexOf('<頁 ');
+      han = hanCountOf(next >= 0 ? t.slice(0, next) : t);
+    }
+    if (fromLine < 0 && pos.a < acc + han) { fromLine = i; fromHan = pos.a - acc; }
+    if (toLine < 0 && pos.b <= acc + han) { toLine = i; toHan = pos.b - acc; }
+    acc += han;
+    lastLine = i; lastHan = han;
+    if (fromLine >= 0 && toLine >= 0) break;
+    if (i > ml && /<頁 /.test(t)) break;
+  }
+  if (fromLine < 0) { fromLine = lastLine; fromHan = lastHan; }
+  if (toLine < 0) { toLine = lastLine; toHan = lastHan; }
+  return { db, anchor: pos.anchor, va, fromLine, fromHan, toLine, toHan };
+}
+
+/**
+ * 「跳至」和對照清單共用：切到那個庫、跳到那一頁，再把 `j` 指到的字塗色帶。
+ * 回傳解析後的位置（找不到就 null）。
+ */
+export async function openCharPosition(pos: CharPosition): Promise<CharBandHit | null> {
+  const hit = await resolveCharPosition(pos);
+  if (!hit) return null;
+  setJumpRange(null);
+  await revealHit(hit.va, hit.anchor, 1, { mode: 'node', noMark: true });
+  for (let i = 0; i < 40 && !document.getElementById('L' + hit.fromLine); i++) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  highlightCharBand(hit);
+  return hit;
 }
 
 export async function xrefProbe(db: string, anchor: string) {

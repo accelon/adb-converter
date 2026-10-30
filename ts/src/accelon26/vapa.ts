@@ -999,8 +999,7 @@ export class VaPaMapper {
   /**
    * Text of a document.
    *
-   * `lines` are the hard lines of the line table — use them for row rendering.
-   * `text` is the raw concatenation with NO separator, which is the shape a
+   * `lines` are the hard lines of the line table — use them for row rendering.   * `text` is the raw concatenation with NO separator, which is the shape a
    * search hit needs: a hard line break consumes no VA (measured: the line-to-
    * line VA gap is exactly 1 for 90.5% of 13j's boundaries, the rest being tag
    * or skip-tag boundaries), so a word cut in two by a hard break is one
@@ -1047,6 +1046,7 @@ export class VaPaMapper {
     const lineNumbers: number[] = [];
     let blockFirst = -1, blockLast = -1;
     for (let li = first; li <= stop && li < vEnds.length; li++) {
+      const liStart = li;               // 合併後的行號要記「第一段」的行號
       const paS = this.lineStart(li);
       const paE = pEnds[li];
       if (paE <= paS) { outLines.push(''); lineNumbers.push(li); continue; }
@@ -1058,8 +1058,26 @@ export class VaPaMapper {
       // getrange_physical skips a leading CR/LF of the line
       if (line.charCodeAt(0) === 13) line = line.slice(1);
       if (line.charCodeAt(0) === 10) line = line.slice(1);
+      // 行表偶爾把標籤切斷（taisho 有約 1% 的行斷在 `<頁 id="…` 中間；
+      // 直接渲染會把 `<頁 …` 當成文字顯示）。往下借幾行把標籤補完，
+      // 行號仍記在這一行的開頭，被借走的行不再單獨出現（作者 2026-10-29）。
+      if (endsInsideTag(line)) {
+        for (let k = 0; k < 8 && line.length < 4000; k++) {
+          const nx = li + 1;              // li 每借一行就前進，這裡不能再加 k
+          if (nx > last || nx >= vEnds.length) break;
+          const s2 = this.lineStart(nx), e2 = pEnds[nx];
+          if (e2 <= s2) break;
+          let part = await this.reader.textSpan(Math.floor(s2 / stride), s2, e2);
+          if (part.charCodeAt(0) === 13) part = part.slice(1);
+          if (part.charCodeAt(0) === 10) part = part.slice(1);
+          line += part;
+          blockLast = Math.floor((e2 - 1) / stride);
+          li = nx;
+          if (!endsInsideTag(line)) break;
+        }
+      }
       outLines.push(line);
-      lineNumbers.push(li);
+      lineNumbers.push(liStart);
     }
     return {
       lines: outLines, lineNumbers, text: outLines.join(''),
@@ -1229,4 +1247,21 @@ export function pickName(attrs: Record<string, string>): string {
     return v.trim();
   }
   return '';
+}
+
+/**
+ * 這一行是否斷在 `<…>` 中間（標籤沒有閉合的 `>`）。
+ *
+ * taisho 的 `lines.physical` 有大約 1% 的行斷在標籤裡面（`<頁 id="63p968b`、
+ * `<聯 i="…`），直接渲染會把殘缺的標籤當成文字顯示。`docText` 用它判斷要不要
+ * 往下借一行把標籤補完（作者 2026-10-29）。
+ */
+function endsInsideTag(s: string): boolean {
+  const lt = s.lastIndexOf('<');
+  if (lt < 0) return false;
+  if (s.indexOf('>', lt) >= 0) return false;
+  // 斷在 `<` 之後（連標籤名都還沒寫）：下一行會以 `頁 id=…` 開頭
+  if (lt === s.length - 1) return true;
+  // `<` 後面要像標籤名；「a < b」這種比較不算
+  return /^<[^\s<>/]/.test(s.slice(lt));
 }

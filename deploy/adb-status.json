@@ -1,12 +1,19 @@
 {
   "_comment": "公開資料庫的狀態。status: available（可下載）／wip（施工中，不下載）／revision（整修中）。downloadable:false 的庫只記在 manifest 版本歷史裡，官網與桌面版都不提供下載。source／licenseNote 是給使用者看的出處與授權說明。",
   "taisho.adb": {
-    "status": "wip",
-    "label": "施工中",
+    "status": "available",
+    "label": "可下載",
     "source": "T01–T55、T85：CBETA XML-P5 2026R2；T56–T84：SAT 2018",
     "licenseNote": "T01–T55、T85 依 CBETA XML-P5 使用條款；T56–T84 文本與底本為 public domain，數位文字取自 SAT 2018 並依其授權標注。TEI 標記按 CBETA convention 整理。",
-    "note": "2026-10-29 已重建底座（85 冊）。T56–84 文本／底本為 public domain，數位文字依 SAT 2018 標注；底座仍在整理與驗證，暫不公開下載。",
+    "note": "大正藏 1–85 冊純經文底座（331 MB）。2026-10-29 重建：修正行表錯位（舊版 69,454 行把 <頁 …> 切斷）。不含本專案加的連結／嵌入／經群。",
     "crossCheck": "T2250《阿毘達磨俱舍論指要鈔》（T63，頁 807a）亦見 Kanseki Repository，可作獨立文字核對。"
+  },
+  "goryeo_taisho.adb": {
+    "status": "available",
+    "label": "可下載",
+    "source": "對照表由 tripitaka-migrator 產生（posmap／juaninfo）；經文仍在 goryeo.adb 與 taisho.adb",
+    "licenseNote": "對照資料由 tripitaka-migrator 產生，見 https://shutonggui.cn/tripitaka-migrator/；本檔只做打包與閱讀器介面。",
+    "note": "高麗藏 ⇄ 大正藏逐字對照表（2.2 MB，6,357 卷），不含經文。開著它，左欄會多一個「高麗⇄大正」分頁：輸入經名／經號／位址或字元級位置，就能跳到另一藏的那一段。"
   },
   "wxzj.adb": {
     "status": "wip",

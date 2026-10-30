@@ -30,6 +30,11 @@ export function setEnsureRight(fn: () => void): void { ensureRight = fn; }
 export function ensureRightPane(): void { ensureRight?.(); }
 export function setForeignRender(fn: ForeignRender): void { foreignRender = fn; }
 
+type OpenInMainFn = (db: string, opts: { va?: number; anchor?: string; label?: string }) => Promise<boolean>;
+let openInMainFn: OpenInMainFn | null = null;
+/** ui.ts 註冊：Ctrl+點右欄跨庫分頁 → 切到那個庫、在中間開啟同一頁（2026-10-30）。 */
+export function setOpenInMain(fn: OpenInMainFn): void { openInMainFn = fn; }
+
 let textTabs: TextTab[] = [];
 let textActive = 0;
 let seq = 0;
@@ -59,6 +64,13 @@ function syncTextTab(): void {
       const close = (ev.target as HTMLElement | null)?.closest('.docTabClose') as HTMLElement | null;
       if (close) { ev.stopPropagation(); closeTextTab(Number(close.dataset.close)); return; }
       const i = Number(el.dataset.i);
+      const t = textTabs[i];
+      // Ctrl/⌘+點跨庫分頁：切到那個庫，在中間開啟同一頁
+      if ((ev.ctrlKey || ev.metaKey) && t?.foreign) {
+        ev.preventDefault();
+        void openInMainFn?.(t.foreign.db, { va: t.foreign.va, anchor: t.foreign.anchor, label: t.label });
+        return;
+      }
       if (i !== textActive) { textActive = i; void renderTextPane(); }
     };
   });

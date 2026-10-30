@@ -11,6 +11,11 @@ import { lookupBook, openTaishoAt, pageHanText, pageIdAtVa, type BookHit } from 
 import { revealHit } from './link';
 import { openDictLookup } from './dict-pane';
 import { openForeignTab } from './text-pane';
+import {
+  addressAtLine, mapPosMap, mapSideOf, plateLinksAtLine, taishoPlateForPageId, type PlateLinks,
+} from './map-pane';
+import { formatAddress } from './posmap';
+import { openExternalUrl } from './plates';
 
 interface Bookmark {
   id: string;
@@ -35,6 +40,10 @@ interface SelInfo {
   searchable: boolean;
   startLine: number;
   endLine: number;
+  /** 選取起點前面有幾個漢字（換算位置用；標點與標記不計）。 */
+  hanPrefix: number;
+  /** 選取終點在它的那一行前面有幾個漢字（複製位址範圍用）。 */
+  hanPrefixEnd: number;
 }
 
 const KEY = 'accelon26.bookmarks.v1';
@@ -46,9 +55,12 @@ let pending: SelInfo | null = null;
 let sutraHit: BookHit | null = null;
 /** study 頁碼／大正引用：選單只留「打開經文」「複製」。 */
 let pendingRef: string | null = null;
+/** 這次選取算出來的圖版網址（「看大正藏／高麗藏圖版」）。 */
+let plateUrls: PlateLinks = {};
 
 const $id = <T extends HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const HAN_RE = /[\u3400-\u9fff\uf900-\ufaff]/;
 
 function loadAll(): Record<string, Bookmark[]> {
   try {
@@ -122,7 +134,24 @@ async function selectionInfo(): Promise<SelInfo | null> {
   const endLineEl = endEl?.closest?.('#docText .docLine') as HTMLElement | null;
   const endN = Number((endLineEl?.id || '').slice(1));
   const endLine = Number.isFinite(endN) && endN >= n ? endN : n;
-  return { text, raw, va, pageId, book, page: pageId, rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width }, searchable, startLine: n, endLine };
+  // 選取起點在這一行的第幾個漢字（標點、標記不計）：換址要的欄內偏置。
+  let hanPrefix = 0;
+  try {
+    const pre = document.createRange();
+    pre.selectNodeContents(line);
+    pre.setEnd(range.startContainer, range.startOffset);
+    for (const ch of pre.toString()) if (HAN_RE.test(ch)) hanPrefix++;
+  } catch { hanPrefix = 0; }
+  // 選取終點在它的那一行的第幾個漢字（複製位址範圍用）
+  let hanPrefixEnd = 0;
+  try {
+    const endLineEl2 = (endLineEl ?? line) as HTMLElement;
+    const pre = document.createRange();
+    pre.selectNodeContents(endLineEl2);
+    pre.setEnd(range.endContainer, range.endOffset);
+    for (const ch of pre.toString()) if (HAN_RE.test(ch)) hanPrefixEnd++;
+  } catch { hanPrefixEnd = hanPrefix; }
+  return { text, raw, va, pageId, book, page: pageId, rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width }, searchable, startLine: n, endLine, hanPrefix, hanPrefixEnd };
 }
 
 async function hanRange(info: SelInfo): Promise<[number, number]> {
@@ -130,8 +159,17 @@ async function hanRange(info: SelInfo): Promise<[number, number]> {
   const page = await pageHanText(db, info.pageId);
   const needle = Array.from(info.raw).filter((c) => /[\u3400-\u9fff\uf900-\ufaff]/.test(c)).join('');
   if (!needle) return [0, 0];
-  const at = page.indexOf(needle);
-  return at >= 0 ? [at, at + needle.length] : [0, Math.min(page.length, needle.length)];
+  let at = page.indexOf(needle);
+  if (at < 0) {
+    // 區段跨頁時整段不在這一頁：用開頭的一段去對（越長越準），
+    // 才不會退成 j=0-N 指到頁首。
+    for (let n = Math.min(needle.length, 24); n >= 4; n--) {
+      at = page.indexOf(needle.slice(0, n));
+      if (at >= 0) break;
+    }
+  }
+  if (at < 0) return [0, Math.min(page.length, needle.length)];
+  return [at, Math.min(page.length, at + needle.length)];
 }
 
 const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -148,7 +186,7 @@ async function snippetFor(kind: 'rong' | 'qian', info: SelInfo): Promise<string>
 }
 function hideMenu(): void {
   const m = $id('selMenu');
-  if (m) m.hidden = true;
+  if (m) { m.hidden = true; closeSubs(m); }
   pending = null;
   sutraHit = null;
   pendingRef = null;
@@ -189,47 +227,100 @@ async function fillSutra(info: SelInfo): Promise<void> {
   btn.hidden = false;
 }
 
+/**
+ * 選取位置的圖版（2026-10-30）：
+ *   大正藏 → DIA 的 uViewer（只需冊與頁，讀大正藏時一定有）
+ *   高麗藏 → KABC（要有對照表才知道經號、卷與冊頁欄；也就是 goryeo_taisho.adb）
+ */
+async function fillPlates(info: SelInfo): Promise<void> {
+  const tBtn = document.querySelector<HTMLButtonElement>('#selMenu [data-sel="plateT"]');
+  const kBtn = document.querySelector<HTMLButtonElement>('#selMenu [data-sel="plateK"]');
+  if (kBtn) kBtn.hidden = true;
+  let links: PlateLinks = plateUrls.taisho ? { taisho: plateUrls.taisho } : {};
+  try {
+    links = await plateLinksAtLine(info.startLine, info.hanPrefix);
+  } catch (e) {
+    // 換址失敗（例如對照表不在）不應該讓整個選單都沒有圖版：大正藏那顆已經先顯示了
+    console.debug('plates: address failed', e);
+  }
+  if (pending !== info) return;
+  plateUrls = { ...links, taisho: links.taisho || plateUrls.taisho };
+  if (tBtn && plateUrls.taisho) { tBtn.hidden = false; tBtn.title = plateUrls.taisho; }
+  if (kBtn && links.goryeo) { kBtn.hidden = false; kBtn.title = links.goryeo; }
+  const m = $id('selMenu');
+  if (m && !m.hidden) placeMenu(m, info);
+}
+
 function showMenu(info: SelInfo): void {
   const m = $id('selMenu');
   if (!m) return;
   pending = info;
   pendingRef = reader?.header.dbname === 'study' ? taishoRef(info.text) : '';
-  const all = [...m.querySelectorAll<HTMLButtonElement>('[data-sel]')];
+  plateUrls = {};
+  addrRange = '';
+  closeSubs(m);
+  m.hidden = false;
+
+  // 先全部顯示，再依情況收起來（不要留下上一個選取的狀態）
+  for (const kind of ['search', 'copy', 'view']) {
+    const g = grpOf(m, kind);
+    if (g) g.hidden = false;
+  }
+  m.querySelectorAll<HTMLButtonElement>('[data-sel]').forEach((b) => { b.hidden = false; });
+  const minor = m.querySelector<HTMLButtonElement>('.selMinor');
+  if (minor) minor.hidden = false;
+  for (const sel of ['plateT', 'plateK', 'sutra', 'addr']) {
+    const b = actOf(m, sel);
+    if (b) b.hidden = true;
+  }
+
+  fillSearch(m);
+
   if (pendingRef) {
-    // 雙擊頁碼／大正引用：只留「打開經文」「複製」，不要 bookmark／搜尋／字典／引用模板。
+    // study 的頁碼／大正引用：只留「複製文字」與「查看→打開經文」
     sutraHit = null;
-    for (const b of all) b.hidden = b.dataset.sel !== 'sutra' && b.dataset.sel !== 'copy';
-    const open = m.querySelector<HTMLButtonElement>('[data-sel="sutra"]');
+    const gs = grpOf(m, 'search');
+    if (gs) gs.hidden = true;
+    for (const sel of ['cite', 'rong', 'qian', 'pos', 'addr', 'dict', 'plateT', 'plateK']) {
+      const b = actOf(m, sel);
+      if (b) b.hidden = true;
+    }
+    const open = actOf(m, 'sutra');
     if (open) {
       open.textContent = '打開經文';
       open.title = '在大正藏打開 ' + pendingRef;
       open.hidden = false;
     }
-    m.hidden = false;
-    const w = m.offsetWidth || 120, h = m.offsetHeight || 36;
-    m.style.left = Math.max(6, Math.min(window.innerWidth - w - 6, info.rect.left)) + 'px';
-    m.style.top = Math.max(6, Math.min(window.innerHeight - h - 6, info.rect.bottom + 6)) + 'px';
+    if (minor) minor.hidden = true;
+    placeMenu(m, info);
     return;
   }
+
   pendingRef = null;
-  for (const b of all) b.hidden = false;
-  const searchBtn = m.querySelector<HTMLButtonElement>('[data-sel="search"]');
-  if (searchBtn) searchBtn.hidden = !info.searchable;
-  const citeBtn = m.querySelector<HTMLButtonElement>('[data-sel="cite"]');
+  const citeBtn = actOf(m, 'cite');
   if (citeBtn) citeBtn.hidden = isTerminalDb();
-  const sutraBtn = m.querySelector<HTMLButtonElement>('[data-sel="sutra"]');
-  if (sutraBtn) sutraBtn.hidden = true;
-  m.hidden = false;
-  // 先顯示再量大小，才不會超出視窗
-  const w = m.offsetWidth || 120, h = m.offsetHeight || 36;
-  const left = Math.max(6, Math.min(window.innerWidth - w - 6, info.rect.left));
-  const top = Math.max(6, Math.min(window.innerHeight - h - 6, info.rect.bottom + 6));
-  m.style.left = left + 'px';
-  m.style.top = top + 'px';
+  // 大正藏圖版只要頁 id：選單一開就先給，不必等換址完成
+  if (reader?.header.dbname === 'taisho' && info.pageId) {
+    const url = taishoPlateForPageId(info.pageId);
+    const b = actOf(m, 'plateT');
+    if (url && b) { plateUrls.taisho = url; b.hidden = false; b.title = url; }
+  }
+  placeMenu(m, info);
   void fillSutra(info);
+  void fillPlates(info);
+  void fillAddress(info);
+}
+
+/** 先顯示再量大小，才不會超出視窗。 */
+function placeMenu(m: HTMLElement, info: SelInfo): void {
+  const w = m.offsetWidth || 120, h = m.offsetHeight || 36;
+  m.style.left = Math.max(6, Math.min(window.innerWidth - w - 6, info.rect.left)) + 'px';
+  m.style.top = Math.max(6, Math.min(window.innerHeight - h - 6, info.rect.bottom + 6)) + 'px';
 }
 
 async function copyText(text: string, message: string): Promise<void> {
+  // 測試／診斷：最近一次複製的字串（不管剪貼簿有沒有成功）
+  (window as unknown as { __lastCopy?: string }).__lastCopy = text;
   let ok = false;
   try {
     await navigator.clipboard.writeText(text);
@@ -272,27 +363,117 @@ export async function citationFor(info: SelInfo): Promise<string> {
   return out;
 }
 
-/** 把選取文字送進目前 active 的左欄搜尋框；沒有搜尋框（書籤／token）就退回目錄搜尋。 */
-function sendSearch(text: string): void {
+// ---------------------------------------------------------------- 兩層選單（2026-10-30）
+
+/** 左欄可以接受輸入的分頁：第一層「搜尋」的目的地。 */
+const INPUT_TABS: [kind: string, inputId: string][] = [
+  ['dir', 'query'],
+  ['terms', 'termsQuery'],
+  ['freq', 'freqQuery'],
+  ['folio', 'folioQuery'],
+  ['jump', 'jumpQuery'],
+  ['latin', 'latinQuery'],
+  ['map', 'mapQuery'],
+];
+
+function visibleInputTabs(): { kind: string; inputId: string; label: string }[] {
+  const out: { kind: string; inputId: string; label: string }[] = [];
+  for (const [kind, inputId] of INPUT_TABS) {
+    const btn = document.querySelector<HTMLElement>(`#colLeft .tabBtn[data-tab="${kind}"]`);
+    if (!btn || btn.hidden) continue;
+    out.push({ kind, inputId, label: (btn.textContent || kind).trim() });
+  }
+  return out;
+}
+
+/** 把選取文字送到指定的左欄分頁，並切過去。 */
+function sendToTab(kind: string, text: string): void {
   const left = document.getElementById('colLeft');
-  if (left && left.getBoundingClientRect().width < 10) {
-    document.getElementById('toggleLeft')?.click();
-  }
-  const active = document.querySelector<HTMLElement>('#colLeft .tabBtn.active');
-  let tab = active?.dataset.tab ?? 'dir';
-  const ids: Record<string, string> = {
-    dir: 'query', terms: 'termsQuery', freq: 'freqQuery', jump: 'jumpQuery', latin: 'latinQuery',
-  };
-  let input = document.getElementById(ids[tab] ?? '') as HTMLInputElement | null;
-  if (!input) {
-    tab = 'dir';
-    document.querySelector<HTMLElement>('#colLeft .tabBtn[data-tab="dir"]')?.click();
-    input = document.getElementById('query') as HTMLInputElement | null;
-  }
+  if (left && left.getBoundingClientRect().width < 10) document.getElementById('toggleLeft')?.click();
+  const btn = document.querySelector<HTMLElement>(`#colLeft .tabBtn[data-tab="${kind}"]`);
+  if (!btn || btn.hidden) return;
+  // 已經在這一頁就不要重點（再點一次目錄會把樹收起來）
+  if (!btn.classList.contains('active')) btn.click();
+  const inputId = INPUT_TABS.find(([k]) => k === kind)?.[1] ?? '';
+  const input = document.getElementById(inputId) as HTMLInputElement | null;
   if (!input) return;
   input.value = text;
   input.dispatchEvent(new Event('input', { bubbles: true }));
   input.focus();
+}
+
+const subOf = (m: HTMLElement, kind: string) => m.querySelector<HTMLElement>(`.selSub[data-sub="${kind}"]`);
+const actOf = (m: HTMLElement, sel: string) => m.querySelector<HTMLButtonElement>(`[data-sel="${sel}"]`);
+const grpOf = (m: HTMLElement, kind: string) => m.querySelector<HTMLElement>(`.selGroup[data-grp="${kind}"]`);
+
+function closeSubs(m: HTMLElement): void {
+  m.querySelectorAll<HTMLElement>('.selSub').forEach((s) => { s.hidden = true; });
+  m.querySelectorAll<HTMLElement>('.selGroup').forEach((g) => g.classList.remove('open'));
+}
+
+/** 開第二層；靠近視窗右邊／下面時翻到左邊、往上收。 */
+function openSub(m: HTMLElement, kind: string): void {
+  m.querySelectorAll<HTMLElement>('.selSub').forEach((s) => { s.hidden = s.dataset.sub !== kind; });
+  m.querySelectorAll<HTMLElement>('.selGroup').forEach((g) => g.classList.toggle('open', g.dataset.grp === kind));
+  const sub = subOf(m, kind);
+  if (!sub) return;
+  m.classList.remove('flip');
+  let r = sub.getBoundingClientRect();
+  if (r.right > window.innerWidth - 6) {
+    m.classList.add('flip');
+    r = sub.getBoundingClientRect();
+  }
+  const dy = Math.min(0, window.innerHeight - 6 - r.bottom);
+  sub.style.top = (dy < 0 ? -5 + dy : -5) + 'px';
+}
+
+/** 第一層「搜尋」的第二層：這個庫現在有、而且能接受輸入的分頁。 */
+function fillSearch(m: HTMLElement): void {
+  const sub = subOf(m, 'search');
+  const grp = grpOf(m, 'search');
+  if (!sub) return;
+  const tabs = visibleInputTabs();
+  sub.innerHTML = tabs.map((t) =>
+    `<button type="button" data-sel="search:${t.kind}">${esc(t.label)}</button>`).join('');
+  if (grp) grp.hidden = tabs.length === 0;
+}
+
+/**
+ * 字元級位置：`db?頁 j=起-止`（頁＋這一頁第幾個漢字；沒有頁 id 就用行號）。
+ * 沒有頁的庫，`j` 是「這一行的第幾個漢字」。
+ */
+async function charPosition(info: SelInfo): Promise<string> {
+  const db = reader?.header.dbname || 'db';
+  if (!info.pageId) {
+    const a = info.hanPrefix;
+    const total = Array.from(info.raw).filter((c) => HAN_RE.test(c)).length;
+    const b = info.endLine === info.startLine ? info.hanPrefixEnd : a + total;
+    return `${db}?L${info.startLine} j=${a}-${b}`;
+  }
+  const [a, b] = await hanRange(info);
+  return `${db}?${info.pageId} j=${a}-${b}`;
+}
+
+let addrRange = '';
+
+/** 「複製高麗⇄大正位址」：起點-終點（只對 taisho／goryeo 有意義，需要對照表）。 */
+async function fillAddress(info: SelInfo): Promise<void> {
+  const m = $id('selMenu');
+  if (!m) return;
+  const btn = actOf(m, 'addr');
+  if (btn) btn.hidden = true;
+  addrRange = '';
+  if (!mapSideOf(reader)) return;
+  try {
+    if (!(await mapPosMap())) return;
+    const a = await addressAtLine(info.startLine, info.hanPrefix);
+    const b = await addressAtLine(info.endLine, info.hanPrefixEnd);
+    if (!a || !b || pending !== info) return;
+    addrRange = `${formatAddress(a)}-${formatAddress(b)}`;
+    if (btn) { btn.hidden = false; btn.title = addrRange; }
+  } catch (e) {
+    console.debug('addr range failed', e);
+  }
 }
 
 function addBookmark(info: SelInfo): void {  const db = dbKey();
@@ -363,41 +544,77 @@ export async function citationForSelection(): Promise<string | null> {
   return info ? citationFor(info) : null;
 }
 
+/** 選單動作（第一層三組＋書籤）。動態產生的第二層項目也用同一個入口。 */
+async function runAction(action: string): Promise<void> {
+  const info = pending ?? await selectionInfo();
+  if (!info) return;
+  if (action.startsWith('search:')) {
+    sendToTab(action.slice('search:'.length), info.text);
+  } else if (action === 'bookmark') addBookmark(info);
+  else if (action === 'copy') await copyText(info.raw, '已複製選取文字');
+  else if (action === 'cite' && !isTerminalDb()) await copyText(await citationFor(info), '已複製引用');
+  else if (action === 'rong') {
+    const s = await snippetFor('rong', info);
+    (window as unknown as { __lastSnippet?: string }).__lastSnippet = s;
+    await copyText(s, '已複製 <融> 片段；貼到 jingang.txt 的頁面位置');
+  } else if (action === 'qian') {
+    const s = await snippetFor('qian', info);
+    (window as unknown as { __lastSnippet?: string }).__lastSnippet = s;
+    await copyText(s, '已複製 <嵌> 模板；把 q 改成要標記的經文，貼到段落後');
+  } else if (action === 'pos') {
+    await copyText(await charPosition(info), '已複製字元級位置（頁＋漢字範圍）');
+  } else if (action === 'addr' && addrRange) {
+    await copyText(addrRange, '已複製高麗⇄大正位址範圍');
+  } else if (action === 'dict') await openDictLookup(info.text);
+  else if (action === 'plateT' && plateUrls.taisho) await openExternalUrl(plateUrls.taisho);
+  else if (action === 'plateK' && plateUrls.goryeo) await openExternalUrl(plateUrls.goryeo);
+  else if (action === 'sutra') {
+    if (pendingRef) {
+      await openTaishoAt('taisho', pendingRef, '大正 ' + pendingRef);
+    } else if (sutraHit) {
+      openForeignTab(sutraHit.db, sutraHit.pageVa ?? sutraHit.va, sutraHit.title, false, sutraHit.pageId);
+      setStatus('右欄開啟《' + sutraHit.title + '》', 'info');
+    }
+  }
+  hideMenu();
+}
+
 export function initBookmarks(): void {
   if (inited) return;
   inited = true;
   const menu = $id('selMenu');
   menu?.addEventListener('mousedown', (ev) => ev.preventDefault());
 
-  const run = async (action: string) => {
-    const info = pending ?? await selectionInfo();
-    if (!info) return;
-    if (action === 'bookmark') addBookmark(info);
-    else if (action === 'copy') await copyText(info.raw, '已複製選取文字');
-    else if (action === 'cite' && !isTerminalDb()) await copyText(await citationFor(info), '已複製引用');
-    else if (action === 'rong') {
-      const s = await snippetFor('rong', info);
-      (window as unknown as { __lastSnippet?: string }).__lastSnippet = s;
-      await copyText(s, '已複製 <融> 片段；貼到 jingang.txt 的頁面位置');
-    } else if (action === 'qian') {
-      const s = await snippetFor('qian', info);
-      (window as unknown as { __lastSnippet?: string }).__lastSnippet = s;
-      await copyText(s, '已複製 <嵌> 模板；把 q 改成要標記的經文，貼到段落後');
-    }
-    else if (action === 'search' && info.searchable) sendSearch(info.text);
-    else if (action === 'dict') await openDictLookup(info.text);
-    else if (action === 'sutra') {
-      if (pendingRef) {
-        await openTaishoAt('taisho', pendingRef, '大正 ' + pendingRef);
-      } else if (sutraHit) {
-        openForeignTab(sutraHit.db, sutraHit.pageVa ?? sutraHit.va, sutraHit.title, false, sutraHit.pageId);
-        setStatus('右欄開啟《' + sutraHit.title + '》', 'info');
-      }
-    }
-    hideMenu();
+  // 動作都用事件委派：第二層的「搜尋」項目是每次開選單才長出來的
+  menu?.addEventListener('click', (ev) => {
+    const b = (ev.target as Element | null)?.closest<HTMLElement>('[data-sel]');
+    if (!b) return;
+    ev.stopPropagation();
+    void runAction(b.dataset.sel ?? '');
+  });
+
+  // 第一層：滑過就開第二層；點一下也可以（觸控）。
+  // 離開時延遲一點再收，讓游標有時間跨過兩層之間的空隙。
+  let closeTimer: number | undefined;
+  const scheduleClose = (): void => {
+    window.clearTimeout(closeTimer);
+    closeTimer = window.setTimeout(() => { if (menu) closeSubs(menu); }, 180);
   };
-  menu?.querySelectorAll<HTMLElement>('[data-sel]').forEach((b) => {
-    b.addEventListener('click', () => void run(b.dataset.sel ?? ''));
+  menu?.querySelectorAll<HTMLElement>('.selGroup').forEach((g) => {
+    const kind = g.dataset.grp ?? '';
+    if (!kind) return;
+    const btn = g.querySelector<HTMLButtonElement>('.selGroupBtn');
+    g.addEventListener('mouseenter', () => {
+      window.clearTimeout(closeTimer);
+      if (menu) openSub(menu, kind);
+    });
+    g.addEventListener('mouseleave', scheduleClose);
+    btn?.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (!menu) return;
+      if (g.classList.contains('open')) closeSubs(menu);
+      else openSub(menu, kind);
+    });
   });
 
   document.addEventListener('mouseup', (ev) => {

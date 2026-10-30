@@ -383,8 +383,10 @@ export async function revealDocLine(line: number): Promise<void> {
  * `null` 清掉。呼叫端（xref 的大正藏引用）只需要給行號。
  */
 export function markLineRange(from: number | null, to?: number): void {
+  clearCharBand();          // 行色帶與字元色帶不並存
   setJumpRange(from, to);
   const band = jumpRange();
+  (window as unknown as { __lastJumpBand?: unknown }).__lastJumpBand = band;
   const box = document.getElementById('docText') ?? document.getElementById('textBody');
   if (!box) return;
   box.querySelectorAll<HTMLElement>('.docLine').forEach((el) => {
@@ -394,6 +396,82 @@ export function markLineRange(from: number | null, to?: number): void {
     requestAnimationFrame(() =>
       document.getElementById('L' + band.from)?.scrollIntoView({ block: 'center' }));
   }
+}
+
+// ---------------------------------------------------------------- 字元級色帶（2026-10-30）
+/**
+ * 「跳至」貼上字元級位置（`db?頁 j=a-b`）時，只塗那幾個字。
+ *
+ * 用 CSS Custom Highlight（`::highlight(accelonCharBand)`）而不是包 `<mark>`：
+ * 本文會重畫，包節點會把重畫弄壞；Highlight 只拿著一個 Range，重畫時清掉就好。
+ */
+const CHAR_BAND = 'accelonCharBand';
+const HAN_CHAR = /[\u3400-\u9fff\uf900-\ufaff]/;
+
+export interface CharBand {
+  fromLine: number; fromHan: number; toLine: number; toHan: number;
+}
+
+type HighlightCtor = new (...ranges: Range[]) => unknown;
+type HighlightRegistry = { set(name: string, h: unknown): void; delete(name: string): void; get(name: string): unknown };
+
+function highlightApi(): { registry: HighlightRegistry; ctor: HighlightCtor } | null {
+  const g = globalThis as unknown as { CSS?: { highlights?: HighlightRegistry }; Highlight?: HighlightCtor };
+  if (g.CSS?.highlights && g.Highlight) return { registry: g.CSS.highlights, ctor: g.Highlight };
+  return null;
+}
+
+/** 這一行第 k 個漢字之前的 DOM 位置；k 等於總數時回最後一個漢字之後。 */
+function domPosInLine(el: HTMLElement, k: number): { node: Node; offset: number } | null {
+  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let count = 0;
+  let last: { node: Node; offset: number } | null = null;
+  for (let n = w.nextNode(); n; n = w.nextNode()) {
+    const s = n.nodeValue ?? '';
+    for (let i = 0; i < s.length; i++) {
+      if (!HAN_CHAR.test(s[i])) continue;
+      if (count === k) return { node: n, offset: i };
+      count++;
+      last = { node: n, offset: i + 1 };
+    }
+  }
+  return k >= count ? last : null;
+}
+
+export function clearCharBand(): void {
+  highlightApi()?.registry.delete(CHAR_BAND);
+  (window as unknown as { __lastCharBand?: unknown }).__lastCharBand = null;
+}
+
+/** 塗上字元級色帶（同一份文件只會有一條）；回傳實際塗到的文字。 */
+export function highlightCharBand(band: CharBand): string {
+  clearCharBand();
+  const fromEl = document.getElementById('L' + band.fromLine);
+  const toEl = document.getElementById('L' + band.toLine);
+  if (!fromEl || !toEl) return '';
+  const a = domPosInLine(fromEl, Math.max(0, band.fromHan));
+  const b = domPosInLine(toEl, Math.max(band.fromHan, band.toHan));
+  if (!a || !b) return '';
+  const range = document.createRange();
+  try {
+    range.setStart(a.node, a.offset);
+    range.setEnd(b.node, b.offset);
+  } catch {
+    return '';
+  }
+  const text = range.toString();
+  const api = highlightApi();
+  if (api) api.registry.set(CHAR_BAND, new api.ctor(range));
+  else {
+    // 沒有 Custom Highlight（很舊的 WebView）：退回原生選取，至少看得到
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }
+  (window as unknown as { __lastCharBand?: unknown }).__lastCharBand = { ...band, text };
+  const el = a.node.nodeType === 1 ? (a.node as Element) : a.node.parentElement;
+  requestAnimationFrame(() => el?.closest?.('.docLine')?.scrollIntoView({ block: 'center' }));
+  return text;
 }
 
 /** the whole-database realm (used when no document row owns the VA) */
@@ -1320,6 +1398,7 @@ window.addEventListener('resize', hideDocMetaTip);
 /** render one page: tab strip, header, rows, pager. */
 function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   if (!dt) return;
+  clearCharBand();          // 重畫就沒有那條字元色帶了（Range 指向舊節點）
   bindInlineSvgZoom();
   bindLineTip();
   if (s.editing && !editAllowed()) s.editing = false;
@@ -1898,6 +1977,7 @@ export function resetDocPane(): void {
   lastDocLines = [];
   lastLink = null;
   setJumpRange(null);
+  clearCharBand();
   pagerLog.length = 0;
 }
 

@@ -285,6 +285,12 @@ export interface SearchTree {
   /** VA of the <樹> tag instance itself */
   va: number;
   /**
+   * `m="taisho"`／`m="goryeo"`：這一棵不是內文的階層樹，而是「高麗藏 ⇄ 大正藏
+   * 對照」分頁（2026-10-30，`goryeo_taisho.adb`）。值＝預設的來源側；資料來自
+   * `align`／`map` 容器，不是文件裡的標籤實例。
+   */
+  map?: string;
+  /**
    * The `<樹>…</樹>` element's own text — the author's pane caption
    * (`ss.caption := removetag(getnNodeValue(dn))`): 經目 / 書名 / 分書頻次 …
    * Filled in by scopes.ts, because resolving it means walking the source.
@@ -336,6 +342,7 @@ export async function loadTrees(reader: AdbReader): Promise<SearchTree[]> {
   const va = await reader.decodeBlockList('tags', at);
   const s = instanceValues(await reader.attributeValues('樹.s'));
   const t = instanceValues(await reader.attributeValues('樹.t'));
+  const map = instanceValues(await reader.attributeValues('樹.m'));
   const out: SearchTree[] = [];
   for (let i = 0; i < va.length; i++) {
     const scope = s[i] ?? '';
@@ -349,6 +356,7 @@ export async function loadTrees(reader: AdbReader): Promise<SearchTree[]> {
       tiers,
       terminalTier,
       va: va[i] ?? 0,
+      map: map[i] ?? '',
     });
   }
   return out;

@@ -25,6 +25,70 @@ import { discardAll, editCount, findSession, hasEdits, onEditsChange, sourceKey 
 
 export const MAX_DBS = 5;
 
+// ---------------------------------------------------------------- 晶片短名（2026-10-30）
+/**
+ * `dbChip` 顯示短名；下拉清單的 `.dbPickName` 仍是完整庫名。
+ *
+ * 短名的來源依序：adb 檔頭的 `<集 b="印順">…</集>` → 下面寫死的缺省 → 庫名。
+ * 現在先寫死（taisho 沒有 集.b 就是「大正」）；下次 rebuild 把 `b=` 放進 集 標籤，
+ * 這裡就會自動改用檔頭的值，不必再改程式。
+ */
+const SHORT_DB_NAMES: Record<string, string> = {
+  taisho: '大正',
+  wxzj: '卍續',
+  goryeo: '高麗',
+  ys: '印順',
+  tx: '太虛',
+  lc: '呂澂',
+};
+
+const shortFromHead = new Map<string, string>();
+const shortAsked = new Set<string>();
+const dbBase = (n: string): string => n.replace(/\.adb$/i, '').toLowerCase();
+
+function slotKey(d: DbSlot): string {
+  const r = (d.core as { reader?: AdbReader } | undefined)?.reader;
+  return (r?.header.dbname || dbBase(d.file.name)).toLowerCase();
+}
+
+/** 晶片上的名字（同步；檔頭的 集.b 讀到後會蓋過去）。 */
+function chipName(d: DbSlot): string {
+  const r = (d.core as { reader?: AdbReader } | undefined)?.reader;
+  // dbname 與檔名都試（有的庫 dbname 不是檔名，例如 ys.adb）
+  const keys = [r?.header.dbname ?? '', dbBase(d.file.name)]
+    .map((s) => s.toLowerCase()).filter(Boolean);
+  for (const k of keys) {
+    const s = shortFromHead.get(k) ?? SHORT_DB_NAMES[k];
+    if (s) return s;
+  }
+  return d.name;
+}
+
+/** 讀每個庫檔頭的 `<集 … b="短名" …>`；讀到就重畫一次晶片列。 */
+function collectShortNames(): void {
+  for (const d of openDbs) {
+    const key = slotKey(d);
+    if (shortAsked.has(key)) continue;
+    const r = (d.core as { reader?: AdbReader } | undefined)?.reader;
+    if (!r) continue;                 // reader 還沒好，下次再問
+    shortAsked.add(key);
+    void (async () => {
+      let b = '';
+      try {
+        const head = await r.sourceText(0);
+        for (const m of head.matchAll(/<集(?:\s[^>]*)?>/g)) {
+          const a = /\sb\s*=\s*"([^"]*)"/.exec(m[0]);
+          if (a?.[1]?.trim()) { b = a[1].trim(); break; }
+        }
+      } catch { /* 讀不到就用缺省 */ }
+      if (b && shortFromHead.get(key) !== b) {
+        shortFromHead.set(key, b);
+        renderDbTabs();
+      }
+    })();
+  }
+}
+
 export interface DbSlot {
   id: number;
   name: string;
@@ -159,10 +223,18 @@ let pickOpen = false;
 /** 選單現在開著嗎（診斷／測試用） */
 export function dbPickOpen(): boolean { return pickOpen; }
 
-/** 開／關選單；`force` 省略＝切換 */
-export function setDbPickOpen(force?: boolean): void {
+/** 開／關選單；`force` 省略＝切換。`focus`＝用鍵盤開的，聚焦第一項（Alt+O）。 */
+export function setDbPickOpen(force?: boolean, focus = false): void {
   pickOpen = force ?? !pickOpen;
   renderDbPick();
+  if (pickOpen && focus) requestAnimationFrame(() => focusPickItem(0));
+}
+
+/** 把焦點移到清單第 i 項（方向鍵／Alt+O 用）。 */
+export function focusPickItem(i = 0): void {
+  const items = [...document.querySelectorAll<HTMLElement>('#dbPickMenu .dbPickItem')];
+  if (!items.length) return;
+  items[Math.max(0, Math.min(items.length - 1, i))]?.focus();
 }
 
 /** 目前 active 的那個 catalog key（`state().dbPick` 用） */
@@ -331,6 +403,16 @@ export function renderDbPick(): void {
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(ev); }
       };
     });
+    // 鍵盤：↑↓／Home／End 移動，Enter 開，Esc 收起（2026-10-30）
+    menu.onkeydown = (ev) => {
+      const items = [...menu.querySelectorAll<HTMLElement>('.dbPickItem')];
+      const at = items.indexOf(document.activeElement as HTMLElement);
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); items[Math.min(items.length - 1, at + 1)]?.focus(); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); items[Math.max(0, at - 1)]?.focus(); }
+      else if (ev.key === 'Home') { ev.preventDefault(); items[0]?.focus(); }
+      else if (ev.key === 'End') { ev.preventDefault(); items[items.length - 1]?.focus(); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); setDbPickOpen(false); ($('#dbPickBtn') as HTMLElement | null)?.focus(); }
+    };
     // 貼在 📁 正下方、**向右展開**（作者 2026-10-18）：寬度最多到視窗右緣（留 12px），
     // 所以庫名再長也只會在格子裡省略，不會溢出畫面任何一邊。
     const wrap = menu.parentElement;
@@ -345,7 +427,7 @@ export function renderDbPick(): void {
   }
   if (btn) {
     btn.classList.toggle('on', pickOpen);
-    btn.title = `adb（${shown.length} 個已開啟過）：按一下選一個（最多同時保留 ${MAX_DBS} 個）`;
+    btn.title = `adb（${shown.length} 個已開啟過）：按一下選一個（最多同時保留 ${MAX_DBS} 個）（Alt+O）`;
   }
   // 沒有打開任何 adb 時不必顯示放大鏡（作者 2026-10）
   const allBtn = $('#searchAllBtn') as HTMLButtonElement | null;
@@ -481,6 +563,7 @@ export function registerOpenDb(file: AdbSource, name: string): { ok: boolean; re
 export function renderDbTabs(): void {
   const box = $('#dbTabs');
   if (!box) return;
+  collectShortNames();               // 檔頭的 集.b 是非同步的；讀到會再重畫
   const active = activeSlot();
   const SAVE_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h9l3 3v9H2V2zm2 1v4h7V3H4zm0 7v4h8v-4H4z"/></svg>';
   box.innerHTML = openDbs.map((d) => {
@@ -495,7 +578,7 @@ export function renderDbTabs(): void {
     const title = `${d.name}\n${d.file.name}（${fmtBytes(d.file.size)}）`
       + (built !== '—' ? `\n建置日期 ${built}` : '');
     return '<span class="dbChip' + (on ? ' active' : '') + '" data-id="' + d.id + '" title="' + escapeHtml(title) + '">'
-      + escapeHtml(d.name) + edit
+      + escapeHtml(chipName(d)) + edit
       + '<span class="dbChipClose" data-close="' + d.id + '" title="關閉（含它的所有本文分頁）">✕</span>'
       + '</span>';
   }).join('');

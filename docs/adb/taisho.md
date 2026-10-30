@@ -66,6 +66,11 @@ taisho.adb  ──<融 i="taisho?18p55a" j="…">──┐
 - `ts/src/accelon26/embed.ts`：`<嵌>` 的開啟、塗紅、收合
 - `ts/src/accelon26/render_accelon3.ts`：`<融>`／`<嵌>` 的渲染
 - `jingqun/study-build.ts`：建置時從母庫抽頁
+- `ts/src/accelon26/plates.ts`：大正藏圖版（DIA `index.html?id=Tv05p0002`）；
+  高麗藏那一顆由 `goryeo_taisho.adb` 的對照表算出（見
+  [goryeo-steps.md](goryeo-steps.md) §7）。把 `goryeo_taisho.adb` 放在
+  `D:\accelon3`（與 `taisho.adb`、`accelon26.exe` 同一個資料夾），桌面版開機
+  就會列出它，讀大正藏時不必先手動開。
 
 ## 6. 注意
 

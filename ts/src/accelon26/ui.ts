@@ -10,7 +10,8 @@ import { type AdbSource } from './adb';
 import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, lineTipEnabled, pageBounds, pagerLog, readDocFont, readSideFont, openHistoryPage, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, saveLastReadNow, setDocFont, setHardBreaks, setLineTip, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
 import { renderTextPane } from './text-pane';
 import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
-import { loadPosMap, parseAddress, formatAddress, type PosMap } from './posmap';
+import { formatAddress, parseAddress, type PosMap } from './posmap';
+import { addressAtLine, convertText, initMap, mapPosMap, mapState, renderMap } from './map-pane';
 import { initNoteLinks } from './notes';
 import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderJump, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully, treeSnapshot } from './scopes';
@@ -221,6 +222,10 @@ function showTab(name: string, col: 'left' | 'right' = 'left') {
     else if (name === 'terms') void renderTerms();
     else if (name === 'folio') void renderFolio();
     else if (name === 'jump') void renderJump();
+    else if (name === 'map') void renderMap().catch((e) => {
+      console.error('map pane failed', e);
+      setStatus('對照表讀取失敗：' + String((e as Error)?.message ?? e), 'err');
+    });
     else if (name === 'bookmark') void renderBookmarks();
     else if (name === 'latin') void renderLatin();
   }
@@ -1343,6 +1348,38 @@ function boot() {
       setStatus('左欄：' + (readCols().left > 0 ? '開' : '關') + '（Ctrl+B）', 'info');
     }
   }, true);
+  // Alt+1…5 切換 adb；Alt+O 開 adb 清單；Alt+S 搜尋所有 adb；Alt+A 關於（2026-10-30）
+  window.addEventListener('keydown', (ev) => {
+    if (ev.defaultPrevented || ev.repeat || ev.ctrlKey || ev.metaKey || ev.shiftKey || !ev.altKey) return;
+    const m = /^(?:Digit|Numpad)([1-5])$/.exec(ev.code ?? '');
+    const n = m ? Number(m[1]) : (/^[1-5]$/.test(ev.key) ? Number(ev.key) : 0);
+    const code = (ev.code || '').replace(/^Key/, '').toLowerCase();
+    if (!n && code !== 'o' && code !== 's' && code !== 'a') return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (n) {
+      if (anyModalOpen()) return;
+      const slot = openDbs[n - 1];
+      if (!slot) { setStatus(`Alt+${n}：沒有第 ${n} 個已開啟的 adb`, 'warn'); return; }
+      if (activeSlot()?.id !== slot.id) switchTo(slot.id);
+      setStatus(`切換到 ${slot.name}（Alt+${n}）`, 'info');
+      return;
+    }
+    if (code === 'o') {
+      if (anyModalOpen()) return;
+      setDbPickOpen(true, true);          // 開著，↑↓ 選、Enter 開
+      return;
+    }
+    if (code === 's') {
+      if (anyModalOpen()) return;
+      openSearchAll();
+      requestAnimationFrame(() => (document.getElementById('allSearchQuery') as HTMLInputElement | null)?.focus());
+      return;
+    }
+    if (code === 'a') {
+      if (aboutState().open) closeAbout(); else void openAbout();
+    }
+  }, true);
   window.addEventListener('keydown', (ev) => {
     if (ev.defaultPrevented || ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
     switch (ev.key) {
@@ -1571,10 +1608,12 @@ function boot() {
   initXref();       // <聯 i="db?anchor"> 跨庫錨點（本文 ⇄ 右欄）
   initEmbed();      // <嵌 i="db?anchor"> 文內嵌入（transclusion）
   initHeatTab();    // 右欄「引紋」：反鏈的引用分布熱圖
+  initMap();        // 左欄「對照」：高麗藏 ⇄ 大正藏 位置換算（goryeo_taisho.adb）
   initRevList();    // 反鏈清單抽屜
   initBookmarks();  // 左欄書籤＋選取文字選單
   initAdbUpdate();  // #dbTabs 的資料庫更新（New）＋下載對話盒
   setEnsureRight(() => setSide('right', true));
+  setOpenInMain((db, opts) => openInMain(db, opts));   // 右欄跨庫分頁 Ctrl+點 → 中間開啟
   renderDbPick();   // 下拉第一項是「加入 adb」（file:// 版）
   void bootDesktop();   // desktop build: catalogue + open the adbs next to the exe
   setStatus('請選擇或拖入 .adb 檔案（13j / yinshun 皆可直接開啟）', 'info');
@@ -1586,16 +1625,13 @@ function boot() {
 
 document.addEventListener('DOMContentLoaded', boot);
 
-let posmapCache: { r: unknown; pm: PosMap } | null = null;
-
-/** 目前這個庫的對照表（只有 goryeo.adb 有 align 容器；換庫後自動重載）。 */
+/**
+ * 對照表（`align/posmap`）：2026-10-30 起住在 `goryeo_taisho.adb`，不再跟著
+ * 高麗藏經文。map-pane 會先看目前這個庫（舊 goryeo.adb 仍有 align），再找
+ * 開著的 goryeo_taisho，最後從 catalog 開檔。
+ */
 async function posmapOf(): Promise<PosMap | null> {
-  if (!reader) return null;
-  if (posmapCache && posmapCache.r === reader) return posmapCache.pm;
-  if (!reader.containers.get('align')) return null;
-  const pm = await loadPosMap(reader);
-  posmapCache = { r: reader, pm };
-  return pm;
+  return mapPosMap();
 }
 
 /** Test seam: the same functions the UI calls, reachable from DevTools. */
@@ -1612,22 +1648,42 @@ export function installDebugApi(): void {
   xrefPreview: (db: string, a: string, q?: string) => previewForeign(db, a, q),
   posmapConvert: async (addr: string) => {
     const pm = await posmapOf();
-    if (!pm) return { error: '此庫沒有對照表（請先開 goryeo.adb）' };
-    const a = parseAddress(addr);
-    if (!a) return { error: '位址格式錯誤：' + addr };
-    const r = pm.convert(a);
-    return { ...r, from: formatAddress(a), to: r.ok ? formatAddress(a.side === 'T' ? r.k! : r.t!) : '' };
+    if (!pm) return { error: '找不到對照表（請先開 goryeo_taisho.adb）' };
+    const out = await convertText(addr);
+    if ('error' in out) return { error: out.error };
+    return {
+      ...out,
+      from: formatAddress(out.from),
+      to: formatAddress((out.from.side === 'T' ? out.k : out.t) ?? out.from),
+    };
   },
   /** adb 行號 → 位址 → 換址（han = 游標前的漢字數） */
-  posmapAtLine: async (line: number, han = 0, side?: 'T' | 'K') => {
+  posmapLineOf: async (addr: string) => {
     const pm = await posmapOf();
-    if (!pm) return { error: '此庫沒有對照表（請先開 goryeo.adb）' };
-    const s = side ?? (reader?.header.dbname === 'goryeo' ? 'K' : 'T');
-    const at = pm.addressOfLine(s, line, han);
-    if (!at) return { error: `第 ${line} 行不在對照範圍` };
-    const r = pm.convert(at.addr);
-    return { ...r, from: formatAddress(at.addr), to: r.ok ? formatAddress(s === 'T' ? r.k! : r.t!) : '' };
+    if (!pm) return { error: '找不到對照表' };
+    const a = parseAddress(addr);
+    if (!a) return { error: '看不懂位址' };
+    return { line: pm.lineOfAddress(a.side, a) };
   },
+  posmapAtLine: async (line: number, han = 0) => {
+    const pm = await posmapOf();
+    if (!pm) return { error: '找不到對照表（請先開 goryeo_taisho.adb）' };
+    const at = await addressAtLine(line, han);
+    if (!at) return { error: `第 ${line} 行不在對照範圍` };
+    const out = await convertText(formatAddress(at));
+    if ('error' in out) return { error: out.error };
+    return {
+      ...out,
+      from: formatAddress(out.from),
+      to: formatAddress((out.from.side === 'T' ? out.k : out.t) ?? out.from),
+    };
+  },
+  /** 「對照」分頁的狀態（測試用） */
+  mapState: () => mapState(),
+  /** 這個庫宣告的 <樹>（測試用：s=／t=／m= 與分頁名） */
+  treesInfo: () => (session?.trees ?? []).map((t) => ({
+    scope: t.scope, tiers: t.tiers, map: t.map ?? '', caption: t.caption ?? '', va: t.va,
+  })),
   setSide, resetCols: () => saveCols(DEFAULT_COLS.left, DEFAULT_COLS.right),
   setCols: (left: number, right: number) => saveCols(left, right),
   /** 繁簡通檢：回傳切換後的值 */
@@ -1818,8 +1874,8 @@ import { MAX_DBS, activeCatalogKey, activeSlot, catalogAdd, catalogAddFile, cata
 import { editCount, findSession, sourceKey } from './edit-session';
 import { extraRevisions } from './revisions-store';
 import { rebuildAndDownload, rollbackAndDownload, runRebuild } from './rebuild-ui';
-import { initTextPane, renderTextPane, resetTextPane, setEnsureRight, textState } from './text-pane';
-import { initXref, lookupBook, previewForeign, refreshReverse, xrefDebug, xrefJump, xrefProbe } from './xref';
+import { initTextPane, renderTextPane, resetTextPane, setEnsureRight, setOpenInMain, textState } from './text-pane';
+import { initXref, lookupBook, openInMain, previewForeign, refreshReverse, xrefDebug, xrefJump, xrefProbe } from './xref';
 import { initEmbed } from './embed';
 import { initHeatTab, renderHeatTab, syncHeatTab } from './heat-tab';
 import { initRevList } from './rev-list';

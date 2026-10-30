@@ -20,8 +20,41 @@ if (!textFile || !outFile) {
 }
 
 const text = readFileSync(textFile, 'utf8');
-const lines = text.split('\n');
-while (lines.length && lines[lines.length - 1] === '') lines.pop();
+const rawLines = text.split('\n');
+while (rawLines.length && rawLines[rawLines.length - 1] === '') rawLines.pop();
+
+/**
+ * 一行最多 4,000 字（作者 2026-10-29）。
+ *
+ * index-builder 的 `lines.physical` 是照 Delphi `addbuffer` 寫的：`len` 以
+ * MAXLINELEN（8192 bytes = 4,096 字）截斷，但內文仍寫入整行。只要有一行超過，
+ * 之後每一行的位移都會短少，行表與內文從此錯開——taisho 的 6,745,532 行裡只有
+ * 第 4,479,231 行是 5,427 字，就造成後面 2.27M 行有 69,454 行斷在標籤內
+ * （`<頁 id="63p967` 被切成兩行，閱讀器把它當文字顯示）。
+ *
+ * 所以打包前先把超長行切開：不切進 `<…>` 標籤，也不切開代理對（🙂 這種字）。
+ */
+const MAXCHARS = 4000;
+function splitLongLine(line: string): string[] {
+  if (line.length <= MAXCHARS) return [line];
+  const out: string[] = [];
+  let i = 0;
+  while (i < line.length) {
+    let end = Math.min(line.length, i + MAXCHARS);
+    if (end < line.length) {
+      const lt = line.lastIndexOf('<', end - 1);
+      if (lt >= i && line.indexOf('>', lt) >= end) end = lt;      // 退到標籤之前
+      const hi = line.charCodeAt(end - 1);
+      if (hi >= 0xd800 && hi <= 0xdbff) end--;                    // 不要切開代理對
+      if (end <= i) end = Math.min(line.length, i + MAXCHARS);    // 保險
+    }
+    out.push(line.slice(i, end));
+    i = end;
+  }
+  return out;
+}
+const lines = rawLines.flatMap(splitLongLine);
+if (lines.length !== rawLines.length) console.error(`long lines split: ${lines.length - rawLines.length} extra line(s)`);
 
 const resources = [];
 if (existsSync(logoPath)) {

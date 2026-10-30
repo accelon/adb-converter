@@ -1,14 +1,17 @@
 /**
  * 大正藏 ⇄ 高麗藏 字元級換址（accelon26 專用）。
  *
- * 資料來自 goryeo.adb 的 `align/posmap` 區塊（posmap-dump.ts 匯出）：
+ * 資料來自 `goryeo_taisho.adb` 的 `align/posmap` 區塊（posmap-dump.ts 匯出）：
  * 每卷一筆 AlignBody，內含兩側的行幾何（lineSeq / lineStart）與 1:1 對應段（runs）。
  * 換址不需要文本：
  *
  *   位址 → 行索引 → 該卷漢字位移 → 對應段 → 另一側漢字位移 → 行 → 位址
  *
  * 這裡只依賴 adb 容器（`AdbReader.readBlock('align', 0)`），可在瀏覽器與 Bun 執行。
+ * 區塊可以是原樣的 GYPOS2，也可以是 raw DEFLATE（GYPOSZ，1.8 MB）——`PosMap.parse`
+ * 自己判別。
  */
+import { inflateRaw } from '../inflate';
 
 export type Side = "T" | "K";
 
@@ -59,7 +62,6 @@ export interface ConvertResult {
 }
 
 // ---------------------------------------------------------------- 位址格式
-
 const COL_LETTERS = "abcdefg";
 const ADDR_RE = /^\s*([KTkt])\s*(\d{1,4})\s*p\s*(\d{1,4})\s*([a-gA-G])\s*(\d{1,4})\s*(?:\.\s*(\d{1,3}))?\s*$/;
 
@@ -80,6 +82,47 @@ export function parseAddress(s: string): Address | null {
   if (a.vol < 1 || a.page > 9999 || a.col < 0 || a.col > 6) return null;
   if (a.line < 0 || a.line > 99 || off < 0 || off > 999) return null;
   return a;
+}
+
+/**
+ * 寬鬆位址輸入（給「對照」分頁與選取選單）：
+ *
+ *   T05p0002c0405   posmap 的完整寫法
+ *   T5p2c           欄以內省略＝該欄第 1 行第 0 字
+ *   T5p2c.5         點號後面是字內偏置
+ *   5p2c            省略藏別（用 defaultSide）
+ *   Tv01p0002       DIA 圖版 id（`v01` 是第一冊）
+ *   K01p0001a0105
+ */
+const LOOSE_RE = /^\s*([KTkt])?\s*(?:[vV])?\s*(\d{1,3})\s*[pP]\s*(\d{1,4})\s*([a-gA-G])?\s*(\d{0,4})\s*(?:\.\s*(\d{1,3}))?\s*$/;
+
+export function parseLooseAddress(input: string, defaultSide: Side = 'T'): Address | null {
+  const m = LOOSE_RE.exec(input ?? '');
+  if (!m) return null;
+  const side = (m[1] ? m[1].toUpperCase() : defaultSide) as Side;
+  const vol = Number(m[2]);
+  const page = Number(m[3]);
+  const col = m[4] ? m[4].toLowerCase().charCodeAt(0) - 97 : 0;
+  const digits = m[5] ?? '';
+  let line = 1, off = 0;
+  if (m[6] !== undefined) { line = digits ? Number(digits) : 1; off = Number(m[6]); }
+  else if (digits.length === 0) { line = 1; off = 0; }
+  else if (digits.length <= 2) { line = Number(digits); off = 0; }
+  else { line = Number(digits.slice(0, 2)); off = Number(digits.slice(2)); }
+  if (vol < 1 || vol > 999 || page < 1 || page > 9999) return null;
+  if (col < 0 || col > 6 || line < 0 || line > 99 || off < 0 || off > 999) return null;
+  return { side, vol, page, col, line, off };
+}
+
+/** seq（page*1000+col*100+line）→ 位址。 */
+export function addressOfSeq(side: Side, vol: number, seq: number, off = 0): Address {
+  const rem = seq % 1000;
+  return { side, vol, page: (seq - rem) / 1000, col: Math.floor(rem / 100), line: rem % 100, off };
+}
+
+/** 位址 → seq。 */
+export function seqOfAddress(a: Address): number {
+  return a.page * 1000 + a.col * 100 + a.line;
 }
 
 export function formatAddress(a: Address): string {
@@ -214,6 +257,31 @@ function resolveInput(g: SideGeom, page: number, col: number, line: number, off:
 // ---------------------------------------------------------------- 索引
 
 const MAGIC = "GYPOS2\0\0";
+/** 壓縮版 `align/posmap` 的包裝：8B magic ＋ u32 rawLen ＋ raw DEFLATE（RFC 1951）。 */
+export const ZMAGIC = "GYPOSZ\1\0";
+
+export function isCompressedPosMap(bytes: Uint8Array): boolean {
+  if (bytes.length < 12) return false;
+  for (let i = 0; i < 8; i++) if (bytes[i] !== ZMAGIC.charCodeAt(i)) return false;
+  return true;
+}
+
+/**
+ * 把 `align/posmap` 區塊解成 GYPOS2（未壓縮）位元組。
+ *
+ * 這個區塊有兩種存法（同一份資料）：
+ *   "GYPOS2\0\0" …              posmap.bin 原樣（建置中間檔、舊檔）
+ *   "GYPOSZ\1\0" u32 rawLen …   raw DEFLATE；13.2 MB → 1.8 MB，inflate 約 80 ms
+ * 讀的那一端不要知道是哪一種。
+ */
+export function decodePosMapBytes(bytes: Uint8Array): Uint8Array {
+  if (!isCompressedPosMap(bytes)) return bytes;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const rawLen = dv.getUint32(8, true);
+  const out = inflateRaw(bytes.subarray(12));
+  if (rawLen && out.length !== rawLen) throw new Error(`posmap 解壓長度不符：${out.length} vs ${rawLen}`);
+  return out;
+}
 
 export class PosMap {
   private recs: AlignRec[] = [];
@@ -223,7 +291,8 @@ export class PosMap {
   private byKLine: number[] = [];
   private bodies = new Map<AlignRec, AlignBody>();
 
-  static parse(bytes: Uint8Array): PosMap {
+  static parse(input: Uint8Array): PosMap {
+    const bytes = decodePosMapBytes(input);
     const pm = new PosMap();
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     let p = 0;
@@ -266,6 +335,80 @@ export class PosMap {
     return b;
   }
 
+  /**
+   * 位址所在那一卷、該側的行幾何（沒有對照就回 null）。
+   *
+   * UI 由「頁／欄」推算欄內行號時要用：頁標記可能不在行首（前面還有上一欄的字，
+   * 或卷首的卷題），要知道幾何的第一行有幾個漢字才分得清那一行屬不屬於這一欄。
+   */
+  geomAt(side: Side, vol: number, seq: number): SideGeom | null {
+    const rec = side === 'T' ? this.findByT(vol, seq) : this.findByK(vol, seq);
+    if (!rec) return null;
+    const body = this.bodyOf(rec);
+    const g = side === 'T' ? body.t : body.k;
+    return g.nLines ? g : null;
+  }
+
+  /** 這一卷某一側第一行（該頁該欄）的漢字數；沒有就回 -1。 */
+  firstLineHan(side: Side, vol: number, page: number, col: number): number {
+    return this.firstLineOf(side, vol, page, col)?.han ?? -1;
+  }
+
+  /**
+   * 這一頁這一欄「第一個有字的行」：pcl 行號與該行漢字數。
+   *
+   * 頁的第一行不一定是第 1 行（高麗藏的頁首可能是第 2 行，K.db 沒有第 1 行），
+   * 所以由對照表的幾何反查，不要假設 1。
+   */
+  firstLineOf(side: Side, vol: number, page: number, col: number): { line: number; han: number } | null {
+    const base = seqOf(page, col, 0);
+    const g = this.geomAt(side, vol, base);
+    if (!g) return null;
+    let lo = 0, hi = g.nLines - 1, ans = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (g.lineSeq[mid] >= base) { ans = mid; hi = mid - 1; } else lo = mid + 1;
+    }
+    if (ans < 0) return null;
+    const seq = g.lineSeq[ans];
+    if (Math.floor(seq / 1000) !== page || Math.floor((seq % 1000) / 100) !== col) return null;
+    return { line: seq % 100, han: g.lineStart[ans + 1] - g.lineStart[ans] };
+  }
+
+  /**
+   * 這一頁這一欄的第 `colChar` 個漢字落在哪一行：回傳 pcl 行號與行內偏置。
+   *
+   * 由「欄內漢字位移」而不是「adb 行號」來定位，是因為兩藏（甚至同一藏的兩個
+   * 版本）斷行不同：位址的頁／欄是共通的，欄內第幾個字才是穩定的座標。
+   * 超出這一欄就夾到最後一行。
+   */
+  columnLineOf(side: Side, vol: number, page: number, col: number, colChar: number): { line: number; off: number } | null {
+    const base = seqOf(page, col, 0);
+    const g = this.geomAt(side, vol, base);
+    if (!g) return null;
+    let lo = 0, hi = g.nLines - 1, start = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (g.lineSeq[mid] >= base) { start = mid; hi = mid - 1; } else lo = mid + 1;
+    }
+    if (start < 0) return null;
+    const want = Math.max(0, colChar);
+    let acc = 0;
+    let last = start;
+    for (let i = start; i < g.nLines; i++) {
+      const seq = g.lineSeq[i];
+      if (Math.floor(seq / 1000) !== page || Math.floor((seq % 1000) / 100) !== col) break;
+      const han = g.lineStart[i + 1] - g.lineStart[i];
+      if (want < acc + han || (want === acc && han > 0)) {
+        return { line: seq % 100, off: Math.min(want - acc, han) };
+      }
+      acc += han;
+      last = i;
+    }
+    const seq = g.lineSeq[last];
+    return { line: seq % 100, off: g.lineStart[last + 1] - g.lineStart[last] };
+  }
+
   findByT(vol: number, seq: number): AlignRec | null {
     return this.find(this.byT, 't', vol, seq);
   }
@@ -291,8 +434,7 @@ export class PosMap {
   }
 
   /** 由 adb 的 0-based 行號求位址；hanPrefix = 該行游標前方的漢字數 */
-  addressOfLine(side: Side, line: number, hanPrefix = 0): { addr: Address; rec: AlignRec } | null {
-    const order = side === 'T' ? this.byTLine : this.byKLine;
+  addressOfLine(side: Side, line: number, hanPrefix = 0): { addr: Address; rec: AlignRec } | null {    const order = side === 'T' ? this.byTLine : this.byKLine;
     if (!order.length) return null;
     let lo = 0, hi = order.length - 1, ans = -1;
     while (lo <= hi) {

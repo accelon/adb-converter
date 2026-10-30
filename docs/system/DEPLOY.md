@@ -7,6 +7,22 @@
 > `ts/src/accelon26/about.ts`（檢查結果的文字）、`ts/tools/release.ts`（發佈）、
 > `ts/tools/deploy.ts`（上傳）。
 
+## 0. 本機成品位置（2026-10-30）
+
+`D:\accelon3` 是**本機書庫**，成品都放在那裡（`AGENTS.md` §1）：
+
+| 檔案 | 從哪裡來 |
+|---|---|
+| `D:\accelon3\accelon26.exe` | `build\adbupd\accelon26.exe`（`go build` 之後 copy） |
+| `D:\accelon3\accelon26.html` | `build\accelon26.html`（`build-viewer.ts` 之後 copy） |
+| `D:\accelon3\*.adb` | `build\` 等建置產物，copy 過去 |
+
+`build/` 只放建置中間檔與可重建的輸出。桌面版開機用 `ListAdbs` 列「工作目錄」與
+「exe 所在資料夾」的 `*.adb`（不遞迴），所以 adb 放在 `D:\accelon3` 才找得到；
+網頁版（file://）沒有資料夾掃描，使用者要自己選檔。
+
+把檔案 copy 進去是**本地部署**，不算官網發佈；官網上線仍照 §2（只有使用者說「發佈」才做）。
+
 ## 1. 主機（2026-10-18 實測）
 
 | 項目 | 值 |
@@ -107,27 +123,23 @@ cd accelon3
 .\accelon26.exe -export 13j.adb # 導出文字與圖片（與「進階 → 容量 → 導出」同一條路），印出 JSON
 ```
 
-### 2.3 一天多個修正：release candidate（作者 2026-10-27 指定）
+### 2.3 一天多個修正：release candidate（作者 2026-10-27 指定；2026-10-30 更新）
 
 一天內可能修好幾個 bug，**不要為每個修正另開日期版號**；每修好一批就出一個 RC：
 
-* 版號／標題：`2026-10-27 RC1`、`RC2`…（同一天一直往上編）。
-* 指令（`--title` 要自己帶，否則會變成沒有 RC 的 `accelon26 2026-10-27`）：
-
-  ```powershell
-  cd ts
-  bun run tools/release.ts --items-file ../wails/release_notes.draft.txt `
-    --title "accelon26 2026-10-27 RC2" --build-time 2026-10-27T05:10:00Z
-  bun run tools/deploy.ts --site
-  ```
-
-* `release_notes.json` **同一天只保留一個條目**：把上一筆同一天條目的 `buildTime` 改成這次的，
-  `items` 就地增補（不要把 RC1、RC2… 留成一串）。這樣使用者更新後看到的永遠是最新一份。
+* 版號：`2026-10-30 RC1`、`RC2`…（同一天往上編）。
+* `release.ts` 現在**只認日期**（`--title` 會被忽略）：同一天重發會合併成一筆、
+  覆蓋當天的 zip（`www/releases/accelon26-YYYY-MM-DD.zip`），不保留 RC 檔。
+* 要讓官網顯示 RC 標籤：發佈後把 `wails/release_notes.json` 當天那一筆的 `title`
+  改成 `accelon26 2026-10-30 RC1`，再跑 `bun run tools/deploy.ts --site`
+  （會重生 `www/changelog.html`；`make-changelog.ts` 只在 title 與預設日期字串不同時才顯示它）。
+* 說明第一行也寫「今日 RC1（日期）」，changelog 一眼就看得到。
+* `release_notes.json` **同一天只保留一個條目**（`release.ts` 會合併），不要把 RC1、RC2…
+  留成一串；使用者更新後看到的永遠是最新一份。
 * 每個 RC 都上線（`versions.json` 的 buildTime 遞增），使用者才會收到線上更新；當天最後
   一個 RC 就是當天的正式版（標題保留 `RCn` 沒關係，下一個正式版再改）。
-* 下載檔名：`build/accelon26-2026-10-27-RCn.7z`。
-* 實例：2026-10-27 RC1 → buildTime `2026-10-27T03:31:00Z`、標題
-  「accelon26 2026-10-27 RC1」、sha256 `33f309848286…`。
+* 實例：2026-10-30 RC1 → buildTime `2026-10-30T02:06:08Z`、標題
+  「accelon26 2026-10-30 RC1」、sha256 `4916ae0a7a1c…`。
 
 ## 清 build/（會長到幾 GB）
 

@@ -18,6 +18,10 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
   本工作區不改 ys 的正文／資料、不部署 ys.adb。ys 工作區也可能直接修改本區的
   `docs/adb/ys*.md`，那些檔案以那邊為準；本區只改閱讀器與官網。
 - 還在這裡的 adb 實驗（例如 `jingqun`）可以改，但要知道它將來可能搬走。
+- **成品一律放 `D:\accelon3`**（作者 2026-10-30）：`*.adb`、`accelon26.html`、
+  `accelon26.exe` 都在那個資料夾；`build/` 只放建置中間檔與可重建的輸出。
+  桌面版開機用 `ListAdbs` 列出工作目錄與 exe 所在資料夾的 `*.adb`，放在別處它找不到。
+  網頁版（file://）不能掃資料夾，使用者在 `accelon26.html` 要自己選檔。
 
 ## 2. 目前的重要狀態（2026-10-29）
 
@@ -49,12 +53,13 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
 | `deploy/` | 部署設定、adb 狀態／版本歷史、發布清單 |
 | `docs/` | 軟件、adb、系統與交接文件 |
 | `jingqun/`、`lc/` | 還在這裡的 adb 實驗／資料 |
-| `build/` | 建置產物、暫存、測試；通常不進 git |
+| `build/` | 建置產物、暫存、測試；通常不進 git（**成品 copy 到 `D:\accelon3`**） |
 | `.local/` | 伺服器帳密、主機指紋、下載清單；**已在 gitignore，勿印出內容** |
 
 外部資料（唯讀，除非使用者明確要求）：
 
-- `D:\accelon3\`：本機 adb 書庫／部署位置；不要任意覆寫。
+- `D:\accelon3\`：**本機書庫，成品都放這裡**（`*.adb`、`accelon26.html`、`accelon26.exe`，
+  見 §1）。換版時覆寫同名檔；其他檔案不要動。
 - `D:\2026\xml-p5\`：CBETA XML-P5 checkout。
 - `D:\2023\sat2018\`：T56–T84 的 SAT 2018 來源。
 - `D:\2026\ys\`：已移出的 ys／tx 專案。
@@ -64,11 +69,13 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
 ## 4. 常用指令
 
 ```powershell
-# 前端／桌面開發
+# 前端／桌面開發（成品 copy 到 `D:\accelon3`：html、exe；見 §1）
 cd ts
 bun run tools/build-desktop.ts          # HTML → wails/assets/index.html
 cd ..\wails
 go build -ldflags "-X main.buildTime=2026-10-29T00:00:00Z -H windowsgui" -o ..\build\adbupd\accelon26.exe .
+copy ..\build\accelon26.html D:\accelon3\accelon26.html
+copy ..\build\adbupd\accelon26.exe D:\accelon3\accelon26.exe
 
 # 測試（依改動挑相關的；不確定就全跑）
 cd ts
@@ -106,6 +113,8 @@ bun run tools/cbeta-base.ts --check
 - 發佈後兩站都要同步，並驗證線上 `versions.json`、exe sha、歷史 ZIP 與 404 狀態。
 - 不要未經指示改 `deploy/adb-status.json` 的 `wip`／`revision`，也不要把
   `wxzj.adb`／`fgdict.adb` 重新上傳（`taisho.adb` 已於 2026-10-29 開放，見 §2）。
+- 把新的 adb／html／exe 放進 `D:\accelon3` 是**本地部署**（見 §1），不算官網發佈；
+  官網上線仍然只在使用者說「發佈」時做。
 
 ## 6. 改動與回報
 
@@ -119,7 +128,8 @@ bun run tools/cbeta-base.ts --check
   - adb 底座：`docs/adb/stable-adb.md`
   - 金剛／法華家族：`docs/adb/wittern-related-jingang-fahua.md` 等
 - 回報時說清楚：改了什麼、跑了哪些測試、還有什麼沒驗證。
-- 不確定是否算「發佈」時，先問；不要直接把產物覆寫到 `D:\accelon3` 或線上。
+- 不確定是否算「發佈」時，先問；官網／線上不要直接覆寫（`D:\accelon3` 是本機書庫，
+  位置與做法見 §1、§3、§5）。
 
 ## 7. 文件入口
 
