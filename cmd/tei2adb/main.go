@@ -525,7 +525,7 @@ func (e *emitter) parseFile(path, sutra string, juan int, linesOut, pclOut *bufi
 				continue
 			}
 			// 校勘、梵漢對照、目錄編號一律不進正文：只留 CBETA 採用的漢文讀法。
-			if name == "teiHeader" || name == "note" || name == "rdg" || name == "mulu" ||
+			if name == "teiHeader" || name == "note" || name == "rdg" || name == "mulu" || name == "orig" || name == "sic" ||
 				lang(t) == "sa" || lang(t) == "pi" || place(t) == "foot" ||
 				(name == "div" && attr(t, "type") == "taisho-notes") {
 				e.skip = 1
