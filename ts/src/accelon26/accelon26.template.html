@@ -26,6 +26,10 @@
   --chip-bg: #000; --chip-fg: #fff;
   /* 編輯器的 caret：和 accent（藍）相反的琥珀色，3px 粗（作者 2026-10-24） */
   --caret: #ffb000;
+  /* 引文（CBETA <quote> → <引>）用楷體，和作者敘述分開（作者 2026-10-30）。
+     字體依序找：Windows 標楷體／KaiTi、macOS Kaiti、Linux AR PL UKai；
+     都沒有就退回襯線字體，至少不會變無襯線。 */
+  --kai: "Kaiti TC", "Kaiti SC", "KaiTi", "BiauKai", "標楷體", "DFKai-SB", "AR PL UKai CN", "Noto Serif CJK TC", serif;
   /* diff 用的紅綠（比 --hit-2／--ok 更亮，作者 2026-10-25） */
   --diff-add: #7dff9e; --diff-del: #ff5252;
   /* 歷史版本 docTab：棕黃 */
@@ -769,6 +773,17 @@
   .docLogoArea { display: flex; align-items: center; justify-content: center; padding: 26px 10px; }
   .docLogoArea[hidden] { display: none; }
   .docLogoArea img { max-width: 62%; max-height: 52vh; opacity: .92; border-radius: 6px; }
+  /* 第一次使用：還沒有資料庫時，本文區的引導卡（2026-10-30） */
+  #docWelcome {
+    max-width: 560px; margin: 40px auto; padding: 18px 20px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; line-height: 1.8;
+  }
+  #docWelcome h2 { margin: 0 0 10px; font-size: 1.12em; color: var(--gold); }
+  #docWelcome p { margin: 0 0 10px; }
+  #docWelcome code { background: var(--panel2); border-radius: 3px; padding: 0 3px; }
+  #docWelcome .welcomeBtns { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 12px; }
+  #docWelcome .mini { font-size: 14px; padding: 6px 12px; }
+  #docWelcome .mini.primary { border-color: var(--accent); color: var(--accent); }
   .docLine { display: flex; gap: 10px; padding: 1px 3px; border-radius: 3px; }
   .docLine:hover { background: var(--row-hover); }
   /* 目前釘住的那一行：淡淡一層就好，免得標題（現在是彩色字）看起來像有底色 */
@@ -848,7 +863,7 @@
   /* 取消原書分行時，<頁> 只是行內的小字頁碼 */
   .lineText .pageMark { color: var(--dim); font-size: .8em; margin: 0 3px; }
   /* <聯 n="詞">：詞條連結（別名、參見）。目標由 link.ts 的 linkToEntry 解析 */
-  .lineText .entryLink { color: #2e7a80; text-decoration: none; border-bottom: 1px dotted currentColor; cursor: pointer; }
+  .lineText .entryLink { color: #2e7a80; text-decoration: none; border-bottom: 1px dotted currentColor; cursor: pointer; white-space: nowrap; }
   .lineText .entryLink:hover { color: #b26949; text-decoration: underline; }
   /* <嵌 i="db?page">：文內嵌入晶片；點一下在下面插入引文，再點收合 */
   .lineText .embedChip {
@@ -1023,7 +1038,9 @@
   .lineText .noteRef:hover { color: var(--accent); text-decoration: underline; }
   .lineText .noteBack { color: var(--gold); text-decoration: none; font-size: .8em; padding: 0 3px 0 0; cursor: pointer; }
   .lineText .noteBack:hover { text-decoration: underline; }
-  .lineText .noteBody { cursor: pointer; }
+  .lineText .noteBody { cursor: pointer; white-space: normal; overflow-wrap: anywhere; }   /* 注文可以換行（長註才不會被切在右邊） */
+  /* <引>：CBETA 的引文，用楷體（2026-10-30）；字級略大 1.02em，楷體看起來才不會偏小 */
+  .lineText .quote { font-family: var(--kai); font-size: 1.02em; }
   #noteTip {
     position: fixed; z-index: 94; max-width: min(480px, 82vw); max-height: 45vh; overflow: auto;
     background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px;
@@ -1699,7 +1716,7 @@
   <input type="file" id="vaultZip" accept=".zip,application/zip" hidden>
   <button class="dbAdd dbAll" id="searchAllBtn" title="搜尋所有 adb（Alt+S）：輪流查每一個庫的命中數，再決定要不要打開">🔍</button>
   <button class="dbAdd" id="studyIndexBtn" hidden title="注疏索引：經文 → 注疏名稱 → 大正頁">注疏</button>
-  <span class="dbHint" id="dbHint">← 開啟資料庫</span>
+  <span class="dbHint" id="dbHint">← 按 📁 下載或開啟資料庫</span>
   <span class="dbTabs" id="dbTabs"></span>
   <span class="status" id="status"></span>
   <!-- 設置（齒輪）在最右邊：作者 2026-10 把它移到原本資料夾按鈕的位置。
@@ -1837,9 +1854,9 @@
       <div class="docLogoArea" id="docLogo" hidden><img id="docLogoImg" alt=""></div>
       <div id="docText"><p class="dim">點左側 token，會自動跳到該 token 在文中的位置並只塗紅它。</p></div>
       <div class="docPager" id="docPager" hidden>
-        <button class="mini" id="pagePrev" title="上一頁（網頁分頁，不是原書的葉）">◀ 上一頁</button>
+        <button class="mini" id="pagePrev" title="上一頁（Alt+←；網頁分頁，不是原書的葉）">◀ 上一頁</button>
         <span class="pagerInfo" id="pageInfo"></span>
-        <button class="mini" id="pageNext" title="下一頁（網頁分頁，不是原書的葉）">下一頁 ▶</button>
+        <button class="mini" id="pageNext" title="下一頁（Alt+→；網頁分頁，不是原書的葉）">下一頁 ▶</button>
       </div>
     </div>
   </section>

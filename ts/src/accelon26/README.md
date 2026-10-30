@@ -17,6 +17,7 @@ bun run tools/browser-test.ts --adb D:\accelon3\yinshun\yinshun.adb
 | `Alt+O`（Mac `⌥O`） | 開 adb 清單（↑↓ 移動、Enter 開、Esc 收起） |
 | `Alt+S`（Mac `⌥S`） | 搜尋所有 adb |
 | `Alt+A`（Mac `⌥A`） | 關於（About；再按一次收起） |
+| `Alt+←／→`（Mac `⌥←／→`） | 上一頁／下一頁（本文分頁；不是原書的葉） |
 
 設定頁／About 與左上角兩個欄位按鈕的 tooltip 都有同樣說明；完整清單在 About →「⌨ 快速鍵」
 （`shortcuts.ts`）。

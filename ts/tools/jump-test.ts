@@ -205,6 +205,19 @@ const b = JSON.parse(await cdp.eval<string>(`(async () => {
   return JSON.stringify(out, null, 1);
 })()`));
 
+// Alt+←／→ 翻頁（本文分頁，不是原書的葉）
+const pager = JSON.parse(await cdp.eval<string>(`(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const info = () => document.getElementById('pageInfo')?.textContent ?? '';
+  const key = (k) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, code: k, altKey: true, bubbles: true }));
+  const before = info();
+  key('ArrowRight'); await sleep(900);
+  const afterNext = info();
+  key('ArrowLeft'); await sleep(900);
+  const afterPrev = info();
+  return JSON.stringify({ before, afterNext, afterPrev }, null, 1);
+})()`));
+
 proc.kill();
 await Bun.sleep(200);
 try { rmSync(profile, { recursive: true, force: true }); } catch { /* browser may hold it */ }
@@ -227,5 +240,7 @@ if (b.error) fails.push('B: ' + b.error);
 if (b.before === 'taisho') fails.push('B 測試前應該已經換到別的庫：' + b.before);
 if (b.after !== 'taisho') fails.push('換庫後貼位置應切回 taisho，實得 ' + b.after);
 if (b.band?.text !== a.selText) fails.push(`換庫後色帶文字應相同，實得 ${b.band?.text}`);
+if (!pager.before || pager.afterNext === pager.before) fails.push('Alt+→ 應翻到下一頁：' + JSON.stringify(pager));
+if (pager.afterPrev !== pager.before) fails.push('Alt+← 應翻回上一頁：' + JSON.stringify(pager));
 if (fails.length) { console.error('FAIL:\n- ' + fails.join('\n- ')); process.exit(1); }
 console.log('ok: 跳至接受字元級位置並高亮');

@@ -44,6 +44,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: 'Alt+O', what: '開啟 adb 清單（↑↓ 移動、Enter 開、Esc 收起）' },
       { keys: 'Alt+S', what: '搜尋所有 adb' },
       { keys: 'Alt+A', what: '關於（About；再按一次收起）' },
+      { keys: 'Alt+←／→', what: '上一頁／下一頁（本文分頁；不是原書的葉）' },
       { keys: 'F11', what: '全螢幕／視窗切換', desktop: true },
       { keys: 'Esc', what: '關閉最上層的視窗；全螢幕時回到視窗', desktop: true },
       { keys: 'Esc', what: '關閉最上層的視窗（設置、全庫搜尋、關於、修訂清單、熱圖、書籤選單）' },

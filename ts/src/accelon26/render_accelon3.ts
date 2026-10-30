@@ -268,6 +268,10 @@ export class Accelon3Renderer {
   private xrefLinks = 0;
   /** 目前還開著的 `<釋>`（跨行；`line:true` 表示自閉合、只包到本行尾） */
   private notes: { n: string; line: boolean }[] = [];
+  /** 跨行的 `<引>`（引文）：邏輯深度；行尾收掉、下一行重開（2026-10-30） */
+  private quoteDepth = 0;
+  /** 這一行是否已經開著 `<span class="quote">` */
+  private quoteOpen = false;
   /** 這個頁面上的頁碼計數（沒有 n= 時拿它當 id） */
   private pageSeq = 0;
   /** 這一行有沒有可見文字／標題（lineInfo 回報用） */
@@ -382,6 +386,12 @@ export class Accelon3Renderer {
     for (const s of this.stack) html += this.openSpan(s.tag, s.depth);
     // 跨行的 <釋>：同理，每行重新開（不自閉合、而且真的有 n= 的才開）
     for (const note of this.notes) if (!note.line && note.n) html += this.noteSpan(note.n);
+    // 跨行的 <引>：這一行開頭先把楷體外框補回來（行尾會收掉）
+    this.quoteOpen = false;
+    if (this.quoteDepth > 0) {
+      html += '<span class="quote">';
+      this.quoteOpen = true;
+    }
 
     let i = 0;
     while (i < text.length) {
@@ -532,6 +542,17 @@ export class Accelon3Renderer {
         if (!closing) html += '<br class="para"><span class="paraIndent">　　</span>';
         continue;
       }
+      // `<引>`：CBETA 的 <quote> 引文；用楷體和作者自己的敘述分開（2026-10-30）
+      if (name === '引' || name === '_引') {
+        if (closing) {
+          if (this.quoteDepth > 0) this.quoteDepth--;
+          if (this.quoteDepth === 0 && this.quoteOpen) { html += '</span>'; this.quoteOpen = false; }
+        } else if (!selfClose) {
+          this.quoteDepth++;
+          if (!this.quoteOpen) { html += '<span class="quote">'; this.quoteOpen = true; }
+        }
+        continue;
+      }
       const depth = this.ctx.depthOf.get(name);
       if (depth === undefined) {
         // 沒有 t= 定義：標籤本身丟掉，文字照留
@@ -557,6 +578,8 @@ export class Accelon3Renderer {
     // `<聯>` 錨點同樣在行尾收掉；跨行的聯不重新開（條目連結都是行內）
     if (this.xrefLinks) { html += '</a>'.repeat(this.xrefLinks); this.xrefLinks = 0; }
     if (this.entryLinks) { html += '</a>'.repeat(this.entryLinks); this.entryLinks = 0; }
+    // 跨行的引文：這一行收掉外框，下一行開頭再開（HTML 每行都要平衡）
+    if (this.quoteOpen) { html += '</span>'; this.quoteOpen = false; }
     while (this.notes.length && this.notes[this.notes.length - 1].line) {
       const top = this.notes.pop()!;
       if (top.n) html += '</span>';

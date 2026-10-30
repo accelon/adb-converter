@@ -1348,9 +1348,24 @@ function boot() {
       setStatus('左欄：' + (readCols().left > 0 ? '開' : '關') + '（Ctrl+B）', 'info');
     }
   }, true);
-  // Alt+1…5 切換 adb；Alt+O 開 adb 清單；Alt+S 搜尋所有 adb；Alt+A 關於（2026-10-30）
+  // Alt+1…5 切換 adb；Alt+O 開 adb 清單；Alt+S 搜尋所有 adb；Alt+A 關於；
+  // Alt+←／→ 上一頁／下一頁（2026-10-30）
   window.addEventListener('keydown', (ev) => {
     if (ev.defaultPrevented || ev.repeat || ev.ctrlKey || ev.metaKey || ev.shiftKey || !ev.altKey) return;
+    if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (anyModalOpen()) return;
+      const id = ev.key === 'ArrowLeft' ? 'pagePrev' : 'pageNext';
+      const btn = document.getElementById(id) as HTMLButtonElement | null;
+      const bar = document.getElementById('docPager');
+      if (!btn || (bar && bar.hidden) || btn.getAttribute('aria-disabled') === 'true') {
+        setStatus(ev.key === 'ArrowLeft' ? '沒有上一頁（Alt+←）' : '沒有下一頁（Alt+→）', 'warn');
+        return;
+      }
+      btn.click();
+      return;
+    }
     const m = /^(?:Digit|Numpad)([1-5])$/.exec(ev.code ?? '');
     const n = m ? Number(m[1]) : (/^[1-5]$/.test(ev.key) ? Number(ev.key) : 0);
     const code = (ev.code || '').replace(/^Key/, '').toLowerCase();
@@ -1616,7 +1631,15 @@ function boot() {
   setOpenInMain((db, opts) => openInMain(db, opts));   // 右欄跨庫分頁 Ctrl+點 → 中間開啟
   renderDbPick();   // 下拉第一項是「加入 adb」（file:// 版）
   void bootDesktop();   // desktop build: catalogue + open the adbs next to the exe
-  setStatus('請選擇或拖入 .adb 檔案（13j / yinshun 皆可直接開啟）', 'info');
+  setStatus('請開啟或下載資料庫（📁，或中間的按鈕）', 'info');
+  showWelcomeWhenEmpty();
+  // 引導卡的兩個按鈕（本文區委派；只有引導卡在的時候才會有 data-welcome）
+  $('#docText')?.addEventListener('click', (ev) => {
+    const b = (ev.target as Element | null)?.closest?.('[data-welcome]') as HTMLElement | null;
+    if (!b) return;
+    if (b.dataset.welcome === 'store') openAdbStore();
+    else pickAddFile();
+  });
   installDebugApi();
   // 「關於」預設在啟動時顯示（作者 2026-10-18）：它現在也是操作導覽的入口。
   // 放在最後，因為這一頁會讀取 logo／版本，也會順便檢查更新。
@@ -1882,7 +1905,7 @@ import { initRevList } from './rev-list';
 import { initBookmarks, renderBookmarks } from './bookmarks';
 import { bookmarkState, citationForSelection } from './bookmarks';
 import { initVaultImport, vaultImportState } from './vault-import';
-import { initAdbStore } from './adb-store';
+import { initAdbStore, openAdbStore } from './adb-store';
 import { initStudyIndex, refreshStudyIndexButton } from './study-index';
 import { hasLogoResource, hideDocLogo, logoState, updateDocLogo } from './logo';
 import { hostState } from './host';
@@ -1930,6 +1953,30 @@ function refreshAll(): void {
   setStatus(`${reader.header.dbcname || reader.header.dbname}：${fmtInt(tokens.length)} 詞、${fmtInt(docs.length)} 文件`, 'info');
 }
 
+/** 還沒有資料庫時，中間那一塊的引導（桌面版第一次使用；2026-10-30） */
+const WELCOME_HTML = '<div id="docWelcome">'
+  + '<h2>開始閱讀</h2>'
+  + '<p>桌面版需要一個資料庫（<code>.adb</code>）才能看書。下載後會放在 <code>accelon26.exe</code> 旁邊，清單會自動更新。</p>'
+  + '<p class="welcomeBtns">'
+  + '<button type="button" class="mini primary" data-welcome="store">⬇ 下載公開資料庫</button>'
+  + '<button type="button" class="mini" data-welcome="open">📂 開啟本機 .adb</button>'
+  + '</p>'
+  + '<p class="dim">也可以把 .adb 放進 exe 同一個資料夾，重新開啟就會列出。網頁版請用「開啟本機 .adb」。</p>'
+  + '</div>';
+
+function showWelcome(): void {
+  const doc = $('#docText') as HTMLElement | null;
+  if (!doc) return;
+  doc.innerHTML = WELCOME_HTML;
+  const store = doc.querySelector<HTMLElement>('[data-welcome="store"]');
+  if (store && !hostState().available) store.hidden = true;   // 網頁版沒有桌面宿主
+}
+
+/** 開機時若還沒開庫，就把引導放進本文區。 */
+function showWelcomeWhenEmpty(): void {
+  if (!reader) showWelcome();
+}
+
 /** no database left: empty every pane so nothing of the closed file is shown */
 function clearDbUi(): void {
   document.body.classList.remove('loaded');
@@ -1940,7 +1987,7 @@ function clearDbUi(): void {
     if (el) el.innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
   }
   resetTextPane();
-  $('#docText').innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
+  showWelcome();
   // 關庫：中間的 logo 不可以留著（作者 2026-10）。這裡**不能**再叫 updateDocLogo()：
   // 它會因為 reader 還指著剛關掉的那個庫、而且 #docText 已經沒有 .docLine，又把 logo 打開。
   hideDocLogo();
