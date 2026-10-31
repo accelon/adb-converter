@@ -5,3 +5,4 @@ yulinpo.adb
 ys.adb	ys.html
 taisho.adb	taisho.html
 goryeo_taisho.adb	goryeo_taisho.html
+fuyan.adb

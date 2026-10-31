@@ -1,5 +1,12 @@
 {
   "_comment": "公開資料庫的狀態。status: available（可下載）／wip（施工中，不下載）／revision（整修中）。downloadable:false 的庫只記在 manifest 版本歷史裡，官網與桌面版都不提供下載。source／licenseNote 是給使用者看的出處與授權說明。",
+  "fuyan.adb": {
+    "status": "available",
+    "label": "內測（限福嚴師生）",
+    "source": "釋厚觀《空之探究講義》（2004）Word 講稿，福嚴佛學院",
+    "licenseNote": "講義文字、圖表版權屬福嚴佛學院；內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。",
+    "note": "內測中，限福嚴師生。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。32 張圖表以 SVG 內嵌、1,240 條大正藏引用帶字元級 j。"
+  },
   "taisho.adb": {
     "status": "available",
     "label": "可下載",

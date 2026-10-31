@@ -128,10 +128,14 @@ const fmtDate = (ms: number) => {
 // 施工中的庫：manifest 有記錄，但 downloadable:false（官網不給下載連結）。
 interface ManifestDb { file: string; name?: string; size?: number; buildTime?: string; status?: string; statusLabel?: string; statusNote?: string; source?: string; licenseNote?: string; crossCheck?: string; downloadable?: boolean }
 let wip: ManifestDb[] = [];
+let allDbs: ManifestDb[] = [];
 try {
   const mf = JSON.parse(readFileSync(resolve(SITE, 'adb/manifest.json'), 'utf8')) as { dbs?: ManifestDb[] };
-  wip = (mf.dbs ?? []).filter((d) => d.downloadable === false || (d.status && d.status !== 'available'));
+  allDbs = mf.dbs ?? [];
+  wip = allDbs.filter((d) => d.downloadable === false || (d.status && d.status !== 'available'));
 } catch { /* 還沒有 manifest 就只列可下載的 */ }
+// 可下載但帶說明的庫（例：內測中、限某校師生）
+const wipNotes = allDbs.filter((d) => d.statusNote && d.statusLabel && d.statusLabel !== '可下載' && d.downloadable !== false);
 
 const totalChars = rows.reduce((a, r) => a + (r.chars ?? 0), 0);
 const totalSize = rows.reduce((a, r) => a + r.size, 0);
@@ -170,6 +174,9 @@ const html = `<!DOCTYPE html>
   .dbTable .db .docLink { display: inline-block; margin-top: 3px; font-size: 12.5px; color: var(--accent); }
   .dbTable .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); }
   .dbTable .dl { text-align: right; white-space: nowrap; }
+  .dbWarn { margin: 16px 0 0; padding: 12px 16px; border-left: 3px solid var(--gold);
+    background: var(--panel); color: var(--muted2); font-size: 13.5px; line-height: 1.7; }
+  .dbWarn b { color: var(--fg); margin-right: 6px; }
   .dbNote { margin: 22px 0 8px; padding: 14px 18px; background: var(--panel); border: 1px solid var(--line);
     border-left: 3px solid var(--gold); border-radius: 8px; color: var(--muted2); font-size: 14.5px; }
   .dbNote b { color: var(--fg); }
@@ -227,6 +234,8 @@ const html = `<!DOCTYPE html>
 ${body}
     </tbody>
   </table>
+
+  ${wipNotes.map((d) => `<p class="dbWarn"><b>《${esc(d.name || d.file)}》${esc(d.statusLabel || '')}</b>${esc(d.statusNote)}</p>`).join('')}
 
   ${wip.length ? `<section class="wipSection">
     <h2>施工中</h2>

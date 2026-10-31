@@ -296,6 +296,9 @@
   .dbTable .db .docLink { display: inline-block; margin-top: 3px; font-size: 12.5px; color: var(--accent); }
   .dbTable .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); }
   .dbTable .dl { text-align: right; white-space: nowrap; }
+  .dbWarn { margin: 16px 0 0; padding: 12px 16px; border-left: 3px solid var(--gold);
+    background: var(--panel); color: var(--muted2); font-size: 13.5px; line-height: 1.7; }
+  .dbWarn b { color: var(--fg); margin-right: 6px; }
   .dbNote { margin: 22px 0 8px; padding: 14px 18px; background: var(--panel); border: 1px solid var(--line);
     border-left: 3px solid var(--gold); border-radius: 8px; color: var(--muted2); font-size: 14.5px; }
   .dbNote b { color: var(--fg); }
@@ -342,7 +345,7 @@
     <h1>公開數據庫</h1>
     <p>這些 <code>.adb</code> 都可以直接下載：放進 <code>accelon3.exe</code> 同一個資料夾，
       accelon26 開啟時就會自動列出來；也可以在程式裡用 <code>📁</code> 或拖進視窗。</p>
-    <p class="dbMeta">共 7 個可下載資料庫 · 另有 1 個施工中（不提供下載） · 合計約 142,602,548 字 · 下載約 397.0 MB</p>
+    <p class="dbMeta">共 8 個可下載資料庫 · 另有 1 個施工中（不提供下載） · 合計約 143,930,940 字 · 下載約 401.2 MB</p>
   </section>
 
   <table class="dbTable">
@@ -380,15 +383,15 @@
         </tr>
         <tr>
           <td class="db"><b>印順法師佛學著作集</b><span class="file">ys.adb</span><a class="docLink" href="ys.html">改版說明</a></td>
-          <td class="num">7,336,522</td>
-          <td class="num">2026-10-29</td>
-          <td class="num">24.9 MB</td>
+          <td class="num">8,288,450</td>
+          <td class="num">2026-10-31</td>
+          <td class="num">26.7 MB</td>
           <td class="dl"><a href="ys.adb" download>下載</a></td>
         </tr>
         <tr>
           <td class="db"><b>大正新脩大藏經</b><span class="file">taisho.adb</span><a class="docLink" href="taisho.html">改版說明</a></td>
-          <td class="num">122,178,837</td>
-          <td class="num">2026-10-29</td>
+          <td class="num">122,178,695</td>
+          <td class="num">2026-10-31</td>
           <td class="num">315.7 MB</td>
           <td class="dl"><a href="taisho.adb" download>下載</a></td>
         </tr>
@@ -399,8 +402,17 @@
           <td class="num">2.2 MB</td>
           <td class="dl"><a href="goryeo_taisho.adb" download>下載</a></td>
         </tr>
+        <tr>
+          <td class="db"><b>福嚴佛學院講義</b><span class="file">fuyan.adb</span></td>
+          <td class="num">376,606</td>
+          <td class="num">2026-10-31</td>
+          <td class="num">2.4 MB</td>
+          <td class="dl"><a href="fuyan.adb" download>下載</a></td>
+        </tr>
     </tbody>
   </table>
+
+  <p class="dbWarn"><b>《福嚴佛學院講義》內測（限福嚴師生）</b>內測中，限福嚴師生。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。32 張圖表以 SVG 內嵌、1,240 條大正藏引用帶字元級 j。</p>
 
   <section class="wipSection">
     <h2>施工中</h2>
