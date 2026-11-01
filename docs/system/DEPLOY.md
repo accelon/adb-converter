@@ -420,3 +420,18 @@ cd ts && bun run tools/publish-adb.ts --files ys.adb
   （adb 由各 adb 工作區自己發佈，這次不動 adb manifest／公開頁）
 - 兩站驗證：`versions.json` 的 buildTime／size／sha256 與實際下載的 exe 一致（兩個站都實測 hash）、
   `releases/accelon26-2026-11-01.zip` HTTP 200（9,149,033 bytes）、不存在的歷史 ZIP 正確 404、首頁 200
+
+### 2026-11-02 補正：`--no-adb` 也會跳過 changelog／releases 頁
+
+發佈完發現線上 changelog／releases 頁還停在上一版的 12:43。原因是 `deploy.ts` 把
+「重生 changelog／releases」和「重生 adb manifest／公開頁」寫在同一個 `!NO_ADB` 條件裡，
+所以用 `--site --no-adb`（只發桌面版）時，改版說明頁根本沒有重生。
+
+- 已修：`changelog`／`releases` 改成 `SITE && !CHECK_ONLY` 就重生；`--no-adb` 只跳過
+  `make-adb-manifest`／`make-adb-index`（adb 由各 adb 工作區自己部署）。
+- 已補上：手動跑 `bun run tools/make-changelog.ts` 與 `make-releases.ts` 之後，
+  用 `bun run tools/deploy.ts --site-only --no-adb` 上傳 www/（不動 exe／versions.json）。
+- 兩站驗證：changelog 最新版顯示「2026-11-01 23:57 北京時間」、releases 首列同時間，
+  兩站都 HTTP 200 且已無 12:43。
+- 另外記下：`make-adb-manifest` 會嚴格要求每個新 adb 在 `deploy/adb-notes.json` 有說明；
+  這次 `yl38.adb` 新版沒有 notes 而失敗（那是 adb 工作區的事），所以桌面版發佈要加 `--no-adb`。

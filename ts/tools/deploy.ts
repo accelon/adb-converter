@@ -213,15 +213,20 @@ function adbNames(): string[] {
     : [];
 }
 
-if (SITE && !CHECK_ONLY && !NO_ADB) {
+// 改版說明（changelog）與歷史版本頁（releases）**一定要重生**：它們是桌面版發布的一部分。
+// 以前這一整段被 `!NO_ADB` 綁住，`--no-adb`（只發桌面版、adb 由各工作區發）時就會漏掉，
+// 線上 changelog 因此還停在上一版的時間（2026-11-02 實際踩過）。
+if (SITE && !CHECK_ONLY) {
   for (const tool of ['make-changelog.ts', 'make-releases.ts']) {
     const gen = Bun.spawnSync({ cmd: ['bun', 'run', 'tools/' + tool], cwd: resolve(ROOT, 'ts'), stdout: 'inherit', stderr: 'inherit' });
     if (gen.exitCode !== 0) die(tool + ' 產生失敗');
   }
-  // manifest 與公開數據庫頁一起重生：施工中／下架狀態才不會和 index.txt 脫節。
-  for (const argv of [['tools/make-adb-manifest.ts'], ['tools/make-adb-index.ts', '--index', resolve(ROOT, 'www/adb/index.txt')]]) {
-    const gen = Bun.spawnSync({ cmd: ['bun', 'run', ...argv], cwd: resolve(ROOT, 'ts'), stdout: 'inherit', stderr: 'inherit' });
-    if (gen.exitCode !== 0) die(argv[0] + ' 產生失敗');
+  // manifest 與公開數據庫頁：`--no-adb` 時不碰（adb 由各 adb 工作區自己部署）。
+  if (!NO_ADB) {
+    for (const argv of [['tools/make-adb-manifest.ts'], ['tools/make-adb-index.ts', '--index', resolve(ROOT, 'www/adb/index.txt')]]) {
+      const gen = Bun.spawnSync({ cmd: ['bun', 'run', ...argv], cwd: resolve(ROOT, 'ts'), stdout: 'inherit', stderr: 'inherit' });
+      if (gen.exitCode !== 0) die(argv[0] + ' 產生失敗');
+    }
   }
 }
 
