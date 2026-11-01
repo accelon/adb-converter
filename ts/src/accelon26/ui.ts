@@ -5,16 +5,16 @@
  * ./viewer and the other split modules as ESM live bindings; a module OWNS the
  * state it declares, and other modules get/set it through that module's exports.
  */
-import { $, currentFile, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, session, setStatus, tokens, statusText } from './viewer';
+import { $, currentFile, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, session, setJumpLineHook, setStatus, tokens, statusText } from './viewer';
 import { type AdbSource } from './adb';
-import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, lineTipEnabled, pageBounds, pagerLog, readDocFont, readSideFont, openHistoryPage, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, saveLastReadNow, setDocFont, setHardBreaks, setLineTip, setPageMarks, setRenderRaw, setSideFont, setSimMode, simModeOf, stepFontSize, syncFontButtons } from './doc-pane';
+import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, lineTipEnabled, pageBounds, pagerLog, readDocFont, readSideFont, openHistoryPage, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, saveLastReadNow, setDocFont, setHardBreaks, setLineTip, setPageMarks, setRenderRaw, setSideFont, setSimMode, setTermMode, setTrailMax, simModeOf, stepFontSize, syncFontButtons, termModeOf, trailMaxOf } from './doc-pane';
 import { renderTextPane } from './text-pane';
 import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
 import { formatAddress, parseAddress, type PosMap } from './posmap';
 import { addressAtLine, convertText, initMap, mapPosMap, mapState, renderMap } from './map-pane';
 import { initNoteLinks } from './notes';
 import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
-import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderJump, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully, treeSnapshot } from './scopes';
+import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderGlossary, renderJump, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully, treeSnapshot } from './scopes';
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 import { backendKind, goQueryCount, lastGoAnswer } from './backend';
 import { isDictDb } from './db-kind';
@@ -37,6 +37,7 @@ import {
   saveSettingsSoon, settingsError, settingsLocation, settingsVersion,
 } from './settings';
 import { tagChromaIndex } from './render_accelon3';
+import { renderSanskritDemo } from './siddham-demo';
 import type { TreeNode } from './search';
 
 // -------------------------------------------------------------------- wiring
@@ -228,6 +229,7 @@ function showTab(name: string, col: 'left' | 'right' = 'left') {
     });
     else if (name === 'bookmark') void renderBookmarks();
     else if (name === 'latin') void renderLatin();
+    else if (name === 'glossary') void renderGlossary();
   }
 }
 
@@ -330,6 +332,12 @@ function updateSettingsUi(): void {
   if (v) v.checked = variantSearchOn();
   const pm = $('#setPageMarks') as HTMLInputElement | null;
   if (pm) pm.checked = pageMarksOn();
+  const si = $('#setSvgInvert') as HTMLInputElement | null;
+  if (si) si.checked = svgInvertOn();
+  const tm = $('#setTrailMax') as HTMLSelectElement | null;
+  if (tm) tm.value = String(trailMaxOf());
+  const tmode = $('#setTermMode') as HTMLSelectElement | null;
+  if (tmode) tmode.value = termModeOf();
   const lt = $('#setLineTip') as HTMLInputElement | null;
   if (lt) lt.checked = lineTipEnabled();
   const mode = simModeOf();
@@ -371,6 +379,27 @@ export function closeSettings(): void {
   showSettings(false);
 }
 
+/**
+ * 設置 → 悉曇 的「在 taisho／wxzj 開啟」按鈕（作者 2026-11-01）：
+ * demo 模組只發事件，這裡才 import 整個閱讀器，避免循環 import。
+ * `phrase` 有給就把頁面捲到那句話（頁首通常是校注，梵字在下面）。
+ */
+document.addEventListener('accelon:jump-page', (ev) => {
+  const detail = (ev as CustomEvent<{ db?: string; page?: string; label?: string; phrase?: string }>).detail;
+  const db = detail?.db || 'taisho';
+  const page = detail?.page;
+  if (!page) return;
+  void (async () => {
+    if (!(await readerFor(db))) {
+      setStatus('請先開啟 ' + db + '.adb', 'warn');
+      return;
+    }
+    closeSettings();
+    const ok = await openInMain(db, { anchor: page, label: detail?.label || page, phrase: detail?.phrase });
+    if (!ok) setStatus(db + ' 找不到頁碼 ' + page, 'err');
+  })();
+});
+
 function initSettings(): void {
   ($('#settingsBtn') as HTMLButtonElement | null)?.addEventListener('click', () => openSettings());
   ($('#settingsClose') as HTMLElement | null)?.addEventListener('click', () => closeSettings());
@@ -390,6 +419,25 @@ function initSettings(): void {
     void renderTextPane();
     updateSettingsUi();
     setStatus(on ? '顯示原書頁碼：開' : '顯示原書頁碼：關（不渲染 <頁>／<_頁>）', 'info');
+  });
+  // SVG 圖反轉（作者 2026-10-31；暗色模式把黑線圖反轉成亮線）
+  ($('#setSvgInvert') as HTMLInputElement | null)?.addEventListener('change', (ev) => {
+    const on = (ev.target as HTMLInputElement).checked;
+    setSvgInvert(on);
+    setStatus(on ? 'SVG 圖反轉：開（暗色模式）' : 'SVG 圖反轉：關', 'info');
+  });
+  // 路徑每層字數（作者 2026-10-31；fuyan 的節點名很長）
+  ($('#setTrailMax') as HTMLSelectElement | null)?.addEventListener('change', (ev) => {
+    const n = Number((ev.target as HTMLSelectElement).value) || 0;
+    setTrailMax(n);
+    setStatus(n ? '路徑每層最多 ' + n + ' 字' : '路徑每層不限字數', 'info');
+  });
+  // 術語顯示（作者 2026-10-31）：hover／inline／off
+  ($('#setTermMode') as HTMLSelectElement | null)?.addEventListener('change', (ev) => {
+    const v = (ev.target as HTMLSelectElement).value;
+    setTermMode(v === 'inline' ? 'inline' : v === 'off' ? 'off' : v === 'orig' ? 'orig' : 'hover');
+    rerenderDoc();
+    setStatus(v === 'inline' ? '術語：行內顯示外語' : v === 'off' ? '術語：只顯示漢詞' : v === 'orig' ? '術語：只顯示原書標注' : '術語：滑過顯示外語', 'info');
   });
   // 滑過本文顯示頁位置（debug，作者 2026-10-29；預設關閉）
   ($('#setLineTip') as HTMLInputElement | null)?.addEventListener('change', (ev) => {
@@ -534,6 +582,7 @@ function setSettingsPane(name: string): void {
   tagAll('#setBody .setPane').forEach((p) => { (p as HTMLElement).hidden = p.dataset.setpane !== settingsPane; });
   if (settingsPane === 'tags') renderTagStylePane();
   else if (settingsPane === 'dict') void renderDictOrder();
+  else if (settingsPane === 'sanskrit') renderSanskritDemo();
 }
 
 /* ---------------------------------------------------------- 查字典（作者 2026-10-22）
@@ -1464,6 +1513,7 @@ function boot() {
     const m = /^#(?:L)?(\d+)(?:@([^\s@]+))?$/i.exec(q.trim());
     return m ? { line: Number(m[1]), db: m[2] || null } : null;
   };
+  setJumpLineHook((line) => void jumpToLine({ line, db: null }));
   const jumpToLine = async (target: { line: number; db: string | null }): Promise<void> => {
     if (!reader || !mapper) { setStatus('請先開啟 adb', 'err'); return; }
     const now = (reader.header.dbname || '').toLowerCase();
@@ -1491,6 +1541,15 @@ function boot() {
     requestAnimationFrame(() => document.getElementById('L' + target.line)?.scrollIntoView({ block: 'center' }));
     setStatus('跳到第 ' + fmtInt(target.line) + ' 行', 'info');
   };
+  /**
+   * 全文搜尋的 Enter：直接跳到第一筆（2026-10-31）。
+   * 不自己開本文，而是點第一個 snippet，讓它走原本的「開本文／塗色／記住 active」流程。
+   */
+  const jumpToFirstHit = (q: string): void => {
+    const first = document.querySelector<HTMLElement>('#searchList .snippet[data-va]');
+    if (!first) { setStatus(`「${q}」沒有結果`, 'warn'); return; }
+    first.click();
+  };
   // live search: re-run on every keystroke (posting lists are cached per token)
   const query = $('#query') as HTMLInputElement;
   let timer: number | undefined;
@@ -1502,10 +1561,16 @@ function boot() {
   };
   query.onkeydown = (ev) => {
     if (ev.key === 'Enter') {
+      ev.preventDefault();
       window.clearTimeout(timer);
       const jump = lineJumpTarget(query.value);
-      if (jump) { ev.preventDefault(); void jumpToLine(jump); return; }
-      void runSearch(query.value);
+      if (jump) { void jumpToLine(jump); return; }
+      const q = query.value.trim();
+      if (!q) return;
+      // 全文搜尋：Enter 直接跳到第一筆（2026-10-31）。同一個查詢不必重跑。
+      if (lastQuery === q && lastResult) { jumpToFirstHit(q); return; }
+      void runSearch(query.value).then(() => jumpToFirstHit(q));
+      return;
     }
     // Escape must NOT clear the box (author, 2026-10): the ✕ is the way to clear, and
     // Escape is how you leave the field without losing the query. `<input type="search">`
@@ -1543,6 +1608,9 @@ function boot() {
   };
   wireOwnSearch('#freqQuery', '#freqClear', () => void renderFreq());
   wireOwnSearch('#latinQuery', '#latinClear', () => void renderLatin());
+  wireOwnSearch('#glossaryQuery', '#glossaryClear', () => void renderGlossary());
+  document.getElementById('glossaryMode')?.addEventListener('change', () => void renderGlossary());
+  document.getElementById('glossaryMatch')?.addEventListener('change', () => void renderGlossary());
   wireOwnSearch('#termsQuery', '#termsClear', () => void renderTerms());
   wireOwnSearch('#folioQuery', '#folioClear', () => void renderFolio());
   // 跳至（作者 2026-10）：邊打邊列符合的頁 id，Enter 直接跳到最接近的一頁。
@@ -1666,6 +1734,8 @@ export function installDebugApi(): void {
   /** 大正藏 ⇄ 高麗藏 換址（需要開著帶 align 的 goryeo.adb） */
   /** 跨庫錨點：模擬點 <聯 i="db?anchor">（測試／診斷用） */
   xrefJump: async (v: string, fromRight = false, newTab = false, quote = '') => { await xrefJump(v, fromRight, newTab, quote); return true; },
+  /** 在中间開啟某庫的一頁（設置頁的「在 taisho／wxzj 開啟」用同一條路徑） */
+  openPage: (db: string, page: string, phrase = '') => openInMain(db, { anchor: page, label: page, phrase }),
   xrefDebug: () => xrefDebug(),
   xrefProbe: (db: string, a: string) => xrefProbe(db, a),
   xrefPreview: (db: string, a: string, q?: string) => previewForeign(db, a, q),
@@ -1898,7 +1968,7 @@ import { editCount, findSession, sourceKey } from './edit-session';
 import { extraRevisions } from './revisions-store';
 import { rebuildAndDownload, rollbackAndDownload, runRebuild } from './rebuild-ui';
 import { initTextPane, renderTextPane, resetTextPane, setEnsureRight, setOpenInMain, textState } from './text-pane';
-import { initXref, lookupBook, openInMain, previewForeign, refreshReverse, xrefDebug, xrefJump, xrefProbe } from './xref';
+import { initXref, lookupBook, openInMain, readerFor, previewForeign, refreshReverse, xrefDebug, xrefJump, xrefProbe } from './xref';
 import { initEmbed } from './embed';
 import { initHeatTab, renderHeatTab, syncHeatTab } from './heat-tab';
 import { initRevList } from './rev-list';
@@ -1912,7 +1982,7 @@ import { hostState } from './host';
 import { setVariantSearch, variantSearchOn } from './variants';
 import { aboutState, closeAbout, initAbout, openAbout, showAboutOnStartup } from './about';
 import { initShortcuts, openShortcuts, closeShortcuts, shortcutCount, shortcutsOpen } from './shortcuts';
-import { initTheme, THEME_LABEL, themeOf } from './theme';
+import { initTheme, setSvgInvert, svgInvertOn, THEME_LABEL, themeOf } from './theme';
 import { simplifiedStats, toSimplified } from './lossless';
 import { initDesktopBrand } from './update-ui';
 import { adbUpdateState, checkAdbUpdates, closeAdbUpdateDialog, initAdbUpdate, openAdbUpdateDialog, paintAdbUpdateButton } from './adb-update';
@@ -1995,4 +2065,8 @@ function clearDbUi(): void {
   ($('#docTabs') as HTMLElement | null)!.hidden = true;
   setStatus('已關閉資料庫', 'info');
 }
+
+
+
+
 

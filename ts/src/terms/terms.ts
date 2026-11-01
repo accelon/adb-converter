@@ -17,6 +17,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { HAN, hanChars } from '../accelon26/han';
 
 export type Lang = 'sk' | 'pi' | 'tb';
 export interface Term {
@@ -24,7 +25,6 @@ export interface Term {
   foreign: string;
 }
 
-const HAN = /[\u3400-\u9fff\uf900-\ufaff]/;
 const TAG_SPLIT = /(<[^>]*>)/;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -57,7 +57,7 @@ export function loadFixes(path = DEFAULT_FIXES): Map<string, string> {
   return out;
 }
 
-const hanLen = (s: string): number => s.replace(/<[^>]*>/g, '').replace(/[^\u3400-\u9fff\uf900-\ufaff]/g, '').length;
+const hanLen = (s: string): number => hanChars(s).length;
 
 export interface ApplyResult {
   text: string;
@@ -101,7 +101,7 @@ export function applyTerms(text: string, terms: Map<string, Term>): ApplyResult 
         }
         if (hit) {
           const t = terms.get(hit)!;
-          res += `<术 ${t.lang}="${t.foreign.replace(/"/g, '&quot;')}">${hit}</术>`;
+          res += `<术 ${t.lang}="${t.foreign.replace(/"/g, '&quot;')}" a="1">${hit}</术>`;
           words.set(hit, (words.get(hit) ?? 0) + 1);
           marks++;
           j += hit.length;
@@ -266,3 +266,4 @@ export function glossaryLines(rows: GlossaryRow[]): string[] {
 }
 
 export { HAN };
+

@@ -68,6 +68,7 @@ CORRECTIONS = [
     ('名室利楞伽', '室利楞伽', None, None),
     ('名無量心解脫', '無量心解脫', None, None),
     ('名柔順忍', '柔順忍', None, None),
+    ('樂變化天', '樂變化天', 'sk', 'Nirmānarati'),
     ('名龍叫', '龍叫', None, None),
     ('在南印度大眾部', '大眾部', None, None),
     ('在大眾部', '大眾部', None, None),

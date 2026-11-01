@@ -242,7 +242,7 @@ export interface RenderOptions {
    * `<术 sk|pi|tb="…">` 的外語顯示方式（作者 2026-10-31）：
    * hover（預設，title 提示）／inline（漢詞（外語））／off（只顯示漢詞）。
    */
-  termMode?: 'hover' | 'inline' | 'off';
+  termMode?: 'orig' | 'hover' | 'inline' | 'off';
   /**
    * 「深度 → 本文上方幾級」（作者 2026-10-18）。`renderPageBlocks` 會依**這一頁**出現的
    * 標題深度算好：最深的那一層＝+1 級，往上一層再 +1 …… 所以同一個標題（例如「甲」）
@@ -302,7 +302,7 @@ export class Accelon3Renderer {
   /** 這一行是否已經開著 `<span class="quote">` */
   private quoteOpen = false;
   /** `<术 sk|pi|tb="…">` 的顯示方式（作者 2026-10-31）：hover／inline／off */
-  private termMode: 'hover' | 'inline' | 'off' = 'hover';
+  private termMode: 'orig' | 'hover' | 'inline' | 'off' = 'orig';
   /** 目前開著的術語（跨行時要記得關掉、下一行再開） */
   private termStack: { html: string; shown: boolean; gloss: string }[] = [];
   private termCarry: { html: string; shown: boolean; gloss: string } | null = null;
@@ -333,7 +333,8 @@ export class Accelon3Renderer {
       imageUrl: opts.imageUrl ?? null,
       svgText: opts.svgText ?? null,
     };
-    this.termMode = opts.termMode === 'inline' || opts.termMode === 'off' ? opts.termMode : 'hover';
+    this.termMode =
+      opts.termMode === 'inline' || opts.termMode === 'off' || opts.termMode === 'orig' ? opts.termMode : 'orig';
   }
 
   /** 顯示用轉換（無損簡體等）；沒有就原樣 */
@@ -667,7 +668,9 @@ export class Accelon3Renderer {
         const label = lang === 'sk' ? '梵' : lang === 'pi' ? '巴' : lang === 'tb' ? '藏' : (lang || '外語');
         // 作者 2026-10-31：漢詞只加虛線，不上色；只有 hover 模式才給 title（外語提示），
         // inline 模式外語直接接在後面，off 模式只留漢詞——兩者都不再掛 tooltip。
-        const shown = !!val;
+        // `a="1"`＝自動加上的（原書沒有標注）；orig 模式只顯示原書就有的
+        const auto = attrValue(attrs, 'a') === '1';
+        const shown = !!val && this.termMode !== 'off' && !(auto && this.termMode === 'orig');
         const hover = this.termMode === 'hover';
         const tip = shown && hover ? ` title="${esc(label + '：' + val)}"` : '';
         const open = shown

@@ -17,9 +17,11 @@ import { getUserId } from './user-id';
 import { displayConverter, type SimMode } from './lossless';
 import { isDictDb } from './db-kind';
 import { diffPage, discardPage, hasEditsInRange, onEditsChange, pageEditAt, pageKey, sessionFor as editSessionFor, stagePage, type DbEditSession, type PageEdit } from './edit-session';
+import { SHORT_DB_NAMES } from './short-titles';
 import { charDiff } from './char-diff';
 import { decodeXmlEntities } from '../xml-entities';
 import { mountPageEditor, type PageEditor } from './editor';
+import { isHan } from './han';
 
 /**
  * 進階模式的「顯示原始文件」：打開＝不渲染（原始的 XML 文字），預設關閉＝渲染成 HTML。
@@ -134,6 +136,26 @@ const PAGE_MARKS_KEY = 'accelon26.pagemarks';
 
 let pageMarks = (() => { try { return localStorage.getItem(PAGE_MARKS_KEY) !== '0'; } catch { return true; } })();
 
+const TERM_KEY = 'accelon26.termMode';
+
+/** <术> 術語的外語顯示方式（作者 2026-10-31） */
+export type TermMode = 'orig' | 'hover' | 'inline' | 'off';
+
+let termMode: TermMode = (() => {
+  try {
+    const v = localStorage.getItem(TERM_KEY);
+    return v === 'inline' || v === 'off' ? v : 'hover';
+  } catch { return 'hover'; }
+})();
+
+export function termModeOf(): TermMode {
+  return termMode;
+}
+
+export function setTermMode(m: TermMode): void {
+  termMode = m === 'inline' || m === 'off' || m === 'orig' ? m : 'orig';
+  try { localStorage.setItem(TERM_KEY, termMode); } catch { /* 私密模式 */ }
+}
 export function pageMarksOn(): boolean {
   return pageMarks;
 }
@@ -406,7 +428,6 @@ export function markLineRange(from: number | null, to?: number): void {
  * 本文會重畫，包節點會把重畫弄壞；Highlight 只拿著一個 Range，重畫時清掉就好。
  */
 const CHAR_BAND = 'accelonCharBand';
-const HAN_CHAR = /[\u3400-\u9fff\uf900-\ufaff]/;
 
 export interface CharBand {
   fromLine: number; fromHan: number; toLine: number; toHan: number;
@@ -422,17 +443,24 @@ function highlightApi(): { registry: HighlightRegistry; ctor: HighlightCtor } | 
 }
 
 /** 這一行第 k 個漢字之前的 DOM 位置；k 等於總數時回最後一個漢字之後。 */
-function domPosInLine(el: HTMLElement, k: number): { node: Node; offset: number } | null {
+function domPosInLine(el: HTMLElement, k: number, after = false): { node: Node; offset: number } | null {
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   let count = 0;
   let last: { node: Node; offset: number } | null = null;
   for (let n = w.nextNode(); n; n = w.nextNode()) {
     const s = n.nodeValue ?? '';
-    for (let i = 0; i < s.length; i++) {
-      if (!HAN_CHAR.test(s[i])) continue;
-      if (count === k) return { node: n, offset: i };
-      count++;
-      last = { node: n, offset: i + 1 };
+    // 逐 code point 走（代理對算一個字），但回傳的 offset 仍是 code unit 索引。
+    for (let i = 0; i < s.length; ) {
+      const cp = s.codePointAt(i)!;
+      const ch = String.fromCodePoint(cp);
+      const width = cp > 0xffff ? 2 : 1;
+      if (isHan(ch)) {
+        // after=true：回傳「這個漢字之後」的位置（給色帶終點，含最後一個字；作者 2026-10-31）
+        if (count === k) return { node: n, offset: after ? i + width : i };
+        count++;
+        last = { node: n, offset: i + width };
+      }
+      i += width;
     }
   }
   return k >= count ? last : null;
@@ -450,7 +478,7 @@ export function highlightCharBand(band: CharBand): string {
   const toEl = document.getElementById('L' + band.toLine);
   if (!fromEl || !toEl) return '';
   const a = domPosInLine(fromEl, Math.max(0, band.fromHan));
-  const b = domPosInLine(toEl, Math.max(band.fromHan, band.toHan));
+  const b = domPosInLine(toEl, Math.max(band.fromHan, band.toHan), true);
   if (!a || !b) return '';
   const range = document.createRange();
   try {
@@ -657,7 +685,7 @@ function showsLine(s: DocSession | null, line: number): boolean {
  * breadcrumb 上顯示的短標籤（作者 2026-10）：
  *   * 標籤裡有分隔符（空白、全形空白、`、，。：；·｜／/ - — _`）→ 只取**分隔符之前**那段
  *     （例：「甲二　正宗分」→「甲二」）
- *   * 沒有分隔符 → 最多取 **5 個字**
+ *   * 每一層最多取 **N 個字**（設定頁「路徑字數」，預設 6；0＝不限）
  *
  * 完整標籤仍留在 `title` 與下拉選單裡（下拉不節略）。
  */
@@ -671,13 +699,40 @@ const MAX_INLINE_SIBS = 5;
 const trailColor = (tag: string, depth: number, label?: string): string =>
   tagColorOf(tag) ?? `var(--tag-text-${tagChromaIndex(tag, depth, undefined, label)})`;
 
+/**
+ * breadcrumb 每層最多幾個字（作者 2026-10-31；fuyan 的節點名很長）。
+ * 設 0＝不限。完整名稱仍留在 hover 的 title 與下拉選單（下拉不節略）。
+ */
+const TRAIL_MAX_KEY = 'accelon26.trailMax';
+
+function readTrailMax(): number {
+  try {
+    const v = Number(localStorage.getItem(TRAIL_MAX_KEY));
+    if (Number.isFinite(v) && v >= 0) return Math.trunc(v);
+  } catch { /* 私密模式 */ }
+  return 6;
+}
+
+let trailMax = readTrailMax();
+
+export function trailMaxOf(): number {
+  return trailMax;
+}
+
+export function setTrailMax(n: number): void {
+  trailMax = Math.max(0, Math.trunc(n) || 0);
+  try { localStorage.setItem(TRAIL_MAX_KEY, String(trailMax)); } catch { /* 私密模式 */ }
+  rerenderDoc();
+}
+
 export function trailLabel(text: string): string {
   const full = (text ?? '').trim();
   if (!full) return '';
   const head = full.split(TRAIL_SEP).map((p) => p.trim()).find((p) => p.length > 0) ?? '';
-  if (head && head !== full) return head;
-  const chars = [...full];
-  return chars.length <= 5 ? full : chars.slice(0, 5).join('');
+  const base = head || full;
+  const chars = [...base];
+  if (!trailMax || chars.length <= trailMax) return base;
+  return chars.slice(0, trailMax).join('') + '…';
 }
 
 /**
@@ -718,7 +773,7 @@ function renderAncestorTrail(s: DocSession): string {
         + `<button type="button" class="trail trailMore" data-va="${self.va}" data-tag="${escapeHtml(self.tag)}"`
         + ` title="「${full}」：同層 ${sibs.length} 個節點，點一下選"`
         + ` style="--tagtext:${trailColor(self.tag, self.depth, self.label)}">${short}<span class="trailCaret">▾</span></button>`
-        + `</span><span class="trailCount">同層 ${sibs.length}</span></span>`;
+        + `</span></span>`;
     } else {
       sibHtml = '<span class="trailSibs">' + sibs.map((n) => {
         const full = escapeHtml(n.label);
@@ -1434,6 +1489,7 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
       hardBreaks, marks: hardBreaks ? [] : kwMarks(), convert: simConverter(), pageMarks: pageMarksOn(),
       imageUrl: imageUrlOf,
       svgText: svgTextOf,
+      termMode: termModeOf(),
     });
   const rows = renderBlocks(blocks, s);
   const b = pageBounds(s.realm, s.page);
@@ -1441,18 +1497,9 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   const nLast = viewDt.lineNumbers[viewDt.lineNumbers.length - 1] ?? 0;
   // 詞典型 adb 不顯示 docHead（作者 2026-10）：詞條名稱已經在分頁標題上，
   // 而第一個詞條字串通常就是命中、會被塗紅 —— 再放一次就變成同一個詞顯示三次。
-  // 標題（.docHead）與 breadcrumb 排在同一行（作者 2026-10-18）：.docTop 是 flex row，
-  // 標題保留原本的語意（h 區的 .docHead），路徑接在它後面、不另起一列。
-  const headTitle = displayName(s.name);
-  // 標題和分頁標籤一樣時就不必再顯示一次，把橫向空間留給 breadcrumb
-  const showHead = !isDictDb(mapper) && headTitle !== shortLabel(s.name);
+  // 不再顯示 .docHead（作者 2026-10-31）：它有時出現、有時不出現（和分頁標籤同名時
+  // 會省略），版面不穩定；完整標題改放在 docTabs 的 hover（title）。
   $('#docText').innerHTML = '<div class="docTop">'
-    + (showHead
-      ? '<div class="docHead docHeadReading">' + escapeHtml(headTitle)
-        + '<span class="dim docMeta">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁（每頁 ' + fmtInt(PAGE_LINES) + ' 行）'
-        + ' · 行 ' + fmtInt(nFirst) + '–' + fmtInt(nLast) + ' / 此節點共 ' + fmtInt(b.total) + ' 行'
-        + ' · source 區塊 ' + dt.blockFirst + '–' + dt.blockLast + ' · ' + fmtInt(dt.text.length) + ' 字</span></div>'
-      : '')
     + renderAncestorTrail(s)
     + '</div>'
     + '<div class="docBody' + (hardBreaks ? '' : ' reflow') + '">' + rows + '</div>';
@@ -1546,6 +1593,7 @@ async function paintReverseBar(): Promise<void> {
   }
 }
 
+
 /** 只留漢字（與 `<聯 q="…">` 的比對基礎一致） */
 function cjkOnly(s: string): string {
   return s.replace(/<[^>]*>/g, '').replace(/[^\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/g, '');
@@ -1566,6 +1614,19 @@ function shortLabel(name: string, max = 8): string {
   return t.length > max ? t.slice(0, max) + '…' : t;
 }
 
+/**
+ * 分頁標籤要給讀者看的名字（作者 2026-10-31）：`Ys.xml` 這種 XML 檔名、或 `ys`
+ * 這種 dbname，換成庫的短名（ys → 印順、fuyan → 福嚴）。
+ */
+function readableDocName(name: string): string {
+  const t = displayName(name).trim();
+  const db = (reader?.header.dbname ?? '').toLowerCase();
+  const short = db ? SHORT_DB_NAMES[db] : '';
+  if (!t) return short;
+  if (/\.xml$/i.test(t) || t.toLowerCase() === db) return short || t;
+  return t;
+}
+
 /** the document tab strip: one chip per linked node, ✕ to close, ＋ for a new one */
 function renderDocTabs(s: DocSession): void {
   const bar = $('#docTabs');
@@ -1578,8 +1639,9 @@ function renderDocTabs(s: DocSession): void {
   strip.innerHTML = docTabs.map((t, i) => {
     const rb = boundsOfRealm(t.realm);
     const dirty = hasEditsInRange(es, rb.first, rb.last);
-    return '<span class="docTab' + (i === docActive ? ' active' : '') + (dirty ? ' dirty' : '') + (t.history ? ' history' : '') + '" data-i="' + i + '" title="' + escapeHtml(t.name) + '">'
-      + '<span class="docTabName">' + escapeHtml(shortLabel(t.name, 8)) + '</span>'
+    const label = readableDocName(t.name);
+    return '<span class="docTab' + (i === docActive ? ' active' : '') + (dirty ? ' dirty' : '') + (t.history ? ' history' : '') + '" data-i="' + i + '" title="' + escapeHtml(label) + '">'
+      + '<span class="docTabName">' + escapeHtml(shortLabel(label, 8)) + '</span>'
       + '<span class="docTabClose" data-close="' + i + '" title="關閉分頁">✕</span></span>';
   }).join('');
   strip.querySelectorAll<HTMLElement>('.docTab').forEach((el) => {
@@ -1829,7 +1891,7 @@ const PROBE_FS = 100;
 /** the numbers behind the last auto-fit (diagnostics) */
 let lastFit: Record<string, number | boolean> | null = null;
 
-const DOC_TEXT_FAMILY = '"Microsoft JhengHei", "Segoe UI", system-ui, sans-serif';
+const DOC_TEXT_FAMILY = '"Accelon Siddham Uni", "Accelon Siddham Extra", "Accelon Ranjana", "Microsoft JhengHei", "Segoe UI", system-ui, sans-serif';
 
 function autoFitFont(sample?: string[]): number {
   // The DOM only holds ONE page, so the numbers must come from the WHOLE document
@@ -2014,3 +2076,4 @@ function restoreDocPane(s: any): void {
   docFontSized = true;          // the size is a reader preference, not per database
 }
 export { DOCFS_DEFAULT, DOCFS_KEY, DOCFS_MAX, DOCFS_MIN, DOCFS_READABLE_MIN, DOC_TEXT_FAMILY, DocSession, PAGE_LINES, PROBE_FS, applySideFonts, autoFitFont, boundsCache, boundsOfRealm, closeDocTab, docActive, docFontSized, docOfVa, docScrollWired, docSeq, docSession, docTabs, docTextWidth, edgeLine, ensurePage, fetchPage, fitDebugInfo, goPage, lastDocLines, lastFit, lastLink, longestOf, makeTextMeasurer, pageBounds, pageOfLine, pagerLog, paintAsked, pendingProbeCleanup, pickProbeLine, readDocFont, readSideFont, realmFirstLine, realmKey, realmLastLine, renderDoc, renderDocTabs, renderPager, restoreDocPane, scheduleCursorSync, scrollToVa, sessionFor, sessionForRealm, setDocFont, setSideFont, shortLabel, showsLine, snapshotDocPane, switchDocTab, wholeRealm };
+
