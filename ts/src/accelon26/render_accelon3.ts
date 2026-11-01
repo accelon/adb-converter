@@ -881,7 +881,10 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
       if (!lastPage) sawBlank = true;          // 頁碼後面的空行不算段落界線
       continue;
     }
-    if (info.heading) { out.push({ kind: 'heading', lines: [info] }); cur = null; sawBlank = false; lastPage = false; continue; }
+    // 作者 2026-11-01：標題無論如何都要行首——連排模式下不能和上一段或頁碼黏在一起。
+    // `info.heading` 依賴 depthOf（真正的 adb 才有），這裡再用原始標籤補一道保險。
+    const rawHeading = /^\s*<(章|節|項|目|小目|細目)[\s>]/.test(lines[i]);
+    if (info.heading || rawHeading) { out.push({ kind: 'heading', lines: [info] }); cur = null; sawBlank = false; lastPage = false; continue; }
     if (sawBlank) { cur = null; sawBlank = false; }
     // 這一行以頁碼結尾（…知見<頁/>）→ 後面的空行不算段落界線
     lastPage = /class="pageMark"/.test(info.html);
