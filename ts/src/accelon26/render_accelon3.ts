@@ -829,7 +829,7 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
       if (pageOnly) {
         // 作者 2026-11-01：`<頁>` 後面接的是標題時，標題要從頁首獨立一行，
         // 不能和上一個段落、頁碼擠在同一行（例：05B-p287 的〈二〉〈18觀法品〉）。
-        const headingNext = /^\s*<(章|節|項|目|小目|細目)[\s>]/.test(lines[i]);
+        const headingNext = /^\s*<(章|節|項|目|小目|細目|釋)[\s>]/.test(lines[i]);
         if (headingNext) {
           appendToPrev(pageOnly);                              // 頁碼留在前一行尾端
           pageOnly = '';
@@ -886,7 +886,7 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
     }
     // 作者 2026-11-01：標題無論如何都要行首——連排模式下不能和上一段或頁碼黏在一起。
     // `info.heading` 依賴 depthOf（真正的 adb 才有），這裡再用原始標籤補一道保險。
-    const rawHeading = /^\s*<(章|節|項|目|小目|細目)[\s>]/.test(lines[i]);
+    const rawHeading = /^\s*<(章|節|項|目|小目|細目|釋)[\s>]/.test(lines[i]);
     if (info.heading || rawHeading) { out.push({ kind: 'heading', lines: [info] }); cur = null; sawBlank = false; lastPage = false; continue; }
     if (sawBlank) { cur = null; sawBlank = false; }
     // 這一行以頁碼結尾（…知見<頁/>）→ 後面的空行不算段落界線

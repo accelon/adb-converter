@@ -383,30 +383,74 @@ async function noteContext(n: string, fromLine: number): Promise<string> {
   const TERM = /[。？！?!]/;
   const first = Math.max(0, line - 1);
   const seg: string[] = [];
-  let plain = '';
   for (let k = 0; k < 4; k++) {
     const t = await r.physicalText(m.lineStartOf(first + k), m.lineStartOf(first + k + 1)).catch(() => '');
     if (!t) break;
     seg.push(t);
-    plain = seg.join('').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ');
-    const idx = seg.join('').indexOf('<註 ');
+    const rawSoFar = seg.join('');
+    const idx = rawSoFar.indexOf('<註 ');
     if (idx >= 0) {
-      const after = seg.join('').slice(idx).replace(/<[^>]*>/g, '');
-      if (TERM.test(after)) break;      // 註之後已經遇到句末，夠了
+      const after = rawSoFar.slice(idx).replace(/<[^>]*>/g, '');
+      if (TERM.test(after)) break;
     }
   }
   const raw = seg.join('');
-  const idx = raw.indexOf('<註 ');
-  if (idx < 0) return '';
-  const before = raw.slice(0, idx).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ');
-  const pos = Math.min(before.length, plain.length);
+  // 逐字走一遍：建立「純文字索引 → 原始索引」對照，順便記下每個 <註> 的位置
+  const plainAt: number[] = [];
+  const noteMarks: { plain: number; n: string }[] = [];
+  let plain = '';
+  for (let i = 0; i < raw.length; ) {
+    if (raw[i] === '<') {
+      const gt = raw.indexOf('>', i);
+      if (gt < 0) break;
+      const tag = raw.slice(i, gt + 1);
+      const nm = /<註[\s/>][^>]*?\bn\s*=\s*"([^"]*)"/.exec(tag);
+      if (nm) noteMarks.push({ plain: plain.length, n: nm[1] });
+      i = gt + 1;
+      continue;
+    }
+    const cp = raw.codePointAt(i) ?? 0;
+    const ch = String.fromCodePoint(cp);
+    if (!/\s/.test(ch)) {
+      plainAt.push(i);
+      plain += ch;
+    }
+    i += cp > 0xffff ? 2 : 1;
+  }
+  const target = noteMarks.find((x) => x.n === n);
+  if (!target) return '';
+  const pos = Math.min(target.plain, plain.length);
   let start = 0;
   let k2 = pos - 1;
   if (k2 >= 0 && TERM.test(plain[k2])) k2--;
   for (; k2 >= 0; k2--) if (TERM.test(plain[k2])) { start = k2 + 1; break; }
   let end = plain.length;
   for (let i = pos; i < plain.length; i++) if (TERM.test(plain[i])) { end = i + 1; break; }
-  return plain.slice(start, end).trim();
+  const rawStart = plainAt[start] ?? 0;
+  const rawEnd = end < plainAt.length ? plainAt[end] : raw.length;
+  // 這一段原始文字：<註 n> 換成標記（目標那個高亮），其他標籤丟掉
+  const piece = raw.slice(rawStart, rawEnd);
+  let html = '';
+  let i2 = 0;
+  while (i2 < piece.length) {
+    if (piece[i2] === '<') {
+      const gt = piece.indexOf('>', i2);
+      if (gt < 0) break;
+      const tag = piece.slice(i2, gt + 1);
+      const nm = /<註[\s/>][^>]*?\bn\s*=\s*"([^"]*)"/.exec(tag);
+      if (nm) {
+        const mark = nm[1] === n ? ' noteCtxMark' : '';
+        html += `<span class="noteCtxRef${mark}">[${escHtml(nm[1])}]</span>`;
+      }
+      i2 = gt + 1;
+      continue;
+    }
+    const cp2 = piece.codePointAt(i2) ?? 0;
+    html += escHtml(String.fromCodePoint(cp2));
+    i2 += cp2 > 0xffff ? 2 : 1;
+  }
+  // 句首常殘留前一句的收尾引號／括號（」，）」，去掉
+  return html.trim().replace(/^[」』）】》〉〕］”’]+/, '').trim();
 }
 
 /** hover `<釋>` 開頭的 [n]：浮出「原文那句」 */
@@ -424,7 +468,7 @@ async function showNoteContext(ref: HTMLElement): Promise<void> {
   const ctx = await noteContext(n, from);
   if (tipFor !== ref || tip.hidden) return;
   tip.innerHTML = ctx
-    ? `<div class="noteCtx">${escHtml(ctx)}</div>`
+    ? `<div class="noteCtx">${ctx}</div>`
     : '<div class="noteBody">（找不到對應的註）</div>';
   placeTip(ref, tip);
 }
