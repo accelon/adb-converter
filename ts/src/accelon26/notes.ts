@@ -369,6 +369,66 @@ function contextSentence(ref: HTMLElement): string {
   return ctx.trim();
 }
 
+/**
+ * `<釋>` hover 時顯示的「原文那句」（作者 2026-11-01）。
+ * 由釋找到對應的 `<註>`（findRef 先比同一頁），再把那一段原文抓出來，
+ * 以句末標點（。？！）為界取整句；跨行會往下接。`<註>` 那邊的行為不變。
+ */
+async function noteContext(n: string, fromLine: number): Promise<string> {
+  const r = reader;
+  const m = mapper;
+  if (!r || !m || fromLine < 0) return '';
+  const line = await findRef(n, fromLine).catch(() => -1);
+  if (line < 0) return '';
+  const TERM = /[。？！?!]/;
+  const first = Math.max(0, line - 1);
+  const seg: string[] = [];
+  let plain = '';
+  for (let k = 0; k < 4; k++) {
+    const t = await r.physicalText(m.lineStartOf(first + k), m.lineStartOf(first + k + 1)).catch(() => '');
+    if (!t) break;
+    seg.push(t);
+    plain = seg.join('').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ');
+    const idx = seg.join('').indexOf('<註 ');
+    if (idx >= 0) {
+      const after = seg.join('').slice(idx).replace(/<[^>]*>/g, '');
+      if (TERM.test(after)) break;      // 註之後已經遇到句末，夠了
+    }
+  }
+  const raw = seg.join('');
+  const idx = raw.indexOf('<註 ');
+  if (idx < 0) return '';
+  const before = raw.slice(0, idx).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ');
+  const pos = Math.min(before.length, plain.length);
+  let start = 0;
+  let k2 = pos - 1;
+  if (k2 >= 0 && TERM.test(plain[k2])) k2--;
+  for (; k2 >= 0; k2--) if (TERM.test(plain[k2])) { start = k2 + 1; break; }
+  let end = plain.length;
+  for (let i = pos; i < plain.length; i++) if (TERM.test(plain[i])) { end = i + 1; break; }
+  return plain.slice(start, end).trim();
+}
+
+/** hover `<釋>` 開頭的 [n]：浮出「原文那句」 */
+async function showNoteContext(ref: HTMLElement): Promise<void> {
+  const n = ref.dataset.note;
+  const tip = tipEl();
+  const from = lineOf(ref);
+  if (!n || !tip || from < 0) return;
+  if (tipFor === ref && !tip.hidden) return;
+  tipFor = ref;
+  window.clearTimeout(hideTimer);
+  tip.hidden = false;
+  tip.textContent = '讀取中…';
+  placeTip(ref, tip);
+  const ctx = await noteContext(n, from);
+  if (tipFor !== ref || tip.hidden) return;
+  tip.innerHTML = ctx
+    ? `<div class="noteCtx">${escHtml(ctx)}</div>`
+    : '<div class="noteBody">（找不到對應的註）</div>';
+  placeTip(ref, tip);
+}
+
 async function showTip(ref: HTMLElement): Promise<void> {
   const n = ref.dataset.note;
   const tip = tipEl();
@@ -382,11 +442,7 @@ async function showTip(ref: HTMLElement): Promise<void> {
   placeTip(ref, tip);
   const hit = await findBody(n, from);
   if (tipFor !== ref || tip.hidden) return;
-  const ctx = contextSentence(ref);
-  const body = hit?.text || `找不到 <釋 n="${n}">`;
-  tip.innerHTML =
-    (ctx ? `<div class="noteCtx">${escHtml(ctx)}</div>` : '') +
-    `<div class="noteBody">${escHtml(body)}</div>`;
+  tip.textContent = hit?.text || `找不到 <釋 n="${n}">`;
   placeTip(ref, tip);
 }
 
@@ -466,11 +522,15 @@ export function initNoteLinks(): void {
   tip?.addEventListener('mouseenter', () => window.clearTimeout(hideTimer));
   tip?.addEventListener('mouseleave', scheduleHide);
   document.addEventListener('mouseover', (ev) => {
-    const a = (ev.target as Element | null)?.closest?.('a.noteRef') as HTMLElement | null;
-    if (a) void showTip(a);
+    const t = ev.target as Element | null;
+    const ref = t?.closest?.('a.noteRef') as HTMLElement | null;
+    if (ref) { void showTip(ref); return; }
+    const back = t?.closest?.('a.noteBack') as HTMLElement | null;
+    if (back) void showNoteContext(back);
   });
   document.addEventListener('mouseout', (ev) => {
-    const a = (ev.target as Element | null)?.closest?.('a.noteRef') as HTMLElement | null;
+    const t = ev.target as Element | null;
+    const a = (t?.closest?.('a.noteRef') ?? t?.closest?.('a.noteBack')) as HTMLElement | null;
     if (a && a === tipFor) scheduleHide();
   });
   // 頁面捲動／換頁後提示的位置就不對了，直接收起來（提示框自己捲動不算）

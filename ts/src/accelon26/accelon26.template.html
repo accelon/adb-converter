@@ -929,7 +929,10 @@
   }
   /* 不保留硬換行（「原書分行」取消）時：整頁連著排 */
   .docBody.reflow .docLine { display: inline; }
-  .docBody.reflow .lineText { white-space: normal; }
+  .docBody.reflow .lineText { white-space: normal; overflow-wrap: break-word; }
+  /* 作者 2026-11-01：連排時本文只縱向捲動。行內元素的左右 padding 或超長
+     不可斷字串會讓 scrollWidth 多幾 px，瀏覽器就長出水平捲軸；水平溢出直接裁掉。 */
+  .docBody.reflow { overflow-x: hidden; }
   .docPara { margin: 0 0 .7em; }
   .docParaHeading { margin: .4em 0 .2em; }
   /* 取消原書分行時，<頁> 只是行內的小字頁碼 */
@@ -2106,7 +2109,7 @@
   <div id="allSearchList" class="allSearchList"></div>
 </div>
 
-<!-- 設置（齒輪；作者 2026-10）：分頁：介面（主題／介面／進階）／標籤樣式／繁簡 -->
+<!-- 設置（齒輪；作者 2026-10）：分頁：介面（主題／更新）／閱讀／進階／辭典順序／標籤樣式／繁簡／悉曇 -->
 <div id="settingsBackdrop" hidden></div>
 <div id="settingsBox" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
   <div class="setHead">
@@ -2115,6 +2118,8 @@
   </div>
   <div class="setTabs" id="setTabs" role="tablist">
     <button class="setTab active" data-setpane="ui" role="tab">介面</button>
+    <button class="setTab" data-setpane="read" role="tab">閱讀</button>
+    <button class="setTab" data-setpane="advanced" role="tab">進階</button>
     <button class="setTab" data-setpane="dict" role="tab">辭典順序</button>
     <button class="setTab" data-setpane="tags" role="tab">標籤樣式</button>
     <button class="setTab" data-setpane="sim" role="tab">繁簡</button>
@@ -2151,7 +2156,60 @@
         </div>
       </div>
     </div>
-    <!-- ---- 介面（主題＋介面＋進階；作者 2026-10-22 合併成一個分頁） ---- -->
+    <!-- ---- 閱讀（2026-11-01）：原書分行／原書頁碼／術語顯示／頁位置 ---- -->
+    <div class="setPane" data-setpane="read" hidden>
+      <section class="setSection">
+        <h3>閱讀</h3>
+        <label class="setRow" for="showHardBreaks">
+          <input type="checkbox" id="showHardBreaks" checked>
+          <span>原書分行</span>
+          <span class="setHint">保留原書的硬換行；取消＝文字連著排，只有標題與空行換段（作者 2026-10-31）</span>
+        </label>
+        <label class="setRow" for="setPageMarks">
+          <input type="checkbox" id="setPageMarks">
+          <span>顯示原書頁碼</span>
+          <span class="setHint">渲染 <code>&lt;頁&gt;</code>／<code>&lt;_頁&gt;</code>：都是行內的小頁碼；取消＝完全不出現</span>
+        </label>
+        <div class="setRow">
+          <span>術語顯示</span>
+          <select id="setTermMode" title="<术> 的外語要怎麼顯示">
+            <option value="orig">只顯示原書標注（自動加的不顯示）</option>
+            <option value="hover">滑過顯示（hover）</option>
+            <option value="inline">行內顯示（漢詞（外語））</option>
+            <option value="off">關閉（只顯示漢詞）</option>
+          </select>
+          <span class="setHint">術語（<code>&lt;术 sk/pi/tb&gt;</code>）的外語：hover 不佔版面、行內像原書；「只顯示原書標注」會隱藏程式自動加上的（<code>a="1"</code>）</span>
+        </div>
+        <label class="setRow" for="setLineTip">
+          <input type="checkbox" id="setLineTip">
+          <span>滑過本文顯示頁位置（debug）</span>
+          <span class="setHint">原書分行關閉時，滑過任一行就浮出「頁 8p0052a ・ 第 40433 行」；預設關閉，只給校對用</span>
+        </label>
+        <div class="setRow">
+          <span>路徑字數</span>
+          <select id="setTrailMax" title="breadcrumb 每層最多顯示幾個字（下拉不受限）">
+            <option value="4">4 字</option>
+            <option value="5">5 字</option>
+            <option value="6">6 字</option>
+            <option value="8">8 字</option>
+            <option value="0">不限</option>
+          </select>
+          <span class="setHint">breadcrumb 每層最多幾個字（fuyan 的節點名很長）；完整名稱仍在下拉選單與 hover 提示（作者 2026-10-31）</span>
+        </div>
+      </section>
+    </div>
+    <!-- ---- 進階（作者 2026-11-01：從「介面」獨立成頁） ---- -->
+    <div class="setPane" data-setpane="advanced" hidden>
+      <section class="setSection">
+        <h3>進階</h3>
+        <label class="setRow" for="setAdvanced">
+          <input type="checkbox" id="setAdvanced">
+          <span>進階模式</span>
+          <span class="setHint">顯示 token 瀏覽、META／容量／文件／圖片分頁，以及「顯示原始文件」</span>
+        </label>
+      </section>
+    </div>
+    <!-- ---- 介面（主題＋更新；作者 2026-11-01：「介面」section 取消、SVG 併入主題、進階獨立成頁） ---- -->
     <div class="setPane" data-setpane="ui">
       <section class="setSection">
         <h3>主題</h3>
@@ -2165,56 +2223,10 @@
           </span>
         </div>
         <p class="setHint">預設是暗色系。春綠是偏綠的紙色、秋黃是黃棕紙色，長時間閱讀比較不刺眼；換主題只換顏色，不用重開。</p>
-      </section>
-      <section class="setSection">
-        <h3>介面</h3>
-        <label class="setRow" for="setPageMarks">
-          <input type="checkbox" id="setPageMarks">
-          <span>顯示原書頁碼</span>
-          <span class="setHint">渲染 <code>&lt;頁&gt;</code>／<code>&lt;_頁&gt;</code>：都是行內的小頁碼（作者 2026-10-31：<code>&lt;頁&gt;</code> 不再折行）；取消＝完全不出現</span>
-        </label>
-        <label class="setRow" for="showHardBreaks">
-          <input type="checkbox" id="showHardBreaks" checked>
-          <span>原書分行</span>
-          <span class="setHint">保留原書的硬換行；取消＝文字連著排，只有標題與空行換段（作者 2026-10-31 從中間工具列搬到這裡）</span>
-        </label>
         <label class="setRow" for="setSvgInvert">
           <input type="checkbox" id="setSvgInvert" checked>
           <span>SVG 圖反轉</span>
           <span class="setHint">暗色模式時把黑線的 SVG 圖反轉成亮線（fuyan 等有插圖的庫），不再鋪白底；亮色主題不作用（作者 2026-10-31）</span>
-        </label>
-        <div class="setRow">
-          <span>路徑字數</span>
-          <select id="setTrailMax" title="breadcrumb 每層最多顯示幾個字（下拉不受限）">
-            <option value="4">4 字</option>
-            <option value="5">5 字</option>
-            <option value="6">6 字</option>
-            <option value="8">8 字</option>
-            <option value="0">不限</option>
-          </select>
-          <span class="setHint">breadcrumb 每層最多幾個字（fuyan 的節點名很長）；完整名稱仍在下拉選單與 hover 提示（作者 2026-10-31）</span>
-        </div>
-        <div class="setRow">
-          <span>術語顯示</span>
-          <select id="setTermMode" title="<术> 的外語要怎麼顯示">
-            <option value="orig">只顯示原書標注（自動加的不顯示）</option>
-            <option value="hover">滑過顯示（hover）</option>
-            <option value="inline">行內顯示（漢詞（外語））</option>
-            <option value="off">關閉（只顯示漢詞）</option>
-          </select>
-          <span class="setHint">術語（<code>&lt;术 sk/pi/tb&gt;</code>）的外語：hover 不佔版面、行內像原書；顏色可自訂（作者 2026-10-31）</span>
-        </div>        <label class="setRow" for="setLineTip">
-          <input type="checkbox" id="setLineTip">
-          <span>滑過本文顯示頁位置（debug）</span>
-          <span class="setHint">原書分行關閉時，滑過任一行就浮出「頁 8p0052a ・ 第 40433 行」；預設關閉，只給校對用</span>
-        </label>
-      </section>
-      <section class="setSection">
-        <h3>進階</h3>
-        <label class="setRow" for="setAdvanced">
-          <input type="checkbox" id="setAdvanced">
-          <span>進階模式</span>
-          <span class="setHint">顯示 token 瀏覽、META／容量／文件／圖片分頁，以及「顯示原始文件」</span>
         </label>
       </section>
       <!-- 更新鏡像（作者 2026-10-29）：程式更新與資料庫更新共用這一個選擇 -->
