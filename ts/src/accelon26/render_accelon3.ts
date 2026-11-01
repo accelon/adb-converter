@@ -16,6 +16,8 @@
 import type { TreeNode } from './search';
 import { defaultFontOf, fontFamilyOf, tagStyleOf } from './tag-style';
 import { decodeXmlEntities } from '../xml-entities';
+import { siddhamSequence } from './siddham-seq';
+import { puaSequence } from './pua-seq';
 
 export interface RenderContext {
   /** 標籤 → 它在樹裡的深度（0＝最上層） */
@@ -62,14 +64,36 @@ export const HIDDEN_TAGS = new Set(['樹', '隱']);
  * 也能用 CSS 縮放（`img` 載入的 SVG 不能繼承顏色，只能鋪白底硬上）。
  * viewBox 用檔案自己的（每個字的 bbox 不同），`preserveAspectRatio` 讓它置中。
  */
+/**
+ * inline SVG 的 id 要改成全文件唯一（作者 2026-10-31）。
+ *
+ * Visio 匯出的圖版，每張都有 `clip_1`／`clip_2`…；兩張圖 inline 在同一頁時，
+ * `clip-path="url(#clip_1)"` 會抓到**第一張**的 clipPath，第二張就被切掉
+ * （fuyan y37.0347 的實際狀況）。所以每張圖的 id 加上自己的前綴，連引用一起改。
+ */
+let svgSeq = 0;
+
+function uniqueSvgIds(inner: string): string {
+  const ids = [...inner.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
+  if (!ids.length) return inner;
+  const prefix = 'svg' + (++svgSeq) + '-';
+  let out = inner;
+  for (const id of ids) {
+    out = out.split(`id="${id}"`).join(`id="${prefix}${id}"`);
+    out = out.split(`url(#${id})`).join(`url(#${prefix}${id})`);
+    out = out.split(`href="#${id}"`).join(`href="#${prefix}${id}"`);
+  }
+  return out;
+}
+
 function inlineSvgHtml(src: string, label: string, figure = false): string {
   const m = /<svg\b([^>]*)>([\s\S]*?)<\/svg>/i.exec(src);
   if (!m) return `<span class="inlineImgMissing" title="${esc(label)}">▢</span>`;
   const vb = /\bviewBox\s*=\s*"([^"]*)"/i.exec(m[1])?.[1] ?? '0 0 1000 1000';
-  const inner = m[2]
+  const inner = uniqueSvgIds(m[2]
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
-    .replace(/\son\w+\s*=\s*'[^']*'/gi, '');
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, ''));
   // 圖版（整張插圖）照原圖的實寸顯示：Visio 匯出的 width="1.59in" 就是書上的大小。
   // CSS 再用 max-width:100% 收窄，所以窄視窗不會爆版。字形圖（小篆）仍用 1.5em。
   const style = figure ? svgFigureStyle(m[1]) : '';
@@ -215,6 +239,11 @@ export interface RenderOptions {
    */
   pageMarks?: boolean;
   /**
+   * `<术 sk|pi|tb="…">` 的外語顯示方式（作者 2026-10-31）：
+   * hover（預設，title 提示）／inline（漢詞（外語））／off（只顯示漢詞）。
+   */
+  termMode?: 'hover' | 'inline' | 'off';
+  /**
    * 「深度 → 本文上方幾級」（作者 2026-10-18）。`renderPageBlocks` 會依**這一頁**出現的
    * 標題深度算好：最深的那一層＝+1 級，往上一層再 +1 …… 所以同一個標題（例如「甲」）
    * 在不同頁面可以有不同大小，和本文之間是平緩的階梯，不會突然變成大字。
@@ -272,6 +301,11 @@ export class Accelon3Renderer {
   private quoteDepth = 0;
   /** 這一行是否已經開著 `<span class="quote">` */
   private quoteOpen = false;
+  /** `<术 sk|pi|tb="…">` 的顯示方式（作者 2026-10-31）：hover／inline／off */
+  private termMode: 'hover' | 'inline' | 'off' = 'hover';
+  /** 目前開著的術語（跨行時要記得關掉、下一行再開） */
+  private termStack: { html: string; shown: boolean; gloss: string }[] = [];
+  private termCarry: { html: string; shown: boolean; gloss: string } | null = null;
   /** 這個頁面上的頁碼計數（沒有 n= 時拿它當 id） */
   private pageSeq = 0;
   /** 這一行有沒有可見文字／標題（lineInfo 回報用） */
@@ -299,6 +333,7 @@ export class Accelon3Renderer {
       imageUrl: opts.imageUrl ?? null,
       svgText: opts.svgText ?? null,
     };
+    this.termMode = opts.termMode === 'inline' || opts.termMode === 'off' ? opts.termMode : 'hover';
   }
 
   /** 顯示用轉換（無損簡體等）；沒有就原樣 */
@@ -315,6 +350,47 @@ export class Accelon3Renderer {
    */
   private emit(text: string): string {
     const decoded = decodeXmlEntities(text);
+    if (!decoded) return '';
+    // 梵字顯示（2026-11-01）：
+    //   `&SDxxxxx;`（SAT 連字）→ siddham-seq 的序列
+    //   PUA（CBETA SD-XXXX → U+FA000+XXXX）→ pua-seq 的序列
+    // 兩者都只換畫面，不動 raw／VA；找不到序列就照舊。
+    const hasEntity = decoded.includes('&SD');
+    const hasPua = /[\u{F0000}-\u{10FFFD}]/u.test(decoded);
+    if (!hasEntity && !hasPua) return this.emitChunk(decoded);
+    let out = '';
+    let i = 0;
+    let j = 0;
+    while (j < decoded.length) {
+      const cp = decoded.codePointAt(j)!;
+      const w = cp > 0xffff ? 2 : 1;
+      let rep: string | null = null;
+      let len = w;
+      if (cp === 0x26 && decoded.startsWith('&SD', j)) {
+        const m = /^&(SD-?[0-9A-Z]{4,6});/.exec(decoded.slice(j));
+        if (m) {
+          const seq = siddhamSequence(m[1]);
+          rep = seq ? `<span class="sdSeq" data-code="${m[1]}">${seq}</span>` : esc('&' + m[1] + ';');
+          len = m[0].length;
+        }
+      } else if (cp >= 0xfa000 && cp <= 0x10afff) {
+        const seq = puaSequence(cp);
+        if (seq) rep = `<span class="sdSeq">${seq}</span>`;
+      }
+      if (rep != null) {
+        out += this.emitChunk(decoded.slice(i, j));
+        out += rep;
+        i = j + len;
+        j = i;
+      } else {
+        j += w;
+      }
+    }
+    return out + this.emitChunk(decoded.slice(i));
+  }
+
+  /** 一般文字（含關鍵字著色） */
+  private emitChunk(decoded: string): string {
     if (!decoded) return '';
     if (!this.opts.marks.length) return esc(this.conv(decoded));
     let out = '';
@@ -374,7 +450,8 @@ export class Accelon3Renderer {
     if (!this.opts.hardBreaks) {
       return `<span class="pageMark" data-page="${esc(id)}" title="原書頁 ${esc(id)}">〔${esc(id)}〕</span>`;
     }
-    return `<div class="pageBreak" id="P${this.pageSeq}" data-page="${esc(id)}"><span class="pageId">${esc(id)}</span></div>`;
+    // 作者 2026-10-31：`<頁>` 必須 inline，後面不要折行（以前是 block，會把後文擠到下一行）
+    return `<span class="pageBreak" id="P${this.pageSeq}" data-page="${esc(id)}"><span class="pageId">${esc(id)}</span></span>`;
   }
 
   /** 一行 → HTML（不含外層的列／段落標籤）＋診斷資訊 */
@@ -391,6 +468,13 @@ export class Accelon3Renderer {
     if (this.quoteDepth > 0) {
       html += '<span class="quote">';
       this.quoteOpen = true;
+    }
+    // 跨行的 <术>：這一行開頭把外框補回來（行尾會收掉）
+    if (this.termCarry) {
+      const c = this.termCarry;
+      this.termCarry = null;
+      if (c.shown) html += c.html;
+      this.termStack.push(c);
     }
 
     let i = 0;
@@ -539,7 +623,12 @@ export class Accelon3Renderer {
         // <段/> 或 <段>：都當段落分隔（最簡做法：<br> ＋ 兩個全形空格）。
         // 縮排放在自己的 span 裡：塗紅在做「文字位移對應」時會跳過它，
         // 才不會讓後面每個字的 offset 都差 2。
-        if (!closing) html += '<br class="para"><span class="paraIndent">　　</span>';
+        // 行首的 <段/>（例如 `<段/><釋 …>`）不要再插 <br>，否則整行會先空一行
+        //（作者 2026-10-31：ys 的 <釋> 群多空一行）。
+        if (!closing) {
+          if (this.sawText) html += '<br class="para">';
+          html += '<span class="paraIndent">　　</span>';
+        }
         continue;
       }
       // `<引>`：CBETA 的 <quote> 引文；用楷體和作者自己的敘述分開（2026-10-30）
@@ -551,6 +640,43 @@ export class Accelon3Renderer {
           this.quoteDepth++;
           if (!this.quoteOpen) { html += '<span class="quote">'; this.quoteOpen = true; }
         }
+        continue;
+      }
+      // `<术 sk="…">` 等：術語（作者 2026-10-31）。漢詞照常顯示；外語依設定
+      // hover（title 提示）／inline（漢詞（外語））／off（只顯示漢詞）。
+      if (name === '术' || name === '_术') {
+        if (closing) {
+          const t = this.termStack.pop();
+          if (t?.shown) {
+            html += '</span>';
+            if (t.gloss) html += t.gloss;
+          }
+          continue;
+        }
+        if (selfClose) continue;                 // <术 …/> 沒有漢詞可顯示
+        const langs: [string, string][] = [['sk', '梵'], ['pi', '巴'], ['tb', '藏']];
+        let lang = '';
+        let val = '';
+        for (const [k] of langs) { const v = attrValue(attrs, k); if (v) { lang = k; val = v; break; } }
+        if (!val) {
+          // 未知的屬性鍵（未來加別的語言）：第一個 key="value" 就當外語，用預設色
+          const m2 = /\b([A-Za-z]{2,4})\s*=\s*"([^"]*)"/.exec(attrs);
+          if (m2) { lang = m2[1].toLowerCase(); val = decodeXmlEntities(m2[2]); }
+        }
+        const cls = lang === 'sk' ? 'term-sk' : lang === 'pi' ? 'term-pi' : lang === 'tb' ? 'term-tb' : 'term-other';
+        const label = lang === 'sk' ? '梵' : lang === 'pi' ? '巴' : lang === 'tb' ? '藏' : (lang || '外語');
+        // 作者 2026-10-31：漢詞只加虛線，不上色；只有 hover 模式才給 title（外語提示），
+        // inline 模式外語直接接在後面，off 模式只留漢詞——兩者都不再掛 tooltip。
+        const shown = !!val;
+        const hover = this.termMode === 'hover';
+        const tip = shown && hover ? ` title="${esc(label + '：' + val)}"` : '';
+        const open = shown
+          ? `<span class="term ${cls}${hover ? ' has-tip' : ''}" data-lang="${esc(lang)}" data-term="${esc(val)}"${tip}>`
+          : '';
+        const gloss = shown && this.termMode === 'inline' ? `<span class="termGloss">（${esc(val)}）</span>` : '';
+        if (shown) html += open;
+        this.termStack.push({ html: open, shown, gloss });
+        this.sawText = true;
         continue;
       }
       const depth = this.ctx.depthOf.get(name);
@@ -583,6 +709,13 @@ export class Accelon3Renderer {
     while (this.notes.length && this.notes[this.notes.length - 1].line) {
       const top = this.notes.pop()!;
       if (top.n) html += '</span>';
+    }
+    // 跨行的 <术>：行尾先收掉，下一行再開
+    if (this.termStack.length) {
+      const carry = this.termStack[0];
+      for (let k = this.termStack.length - 1; k >= 0; k--) if (this.termStack[k].shown) html += '</span>';
+      this.termStack = [];
+      this.termCarry = carry;
     }
     html += '</span>'.repeat(this.notes.filter((x) => x.n).length);
     html += '</span>'.repeat(this.stack.length);
@@ -640,14 +773,130 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
   const hard = opts.hardBreaks !== false;
   const out: RenderBlock[] = [];
   let cur: RenderBlock | null = null;
+  // <頁> 的硬換行（作者 2026-10-31）：原 XML 把 `<頁/>` 放在自己一行（前後還常有空行），
+  // 或放在一行的尾端、後面才換行。閱讀時都不該因此斷行：
+  //   頁碼 → 接在「前一行」的尾端，被它切開的下一行也接在同一行（contLine）；
+  //   頁碼前後的空行丟掉。
+  const PAGE_MARK_RE = /<span class="pageBreak"[^>]*><span class="pageId">[^<]*<\/span><\/span>/g;
+  const ENDS_PAGE_RE = /<span class="pageBreak"[^>]*><span class="pageId">[^<]*<\/span><\/span>\s*$/;
+  let pageOnly = '';
+  let blanks: RenderedLine[] = [];
+  let softBreak = false;
+  let sawBlank = false;          // 連排：前面的空行（頁碼旁的不算）
+  let lastPage = false;          // 前一個內容是頁碼
+  const flushBlanks = (): void => {
+    for (const b of blanks) out.push({ kind: 'line', lines: [b] });
+    blanks = [];
+  };
+  const mergeIntoPrev = (info: RenderedLine, prefix = ''): boolean => {
+    const prev = out[out.length - 1];
+    if (!prev || prev.kind !== 'line' || !prev.lines.length) return false;
+    const last = prev.lines[prev.lines.length - 1];
+    last.html += prefix
+      + `<span class="lineText contLine" id="L${info.no}" data-src="${esc(info.raw)}">${info.html}</span>`;
+    return true;
+  };
+  /** 前一個 block 是不是圖版：圖不能和後面的文字擠在同一行（作者 2026-11-01） */
+  const prevHasFigure = (): boolean => {
+    const prev = out[out.length - 1];
+    if (!prev || prev.kind !== 'line' || !prev.lines.length) return false;
+    return /<svg\b|figureImg|figureSvg/.test(prev.lines[prev.lines.length - 1].html);
+  };
+  /** 把頁碼接到前一個 block 的尾端（不接文字） */
+  const appendToPrev = (html: string): boolean => {
+    const prev = out[out.length - 1];
+    if (!prev || prev.kind !== 'line' || !prev.lines.length) return false;
+    prev.lines[prev.lines.length - 1].html += html;
+    return true;
+  };
   for (let i = 0; i < lines.length; i++) {
     const info = r.lineInfo(lines[i], lineNumbers[i] ?? i);
-    if (hard) { out.push({ kind: 'line', lines: [info] }); continue; }
-    if (!info.visible) { cur = null; continue; }              // 空行＝段落界線（連續兩個以上的換行）
-    if (info.heading) { out.push({ kind: 'heading', lines: [info] }); cur = null; continue; }
+    if (hard) {
+      // 頁碼行本身 visible=true（sawText 會被頁碼設起來），所以要看「拿掉頁碼後還剩什麼」
+      const rest = info.html
+        .replace(PAGE_MARK_RE, '')
+        .replace(/<[^>]*>/g, '')
+        .replace(/[\s\u3000\u00a0]/g, '')
+        .trim();
+      const hasPage = /class="pageBreak"/.test(info.html);
+      // 只有圖、沒有文字的一行不是空行（作者 2026-11-01：圖版會被當成空行丟掉）
+      const hasFigure = /<svg\b|class="[^"]*inlineImg|figureImg/.test(info.html);
+      if (hasPage && !rest) { pageOnly += info.html; softBreak = true; continue; }   // 這一行只有頁碼
+      if (!rest && !hasFigure) { blanks.push(info); continue; }                       // 空行先留著
+      if (pageOnly) {
+        // 作者 2026-11-01：`<頁>` 後面接的是標題時，標題要從頁首獨立一行，
+        // 不能和上一個段落、頁碼擠在同一行（例：05B-p287 的〈二〉〈18觀法品〉）。
+        const headingNext = /^\s*<(章|節|項|目|小目|細目)[\s>]/.test(lines[i]);
+        if (headingNext) {
+          appendToPrev(pageOnly);                              // 頁碼留在前一行尾端
+          pageOnly = '';
+          blanks = [];
+          softBreak = false;
+          // 不 continue：這一行（標題）照下面的流程自成一個 block
+        } else if (prevHasFigure()) {                          // 圖版：只接頁碼，文字自成一行
+          appendToPrev(pageOnly);
+          pageOnly = '';
+          blanks = [];
+          softBreak = false;
+        } else if (mergeIntoPrev(info, pageOnly)) {            // 頁碼＋下一行都接在前一行
+          pageOnly = '';
+          blanks = [];
+          softBreak = false;
+          continue;
+        } else {
+          info.html = pageOnly + info.html;                    // 沒有前一行：接在自己前面
+          info.visible = true;
+          pageOnly = '';
+          blanks = [];
+        }
+      } else if (softBreak) {
+        if (!prevHasFigure() && mergeIntoPrev(info)) {         // 前一行以 <頁> 結尾：這一行接上去
+          blanks = [];
+          softBreak = false;
+          continue;
+        }
+        flushBlanks();
+      } else {
+        flushBlanks();
+      }
+      out.push({ kind: 'line', lines: [info] });
+      softBreak = ENDS_PAGE_RE.test(info.html);
+      continue;
+    }
+    // 連排（原書分行取消）：頁碼（`.pageMark`）是里程碑，不是段落界線。
+    // 原 XML 的 `<頁/>` 前後常有空行；那些空行不應該把段落切斷（作者 2026-10-31）。
+    const rest2 = info.html
+      .replace(/<span class="pageMark"[^>]*>[^<]*<\/span>/g, '')
+      .replace(/<[^>]*>/g, '')
+      .replace(/[\s\u3000\u00a0]/g, '');
+    const pageOnlyReflow = /class="pageMark"/.test(info.html) && !rest2;
+    if (pageOnlyReflow) {
+      if (!cur) { cur = { kind: 'para', lines: [] }; out.push(cur); }
+      cur.lines.push(info);
+      sawBlank = false;
+      lastPage = true;
+      continue;
+    }
+    if (!info.visible) {
+      if (!lastPage) sawBlank = true;          // 頁碼後面的空行不算段落界線
+      continue;
+    }
+    if (info.heading) { out.push({ kind: 'heading', lines: [info] }); cur = null; sawBlank = false; lastPage = false; continue; }
+    if (sawBlank) { cur = null; sawBlank = false; }
+    // 這一行以頁碼結尾（…知見<頁/>）→ 後面的空行不算段落界線
+    lastPage = /class="pageMark"/.test(info.html);
     if (!cur) { cur = { kind: 'para', lines: [] }; out.push(cur); }
     cur.lines.push(info);
   }
+  // 收尾：頁碼／空行留在最後
+  if (pageOnly) {
+    const prev = out[out.length - 1];
+    if (prev && prev.kind === 'line' && prev.lines.length) prev.lines[prev.lines.length - 1].html += pageOnly;
+    else out.push({ kind: 'line', lines: [{ no: 0, html: pageOnly, raw: '', visible: true, heading: false }] });
+    pageOnly = '';
+    blanks = [];
+  }
+  if (hard) flushBlanks();
   return out;
 }
 
