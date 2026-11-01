@@ -5,14 +5,14 @@
     "label": "內測（限福嚴師生）",
     "source": "釋厚觀《空之探究講義》（2004）Word 講稿，福嚴佛學院",
     "licenseNote": "講義文字、圖表版權屬福嚴佛學院；內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。",
-    "note": "內測中，限福嚴師生。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。32 張圖表以 SVG 內嵌、1,240 條大正藏引用帶字元級 j。"
+    "note": "內測中，限福嚴師生。2026-11-01：字元級 j 改用 code point 計（擴充 B 區算 1），1,176 條大正引用重算。32 張圖表以 SVG 內嵌。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。"
   },
   "taisho.adb": {
     "status": "available",
     "label": "可下載",
     "source": "T01–T55、T85：CBETA XML-P5 2026R2；T56–T84：SAT 2018",
     "licenseNote": "T01–T55、T85 依 CBETA XML-P5 使用條款；T56–T84 文本與底本為 public domain，數位文字取自 SAT 2018 並依其授權標注。TEI 標記按 CBETA convention 整理。",
-    "note": "大正藏 1–85 冊純經文底座（331 MB）。2026-10-29 重建：修正行表錯位（舊版 69,454 行把 <頁 …> 切斷）。不含本專案加的連結／嵌入／經群。",
+    "note": "大正藏 1–85 冊純經文底座（314.7 MB）。2026-10-31 重建：CB 缺字換成 Unicode，SAT 2018 的 &SD-XXXX; 梵字換成內嵌字型（第 16 平面 PUA），&CB…;／&SD-…; 皆為 0。不含本專案加的連結／嵌入／經群。",
     "crossCheck": "T2250《阿毘達磨俱舍論指要鈔》（T63，頁 807a）亦見 Kanseki Repository，可作獨立文字核對。"
   },
   "goryeo_taisho.adb": {
@@ -23,15 +23,22 @@
     "note": "高麗藏 ⇄ 大正藏逐字對照表（2.2 MB，6,357 卷），不含經文。開著它，左欄會多一個「高麗⇄大正」分頁：輸入經名／經號／位址或字元級位置，就能跳到另一藏的那一段。"
   },
   "wxzj.adb": {
-    "status": "wip",
-    "label": "施工中",
+    "status": "available",
+    "label": "可下載",
     "source": "CBETA XML-P5 2026R2（X 藏）",
-    "licenseNote": "文字依 CBETA XML-P5 的授權。",
-    "note": "2026-10-29 已用 CBETA XML-P5 2026R2 重建 X 藏底座（86 冊、172,794 頁）。先整理目錄與驗證，暫不公開下載。"
+    "licenseNote": "文字依 CBETA XML-P5 的授權，供非營利使用。梵字字型（Siddam／Ranjana）由 CBETA 免費提供非營利及個人研究使用，著作權屬原作者。",
+    "note": "卍新纂續藏經（X 藏）純經文底座：86 冊、1,236 書、172,794 頁（全部唯一）。2026-10-31 重建：CB 缺字依 charDecl 換 Unicode（剩 1,772 碼沒有 Unicode，保留 &CB…;）；SD／RJ 梵字全部換成 Unicode 第 16 平面，由內嵌字型顯示。234.4 MB 大檔，整檔下載。"
   },
   "fgdict.adb": {
     "status": "revision",
     "label": "整修中",
     "note": "作者要大修，先下架，暫不公開下載。"
+  },
+  "yl38.adb": {
+    "status": "available",
+    "label": "內測（限福嚴師生）",
+    "source": "釋厚觀《空之探究講義》（2004）Word 講稿，福嚴佛學院講義（yl38：正文＋腳注釋群兩本書）",
+    "licenseNote": "講義文字、圖表版權屬福嚴佛學院；內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。",
+    "note": "內測中，限福嚴師生，請勿外傳。正文與腳注釋群分成兩本書（注釋群目錄到節），頁碼為 yl38p1 起；1,176 條引印順著作用的 <聯> 已對到 ys.adb。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。"
   }
 }
