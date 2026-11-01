@@ -8,8 +8,12 @@
 import { $, displayName, docs, fmtInt, mapper, reader, setStatus } from './viewer';
 import { dirActive, dirTrees, renderDirTree, tagVas, treeOrder } from './scopes';
 import { growUntil } from './lazy-list';
-import { autoFitFont, boundsOfRealm, docActive, docOfVa, docSession, docTabs, ensurePage, lastLink, pageBounds, renderDocTabs, sessionFor, sessionForRealm, setDocActive, setDocFontSized, setLastLink, wholeRealm } from './doc-pane';
+import { activeDocCtx, boundsOfRealm, ctxOf, docActive, docOfVa, docSession, docTabs, ensurePage, lastLink, ownsActiveDb, pageBounds, renderDocTabs, sessionFor, sessionForRealm, setDocActive, setDocFontSized, setLastLink, tabCountOfDb, wholeRealm } from './doc-pane';
+import { type DocCtx, isActiveDocCtx } from './doc-ctx';
+import type { AdbReader } from './adb';
+import type { VaPaMapper } from './vapa';
 import { noteLink } from './engine-stats';
+import { activeSlot, dbShortName, switchTo } from './dbs';
 
 /** the hit the middle pane is currently showing (VA + its element text) */
 let pinnedHit: { va: number; text: string; token: string; units: number; line: number; exact?: boolean; phrase?: string; noMark?: boolean } | null = null;
@@ -49,14 +53,18 @@ function nodeContaining(va: number): { realm: { from: number; to: number }; name
  * the tab's realm). Otherwise the current tab is kept when it already contains
  * the hit, which is what keeps clicks inside one chapter in one tab.
  */
-async function linkTo(va: number, token: string, units: number | undefined, opts: { newTab?: boolean; exact?: boolean; phrase?: string; noMark?: boolean; name?: string; mode?: 'reuse' | 'node' | 'hit'; realm?: { from: number; to: number } } = {}): Promise<void> {
-  if (!mapper) return;
+async function linkTo(va: number, token: string, units: number | undefined, opts: { newTab?: boolean; exact?: boolean; phrase?: string; noMark?: boolean; name?: string; mode?: 'reuse' | 'node' | 'hit'; realm?: { from: number; to: number }; ctx?: DocCtx | null } = {}): Promise<void> {
+  // 連結是從「左欄那一庫」發起的（目錄、摘要、全文、詞典…），所以預設用 active ctx；
+  // 呼叫端要指定別的庫時可以自己給 ctx（作者 2026-11-01）。
+  const ctx = opts.ctx ?? activeDocCtx();
+  const mp: VaPaMapper | null = ctx?.mapper ?? null;
+  if (!ctx || !mp) return;
   // A caller that hands in its own realm AND paints by TEXT (名詞／全文 rows) does
   // not need the element: `elementAt` has to WALK every line up to the VA, and on
   // fgdict the cursor can be 200k lines behind (measured: clicking 法王家 after
   // reading entry #748 looked dead for seconds). The line table already says where
   // to go and `exact` paints by matching the term inside the line.
-  const el = opts.realm && opts.exact ? null : await mapper.elementAt(va);
+  const el = opts.realm && opts.exact ? null : await mp.elementAt(va);
   const node = nodeContaining(va);
   // A tree link carries everything it needs from the NODE (its realm), so a failed
   // element lookup must not swallow it: on a drifting database `elementAt` returns
@@ -69,12 +77,13 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   if (!el && !node && !opts.realm) { setStatus('VA ' + fmtInt(va) + '：找不到對應位置', 'err'); return; }
   const u = Math.max(1, units ?? el?.element.vaUnits ?? 1);
 
-  const doc = docOfVa(va);
-  const useNode = !!node && (opts.mode === 'node' || !docTabs.length);
+  const doc = docOfVa(ctx, va);
+  // 「這個庫還沒有本文分頁」才把 realm 擴成節點；別庫的分頁不算
+  const useNode = !!node && (opts.mode === 'node' || tabCountOfDb(ctx.dbId) === 0);
   // Without a node the realm is the owning `<檔>` — NOT the whole VA space: in a
   // multi-document database the page range must be expressed in that document's
   // lines, or every page would be clamped to a single line.
-  const whole: { from: number; to: number } = docs.length ? { from: doc.vaStart, to: doc.vaEnd } : wholeRealm();
+  const whole: { from: number; to: number } = ctx.docs.length ? { from: doc.vaStart, to: doc.vaEnd } : wholeRealm(ctx);
   // A node may drift a few VA units past its `<檔>`'s boundary (fgdict does); the
   // page range is computed from the line table, so the realm must be clamped to
   // the document that is actually read, or the page would clamp to one line.
@@ -92,16 +101,23 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   // detail, so it is only the last resort.
   // The clicked label wins: it is what the reader pointed at, and on a drifting
   // database the node's own label can be a neighbouring entry's text.
-  const name = opts.name || token || (useNode ? node!.name : (el?.element.text || doc.name || reader?.header.dbname || ''));
-  const cur = docSession();
-  const existing = sessionForRealm(realm);
+  // 2026-10-31：檔名（Ys.xml）或 dbname（ys）也不要當分頁名——沒有可讀的名字時用
+  // 該庫的短名（ys → 印順；fuyan → 福嚴）。
+  const docLabel = doc?.name && !/\.xml$/i.test(doc.name) ? doc.name : '';
+  const dbLabel = dbShortName(ctx.dbName) || displayName(ctx.dbCName || '');
+  const name = opts.name || token
+    || (useNode ? node!.name : (el?.element.text || docLabel || dbLabel || ''));
+  // 只有「同一個庫的分頁」才能被重用／接手；別庫的分頁不能拿來裝這一庫的內容
+  const curAll = docSession();
+  const cur = curAll && (ctxOf(curAll)?.dbId ?? 0) === ctx.dbId ? curAll : null;
+  const existing = sessionForRealm(ctx, realm);
   // Requirement 三: Ctrl/Cmd opens a NEW document tab, a PLAIN click UPDATES the tab
   // in view. The old rule opened a tab whenever the current one did not already cover
   // the realm, so walking the 目錄 (or the 全文 list) without Ctrl piled up one tab per
   // node that was visited.
   let s: DocSession;
   if (opts.newTab) {
-    s = sessionFor(realm, name, true);
+    s = sessionFor(ctx, realm, name, true);
   } else if (existing) {
     s = existing;                 // this realm already has a tab: focus that one
   } else if (cur) {
@@ -110,11 +126,12 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
     s.page = 0;
     s.cache = null;               // the cached page belongs to the old realm
   } else {
-    s = sessionFor(realm, name, false);
+    s = sessionFor(ctx, realm, name, false);
   }
 
   // 從歷史版本分頁點目錄／TOC／任何連結：這個分頁回到正常內文（退出歷史）
   if (s.history) { s.history = undefined; s.cache = null; }
+  s.ctx = ctx;                    // 這個分頁畫哪一庫的文字（作者 2026-11-01）
   s.doc = doc;
   // A reused tab is renamed to what was just clicked: the pane now shows THAT node/
   // segment/page, and the label must say so (it used to keep the first link's name).
@@ -125,10 +142,10 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   // The mapper's walk can drift a few VAs from the stored VA table (fgdict and
   // yinshun both do), so an element's line may fall outside the realm's line
   // range. Snap it back inside, or the page would not contain the pinned line.
-  const rb = boundsOfRealm(realm);
+  const rb = boundsOfRealm(ctx, realm);
   // the LINE comes from the line table, not from the mapper's walk: the walk drifts
   // on fgdict and a tag click would land one line high (or on another entry)
-  let line = mapper.lineOfVa(va);
+  let line = mp.lineOfVa(va);
   if (line < rb.first || line > rb.last) line = rb.first;
   // `exact` paints a phrase by TEXT inside the line (the only walk-independent way
   // on fgdict); `phrase` paints something other than the label (全文 pane: label
@@ -147,7 +164,8 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   // Bring the linked line into the viewport: a page holds up to 200 lines and the
   // target can sit below the fold (the 原書分頁 marker is the common case).
   document.getElementById('L' + s.pinned.line)?.scrollIntoView({ block: 'center' });
-  paintTreeActive();
+  // 目錄游標只跟「左欄那一庫」的本文連動
+  if (isActiveDocCtx(ctx)) paintTreeActive();
   const totalMs = performance.now() - tLink;
   setLastLink({ va, ensureMs: Math.round(ensureMs), totalMs: Math.round(totalMs), rows: s.cache?.dt?.lines.length ?? 0 });
   // 本文標題顯示「上一輪引擎耗時」：取文字這一段（含確保頁面）
@@ -157,15 +175,15 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   setDocFontSized(true);
   // label carries the directory node's name (a tag click has no text of its own)
   const what = s.name || token || el?.element.text || '';
-  const totalRows = boundsOfRealm(s.realm).total;
+  const totalRows = boundsOfRealm(ctx, s.realm).total;
   const pageInfo = s.cache
-    ? '（共 ' + fmtInt(totalRows) + ' 行，第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(pageBounds(s.realm, s.page).pages) + ' 頁' + (auto ? '，自動跟隨命中' : '') + '）'
+    ? '（共 ' + fmtInt(totalRows) + ' 行，第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(pageBounds(ctx, s.realm, s.page).pages) + ' 頁' + (auto ? '，自動跟隨命中' : '') + '）'
     : '';
   setStatus(displayName(what) + '：第 ' + fmtInt(line) + ' 行' + pageInfo, 'info');
 }
 
 /** a search/summary link: the same action, plus the "snippet" token name */
-async function revealHit(va: number, token: string, units?: number, opts: { newTab?: boolean; exact?: boolean; phrase?: string; noMark?: boolean; name?: string; mode?: 'reuse' | 'node' | 'hit'; realm?: { from: number; to: number } } = {}): Promise<void> {
+async function revealHit(va: number, token: string, units?: number, opts: { newTab?: boolean; exact?: boolean; phrase?: string; noMark?: boolean; name?: string; mode?: 'reuse' | 'node' | 'hit'; realm?: { from: number; to: number }; ctx?: DocCtx | null } = {}): Promise<void> {
   return linkTo(va, token, units, opts);
 }
 
@@ -191,11 +209,13 @@ export async function revealImageUse(name: string): Promise<boolean> {
 
 /** the public "show the document containing line `line`" entry point (文件 list) */
 async function showLine(line: number, va: number, units?: number): Promise<void> {
-  if (!mapper || !reader) return;
-  const d = docOfVa(va);
+  const ctx = activeDocCtx();
+  if (!ctx) return;
+  const d = docOfVa(ctx, va);
   $('#docs').querySelectorAll('.docItem').forEach((el) => el.classList.toggle('active', Number((el as HTMLElement).dataset.i) === d.i));
-  const s = sessionFor({ from: d.vaStart, to: d.vaEnd }, d.name, false);
+  const s = sessionFor(ctx, { from: d.vaStart, to: d.vaEnd }, d.name, false);
   if (s.history) { s.history = undefined; s.cache = null; }
+  s.ctx = ctx;
   s.doc = d;
   s.pinned = { va, text: '', token: d.name, units: Math.max(1, units ?? 1), line };
   pinnedHit = s.pinned;
@@ -216,6 +236,8 @@ let cursorPending = false;
  * `current` and every rendered ancestor of it is `ancestor`.
  */
 function paintTreeActive(): void {
+  // 目錄游標只屬於「左欄那一庫」：跨庫分頁的 VA 拿去查只會亮錯節點
+  if (!ownsActiveDb(docSession())) return;
   const box = $('#dirTree');
   if (!box) return;
   const d = dirTrees[dirActive];
@@ -240,7 +262,9 @@ function paintTreeActive(): void {
  */
 function syncCursorFromScroll(): void {
   const body = document.querySelector<HTMLElement>('#docText .docBody');
-  if (!body || !mapper) return;
+  if (!body || !ownsActiveDb(docSession())) return;
+  const mp = ctxOf(docSession())?.mapper ?? mapper;
+  if (!mp) return;
   const mid = body.scrollTop + body.clientHeight / 2;
   let midLine = -1;
   for (const row of body.querySelectorAll<HTMLElement>('.docLine')) {
@@ -248,14 +272,56 @@ function syncCursorFromScroll(): void {
     if (top <= mid && mid < top + row.offsetHeight) { midLine = Number(row.id.slice(1)); break; }
   }
   if (midLine < 0) return;
-  const node = deepestNode(mapper.linesVirtual[midLine] ?? 0);
+  const node = deepestNode(mp.linesVirtual[midLine] ?? 0);
   if (node === cursorNode) return;
   cursorNode = node;
   paintTreeActive();
 }
 
-/** reopen the tree along the cursor path and scroll that row into view (button) */
+/** 把目錄的游標節點指到包含 va 的節點（書籤回位用；作者 2026-10-31）。 */
+export function focusTreeNode(va: number): void {
+  const n = deepestNode(va);
+  if (!n) return;
+  cursorNode = n;
+  paintTreeActive();
+}
+
+/** 目前本文中間那一行屬於哪個目錄節點（沒有 DOM 就退回釘選的 VA／頁首） */
+function cursorNodeOf(s: DocSession): TreeNode | null {
+  const mp = ctxOf(s)?.mapper ?? null;
+  const body = document.querySelector<HTMLElement>('#docText .docBody');
+  if (mp && body) {
+    const mid = body.scrollTop + body.clientHeight / 2;
+    for (const row of body.querySelectorAll<HTMLElement>('.docLine')) {
+      const top = row.offsetTop;
+      if (top <= mid && mid < top + row.offsetHeight) {
+        return deepestNode(mp.linesVirtual[Number(row.id.slice(1))] ?? 0);
+      }
+    }
+  }
+  if (typeof s.pinned?.va === 'number') return deepestNode(s.pinned.va);
+  return deepestNode(s.realm.from);
+}
+
+/**
+ * 在目錄中顯示目前位置（header 的 🌲）。
+ *
+ * 作者 2026-11-01 的規格：這是**唯一**會因為本文而切換 adb 的動作。分頁屬於別的庫時
+ * 先把 adb 切到那一庫（左欄目錄、摘要就變成那一庫的），再展開到目前位置。
+ */
 async function revealCursorInTree(): Promise<void> {
+  const s0 = docSession();
+  if (s0) {
+    const want = ctxOf(s0)?.dbId ?? 0;
+    if (want && activeSlot()?.id !== want) {
+      const at = docTabs.indexOf(s0);
+      // 切庫後由 dbs 選分頁；shared 模式要指定「就是這一個分頁」
+      switchTo(want, false, at >= 0 ? at : undefined);
+    }
+  }
+  const s = docSession();
+  if (!s || !ownsActiveDb(s)) return;
+  cursorNode = cursorNodeOf(s);
   const d = dirTrees[dirActive];
   if (!d || !cursorNode) return;
   for (let va: number | undefined = d.parentOf.get(cursorNode.va); va !== undefined; va = d.parentOf.get(va)) {
@@ -268,6 +334,7 @@ async function revealCursorInTree(): Promise<void> {
   await growUntil($('#dirTree'), () => !!document.querySelector(sel));
   const row = $(sel) as HTMLElement | null;
   row?.scrollIntoView({ block: 'center' });
+  paintTreeActive();
 }
 
 export const setPinnedHit = (h: any): void => { pinnedHit = h; };
@@ -288,29 +355,63 @@ function orderIndex(realmFrom: number): number {
   return node ? order.indexOf(node) : -1;
 }
 
-/** 有沒有上／下一個 text node（pager 要不要顯示、按鈕要不要亮） */
-export function hasRealmNeighbor(dir: 1 | -1): boolean {
+/** 下（1）／上（-1）一個節點：先找同 VA 的節點，找不到就用 VA 比較找最近的（作者 2026-10-31）。 */
+function neighborNode(dir: 1 | -1): TreeNode | null {
   const s = docSession();
-  if (!s || !treeOrder().length) return false;
-  const at = orderIndex(s.realm.from);
-  if (at < 0) return false;
-  return !!treeOrder()[at + dir];
+  if (!s) return null;
+  const order = treeOrder();
+  if (!order.length) return null;
+  const from = s.realm.from;
+  const at = order.findIndex((n) => n.va === from);
+  if (at >= 0) return order[at + dir] ?? null;
+  // 這一頁的 realm 不是節點起點（整本書、跨頁、或終端節點）：用 VA 找最近的節點。
+  // 以前只認 indexOf(realm.from)，找不到就讓上下頁變灰——「經常不能點」就是這樣來的。
+  let best: TreeNode | null = null;
+  if (dir > 0) {
+    for (const n of order) if (n.va > from) { best = n; break; }
+  } else {
+    for (const n of order) if (n.va < from) best = n;
+  }
+  return best;
+}
+
+/** 這一頁所屬文件的下（1）／上（-1）一份文件（跨書用）。 */
+function docNeighbor(ctx: DocCtx | null, dir: 1 | -1): { vaStart: number; name: string } | null {
+  const s = docSession();
+  const list = ctx?.docs ?? [];
+  if (!s || !list.length) return null;
+  const d = docOfVa(ctx, s.realm.from);
+  const i = list.findIndex((x) => x.vaStart === d?.vaStart);
+  if (i < 0) return null;
+  const nd = list[i + dir];
+  return nd ? { vaStart: nd.vaStart, name: nd.name } : null;
+}
+
+/** 有沒有上／下一個 text node（pager 要不要顯示、按鈕要不要亮）；跨書也算。 */
+export function hasRealmNeighbor(ctx: DocCtx | null, dir: 1 | -1): boolean {
+  return !!neighborNode(dir) || !!docNeighbor(ctx, dir);
 }
 
 /**
  * 換到上（-1）／下（1）一個節點的本文。回傳有沒有換成。
  * 走的是跟點目錄列同一條路（`revealHit` + `mode: 'node'`），所以分頁／塗紅／
- * 游標的行為完全一致。
+ * 游標的行為完全一致。節點用完了就換下一份文件（書），讓使用者可以從頭翻到尾。
+ *
+ * 上／下鄰居來自目錄樹（左欄那一庫），所以只有「左欄那一庫」的分頁才能跨節點。
  */
 export async function stepRealm(dir: 1 | -1): Promise<boolean> {
   const s = docSession();
   if (!s) return false;
-  const order = treeOrder();
-  const at = orderIndex(s.realm.from);
-  if (at < 0) return false;
-  const target = order[at + dir];
-  if (!target) return false;
-  await revealHit(target.va, target.label || '#' + target.index, 1, { mode: 'node' });
+  const ctx = ctxOf(s);
+  if (!ownsActiveDb(s)) return false;
+  const target = neighborNode(dir);
+  if (target) {
+    await revealHit(target.va, target.label || '#' + target.index, 1, { mode: 'node' });
+    return true;
+  }
+  const doc = docNeighbor(ctx, dir);
+  if (!doc) return false;
+  await revealHit(doc.vaStart, doc.name, 1, { mode: 'node' });
   return true;
 }
 
@@ -330,22 +431,22 @@ export function resetLink(): void {
  *
  * Accelon 的 LINK 標籤只存名字（`n=`），不是位置；這裡用詞典型資料庫現成的
  * `caches/詞`（詞頭字串表，與 `tags` 容器的第 i 個命中一一對應）做一次線性
- * 建表，之後 O(1) 查。索引跟著 `reader` 物件快取，換庫或關庫就重建。
+ * 建表，之後 O(1) 查。索引跟著 **reader 物件**（＝那一庫的 ctx.reader）快取，
+ * 所以跨庫分頁的 `<聯>` 用的是它自己那一庫的詞頭表（作者 2026-11-01）。
  */
 let entryIndexSource: unknown = null;
 let entryIndex: { names: string[]; vas: number[] } | null = null;
 
-async function buildEntryIndex(): Promise<{ names: string[]; vas: number[] } | null> {
-  if (!reader) return null;
-  const tags = reader.containers.get('tags');
+async function buildEntryIndex(rd: AdbReader): Promise<{ names: string[]; vas: number[] } | null> {
+  const tags = rd.containers.get('tags');
   if (!tags) return null;
   for (const tag of ['詞', '字', '詞目', '字頭', 'term', 'entry']) {
     const ti = tags.names.indexOf(tag);
     if (ti < 0) continue;
     try {
-      const names = await reader.cachedStrings(tag);
+      const names = await rd.cachedStrings(tag);
       if (!names.length) continue;
-      const vas = await reader.decodeBlockList('tags', ti);
+      const vas = await rd.decodeBlockList('tags', ti);
       if (vas.length !== names.length) continue;
       return { names, vas };
     } catch {
@@ -355,12 +456,17 @@ async function buildEntryIndex(): Promise<{ names: string[]; vas: number[] } | n
   return null;
 }
 
-/** 把一個詞頭解析成 VA 並聯動本文（`<聯 n=…>` 的點擊入口） */
-export async function linkToEntry(word: string): Promise<boolean> {
-  if (!reader || !word) return false;
-  if (entryIndexSource !== reader) {
-    entryIndexSource = reader;
-    entryIndex = await buildEntryIndex();
+/**
+ * 把一個詞頭解析成 VA 並聯動本文（`<聯 n=…>` 的點擊入口）。
+ * `ctxIn` 省略時用「本文目前顯示的那個分頁」那一庫（跨庫分頁才不會查錯庫）。
+ */
+export async function linkToEntry(word: string, ctxIn?: DocCtx | null): Promise<boolean> {
+  const ctx = ctxIn ?? ctxOf(docSession()) ?? activeDocCtx();
+  const rd = ctx?.reader ?? null;
+  if (!ctx || !rd || !word) return false;
+  if (entryIndexSource !== rd) {
+    entryIndexSource = rd;
+    entryIndex = await buildEntryIndex(rd);
   }
   if (!entryIndex) return false;
   const at = entryIndex.names.indexOf(word);
@@ -368,7 +474,7 @@ export async function linkToEntry(word: string): Promise<boolean> {
     setStatus(`「${word}」不在本庫的詞頭表`, 'warn');
     return false;
   }
-  await linkTo(entryIndex.vas[at], word, 1, { mode: 'node', exact: true });
+  await linkTo(entryIndex.vas[at], word, 1, { mode: 'node', exact: true, ctx });
   return true;
 }
 
@@ -386,7 +492,8 @@ export function initEntryLinks(): void {
       if (!a) return;
       ev.preventDefault();
       ev.stopPropagation();
-      void linkToEntry(a.dataset.entry ?? a.getAttribute('data-entry') ?? '');
+      // 點的是「本文裡」的 `<聯>`：跟著本文分頁那一庫走（跨庫分頁也不會查錯庫）
+      void linkToEntry(a.dataset.entry ?? a.getAttribute('data-entry') ?? '', ctxOf(docSession()));
     },
     true,
   );
@@ -404,3 +511,4 @@ function restoreLink(s: any): void {
   cursorPending = false;
 }
 export { cursorNode, cursorPending, deepestNode, lastReveal, linkTo, nodeContaining, nodeLabelOf, paintTreeActive, pinnedHit, restoreLink, revealCursorInTree, revealHit, showLine, snapshotLink, syncCursorFromScroll };
+

@@ -50,8 +50,18 @@ export const isTibetPunc = (c: number): boolean => c >= 0xf0d && c <= 0xf11;
 /** tokenize.pas: isIDC */
 export const isIDC = (c: number): boolean => c >= 0x2ff0 && c <= 0x2fff;
 
-/** tokenize.pas: isSurrogate */
-export const isSurrogate = (c: number): boolean => c >= 0xd840 && c <= 0xdbff;
+/** tokenize.pas: isSurrogate - 任何 high surrogate（ASCII 以外的補充平面字元） */
+export const isSurrogate = (c: number): boolean => c >= 0xd800 && c <= 0xdbff;
+
+/** 悉曇區（Unicode Siddham, U+11580–115FF） */
+const SIDDHAM_START = 0x11580;
+const SIDDHAM_END = 0x115ff;
+/** <mapping type="unicode"> 的序列會用到：母音、子音、virama、母音符號 */
+const SIDDHAM_VIRAMA = 0x115bf;
+const isSiddhamConsonant = (cp: number): boolean => cp >= 0x1158e && cp <= 0x115ae;
+const isSiddhamMark = (cp: number): boolean =>
+  (cp >= 0x115af && cp <= 0x115bb) || cp === 0x115bc || cp === 0x115bd || cp === 0x115be;
+
 
 /** tokenize.pas: isstrongpair */
 export const isStrongPair = (c: number): boolean => c === 0x3c || c === 0x22 || c === 0x27 || c === 0x26;
@@ -193,9 +203,17 @@ export class Tokenizer {
   private readonly data: string;
   private ptr = 0;
   private tokenStart = 0;
+  /**
+   * 把悉曇連字（`ra+virama+dha…`）收成一個 token。**預設關閉**：
+   * 現有 adb 的梵字是 PUA，文字裡若本來就有悉曇序列，合併會改變 VA 數
+   * （實測 taisho 少 22 個），引文座標會跑掉。只有「文字本來就是序列、
+   * 而且 adb 是以這個規則建索引」的新庫才開（2026-11-01）。
+   */
+  private readonly siddhamCluster: boolean;
 
-  constructor(line: string) {
+  constructor(line: string, opts: { siddhamCluster?: boolean } = {}) {
     this.data = line;
+    this.siddhamCluster = opts.siddhamCluster === true;
   }
 
   get atEnd(): boolean {
@@ -230,6 +248,32 @@ export class Tokenizer {
       this.ptr++;
     } while (balance !== 1 && this.ptr < this.data.length);
     return out;
+  }
+
+  /**
+   * 悉曇連字（Unicode Siddham）：`ra + virama + dha + virama + la` 這種序列
+   * 在 Noto Sans Siddham 裡是**一個**連字，所以也要算一個 token／VA。
+   * 規則：子音（可跟 virama＋下一個子音，重複）＋可選的母音符號／anusvara。
+   */
+  private parseSiddham(): string {
+    const start = this.ptr;
+    const first = this.data.codePointAt(this.ptr) ?? 0;
+    this.ptr += first > 0xffff ? 2 : 1;
+    if (isSiddhamConsonant(first)) {
+      for (;;) {
+        if ((this.data.codePointAt(this.ptr) ?? 0) !== SIDDHAM_VIRAMA) break;
+        this.ptr += 2;                       // 悉曇區在 supplementary plane（2 個 code unit）
+        const next = this.data.codePointAt(this.ptr) ?? 0;
+        if (!isSiddhamConsonant(next)) break; // 字尾 halant：virama 留在這個 token
+        this.ptr += 2;
+      }
+    }
+    for (;;) {
+      const cp = this.data.codePointAt(this.ptr) ?? 0;
+      if (!isSiddhamMark(cp)) break;
+      this.ptr += 2;
+    }
+    return this.data.slice(start, this.ptr);
   }
 
   /** tokenize.pas: TTokenizer.nextLiteral */
@@ -287,9 +331,17 @@ export class Tokenizer {
 
     // ids handling
     if (isIDC(this.cur())) return this.parseIds();
+    // 悉曇連字：整個 cluster 一個 token（見 parseSiddham；預設不開）
+    if (this.siddhamCluster) {
+      const cp = this.data.codePointAt(this.ptr) ?? 0;
+      if (cp >= SIDDHAM_START && cp <= SIDDHAM_END) return this.parseSiddham();
+    }
     if (isSurrogate(this.cur())) {
-      const out = this.data.slice(this.ptr, this.ptr + 2);
-      this.ptr += 2;
+      // 一對代理＝一個字元（除非它其實不是成對的，才退一個 code unit）
+      const cp = this.data.codePointAt(this.ptr) ?? 0;
+      const len = cp > 0xffff ? 2 : 1;
+      const out = this.data.slice(this.ptr, this.ptr + len);
+      this.ptr += len;
       return out;
     }
     const out = this.data[this.ptr];

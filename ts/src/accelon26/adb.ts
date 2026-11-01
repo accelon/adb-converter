@@ -67,6 +67,10 @@ export interface AdbSource extends ByteSource {
   readonly lastModified: number;
   /** 桌面宿主給的絕對路徑（file:// 版沒有；字數統計要靠它走 Go 的批次解壓） */
   readonly path?: string;
+  /** adb id＝檔頭的 dbname（`13j`、`ys`）。桌面宿主直接給；網頁版選檔時沒有 */
+  readonly dbname?: string;
+  /** 檔頭的 dbcname（中文名）。桌面宿主直接給 */
+  readonly dbcname?: string;
 }
 
 /** One `read` primitive is the whole transport contract. */
@@ -444,6 +448,11 @@ export class AdbReader {
   }
 
   async decodeBlockList(container: string, index: number): Promise<number[]> {
+    // `names` 可能比 block 數多（ys／fuyan 的 tags 容器就是這樣：35 個 block、36 個名字），
+    // 呼叫端都是「拿名字查到索引再解這個 block」，所以查不到就當空清單，
+    // 不要讓整個分頁（頻次、目錄…）因為最後一個名字而整個失敗（2026-11-01）。
+    const c = this.containers.get(container);
+    if (c && (index < 0 || index >= c.count)) return [];
     return decodePackedList(await this.readBlock(container, index));
   }
 

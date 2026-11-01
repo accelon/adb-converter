@@ -8,11 +8,43 @@
  * 單檔 HTML 不能依賴旁邊的檔案，data URI 才真的「一個檔案帶著走」。同一個 PNG 也是
  * exe 的圖示來源（tools/release.ts 用它產生 .ico → .syso）。
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const here = import.meta.dir;
 export const APPICON_PNG = resolve(here, '../src/accelon26/appicon.png');
+
+/** 內嵌梵字字型（悉曇／蘭札；作者 2026-10-31）。
+ *
+ * 經文裡的梵字是 Unicode 第 16 平面私用區（U+100000–U+10FFFD），系統字型
+ * 一定沒有；所以把 CBETA 原字型改寫 cmap、子集化後以 **data URI** 放進單檔
+ * HTML。桌面版（wails/assets/index.html）也吃同一份，不必另外安裝字型。
+ * 讀不到字型檔就回空字串，頁面照樣可用（只是梵字會變豆腐）。
+ */
+export function fontFaceCss(): string {
+  const dir = resolve(here, '../src/accelon26/fonts');
+  const fonts: Array<[family: string, file: string, range: string]> = [
+    // 2026-11-01：CBETA 的 Siddam（415.6 KiB）換成 Noto Sans Siddham（48.7 KiB）＋
+    // 81 個 Noto 排不出來的字（從 CBETA 抽出，12.1 KiB）。
+    ['Accelon Siddham Uni', 'accelon-siddham-unicode.woff2', 'U+11580-115FF'],
+    ['Accelon Siddham Extra', 'accelon-siddham-extra.woff2', 'U+FA000-10AFFF'],
+    ['Accelon Ranjana', 'accelon-ranjana.woff2', 'U+100000-10FFFD'],
+  ];
+  const out: string[] = [];
+  for (const [family, file, range] of fonts) {
+    const p = resolve(dir, file);
+    if (!existsSync(p)) continue;
+    const b64 = readFileSync(p).toString('base64');
+    // Ranjana 的字身比 Siddham 小很多（glyph 約 0.6em）；用 size-adjust 放大，
+    // 讓它和漢字／悉曇並排時視覺大小一致（作者 2026-10-31）。
+    const adjust = family === 'Accelon Ranjana' ? 'size-adjust:160%;' : '';
+    out.push(
+      `@font-face{font-family:'${family}';src:url(data:font/woff2;base64,${b64}) format('woff2');` +
+        `font-weight:400;font-style:normal;font-display:swap;${adjust}unicode-range:${range};}`,
+    );
+  }
+  return out.join('\n');
+}
 
 /** favicon／apple-touch-icon 的 <link>（讀不到圖示就回空字串，頁面照樣可用）。 */
 export function appIconLinks(): string {
@@ -36,7 +68,7 @@ export function buildInfo(): { buildTime: string; buildTimeText: string } {
 }
 
 /** 組出單檔 HTML（bundle ＋ favicon ＋ template）。 */
-export async function buildSingleFileHtml(): Promise<{ html: string; jsKiB: string; iconKiB: string }> {
+export async function buildSingleFileHtml(): Promise<{ html: string; jsKiB: string; iconKiB: string; fontKiB: string }> {
   const built = await Bun.build({
     entrypoints: [resolve(here, '../src/accelon26/viewer.ts')],
     target: 'browser',
@@ -59,15 +91,18 @@ export async function buildSingleFileHtml(): Promise<{ html: string; jsKiB: stri
     cm = '/* CodeMirror bundle not built: run tools/build-codemirror.ts */';
   }
   const links = appIconLinks();
+  const fontCss = fontFaceCss();
   const html = template
     .replace('/*__VIEWER_BUNDLE__*/', () => js)
     .replace('/*__CM_BUNDLE__*/', () => cm)
     .replace('<!--__APPICON__-->', () => links)
+    .replace('/*__FONTS__*/', () => fontCss)
     // 建置時間：About 頁顯示用（桌面版另外有宿主回報的 exe 時間，會蓋過這個）
     .replace('<!--__BUILD_TIME__-->', () => `<script>window.__ACCELON_BUILD__=${JSON.stringify(buildInfo())};</script>`);
   return {
     html,
     jsKiB: (js.length / 1024).toFixed(1),
     iconKiB: (links.length / 1024).toFixed(1),
+    fontKiB: (fontCss.length / 1024).toFixed(1),
   };
 }

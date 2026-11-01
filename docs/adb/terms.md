@@ -45,8 +45,9 @@ bun run tools/terms.ts check --text out/05B.txt
 
 **glossary**
 - 同（語言＋外語＋漢詞）只留一筆並累計次數；位置記 `line`／`page`／`off`／`hanline`。
-- 漢字只算 BMP（與閱讀器 `domPosInLine`、`xref.ts` 的 `HAN_RE` 一致）；
-  擴充 B 區的字（如「𩜁」）目前不計，否則跳頁位置會偏。
+- 漢字**逐 code point**（`\p{Script=Han}`，擴充 B 區的代理對算 1 個），與閱讀器
+  `ts/src/accelon26/han.ts` 同一套；見 `han-position.md`。
+  2026-11-01 之前是 BMP-only，fuyan 的「恭御陀」因此偏一個字。
 
 ## 詞表的來源與維護
 
@@ -60,6 +61,6 @@ bun run tools/terms.ts check --text out/05B.txt
 
 | 庫 | 用法 |
 |---|---|
-| fuyan | `docx2accelon.py` 產生標記後跑 `terms.ts apply`；打包時 `glossary.ts` 建容器（或直接用 `terms.ts glossary` 的輸出） |
+| fuyan | `docx2accelon.py` 產生標記後跑 `terms.ts apply`；打包時 `pack.ts` 用 `buildGlossaryRows()` 建 `glossary` 容器 |
 | ys | `build.ps1` 在 `addj.ts` 之後、`check-links.py` 之前跑 `terms.ts fix --write` |
 | 其他 | 只要正文是中文、有梵／巴／藏對照，都照同一套：先 `apply`（新文字）或 `fix`（舊標記），再打包 |

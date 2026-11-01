@@ -9,7 +9,7 @@
  *   markPhraseOnPage  the same, scanning the whole page (fgdict's drift)
  *   paintHit          the entry point: decide what to paint for the pinned hit
  */
-import { mapper } from './viewer';
+import type { DocCtx } from './doc-ctx';
 import { docSession, hardBreaksOn, scheduleCursorSync, scrollToVa, simConverter } from './doc-pane';
 import { kwMarks } from './kw-marks';
 
@@ -92,7 +92,7 @@ function markRange(nodes: Text[], start: number, end: number, va: number, hue: n
  * （作者 2026-10-27：摘要一張卡有兩個著色點，本文卻只塗第一個）。
  * 由後往前包，前面節點的位移才不會被影響。
  */
-function markPhraseInLine(line: number | undefined, phrase: string | undefined, va: number, hue = 0, all = false): HTMLElement | null {
+function markPhraseInLine(line: number | undefined, phrase: string | undefined, va: number, hue = 0, all = false, noScroll = false): HTMLElement | null {
   if (line === undefined || !phrase) return null;
   // 顯示模式（無損／強制簡體）下畫面上的字已經轉過，比對的字串也要跟著轉
   const conv = simConverter();
@@ -114,7 +114,7 @@ function markPhraseInLine(line: number | undefined, phrase: string | undefined, 
     if (mark && !first) first = mark;
   }
   if (!first) return null;
-  first.scrollIntoView({ block: 'center' });
+  if (!noScroll) first.scrollIntoView({ block: 'center' });
   return first;
 }
 
@@ -126,14 +126,14 @@ function markPhraseInLine(line: number | undefined, phrase: string | undefined, 
  * the hit's own line — the query would then silently stay unpainted. The page is
  * always the page that holds the hit, so searching it finds the phrase.
  */
-function markPhraseOnPage(phrase: string | undefined, va: number, fromLine: number, hue = 0): boolean {
+function markPhraseOnPage(phrase: string | undefined, va: number, fromLine: number, hue = 0, noScroll = false): boolean {
   if (!phrase) return false;
   const rows = [...document.querySelectorAll<HTMLElement>('#docText .docLine')];
   if (!rows.length) return false;
   const lineOf = (el: HTMLElement) => Number((el.id || '').replace(/^L/, ''));
   const start = Math.max(0, rows.findIndex((r) => lineOf(r) === fromLine));
-  for (let i = start; i < rows.length; i++) if (markPhraseInLine(lineOf(rows[i]), phrase, va, hue, true)) return true;
-  for (let i = 0; i < start; i++) if (markPhraseInLine(lineOf(rows[i]), phrase, va, hue, true)) return true;
+  for (let i = start; i < rows.length; i++) if (markPhraseInLine(lineOf(rows[i]), phrase, va, hue, true, noScroll)) return true;
+  for (let i = 0; i < start; i++) if (markPhraseInLine(lineOf(rows[i]), phrase, va, hue, true, noScroll)) return true;
   return false;
 }
 
@@ -198,9 +198,16 @@ function paintKeywordMarks(): void {
   }
 }
 
-async function paintHit(va: number, units?: number): Promise<void> {
+/**
+ * `opts.noScroll`（作者 2026-11-01）：不要自己捲到釘選的那一行。
+ * 由 `renderDoc` 在「還原上次看的捲動位置／選取區」時傳入，否則還原好的位置
+ * 會被這裡的 scrollIntoView 搶走。
+ */
+async function paintHit(ctx: DocCtx | null, va: number, units?: number, opts: { noScroll?: boolean } = {}): Promise<void> {
   const s = docSession();
-  if (!mapper || !s) return;
+  const mp = ctx?.mapper ?? null;
+  const noScroll = !!opts.noScroll;
+  if (!mp || !s) return;
   // A node-label link (名詞 / 原書分頁) names the node itself, so marking its text in
   // the line the reader was sent to is walk-independent — and on a drifting database
   // (fgdict) it is the ONLY correct answer: the span path painted an unrelated
@@ -213,18 +220,18 @@ async function paintHit(va: number, units?: number): Promise<void> {
   const hue = kwHue(s.pinned?.phrase ?? s.pinned?.token);
   if (s.pinned?.exact) {
     const phrase = s.pinned.phrase ?? s.pinned.token;
-    const done = !!markPhraseInLine(s.pinned.line, phrase, va, hue, true)
-      || markPhraseOnPage(phrase, va, s.pinned.line, hue);
+    const done = !!markPhraseInLine(s.pinned.line, phrase, va, hue, true, noScroll)
+      || markPhraseOnPage(phrase, va, s.pinned.line, hue, noScroll);
     // 多詞組查詢：其他關鍵字在同一頁也要有顏色（自己的那個已經畫好了）
     paintKeywordMarks();
     if (done) return;
   }
-  let spans = units && units > 1 ? await mapper.phraseSpans(va, units) : await mapper.lineSpans(va);
+  let spans = units && units > 1 ? await mp.phraseSpans(va, units) : await mp.lineSpans(va);
   if (!spans.length) {
     // A heading TAG carries no inline text span (lineSpans skips tags), so a
     // directory click on `<戊 u="文">` would produce no mark AND no scroll.
-    const el = await mapper.elementAt(va);
-    if (el?.element.line !== undefined) scrollToVa(va);
+    const el = await mp.elementAt(va);
+    if (el?.element.line !== undefined && !noScroll) scrollToVa(ctx, va);
     paintKeywordMarks();
     return;
   }
@@ -236,7 +243,7 @@ async function paintHit(va: number, units?: number): Promise<void> {
     // so its element lookup returns the wrong text). The reader was sent to the
     // table line, so mark the searched phrase inside THAT line instead.
     const readerSent = s.pinned?.phrase ?? s.pinned?.token;
-    markPhraseInLine(s.pinned?.line, readerSent, va, hue, true);
+    markPhraseInLine(s.pinned?.line, readerSent, va, hue, true, noScroll);
     paintKeywordMarks();
     return;
   }
@@ -255,7 +262,7 @@ async function paintHit(va: number, units?: number): Promise<void> {
       const phrase = conv ? conv(raw) : raw;
       // 這一行裡的所有出現都塗（作者 2026-10-27：摘要同一張卡有兩個著色點，
       // 本文卻只塗第一個）。指定那一個已經在裡面，重包時只會補 class。
-      if (phrase) mark = markPhraseInLine(sp.line, phrase, va, hue, true);
+      if (phrase) mark = markPhraseInLine(sp.line, phrase, va, hue, true, noScroll);
     }
     if (!mark) {
       const nodes = textNodesOf(box);
@@ -268,7 +275,7 @@ async function paintHit(va: number, units?: number): Promise<void> {
     if (!mark) continue;
     if (!firstMark) firstMark = mark;
   }
-  (firstMark ?? document.getElementById('L' + (spans[0]?.line ?? 0)))?.scrollIntoView({ block: 'center' });
+  if (!noScroll) (firstMark ?? document.getElementById('L' + (spans[0]?.line ?? 0)))?.scrollIntoView({ block: 'center' });
   paintKeywordMarks();
   scheduleCursorSync();
 }

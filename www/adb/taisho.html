@@ -321,7 +321,7 @@
 <thead><tr><th></th><th>CBETA XML-P5（TEI）</th><th><code>taisho.adb</code></th></tr></thead>
 <tbody><tr><td>形式</td><td>一冊一個 XML，給程式與研究者</td><td><b>單一 <code>.adb</code></b>，accelon26 直接開，離線可用</td></tr>
 <tr><td>範圍</td><td>T01–T55、T85</td><td><b>T01–T85 全部 85 冊</b>（T56–T84 另取 SAT 2018）</td></tr>
-<tr><td>檢索</td><td>需要自己解析 XML／建索引</td><td>內建 <b>35,146 個 tokens、121,094,314 筆命中</b>，輸入即時找</td></tr>
+<tr><td>檢索</td><td>需要自己解析 XML／建索引</td><td>內建 <b>27,430 個 tokens、120,969,752 筆命中</b>，輸入即時找</td></tr>
 <tr><td>目錄</td><td><code>&lt;cb:mulu&gt;</code>／<code>&lt;head&gt;</code> 階層</td><td><b>7 棵目錄樹</b>：經目（冊→書→品）、書名、分書頻次、分卷、分卷頻次、西文、反連結</td></tr>
 <tr><td>頁碼</td><td><code>&lt;pb n=&quot;0065a&quot;&gt;</code></td><td><code>頁 id=&quot;NpMc&quot;</code>（<b>與 CBETA 相同的頁碼座標</b>），238,278 頁全部唯一</td></tr>
 <tr><td>互連</td><td>無</td><td>其他庫的 <code>taisho?8p562b</code> 直接跳頁、可塗紅引文；本庫也能列出「誰引用過這一頁」</td></tr>
@@ -345,19 +345,25 @@
   <li><code>&lt;note&gt;</code> 校註：不進正文（CBETA 的註記留在 CBETA）。</li>
   <li><code>&lt;cb:tt&gt;</code> 梵／巴對照、foot 注：不進。</li>
   <li><code>&lt;cb:mulu&gt;</code>：不重複放進正文，目錄由 <code>&lt;head&gt;</code>／<code>&lt;jhead&gt;</code> 與 7 棵樹重建。</li>
-  <li>缺字：保留 <code>&amp;CBxxxxx;</code> 的 CB 碼位，不轉成圖片（之後可用字形庫補）。</li>
+  <li>缺字：CB 缺字換成 Unicode（<code>&amp;CB…;</code> 0）；其中 931 碼只有 PUA 對應（2,425 次），</li>
+</ul>
+<p>  文字裡是第 15 平面 PUA 字元，另有清單。SAT 2018 的 <code>&amp;SD-XXXX;</code> 梵字換成</p>
+<p>  內嵌字型的 PUA（第 16 平面），可直接顯示。剩下 3,665 碼 <code>&amp;SDxxxxx;</code>（悉曇連字）</p>
+<p>  在 adb 裡仍是碼位，閱讀器顯示時換成 Unicode 序列、用內嵌的 Noto Sans Siddham</p>
+<p>  子集排連字（2026-10-31）。</p>
+<ul>
   <li>本專案加的 <code>&lt;聯&gt;</code>（跨庫連結）、<code>&lt;嵌&gt;</code>（引文嵌入）、經群：<b>不放底座</b>，</li>
 </ul>
 <p>  改放獨立的 adb，這樣底座只在 CBETA 換版時更新。</p>
-<h2>三、檔案與數字（2026-10-29 版）</h2>
+<h2>三、檔案與數字（2026-10-31 版）</h2>
 <div class="tableWrap"><table>
 <thead><tr><th>項目</th><th>數值</th></tr></thead>
 <tbody><tr><td>冊／書／卷</td><td>85／3,000／17,998</td></tr>
 <tr><td>頁（<code>頁 id=&quot;NpMc&quot;</code>）</td><td>238,278（全部唯一）</td></tr>
-<tr><td>行</td><td>6,745,533</td></tr>
-<tr><td>標記／tokens</td><td>36 種／35,146 種（121,094,314 筆命中）</td></tr>
-<tr><td>檔案</td><td>331,018,737 bytes（315.7 MiB）</td></tr>
-<tr><td>SHA-256</td><td><code>f03f9efecd3e9b6997513d9e4a6566d74276b7603bbbccf1da47de168880b2b3</code></td></tr>
+<tr><td>行</td><td>6,745,515</td></tr>
+<tr><td>標記／tokens</td><td>36 種／27,430 種（120,969,752 筆命中）</td></tr>
+<tr><td>檔案</td><td>329,957,332 bytes（314.7 MiB）</td></tr>
+<tr><td>SHA-256</td><td><code>41581591703032c6e5257ced1278c3658d5ea3a00fd7c1a4b5d07729338f13f2</code></td></tr>
 <tr><td>來源</td><td>T01–T55、T85：CBETA XML-P5 2026R2；T56–T84：SAT 2018</td></tr></tbody></table></div>
 <h2>四、授權與出處</h2>
 <ul>

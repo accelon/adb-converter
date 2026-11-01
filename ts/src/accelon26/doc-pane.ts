@@ -6,11 +6,12 @@
  * state it declares, and other modules get/set it through that module's exports.
  */
 import { $, currentFile, currentSource, displayName, docs, escapeHtml, fmtInt, mapper, reader, session, setStatus } from './viewer';
+import { activeDocDbId, isActiveDocCtx, resolveDocCtx, type DocCtx } from './doc-ctx';
 import { PAGE, openImageView } from './panes';
 import { cursorPending, hasRealmNeighbor, paintTreeActive, pinnedHit, revealHit, setCursorPending, setPinnedHit, stepRealm, syncCursorFromScroll } from './link';
 import { paintHit } from './paint';
 import { Accelon3Renderer, LEVEL_MAX_SCALE, LEVEL_STEP_PX, renderPageBlocks, tagChromaIndex, tierContext, type RenderBlock } from './render_accelon3';
-import { ancestorTrail, currentNodeAt, siblingsOf, tagVas } from './scopes';
+import { ancestorTrail, currentNodeAt, siblingsOf } from './scopes';
 import { tagColorOf } from './tag-style';
 import { kwMarks } from './kw-marks';
 import { getUserId } from './user-id';
@@ -48,60 +49,87 @@ export function setRenderRaw(on: boolean): void {
  * `<圖 n="…"/>` → blob URL。
  *
  * 圖檔存在 adb 的 `resources` 容器（未壓縮，一張圖一個 block），所以一張圖只要
- * 一次 `resourceBytes()` 就能換成 URL；同一頁重畫時直接用快取。換庫（reader 換人）
- * 就整批撤銷 —— blob URL 不撤銷會一直佔著記憶體。
+ * 一次 `resourceBytes()` 就能換成 URL；同一頁重畫時直接用快取。
+ *
+ * 快取**跟著 reader 走**（作者 2026-11-01）：以前只有一份、換庫就整批撤銷，
+ * 但跨庫分頁可以並存，A 庫與 B 庫的圖得分開留著。關庫時由 `dropPageImages()`
+ * 撤銷（blob URL 不撤銷會一直佔著記憶體）。
  */
-const imageUrls = new Map<string, string>();
-/** SVG 資源直接留原文，渲染時 inline 成 `<svg>`（作者 2026-10-28：不必為 accelon3 相容，
- *  inline 才會跟著字色／主題走，也能用 CSS 縮放）。 */
-const svgTexts = new Map<string, string>();
-let imageUrlsDb: unknown = null;
-let imageNameIndex: Map<string, number> | null = null;
+interface PageImages {
+  urls: Map<string, string>;
+  svgs: Map<string, string>;
+  /** 資源名 → resources 容器的第幾個 block（第一次用才建） */
+  index: Map<string, number> | null;
+}
+
+const pageImages = new WeakMap<AdbReader, PageImages>();
+/** 目前這一頁的圖集：渲染是同步的，所以 `imageUrlOf` / `svgTextOf` 只讀這一份 */
+let imageSet: PageImages | null = null;
+
+function pageImagesOf(rd: AdbReader): PageImages {
+  let set = pageImages.get(rd);
+  if (!set) {
+    set = { urls: new Map(), svgs: new Map(), index: null };
+    pageImages.set(rd, set);
+  }
+  return set;
+}
+
+/** 關庫時撤銷這一庫的圖（blob URL 不會自己回收） */
+export function dropPageImages(rd: AdbReader | null | undefined): void {
+  if (!rd) return;
+  const set = pageImages.get(rd);
+  if (!set) return;
+  for (const url of set.urls.values()) URL.revokeObjectURL(url);
+  set.urls.clear();
+  set.svgs.clear();
+  set.index = null;
+  pageImages.delete(rd);
+  if (imageSet === set) imageSet = null;
+}
 
 /** 這一頁用到的圖先解好；渲染本身是同步的，所以只能先做 */
-async function resolvePageImages(lines: readonly string[]): Promise<void> {
-  if (!reader) return;
-  if (imageUrlsDb !== reader) {
-    for (const url of imageUrls.values()) URL.revokeObjectURL(url);
-    imageUrls.clear();
-    svgTexts.clear();
-    imageNameIndex = null;
-    imageUrlsDb = reader;
-  }
+async function resolvePageImages(ctx: DocCtx | null, lines: readonly string[]): Promise<void> {
+  const rd = ctx?.reader;
+  if (!rd) return;
+  const set = pageImagesOf(rd);
   const names = new Set<string>();
   for (const line of lines) {
     for (const m of line.matchAll(/<圖[^>]*?\bn\s*=\s*"([^"]*)"/g)) names.add(decodeXmlEntities(m[1]));
   }
-  if (!names.size) return;
-  if (!imageNameIndex) {
-    const c = reader.containers.get('resources');
-    imageNameIndex = new Map();
-    for (let i = 0; i < (c?.count ?? 0); i++) imageNameIndex.set(c!.names[i], i);
-  }
-  for (const name of names) {
-    if (imageUrls.has(name) || svgTexts.has(name)) continue;
-    const i = imageNameIndex.get(name);
-    if (i === undefined) continue;
-    const { bytes } = await reader.resourceBytes(i);
-    const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
-    if (ext === 'svg') {
-      // SVG：留原文（下面 inline 進 DOM），不建 blob URL
-      svgTexts.set(name, new TextDecoder('utf-8').decode(bytes));
-      continue;
+  if (names.size) {
+    if (!set.index) {
+      const c = rd.containers.get('resources');
+      set.index = new Map();
+      for (let i = 0; i < (c?.count ?? 0); i++) set.index.set(c!.names[i], i);
     }
-    const type = ext === 'jpg' ? 'image/jpeg' : `image/${ext || 'png'}`;
-    imageUrls.set(name, URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type })));
+    for (const name of names) {
+      if (set.urls.has(name) || set.svgs.has(name)) continue;
+      const i = set.index.get(name);
+      if (i === undefined) continue;
+      const { bytes } = await rd.resourceBytes(i);
+      const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
+      if (ext === 'svg') {
+        // SVG：留原文（下面 inline 進 DOM），不建 blob URL
+        set.svgs.set(name, new TextDecoder('utf-8').decode(bytes));
+        continue;
+      }
+      const type = ext === 'jpg' ? 'image/jpeg' : `image/${ext || 'png'}`;
+      set.urls.set(name, URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type })));
+    }
   }
+  // 全部解完才指定：渲染拿到的就是剛剛這一頁的那一份
+  imageSet = set;
 }
 
 /** 給渲染器的查表函式（渲染是同步的，查不到就畫佔位方塊） */
 function imageUrlOf(name: string): string | null {
-  return imageUrls.get(name) ?? null;
+  return imageSet?.urls.get(name) ?? null;
 }
 
 /** SVG 原文（有就 inline，沒有就退回 blob URL／佔位方塊） */
 function svgTextOf(name: string): string | null {
-  return svgTexts.get(name) ?? null;
+  return imageSet?.svgs.get(name) ?? null;
 }
 
 /** 重畫目前這一頁（切換渲染模式用） */
@@ -218,6 +246,17 @@ interface DocSession {
   page: number;
   /** the `<檔>` the realm lives in */
   doc: DocRow;
+  /**
+   * 這個分頁畫哪一庫的文字（作者 2026-11-01）。
+   *
+   * 只存**參考**：同一個庫的分頁指到同一份 reader／mapper，不複製。
+   * 本文區一切（頁界、行、xref 錨點、編輯工作階段）都從這裡取，
+   * 不再讀全域的 `reader`／`mapper` —— 那是「左欄那一庫」。
+   */
+  ctx: DocCtx;
+  /** 離開這個分頁時的捲動位置與選取區（切回分頁要回到原處；見 renderDoc 的 pendingView） */
+  scrollTop?: number;
+  sel?: DocSelection | null;
   pinned: {
     va: number; text: string; token: string; units: number; line: number;
     exact?: boolean;
@@ -250,6 +289,14 @@ const PAGE_LINES = 200;
 /** the lines of the page currently in the DOM, used by autoFitFont */
 let lastDocLines: string[] = [];
 
+/**
+ * 下一次 `renderDoc` 要還原的「看的地方」：捲動位置＋選取區（作者 2026-11-01）。
+ *
+ * 用在：切分頁、切庫還原快照、開檔還原上次閱讀狀態。有它時 `renderDoc` 會
+ * 告訴 `paintHit` 不要自己捲到釘選那一行（否則剛還原的位置會被搶走）。
+ */
+let pendingView: { scrollTop?: number; sel?: DocSelection | null } | null = null;
+
 /** one paint retry per target line per tab (see paintHit) */
 const paintAsked = new Map<number, number>();
 
@@ -260,6 +307,36 @@ let lastLink: { va: number; ensureMs: number; totalMs: number; rows: number } | 
 const pagerLog: string[] = [];
 
 const docSession = (): DocSession | null => docTabs[docActive] ?? null;
+
+/**
+ * 「左欄那一庫」的 ctx：由全域 `reader`／`mapper`／`session`／`docs` 組出來。
+ *
+ * 分頁沒有自己的 ctx 時（例如舊快照還原、`＋` 新分頁）就用這一個；正常情況下
+ * 每個分頁建立時就已經帶著自己的 ctx（見 link.ts 的 `linkTo`／`sessionFor`）。
+ */
+export function activeDocCtx(): DocCtx | null {
+  const rd = reader;
+  const mp = mapper;
+  if (!rd || !mp) return null;
+  return {
+    dbId: activeDocDbId(),
+    reader: rd,
+    mapper: mp,
+    session,
+    docs,
+    dbName: rd.header.dbname ?? '',
+    dbCName: rd.header.dbcname ?? '',
+    file: currentSource,
+    fileName: currentFile,
+  };
+}
+
+/** 分頁自己的 ctx；沒有就退回 active 那一庫（舊快照／極早期建立的分頁） */
+const ctxOf = (s: DocSession | null | undefined): DocCtx | null => s?.ctx ?? activeDocCtx();
+
+/** 這個分頁是不是「左欄那一庫」的分頁（決定麵包屑、目錄游標、反鏈要不要畫） */
+export const ownsActiveDb = (s: DocSession | null | undefined): boolean =>
+  isActiveDocCtx(ctxOf(s));
 
 /* ---------------------------------------------- inline SVG：點一下放大（作者 2026-10-29）
  *
@@ -294,33 +371,44 @@ const LINE_TIP_KEY = 'accelon26.lineTip';
 let lineTipOn = false;
 try { lineTipOn = localStorage.getItem(LINE_TIP_KEY) === '1'; } catch { /* 私密模式 */ }
 
-/** `<頁>` 的 VA → 頁 id（與「跳至」同一份資料，只建一次） */
-let pageIdx: { va: number; id: string }[] | null = null;
-let pageIdxReader: unknown = null;
+/** `<頁>` 的 VA → 頁 id（與「跳至」同一份資料，只建一次；**每個 reader 一份**） */
+const pageIdxCache = new WeakMap<AdbReader, { va: number; id: string }[]>();
 
-async function ensurePageIndex(): Promise<void> {
-  if (!reader || pageIdxReader === reader) return;
-  pageIdxReader = reader;
-  pageIdx = null;
-  const av = await reader.attributeValues('頁.id');
-  const vas = await tagVas('頁');
-  if (!av?.values.length || !vas.length) { pageIdx = []; return; }
+/** 這一庫的 `<頁>` 標籤 VA（`scopes.tagVas` 讀的是全域 reader，這裡要跟 ctx 走） */
+async function tagVasIn(ctx: DocCtx | null, tag: string): Promise<number[]> {
+  const rd = ctx?.reader;
+  if (!rd) return [];
+  const at = rd.containers.get('tags')?.names.indexOf(tag) ?? -1;
+  if (at < 0) return [];
+  return (await rd.decodeBlockList('tags', at)).slice().sort((a, b) => a - b);
+}
+
+async function ensurePageIndex(ctx: DocCtx | null): Promise<{ va: number; id: string }[]> {
+  const rd = ctx?.reader;
+  if (!rd) return [];
+  const hit = pageIdxCache.get(rd);
+  if (hit) return hit;
+  const av = await rd.attributeValues('頁.id');
+  const vas = await tagVasIn(ctx, '頁');
   const list: { va: number; id: string }[] = [];
-  for (let i = 0; i < av.values.length && i < vas.length; i++) list.push({ va: vas[i], id: av.values[i] });
-  list.sort((a, b) => a.va - b.va);
-  pageIdx = list;
+  if (av?.values.length && vas.length) {
+    for (let i = 0; i < av.values.length && i < vas.length; i++) list.push({ va: vas[i], id: av.values[i] });
+    list.sort((a, b) => a.va - b.va);
+  }
+  pageIdxCache.set(rd, list);
+  return list;
 }
 
 /** 這一行落在哪一頁：頁 VA 遞增，二分搜尋最後一個 ≤ 該行 VA 的頁 */
-function pageAtLine(line: number): string {
-  if (!pageIdx?.length || !mapper) return '';
-  const va = mapper.linesVirtual[line] ?? 0;
-  let lo = 0, hi = pageIdx.length - 1, at = -1;
+function pageAtLine(idx: { va: number; id: string }[], mp: VaPaMapper | null, line: number): string {
+  if (!idx.length || !mp) return '';
+  const va = mp.linesVirtual[line] ?? 0;
+  let lo = 0, hi = idx.length - 1, at = -1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
-    if (pageIdx[mid].va <= va) { at = mid; lo = mid + 1; } else hi = mid - 1;
+    if (idx[mid].va <= va) { at = mid; lo = mid + 1; } else hi = mid - 1;
   }
-  return at >= 0 ? pageIdx[at].id : '';
+  return at >= 0 ? idx[at].id : '';
 }
 
 let lineTipEl: HTMLElement | null = null;
@@ -363,9 +451,9 @@ function bindLineTip(): void {
     if (!lineEl || !lineEl.id.startsWith('L')) { hideLineTip(); return; }
     const line = Number(lineEl.id.slice(1));
     if (!Number.isFinite(line)) { hideLineTip(); return; }
-    void ensurePageIndex().then(() => {
+    void ensurePageIndex(docSession()?.ctx ?? null).then((idx) => {
       if (!lineTipOn) return;
-      const page = pageAtLine(line);
+      const page = pageAtLine(idx, docSession()?.ctx?.mapper ?? null, line);
       showLineTip(ev.clientX, ev.clientY, (page ? `頁 ${page} ・ ` : '') + `第 ${line} 行`);
     });
   });
@@ -378,23 +466,28 @@ function bindLineTip(): void {
  * 比 docOfVa：manual 這種庫的 tags VA 與行表 VA 不在同一個空間，會挑錯檔）。
  */
 export async function revealDocLine(line: number): Promise<void> {
-  if (!mapper || !reader) return;
+  // 腳注連動跟著「目前這個本文分頁」的庫走（跨庫分頁時不能用左欄那一庫的行表）
+  const ctx = ctxOf(docSession()) ?? activeDocCtx();
+  const mp = ctx?.mapper;
+  const rd = ctx?.reader;
+  if (!ctx || !mp || !rd) return;
   const cur = docSession();
-  const curB = cur ? boundsOfRealm(cur.realm) : null;
+  const curB = cur ? boundsOfRealm(ctxOf(cur), cur.realm) : null;
   let s = cur;
   if (!s || !curB || line < curB.first || line > curB.last) {
-    const hit = docs.find((d, i) => {
-      const first = mapper!.lineOfVa(d.vaStart);
-      const last = i + 1 < docs.length ? mapper!.lineOfVa(docs[i + 1].vaStart) - 1 : reader!.header.lineCount - 1;
+    const list = ctx.docs;
+    const hit = list.find((d, i) => {
+      const first = mp.lineOfVa(d.vaStart);
+      const last = i + 1 < list.length ? mp.lineOfVa(list[i + 1].vaStart) - 1 : rd.header.lineCount - 1;
       return line >= first && line <= last;
     });
-    if (hit) s = sessionFor({ from: hit.vaStart, to: hit.vaEnd }, hit.name, false);
+    if (hit) s = sessionFor(ctx, { from: hit.vaStart, to: hit.vaEnd }, hit.name, false);
   }
   if (!s) return;
   s.pinned = null;
   setPinnedHit(null);
   setDocActive(docTabs.indexOf(s));
-  const b = boundsOfRealm(s.realm);
+  const b = boundsOfRealm(ctxOf(s), s.realm);
   const target = Math.max(b.first, Math.min(b.last, line));
   await ensurePage(s, target);
   requestAnimationFrame(() => document.getElementById('L' + target)?.scrollIntoView({ block: 'center' }));
@@ -471,6 +564,157 @@ export function clearCharBand(): void {
   (window as unknown as { __lastCharBand?: unknown }).__lastCharBand = null;
 }
 
+/* ------------------------------------------------- 選取區（作者 2026-11-01）
+ *
+ * 「閱讀狀態」匯出要記住**使用者選了哪一段**（回報問題時才定位得到）。選取的 DOM
+ * 位置（節點＋offset）換一個執行環境就沒意義，所以存成「行號＋行內第幾個漢字」：
+ * 和字元色帶（`CharBand`）同一套座標，`domPosInLine()` 已經能把它換回 DOM 位置。
+ *
+ * 約定：`fromHan` ＝ 起點前有幾個漢字（0-based，指向第一個被選的字）；
+ * `toHan` ＝ **最後一個被選的漢字索引**（含），與 `domPosInLine(..., after=true)`
+ * 的語意一致（那裡傳的是要「含進去」的那個字）。
+ */
+export interface DocSelection {
+  fromLine: number;
+  fromHan: number;
+  toLine: number;
+  toHan: number;
+  /** 選到的文字（原樣） */
+  text: string;
+  /** 起點那一行的文字（人看／核對用；太長會截斷） */
+  fromText?: string;
+  /**
+   * 同一行時的**字元位移**（在該行 `.lineText` 的文字裡，0-based）。
+   * 比漢字索引精確：漢字索引會把選取邊界的標點（。、，）丟掉，這裡不會。
+   * 只有 `fromLine === toLine` 才有意義；還原時先試這個，對不上才退回漢字索引。
+   */
+  fromCode?: number;
+  toCode?: number;
+}
+
+/** 一行裡的所有文字節點，以及它們在「整行文字」中的 code-unit 起點 */
+function lineRuns(el: HTMLElement): { node: Text; start: number }[] {
+  const out: { node: Text; start: number }[] = [];
+  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let at = 0;
+  for (let n = w.nextNode(); n; n = w.nextNode()) {
+    out.push({ node: n as Text, start: at });
+    at += (n.nodeValue ?? '').length;
+  }
+  return out;
+}
+
+/** (節點, offset) → 這一行裡的「字元位移」與「前面有幾個漢字」 */
+function pointOf(el: HTMLElement, node: Node, offset: number): { code: number; han: number } {
+  const runs = lineRuns(el);
+  const text = runs.map((r) => r.node.nodeValue ?? '').join('');
+  let code = -1;
+  for (const r of runs) if (r.node === node) { code = r.start + offset; break; }
+  if (code < 0) {
+    // 端點不是文字節點（整行被選、或選在 element 邊界）：用 Range 量字數
+    const r = document.createRange();
+    try {
+      r.selectNodeContents(el);
+      r.setEnd(node, offset);
+      code = r.toString().length;
+    } catch {
+      code = 0;
+    }
+  }
+  const cut = Math.max(0, Math.min(code, text.length));
+  let han = 0;
+  for (let i = 0; i < cut;) {
+    const cp = text.codePointAt(i)!;
+    if (isHan(String.fromCodePoint(cp))) han++;
+    i += cp > 0xffff ? 2 : 1;
+  }
+  return { code: cut, han };
+}
+
+/** 字元位移 → DOM 位置（在該行的文字裡，0-based；給選取區精確還原用） */
+function domPosAtCode(el: HTMLElement, code: number): { node: Node; offset: number } | null {
+  const runs = lineRuns(el);
+  if (!runs.length) return null;
+  let at = 0;
+  for (const r of runs) {
+    const len = (r.node.nodeValue ?? '').length;
+    if (code <= at + len) return { node: r.node, offset: Math.max(0, Math.min(len, code - at)) };
+    at += len;
+  }
+  const last = runs[runs.length - 1];
+  return { node: last.node, offset: (last.node.nodeValue ?? '').length };
+}
+
+/** 本文目前的選取（沒有選取、或選取不在本文區就回 null） */
+export function captureDocSelection(): DocSelection | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  const root = document.getElementById('docText');
+  if (!root || !root.contains(range.commonAncestorContainer)) return null;
+  const startEl = lineElementOf(range.startContainer);
+  if (!startEl) return null;
+  const endEl = lineElementOf(range.endContainer) ?? startEl;
+  const fromLine = Number(startEl.id.slice(1));
+  const toLine = Number(endEl.id.slice(1));
+  if (!Number.isFinite(fromLine) || !Number.isFinite(toLine)) return null;
+  const from = pointOf(startEl, range.startContainer, range.startOffset);
+  const end = pointOf(endEl, range.endContainer, range.endOffset);
+  // 終點是「結束位置之前有幾個漢字」，最後一個被選的字是它的前一個
+  // （`toHan` 用「含進去」的語意，和 domPosInLine(..., after=true) 一致）。
+  const toHan = Math.max(from.han, end.han - 1);
+  const fromText = (startEl.querySelector('.lineText')?.textContent ?? startEl.textContent ?? '').slice(0, 120);
+  return {
+    fromLine, fromHan: from.han, toLine, toHan,
+    text: range.toString(), fromText,
+    // 同一行才有字元位移（跨行時 end 的位移是另一行的事，不能混用）
+    ...(fromLine === toLine ? { fromCode: from.code, toCode: end.code } : {}),
+  };
+}
+
+/** 把選取還原到「行號＋行內漢字」；回傳有沒有成功 */
+export function applyDocSelection(sel: DocSelection, opts: { scroll?: boolean } = {}): boolean {
+  const fromEl = document.getElementById('L' + sel.fromLine);
+  if (!fromEl) return false;
+  const toEl = document.getElementById('L' + sel.toLine) ?? fromEl;
+  // 先試「同一行的字元位移」（精確，連標點都對）；不行才退回漢字索引。
+  let a: { node: Node; offset: number } | null = null;
+  let b: { node: Node; offset: number } | null = null;
+  if (sel.fromLine === sel.toLine && Number.isFinite(sel.fromCode) && Number.isFinite(sel.toCode)) {
+    const ca = domPosAtCode(fromEl, Number(sel.fromCode));
+    const cb = domPosAtCode(fromEl, Number(sel.toCode));
+    if (ca && cb) {
+      // 驗一下：這一行的這段文字要和存下來的完全一樣，否則就是行變了 → 退回漢字索引
+      const probe = document.createRange();
+      try {
+        probe.setStart(ca.node, ca.offset);
+        probe.setEnd(cb.node, cb.offset);
+        if (probe.toString() === sel.text) { a = ca; b = cb; }
+      } catch { /* 用下面的漢字索引 */ }
+    }
+  }
+  if (!a || !b) {
+    a = domPosInLine(fromEl, Math.max(0, sel.fromHan));
+    b = domPosInLine(toEl, Math.max(0, sel.toHan), true) ?? a;
+  }
+  if (!a || !b) return false;
+  const range = document.createRange();
+  try {
+    range.setStart(a.node, a.offset);
+    range.setEnd(b.node, b.offset);
+  } catch {
+    return false;
+  }
+  const s = window.getSelection();
+  s?.removeAllRanges();
+  s?.addRange(range);
+  if (opts.scroll !== false) {
+    const el = a.node.nodeType === 1 ? (a.node as Element) : a.node.parentElement;
+    el?.closest?.('.docLine')?.scrollIntoView({ block: 'center' });
+  }
+  return true;
+}
+
 /** 塗上字元級色帶（同一份文件只會有一條）；回傳實際塗到的文字。 */
 export function highlightCharBand(band: CharBand): string {
   clearCharBand();
@@ -503,34 +747,38 @@ export function highlightCharBand(band: CharBand): string {
 }
 
 /** the whole-database realm (used when no document row owns the VA) */
-function wholeRealm(): { from: number; to: number } {  return { from: 0, to: reader?.header.maxBlockOffset ?? 0 };
+function wholeRealm(ctx: DocCtx | null = activeDocCtx()): { from: number; to: number } {
+  return { from: 0, to: ctx?.reader?.header.maxBlockOffset ?? 0 };
 }
 
 /** the `<檔>` that owns a VA (single-file databases have none → one whole doc) */
-function docOfVa(va: number): DocRow {
-  const i = docs.findIndex((d) => va >= d.vaStart && va < d.vaEnd);
-  if (i >= 0) return docs[i];
+function docOfVa(ctx: DocCtx | null, va: number): DocRow {
+  const list = ctx?.docs ?? [];
+  const i = list.findIndex((d) => va >= d.vaStart && va < d.vaEnd);
+  if (i >= 0) return list[i];
   // A VA can drift a few units past the end of its `<檔>` (fgdict does at every
   // file boundary), so fall back to the nearest document that starts before it —
   // better than a synthetic whole-database row whose line count disagrees with
   // the line table.
   let best = -1;
-  for (let k = 0; k < docs.length; k++) {
-    if (docs[k].vaStart <= va && (best < 0 || docs[k].vaStart > docs[best].vaStart)) best = k;
+  for (let k = 0; k < list.length; k++) {
+    if (list[k].vaStart <= va && (best < 0 || list[k].vaStart > list[best].vaStart)) best = k;
   }
-  if (best >= 0) return docs[best];
-  return { i: -1, name: reader?.header.dbname ?? '', vaStart: 0, vaEnd: reader?.header.maxBlockOffset ?? 0 };
+  if (best >= 0) return list[best];
+  const rd = ctx?.reader;
+  return { i: -1, name: rd?.header.dbname ?? '', vaStart: 0, vaEnd: rd?.header.maxBlockOffset ?? 0 };
 }
 
 /** scroll the 文件 pane to the row of a VA (no content change) */
-function scrollToVa(va: number): void {
-  if (!mapper) return;
-  document.getElementById('L' + mapper.edgeLine(va))?.scrollIntoView({ block: 'center' });
+function scrollToVa(ctx: DocCtx | null, va: number): void {
+  const mp = ctx?.mapper;
+  if (!mp) return;
+  document.getElementById('L' + mp.edgeLine(va))?.scrollIntoView({ block: 'center' });
 }
 
 /** first line index whose end is at or past `va` */
-function edgeLine(va: number): number {
-  return mapper ? mapper.edgeLine(va) : 0;
+function edgeLine(ctx: DocCtx | null, va: number): number {
+  return ctx?.mapper ? ctx.mapper.edgeLine(va) : 0;
 }
 
 /**
@@ -538,32 +786,40 @@ function edgeLine(va: number): number {
  * ends at (or before) that VA: when the edge line ends exactly at the realm
  * start, the realm really begins on the NEXT line.
  */
-function realmFirstLine(realm: { from: number; to: number }): number {
-  return mapper ? mapper.lineOfVa(realm.from) : 0;
+function realmFirstLine(ctx: DocCtx | null, realm: { from: number; to: number }): number {
+  return ctx?.mapper ? ctx.mapper.lineOfVa(realm.from) : 0;
 }
 
 /** last line of a realm: the last line that STARTS before the realm ends */
-function realmLastLine(realm: { from: number; to: number }, first: number): number {
-  const v = mapper?.linesVirtual ?? [];
-  if (!v.length) return first;
-  const cut = edgeLine(Math.max(realm.from, realm.to - 1));
+function realmLastLine(ctx: DocCtx | null, realm: { from: number; to: number }, first: number): number {
+  const mp = ctx?.mapper;
+  const v = mp?.linesVirtual ?? [];
+  if (!mp || !v.length) return first;
+  const cut = edgeLine(ctx, Math.max(realm.from, realm.to - 1));
   if (cut < first) return first;
   // a line whose VA equals the realm end belongs to the NEXT realm
-  const at = mapper!.lineStartOf(cut);
+  const at = mp.lineStartOf(cut);
   return v[cut] >= realm.to && at >= realm.to && cut > first ? cut - 1 : cut;
 }
 
+/**
+ * 頁界快取。key **一定要帶 dbId**（作者 2026-11-01）：不同庫會有相同的
+ * `from:to`，只用 realm 當 key 會互相污染，跨庫分頁就會拿到別庫的頁數。
+ */
 const boundsCache = new Map<string, { first: number; last: number }>();
 
-const realmKey = (realm: { from: number; to: number }) => realm.from + ':' + realm.to;
+const realmKey = (realm: { from: number; to: number }): string => realm.from + ':' + realm.to;
+
+const boundsKey = (ctx: DocCtx | null, realm: { from: number; to: number }): string =>
+  (ctx?.dbId ?? 0) + ':' + realmKey(realm);
 
 /** the inclusive line range of a realm, plus its page count */
-function boundsOfRealm(realm: { from: number; to: number }): { first: number; last: number; total: number; pages: number } {
-  const key = realmKey(realm);
+function boundsOfRealm(ctx: DocCtx | null, realm: { from: number; to: number }): { first: number; last: number; total: number; pages: number } {
+  const key = boundsKey(ctx, realm);
   let b = boundsCache.get(key);
   if (!b) {
-    const first = realmFirstLine(realm);
-    b = { first, last: realmLastLine(realm, first) };
+    const first = realmFirstLine(ctx, realm);
+    b = { first, last: realmLastLine(ctx, realm, first) };
     boundsCache.set(key, b);
   }
   const total = Math.max(0, b.last - b.first + 1);
@@ -571,8 +827,8 @@ function boundsOfRealm(realm: { from: number; to: number }): { first: number; la
 }
 
 /** the line range of one page of a realm (0-based page) */
-function pageBounds(realm: { from: number; to: number }, page: number): { first: number; last: number; total: number; pages: number } {
-  const b = boundsOfRealm(realm);
+function pageBounds(ctx: DocCtx | null, realm: { from: number; to: number }, page: number): { first: number; last: number; total: number; pages: number } {
+  const b = boundsOfRealm(ctx, realm);
   const p = Math.max(0, Math.min(page, b.pages - 1));
   const first = Math.min(b.last, b.first + p * PAGE_LINES);
   const last = Math.min(b.last, first + PAGE_LINES - 1);
@@ -580,24 +836,32 @@ function pageBounds(realm: { from: number; to: number }, page: number): { first:
 }
 
 /** the page of a realm that contains a line (used to follow a hit) */
-function pageOfLine(realm: { from: number; to: number }, line: number): number {
-  const b = boundsOfRealm(realm);
+function pageOfLine(ctx: DocCtx | null, realm: { from: number; to: number }, line: number): number {
+  const b = boundsOfRealm(ctx, realm);
   if (line <= b.first) return 0;
   return Math.max(0, Math.min(b.pages - 1, Math.floor((line - b.first) / PAGE_LINES)));
 }
 
-/** the session showing exactly this realm, if there is one */
-function sessionForRealm(realm: { from: number; to: number }): DocSession | null {
-  return docTabs.find((t) => t.realm.from === realm.from && t.realm.to === realm.to) ?? null;
+/**
+ * the session showing exactly this realm — **of the same database**.
+ * 不同庫可能有完全相同的 realm，所以要比 dbId。
+ */
+function sessionForRealm(ctx: DocCtx | null, realm: { from: number; to: number }): DocSession | null {
+  const id = ctx?.dbId ?? 0;
+  return docTabs.find((t) => t.ctx?.dbId === id && t.realm.from === realm.from && t.realm.to === realm.to) ?? null;
 }
 
 /** find (or open) the tab for a realm. `fresh` forces a new tab. */
-function sessionFor(realm: { from: number; to: number }, name: string, fresh = false): DocSession {
+function sessionFor(ctx: DocCtx | null, realm: { from: number; to: number }, name: string, fresh = false): DocSession {
+  const use = ctx ?? activeDocCtx();
   if (!fresh) {
-    const same = sessionForRealm(realm);
+    const same = sessionForRealm(use, realm);
     if (same) return same;
   }
-  const s: DocSession = { id: ++docSeq, realm, name, page: 0, doc: docOfVa(realm.from), pinned: null, cache: null };
+  if (!use) throw new Error('sessionFor：沒有開啟任何 adb');
+  const s: DocSession = {
+    id: ++docSeq, realm, name, page: 0, doc: docOfVa(use, realm.from), ctx: use, pinned: null, cache: null,
+  };
   docTabs.push(s);
   return s;
 }
@@ -607,16 +871,19 @@ function sessionFor(realm: { from: number; to: number }, name: string, fresh = f
  * realm itself, so its `total` is the node's own line count while only one page
  * is ever rendered.
  */
-async function fetchPage(pageFirst: number, pageLast: number): Promise<Awaited<ReturnType<VaPaMapper['docText']>>> {
+async function fetchPage(ctx: DocCtx | null, pageFirst: number, pageLast: number): Promise<Awaited<ReturnType<VaPaMapper['docText']>>> {
+  const mp = ctx?.mapper;
+  const rd = ctx?.reader;
+  if (!mp || !rd) throw new Error('fetchPage：沒有開啟任何 adb');
   const first = Math.max(0, pageFirst);
   const last = Math.max(first, pageLast);
   // The VA span is derived from the PAGE's lines, not from a `<檔>`: a directory
   // node may span several files (yinshun's 書 do), and passing one file's range
   // would clamp the page to a single line.
-  const v = mapper!.linesVirtual;
+  const v = mp.linesVirtual;
   const vaStart = first > 0 ? (v[first - 1] ?? 0) : 0;
-  const vaEnd = (v[last] ?? reader!.header.maxBlockOffset) + 1;
-  return mapper!.docText(vaStart, vaEnd, last - first + 1, undefined, { first, last });
+  const vaEnd = (v[last] ?? rd.header.maxBlockOffset) + 1;
+  return mp.docText(vaStart, vaEnd, last - first + 1, undefined, { first, last });
 }
 
 /**
@@ -625,13 +892,14 @@ async function fetchPage(pageFirst: number, pageLast: number): Promise<Awaited<R
  * move to follow a hit.
  */
 async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: boolean; ms: number }> {
-  if (!mapper) return { auto: false, ms: 0 };
+  const ctx = ctxOf(s);
+  if (!ctx?.mapper) return { auto: false, ms: 0 };
   let auto = false;
   if (targetLine !== undefined && targetLine >= 0) {
-    const p = pageOfLine(s.realm, targetLine);
+    const p = pageOfLine(ctx, s.realm, targetLine);
     if (p !== s.page) { s.page = p; auto = true; }
   }
-  const b = pageBounds(s.realm, s.page);
+  const b = pageBounds(ctx, s.realm, s.page);
   s.page = Math.max(0, Math.min(s.page, b.pages - 1));
   // page (or tab/db) changed: keep what the user typed, then leave edit mode;
   // the target page auto-enters edit mode below if it already has a revision.
@@ -643,7 +911,7 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
   const key = s.doc.i + ':' + b.first + '-' + b.last;
   const t0 = performance.now();
   if (!s.cache || s.cache.key !== key) {
-    const dt = await fetchPage(b.first, b.last);
+    const dt = await fetchPage(ctx, b.first, b.last);
     s.cache = { page: s.page, dt, key };
   }
   // Following a hit: the mapper's line numbers and the rendered page can disagree
@@ -652,7 +920,7 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
   // otherwise paging away from the pinned hit would drag the pane straight back.
   const dtNow = s.cache.dt;
   const rr = pageRangeOf(dtNow);
-  const es = editSessionOf();
+  const es = editSessionOf(ctx);
   if (!s.history && editAllowed() && !s.editing && s.autoEdit !== false && es && pageEditAt(es, rr.first, rr.last)) s.editing = true;
   const nums = dtNow.lineNumbers;
   if (targetLine !== undefined && s.pinned && nums.length) {
@@ -660,7 +928,7 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
     else if (s.pinned.line > nums[nums.length - 1]) s.pinned.line = nums[nums.length - 1];
   }
   // `<圖>` 要用的圖檔先解成 blob URL（渲染是同步的，見 resolvePageImages）
-  await resolvePageImages(dtNow.lines);
+  await resolvePageImages(ctx, dtNow.lines);
   renderDoc(s);
   saveLastReadNow();
   return { auto, ms: performance.now() - t0 };
@@ -736,19 +1004,50 @@ export function trailLabel(text: string): string {
 }
 
 /**
- * breadcrumb 要從哪一個 VA 往上找祖先（作者 2026-10-29）。
+ * breadcrumb 要從哪一個 VA 往上找祖先（作者 2026-10-29；2026-11-01 修）。
  *
  * 由目錄點進來時 `realm` 就是那個節點、`pinned.va` 也是它，兩者相同。
  * 由摘要／全文／聯跳進來時 `realm` 是整個 `<檔>`（這樣才能繼續往下讀），
  * 只看 `realm.from` 就會永遠停在「書」那一層——要改看**命中所在的 VA**，
  * 才會出現「書 › 章 › 節」與目前那一節的兄弟。
+ *
+ * **命中的那一行不一定在這一頁**：13j 沒有 `<檔>`，realm 是整個庫，往後翻幾頁
+ * 就到別章了。那時麵包屑要跟著**畫面上這一頁**，否則會出現「麵包屑說乾、本文是
+ * 繫辭下」（作者 2026-11-01 回報「切換 adb／頁籤時 breadcrumb 與本文不一致」——
+ * 切頁籤會重畫，把不一致一起帶回來，所以看起來「時好時壞、無法重複」）。
+ * 因此呼叫端會把這一頁的 VA 傳進來（`anchorVa`）。
  */
-function trailAnchor(s: DocSession): number {
+function trailAnchor(s: DocSession, anchorVa?: number): number {
+  if (typeof anchorVa === 'number') return anchorVa;
   return typeof s.pinned?.va === 'number' ? s.pinned.va : s.realm.from;
 }
 
-function renderAncestorTrail(s: DocSession): string {
-  const anchor = trailAnchor(s);
+/**
+ * 跨庫分頁的提示條（作者 2026-11-01）：本文屬於別的 adb 時不畫麵包屑。
+ *
+ * 麵包屑、目錄游標、反鏈全部取自**左欄那一庫**的目錄樹與 `<頁>`；拿別庫的 VA
+ * 去查只會得到錯的節點。所以這裡改成一句提示，並提供「切到該庫的目錄」的按鈕
+ * （＝按 header 的 🌲，走同一條路，不另外發明切庫邏輯）。
+ */
+function foreignTrailBar(s: DocSession): string {
+  const ctx = ctxOf(s);
+  if (!ctx) return '';
+  const name = escapeHtml(ctx.dbCName || ctx.dbName || '別的庫');
+  const db = escapeHtml(ctx.dbName || '');
+  return '<nav class="docTrail docTrailForeign" id="docTrail" aria-label="本文來源">'
+    + '<span class="trailForeign" title="' + (db ? leftArrowTitle(db) : '') + '">本文來自 '
+    + '<b>' + name + '</b></span>'
+    + '<button type="button" class="mini trailForeignGo" id="docTrailReveal"'
+    + ' title="把 adb 切到「' + name + '」，並在目錄中展開目前位置（同 header 的 🌲）">🌲 到它的目錄</button>'
+    + '</nav>';
+}
+
+const leftArrowTitle = (db: string): string => db + '：左欄的目錄與摘要仍屬於目前的 adb';
+
+function renderAncestorTrail(s: DocSession, anchorVa?: number): string {
+  // 跨庫分頁：路徑屬於左欄那一庫，不畫（改成提示條）
+  if (!ownsActiveDb(s)) return foreignTrailBar(s);
+  const anchor = trailAnchor(s, anchorVa);
   const anc = ancestorTrail(anchor);
   const self = currentNodeAt(anchor);
   const items = anc.map((a) => {
@@ -825,6 +1124,16 @@ function renderBlocks(blocks: RenderBlock[], s: DocSession): string {
 function wireTrail(): void {
   const nav = document.getElementById('docTrail');
   if (!nav) return;
+  // 跨庫分頁的提示條：按鈕等於按 header 的 🌲（切庫＋展開目錄都在那裡）
+  const go = document.getElementById('docTrailReveal');
+  if (go) {
+    go.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      (document.getElementById('treeReveal') as HTMLButtonElement | null)?.click();
+    };
+    return;
+  }
   const closeMenus = () => nav.querySelectorAll('.trailMenu').forEach((m) => m.remove());
   // sibling 晶片：直接就換節
   nav.querySelectorAll<HTMLElement>('.trailSib[data-tag]').forEach((chip) => {
@@ -915,6 +1224,15 @@ interface LastRead {
   /** 該頁第一行（base 行號），用來在行表有變時重新找頁 */
   line: number;
   at: number;
+  /**
+   * 捲動位置與選取區（作者 2026-11-01）。
+   *
+   * **只在離開 exe 之前寫一次**（`saveLastReadNow({ view: true })`）：平時重畫／切頁
+   * 只更新上面幾個欄位，不會覆蓋這兩個（除非換了頁或換了節點，那時它們已經失效）。
+   * 選取區用「行號＋行內第幾個漢字」，跨執行環境也認得。
+   */
+  scrollTop?: number;
+  sel?: DocSelection | null;
 }
 
 function lastReadKey(f: { name: string; size: number }): string {
@@ -938,20 +1256,40 @@ function writeLastRead(map: Record<string, LastRead>): void {
   } catch { /* 私密模式／配額 */ }
 }
 
-/** Save the active document tab + page. Safe to call often. */
-export function saveLastReadNow(): void {
+/**
+ * Save the active document tab + page. Safe to call often.
+ *
+ * `opts.view`（作者 2026-11-01）：連**捲動位置與選取區**一起存 —— 只有「離開 exe 之前」
+ * 才這樣呼叫（`beforeunload`／Wails 的 WindowClosing），平時不要一直寫。
+ * 不帶 `view` 時反過來要**保留**上一次存下來的 view，但只有「頁與節點都沒變」才保留
+ * （換頁／換節點之後那個捲動位置與選取區已經沒有意義）。
+ */
+export function saveLastReadNow(opts: { view?: boolean } = {}): void {
   const s = docSession();
-  if (!s || !currentSource || s.history) return;
+  // 閱讀位置是「每個檔案」的，所以要用分頁自己那一庫的檔（跨庫分頁不會寫錯庫）
+  const ctx = ctxOf(s);
+  const src = ctx?.file ?? null;
+  if (!s || !src || s.history) return;
   try {
-    const b = pageBounds(s.realm, s.page);
+    const b = pageBounds(ctx, s.realm, s.page);
     const map = readLastRead();
-    map[lastReadKey(currentSource)] = {
+    const key = lastReadKey(src);
+    const prev = map[key];
+    // 沒帶 view 時：只保留「同一頁、同一節點」的舊 view（換頁／換節點就不再生效）
+    const keepView = !!prev && prev.page === s.page && prev.from === s.realm.from && prev.to === s.realm.to;
+    map[key] = {
       name: s.name,
       from: s.realm.from,
       to: s.realm.to,
       page: s.page,
       line: b.first,
       at: Date.now(),
+      ...(opts.view
+        ? {
+          scrollTop: document.querySelector<HTMLElement>('#docText .docBody')?.scrollTop ?? 0,
+          sel: captureDocSelection(),
+        }
+        : keepView ? { scrollTop: prev.scrollTop, sel: prev.sel } : {}),
     };
     writeLastRead(map);
   } catch { /* 不要讓閱讀位置影響本文 */ }
@@ -959,21 +1297,28 @@ export function saveLastReadNow(): void {
 
 /** Restore the last tab/page of this exact file (name + size), if any. */
 export async function restoreLastRead(file: { name: string; size: number }): Promise<boolean> {
-  if (!reader || docTabs.length) return false;
+  const ctx = activeDocCtx();
+  if (!ctx || docTabs.length) return false;
   const rec = readLastRead()[lastReadKey(file)];
   if (!rec) return false;
-  const max = reader.header.maxBlockOffset || 0;
+  const max = ctx.reader.header.maxBlockOffset || 0;
   if (!(Number.isFinite(rec.from) && Number.isFinite(rec.to) && rec.from >= 0 && rec.to > rec.from && rec.from <= max + 1)) return false;
   try {
-    const s = sessionFor({ from: rec.from, to: rec.to }, rec.name || file.name);
+    const s = sessionFor(ctx, { from: rec.from, to: rec.to }, rec.name || file.name);
     s.page = Math.max(0, Number(rec.page) || 0);
     s.autoEdit = true;
     docActive = docTabs.indexOf(s);
     setPinnedHit(null);
+    // 先排好「要還原的捲動位置與選取區」，ensurePage → renderDoc 會用它
+    // （paintHit 也會因為它而不再自己捲到釘選那一行）。
+    if (typeof rec.scrollTop === 'number' || rec.sel) {
+      pendingView = { scrollTop: typeof rec.scrollTop === 'number' ? rec.scrollTop : undefined, sel: rec.sel ?? undefined };
+    }
     await ensurePage(s, Number.isFinite(rec.line) ? rec.line : undefined);
     paintTreeActive();
     return true;
   } catch {
+    pendingView = null;
     return false;
   }
 }
@@ -1038,8 +1383,16 @@ function editAllowed(): boolean {
   return document.body.classList.contains('advanced') && !!getUserId();
 }
 
-function editSessionOf(): DbEditSession | null {
-  return currentSource ? editSessionFor(currentSource, currentFile || currentSource.name) : null;
+/**
+ * 這個分頁所屬檔案的編輯工作階段。
+ *
+ * 編輯工作階段是**按檔案**開的，所以不能用全域的 `currentSource`：跨庫分頁
+ * 要拿它自己那一庫的檔（作者 2026-11-01）。
+ */
+function editSessionOf(ctx?: DocCtx | null): DbEditSession | null {
+  const c = ctx === undefined ? (ctxOf(docSession()) ?? activeDocCtx()) : ctx;
+  if (!c?.file) return null;
+  return editSessionFor(c.file, c.fileName || c.file.name);
 }
 
 function pageRangeOf(dt: Awaited<ReturnType<VaPaMapper['docText']>>): { first: number; last: number } {
@@ -1067,7 +1420,7 @@ function setEditControls(s: DocSession | null): void {
   let has = false;
   const dt = s?.cache?.dt;
   if (s && dt && !s.editing) {
-    const es = editSessionOf();
+    const es = editSessionOf(ctxOf(s));
     if (es) {
       const r = pageRangeOf(dt);
       has = !!pageEditAt(es, r.first, r.last);
@@ -1088,7 +1441,7 @@ function noticeEditor(msg: string): void {
 function saveActiveEditorText(): void {
   const a = activeEditor;
   if (!a) return;
-  const es = editSessionOf();
+  const es = editSessionOf(ctxOf(a.s));
   if (!es) return;
   try {
     stagePage(es, a.first, a.last, a.oldLines, a.ed.getLines(), a.docName);
@@ -1120,14 +1473,16 @@ export function flushEdit(): void {
 
 /** Open one page of a historical revision as a read-only diff tab. */
 export async function openHistoryPage(detail: { revisionId: string; page: any }): Promise<void> {
-  if (!reader || !mapper) return;
+  // 修訂歷史是「左欄那一庫」的功能（歷史清單由它的 rev-list 產生）
+  const ctx = ctxOf(docSession()) ?? activeDocCtx();
+  if (!ctx?.mapper || !ctx.reader) return;
   const p = detail.page ?? {};
   const first = Math.max(0, Number(p.first) || 0);
   const last = Math.max(first, Number(p.last) || first);
-  const v = mapper.linesVirtual;
+  const v = ctx.mapper.linesVirtual;
   const va = first > 0 ? (v[first - 1] ?? 0) + 1 : 0;
-  const doc = docOfVa(va);
-  const realm = { from: doc.vaStart, to: doc.vaEnd || reader.header.maxBlockOffset };
+  const doc = docOfVa(ctx, va);
+  const realm = { from: doc.vaStart, to: doc.vaEnd || ctx.reader.header.maxBlockOffset };
   stageActiveEditor();
   const label = (detail.revisionId ? detail.revisionId + ' · ' : '') + (p.doc || doc.name || '歷史');
   // 歷史版本只留一個分頁：換頁／換版本都覆用同一個 docTab
@@ -1164,7 +1519,7 @@ export async function openHistoryPage(detail: { revisionId: string; page: any })
     paintTreeActive();
     return;
   }
-  const s = sessionFor(realm, label, true);
+  const s = sessionFor(ctx, realm, label, true);
   s.history = history;
   s.page = 0;
   s.editing = false;
@@ -1190,7 +1545,9 @@ export function enterEdit(s: DocSession, fromSelection = false): void {
     return;
   }
   if (!s || !s.cache?.dt) return;
-  if (reader && reader.header.size > 50 * 1024 * 1024) {
+  // 編輯上限看的是「這個分頁那一庫」的大小
+  const rd = ctxOf(s)?.reader;
+  if (rd && rd.header.size > 50 * 1024 * 1024) {
     setStatus('這個 adb 超過 50 MB，網頁版暫不支援編輯（桌面版或 Go 版再處理）', 'err');
     return;
   }
@@ -1220,7 +1577,7 @@ export function cancelPageEdit(s: DocSession): void {
   const dt = s.cache?.dt;
   if (!dt) return;
   const r = pageRangeOf(dt);
-  const es = editSessionOf();
+  const es = editSessionOf(ctxOf(s));
   destroyActiveEditor();
   if (es) discardPage(es, r.first, r.last);
   s.editing = false;
@@ -1235,7 +1592,8 @@ function scheduleStage(): void {
 
 /** The editor view for one page (header + toolbar + CodeMirror). */
 function renderEditPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docText']>>): void {
-  const b = pageBounds(s.realm, s.page);
+  const ctx = ctxOf(s);
+  const b = pageBounds(ctx, s.realm, s.page);
   const r = pageRangeOf(dt);
   const key = pageKey(r.first, r.last);
   if (activeEditor && activeEditor.s === s && activeEditor.key === key
@@ -1248,11 +1606,11 @@ function renderEditPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
   stageActiveEditor();
   const nFirst = dt.lineNumbers[0] ?? 0;
   const nLast = dt.lineNumbers[dt.lineNumbers.length - 1] ?? 0;
-  const es = editSessionOf();
+  const es = editSessionOf(ctx);
   const staged = es ? pageEditAt(es, r.first, r.last) : undefined;
   const lines = staged ? staged.newLines : dt.lines;
   $('#docText').innerHTML = '<div class="docTop">'
-    + (isDictDb(mapper)
+    + (isDictDb(ctx?.mapper ?? null)
       ? ''
       : '<div class="docHead docHeadEditing">' + escapeHtml(displayName(s.name))
         + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁 · 行 '
@@ -1326,7 +1684,7 @@ function renderHistoryPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['doc
 
 /** 閱讀模式的修訂檢視：新增綠、刪除紅，完全不呼叫 paintHit（不塗搜尋關鍵字）。 */
 function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docText']>>, edit: PageEdit, opts?: { historyId?: string; focus?: number }): void {
-  const b = pageBounds(s.realm, s.page);
+  const b = pageBounds(ctxOf(s), s.realm, s.page);
   const nFirst = dt.lineNumbers[0] ?? 0;
   const nLast = dt.lineNumbers[dt.lineNumbers.length - 1] ?? 0;
   const changes = diffPage(edit).changes;
@@ -1376,7 +1734,7 @@ function renderDiffPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
     ni++;
   }
   $('#docText').innerHTML = '<div class="docTop">'
-    + (isDictDb(mapper)
+    + (isDictDb(ctxOf(s)?.mapper ?? null)
       ? ''
       : '<div class="docHead">' + escapeHtml(displayName(s.name))
         + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁'
@@ -1450,9 +1808,29 @@ function wireDocMetaTips(): void {
 window.addEventListener('scroll', hideDocMetaTip, true);
 window.addEventListener('resize', hideDocMetaTip);
 
+/** renderDoc 被要求畫「已經不是畫面上那一個」的分頁幾次（非同步競態診斷；應該是 0） */
+let staleRenders = 0;
+
+export const staleRenderCount = (): number => staleRenders;
+
+/** 上一次 renderDoc 用的麵包屑錨點（VA）；診斷／測試用（`trailInfo()` 會讀它） */
+let lastTrailVa = 0;
+export const trailAnchorVa = (): number => lastTrailVa;
+
 /** render one page: tab strip, header, rows, pager. */
-function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
+function renderDoc(s: DocSession): void {
+  const dt = s.cache?.dt;
   if (!dt) return;
+  // 非同步競態：`ensurePage` 在 await 之前是 A 分頁，回來時使用者已經切到 B。
+  // 用 A 的資料畫畫面會讓「分頁條／本文／麵包屑」對不起來（作者 2026-11-01 回報的
+  // 「切換 adb／頁籤時不一致」之一）。不是畫面上那一頁就不要畫，記一次診斷。
+  if (docTabs[docActive] !== s) { staleRenders++; return; }
+  const ctx = ctxOf(s);
+  // 「回到這個分頁時看的地方（捲動＋選取）」只給這一次渲染用；編輯／diff／歷史那幾條
+  // 提早 return 的分支就用不到，直接丟掉（不要留給下一次別的渲染）。
+  const want = pendingView;
+  pendingView = null;
+  const wantScrollTop = typeof want?.scrollTop === 'number' ? want.scrollTop : null;
   clearCharBand();          // 重畫就沒有那條字元色帶了（Range 指向舊節點）
   bindInlineSvgZoom();
   bindLineTip();
@@ -1460,7 +1838,7 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   setEditControls(s);
   if (s.editing) { renderEditPage(s, dt); return; }
   if (s.history) { renderHistoryPage(s, dt); return; }
-  const esNow = editSessionOf();
+  const esNow = editSessionOf(ctx);
   const rrNow = pageRangeOf(dt);
   const pageEdit = esNow ? pageEditAt(esNow, rrNow.first, rrNow.last) : undefined;
   if (s.showDiff && pageEdit) { renderDiffPage(s, dt, pageEdit); return; }
@@ -1492,15 +1870,24 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
       termMode: termModeOf(),
     });
   const rows = renderBlocks(blocks, s);
-  const b = pageBounds(s.realm, s.page);
+  const b = pageBounds(ctx, s.realm, s.page);
   const nFirst = viewDt.lineNumbers[0] ?? 0;
   const nLast = viewDt.lineNumbers[viewDt.lineNumbers.length - 1] ?? 0;
+  // 麵包屑跟著「這一頁」：釘選的那一行在這一頁就用它（點節點進來時才是那個節點），
+  // 不在（往後翻過頁了）就用這一頁的第一行，否則會出現「麵包屑說乾、本文是繫辭下」。
+  const trailVa = (() => {
+    const pin = s.pinned;
+    if (pin && typeof pin.va === 'number' && pin.line >= nFirst && pin.line <= nLast) return pin.va;
+    const mp = ctx?.mapper;
+    return mp && Number.isFinite(nFirst) ? (mp.linesVirtual[nFirst] ?? s.realm.from) : s.realm.from;
+  })();
+  lastTrailVa = trailVa;
   // 詞典型 adb 不顯示 docHead（作者 2026-10）：詞條名稱已經在分頁標題上，
   // 而第一個詞條字串通常就是命中、會被塗紅 —— 再放一次就變成同一個詞顯示三次。
   // 不再顯示 .docHead（作者 2026-10-31）：它有時出現、有時不出現（和分頁標籤同名時
   // 會省略），版面不穩定；完整標題改放在 docTabs 的 hover（title）。
   $('#docText').innerHTML = '<div class="docTop">'
-    + renderAncestorTrail(s)
+    + renderAncestorTrail(s, trailVa)
     + '</div>'
     + '<div class="docBody' + (hardBreaks ? '' : ' reflow') + '">' + rows + '</div>';
   renderDocTabs(s);
@@ -1508,18 +1895,37 @@ function renderDoc(s: DocSession): void {  const dt = s.cache?.dt;
   wireTrail();
   wireDocMetaTips();
   const body = document.querySelector<HTMLElement>('#docText .docBody');
-  body?.scrollTo(0, 0);
+  if (body) {
+    if (wantScrollTop != null) body.scrollTop = wantScrollTop;
+    else body.scrollTo(0, 0);
+  }
   // 中間這一頁若被別的庫（印順）引用過，就在標題下畫「回連結」按鈕（作者 2026-10-28）
-  void paintReverseBar();
+  // 跨庫分頁不畫：反鏈表是「左欄那一庫」的（頁 id 屬於別的庫，查起來是空的）
+  if (ownsActiveDb(s)) void paintReverseBar();
   // the middle-line cursor follows the pane, so re-read it after every render and
   // after every programmatic scroll (paintHit) — throttled to one frame
   if (body && !docScrollWired.has(body)) {
     docScrollWired.add(body);
     body.addEventListener('scroll', scheduleCursorSync, { passive: true });
   }
-  if (s.pinned) void paintHit(s.pinned.va, s.pinned.units);
-  else if (viewDt.lineNumbers.length) document.getElementById('L' + nFirst)?.scrollIntoView({ block: 'start' });
-  scheduleCursorSync();
+  // 還原「看的地方」：paintHit 會把 DOM 改寫（包 <mark>），所以選取區一定要等它做完
+  // 才設，否則 Range 的端點會被拆掉。
+  const settleView = (): void => {
+    if (!want) return;
+    const b2 = document.querySelector<HTMLElement>('#docText .docBody');
+    if (b2 && wantScrollTop != null) b2.scrollTop = wantScrollTop;
+    if (want.sel) applyDocSelection(want.sel, { scroll: false });
+    if (ownsActiveDb(s)) scheduleCursorSync();
+  };
+  if (s.pinned) {
+    // noScroll：不要自己捲到釘選那一行，不然剛還原的捲動位置會被搶走
+    void paintHit(ctx, s.pinned.va, s.pinned.units, { noScroll: !!want }).then(settleView);
+  } else {
+    if (viewDt.lineNumbers.length && !want) document.getElementById('L' + nFirst)?.scrollIntoView({ block: 'start' });
+    settleView();
+  }
+  // 目錄游標只跟「左欄那一庫」的本文連動
+  if (ownsActiveDb(s) && !want) scheduleCursorSync();
   void updateDocLogo();   // 有文字就把 logo 收起來
 }
 
@@ -1618,13 +2024,26 @@ function shortLabel(name: string, max = 8): string {
  * 分頁標籤要給讀者看的名字（作者 2026-10-31）：`Ys.xml` 這種 XML 檔名、或 `ys`
  * 這種 dbname，換成庫的短名（ys → 印順、fuyan → 福嚴）。
  */
-function readableDocName(name: string): string {
+function readableDocName(ctx: DocCtx | null, name: string): string {
   const t = displayName(name).trim();
-  const db = (reader?.header.dbname ?? '').toLowerCase();
+  const db = (ctx?.dbName ?? activeDocCtx()?.dbName ?? '').toLowerCase();
   const short = db ? SHORT_DB_NAMES[db] : '';
   if (!t) return short;
   if (/\.xml$/i.test(t) || t.toLowerCase() === db) return short || t;
   return t;
+}
+
+/** 有本文分頁的庫變了（dbChip 的 owner 標記要重畫）；由 dbs.ts 註冊，避免循環 import */
+let tabsChangedHook: (() => void) | null = null;
+export function setDocTabsChangedHook(fn: (() => void) | null): void { tabsChangedHook = fn; }
+let lastDbSig = '';
+
+/** 分頁的「屬於哪幾庫」有變化才通知（每次重畫都通知會讓 dbChip 一直重建） */
+function noteDbOwners(): void {
+  const sig = docTabs.map((t) => ctxOf(t)?.dbId ?? 0).join(',');
+  if (sig === lastDbSig) return;
+  lastDbSig = sig;
+  try { tabsChangedHook?.(); } catch { /* boot 期間還沒有 dbTabs */ }
 }
 
 /** the document tab strip: one chip per linked node, ✕ to close, ＋ for a new one */
@@ -1635,13 +2054,27 @@ function renderDocTabs(s: DocSession): void {
   // The strip shows as soon as one tab exists, so the ＋ (and therefore the
   // Ctrl+click alternative for a new tab) is always reachable.
   bar.hidden = docTabs.length < 1;
-  const es = editSessionOf();
+  // 每個分頁的髒點要看**它自己那一庫**的修訂工作階段（跨庫分頁不能共用一個 es）
+  const editSessions = new Map<number, DbEditSession | null>();
+  const esOf = (t: DocSession): DbEditSession | null => {
+    const id = t.ctx?.dbId ?? 0;
+    if (!editSessions.has(id)) editSessions.set(id, editSessionOf(ctxOf(t)));
+    return editSessions.get(id) ?? null;
+  };
   strip.innerHTML = docTabs.map((t, i) => {
-    const rb = boundsOfRealm(t.realm);
-    const dirty = hasEditsInRange(es, rb.first, rb.last);
-    const label = readableDocName(t.name);
-    return '<span class="docTab' + (i === docActive ? ' active' : '') + (dirty ? ' dirty' : '') + (t.history ? ' history' : '') + '" data-i="' + i + '" title="' + escapeHtml(label) + '">'
-      + '<span class="docTabName">' + escapeHtml(shortLabel(label, 8)) + '</span>'
+    const tctx = ctxOf(t);
+    const rb = boundsOfRealm(tctx, t.realm);
+    const dirty = hasEditsInRange(esOf(t), rb.first, rb.last);
+    const label = readableDocName(tctx, t.name);
+    // hover 補充「這個分頁屬於哪一個 adb」：adb 名＋中文名（作者 2026-11-01）
+    const dbName = tctx?.dbName || '';
+    const dbCName = tctx?.dbCName || '';
+    const dbInfo = dbName ? `${dbName}${dbCName ? '（' + dbCName + '）' : ''}` : '';
+    const title = dbInfo ? `${label}｜${dbInfo}` : label;
+    // 不是左欄那一庫的分頁多一個 inForeign 標記（淡色外框），一眼看得出那是別庫的
+    const foreign = tctx && !isActiveDocCtx(tctx) ? ' foreign' : '';
+    return '<span class="docTab' + (i === docActive ? ' active' : '') + (dirty ? ' dirty' : '') + (t.history ? ' history' : '') + foreign + '" data-i="' + i + '" title="' + escapeHtml(title) + '">'
+      + '<span class="docTabName" title="' + escapeHtml(title) + '">' + escapeHtml(shortLabel(label, 8)) + '</span>'
       + '<span class="docTabClose" data-close="' + i + '" title="關閉分頁">✕</span></span>';
   }).join('');
   strip.querySelectorAll<HTMLElement>('.docTab').forEach((el) => {
@@ -1654,25 +2087,45 @@ function renderDocTabs(s: DocSession): void {
   });
   const add = $('#docTabAdd') as HTMLButtonElement | null;
   if (add) add.onclick = () => {
-    const r = docSession()?.realm ?? wholeRealm();
-    const n = sessionFor(r, '新分頁', true);
+    // 新分頁跟著目前分頁那一庫（沒有分頁時跟左欄那一庫）
+    const cctx = ctxOf(s) ?? activeDocCtx();
+    if (!cctx) return;
+    const r = s?.realm ?? wholeRealm(cctx);
+    const n = sessionFor(cctx, r, '新分頁', true);
     docActive = docTabs.indexOf(n);
-    void ensurePage(n, s.cache?.dt?.lineNumbers[0]);
+    void ensurePage(n, s?.cache?.dt?.lineNumbers[0]);
   };
+  noteDbOwners();
 }
 
-/** switch to an already loaded tab (no re-read) */
+/**
+ * 切到某個分頁（作者 2026-11-01：**只換本文，不換 adb**）。
+ *
+ * 分頁自己帶著 ctx，所以這裡不需要（也不可以）呼叫 `switchTo`：左欄目錄、摘要、
+ * dbChip 都留在原來的庫。要切庫是 header 的 🌲（見 `revealCursorInTree`）。
+ */
 async function switchDocTab(i: number): Promise<void> {
   const t = docTabs[i];
   if (!t) return;
   stageActiveEditor();
+  // 記住離開的分頁捲到哪裡、選了什麼，回來時原地不動（跨庫分頁常來回切）
+  const cur = docSession();
+  if (cur && cur !== t) {
+    cur.scrollTop = document.querySelector<HTMLElement>('#docText .docBody')?.scrollTop ?? cur.scrollTop;
+    cur.sel = captureDocSelection() ?? cur.sel;
+  }
   t.autoEdit = true;
   docActive = i;
   setPinnedHit(t.pinned);
+  pendingView = (typeof t.scrollTop === 'number' || t.sel)
+    ? { scrollTop: typeof t.scrollTop === 'number' ? t.scrollTop : undefined, sel: t.sel ?? undefined }
+    : null;
   if (t.cache) renderDoc(t);
   else await ensurePage(t);
-  paintTreeActive();
+  // 目錄游標只在「同一個庫」時有意義
+  if (ownsActiveDb(t)) paintTreeActive();
   saveLastReadNow();
+  renderDocTabs(t);      // 跨庫分頁的外框／owner 標記要跟著換
 }
 
 /** close a tab; the remaining tabs keep their own page */
@@ -1701,10 +2154,13 @@ function closeDocTab(i: number): void {
 function renderPager(s: DocSession, b: { first: number; last: number; total: number; pages: number }): void {
   const bar = $('#docPager');
   if (!bar) return;
+  const ctx = ctxOf(s);
   // 小節（少於一頁）也要能翻到上／下一個節點：作者 2026-10「對小內文頁，
   // 上一頁／下一頁變得沒作用了」。所以「有鄰居」時 pager 不能藏起來。
-  const neighborPrev = hasRealmNeighbor(-1);
-  const neighborNext = hasRealmNeighbor(1);
+  // 上下鄰居來自目錄樹，只有「左欄那一庫」的分頁才算得出來。
+  const sameDb = ownsActiveDb(s);
+  const neighborPrev = sameDb && hasRealmNeighbor(ctx, -1);
+  const neighborNext = sameDb && hasRealmNeighbor(ctx, 1);
   bar.hidden = b.pages < 2 && !neighborPrev && !neighborNext;
   const prev = $('#pagePrev') as HTMLButtonElement | null;
   const next = $('#pageNext') as HTMLButtonElement | null;
@@ -1713,7 +2169,7 @@ function renderPager(s: DocSession, b: { first: number; last: number; total: num
   const step = (delta: number, ev: MouseEvent) => {
     const cur = docSession();
     if (!cur) return;
-    const pb = pageBounds(cur.realm, cur.page);
+    const pb = pageBounds(ctxOf(cur), cur.realm, cur.page);
     const to = cur.page + delta;
     pagerLog.push('step ' + delta + ' tab=' + docTabs.indexOf(cur) + ' page=' + cur.page + '/' + pb.pages + ' to=' + to);
     if (pagerLog.length > 10) pagerLog.shift();
@@ -1742,7 +2198,7 @@ async function goPage(s: DocSession, page: number, keepLine: boolean): Promise<v
   s.page = page;
   await ensurePage(s);
   if (keep !== undefined) document.getElementById('L' + keep)?.scrollIntoView({ block: 'start' });
-  const b = pageBounds(s.realm, s.page);
+  const b = pageBounds(ctxOf(s), s.realm, s.page);
   setStatus(displayName(s.name) + '：第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁（頁＝網頁分頁，每頁 ' + fmtInt(PAGE_LINES) + ' 行）', 'info');
 }
 
@@ -1898,7 +2354,9 @@ function autoFitFont(sample?: string[]): number {
   // (its line table) whenever it is available: otherwise the font would change as
   // the reader pages through the text. `lines` is the fallback.
   const lines = sample ?? lastDocLines;
-  const doc = mapper && mapper.lineCount > 0 ? mapper : null;
+  // 字級是跟著「畫面上這一頁」的庫算的（跨庫分頁要看那一庫的行長分布）
+  const mp = ctxOf(docSession())?.mapper ?? activeDocCtx()?.mapper ?? null;
+  const doc = mp && mp.lineCount > 0 ? mp : null;
   // p90 is the line that must fit (the reader's "no wrapping" line); the cap is a
   // little wider so a rare outlier line (yinshun has 96-unit lines against p90 =
   // 45) cannot drag the whole document down to the readable floor.
@@ -1997,7 +2455,7 @@ function fitDebugInfo() {
     probe20: Math.round(w20),
     probe54: Math.round(wLong),
     scaled: Math.round((PROBE_FS * avail) / w20),
-    p90: mapper ? mapper.lineLengthPercentile(0.9, 200_000) : 0,
+    p90: (ctxOf(docSession())?.mapper ?? activeDocCtx()?.mapper)?.lineLengthPercentile(0.9, 200_000) ?? 0,
     longest: Math.max(0, ...lastDocLines.map((l) => l.length)),
     sample: lastDocLines.length,
     fontSize: readDocFont(),
@@ -2028,11 +2486,135 @@ export const setDocActive = (i: number): void => { docActive = i; };
 export const setLastLink = (v: { va: number; ensureMs: number; totalMs: number; rows: number } | null): void => { lastLink = v; };
 export const setDocFontSized = (b: boolean): void => { docFontSized = b; };
 
+/* ---- 共享 docTab（作者 2026-11-01）--------------------------------------------
+ * 預設關閉：每個 adb 自己一組本文分頁（切庫時整組換掉）。
+ * 開啟後：所有 adb 共用同一條分頁；每個分頁記住自己的 ctx，點分頁**只換本文、不換 adb**
+ * （要切庫按 header 的 🌲）。設定存在 localStorage，切換 adb 不會被重設。
+ */
+const SHARED_TABS_KEY = 'accelon26.shareddoctabs';
+export function sharedDocTabsOn(): boolean {
+  try { return localStorage.getItem(SHARED_TABS_KEY) === '1'; } catch { return false; }
+}
+export function setSharedDocTabs(on: boolean): void {
+  try { localStorage.setItem(SHARED_TABS_KEY, on ? '1' : '0'); } catch { /* 無痕模式 */ }
+}
+
+/** 切庫後找一個屬於這個 adb 的分頁；沒有就回 false。 */
+export function activateTabForDb(dbId: number): boolean {
+  const i = docTabs.findIndex((t) => ctxOf(t)?.dbId === dbId);
+  if (i < 0) return false;
+  docActive = i;
+  return true;
+}
+
+/** 目前分頁的 id（0＝沒有）；切庫後用它回到「那一庫最後看的分頁」。 */
+export function activeTabId(): number {
+  return docSession()?.id ?? 0;
+}
+
+/** 用分頁 id 選回分頁；已經被關掉就回 false。 */
+export function activateTabById(id: number): boolean {
+  if (!id) return false;
+  const i = docTabs.findIndex((t) => t.id === id);
+  if (i < 0) return false;
+  docActive = i;
+  return true;
+}
+
+/** 這一庫的分頁有沒有「目前」這一個（沒有的話切庫要顯示空本文）。 */
+export function activeTabBelongsTo(dbId: number): boolean {
+  return (ctxOf(docSession())?.dbId ?? 0) === dbId;
+}
+
+/** 有本文分頁的庫（dbChip 的 owner 標記／state() 診斷用；不動 active）。 */
+export function tabDbIds(): number[] {
+  return [...new Set(docTabs.map((t) => ctxOf(t)?.dbId ?? 0).filter((id) => id > 0))];
+}
+
+/** 這個庫有幾個本文分頁（跨庫分頁挑選用）。 */
+export function tabCountOfDb(dbId: number): number {
+  return docTabs.filter((t) => ctxOf(t)?.dbId === dbId).length;
+}
+
+/**
+ * 關庫時把這個庫的分頁一起關掉（作者 2026-11-01）。
+ *
+ * 分頁的 ctx 持有那一個 reader／mapper；桌面版是 mmap，關庫後再畫會炸，
+ * Blob 也不會釋放。所以關庫＝連它的本文分頁一起關。
+ */
+export function closeTabsForDb(dbId: number): number {
+  if (!dbId) return 0;
+  const keep: DocSession[] = [];
+  let removed = 0;
+  let activeGone = false;
+  docTabs.forEach((t, i) => {
+    if (ctxOf(t)?.dbId !== dbId) { keep.push(t); return; }
+    removed++;
+    if (i === docActive) activeGone = true;
+    if (activeEditor?.s === t) stageActiveEditor();
+    if (t.ctx?.reader) dropPageImages(t.ctx.reader);
+  });
+  if (!removed) return 0;
+  docTabs = keep;
+  if (activeGone || docActive >= docTabs.length) docActive = docTabs.length ? 0 : -1;
+  if (!docTabs.length) {
+    showEmptyDoc('點左側節點／摘要，會載入該處的本文（一頁一頁載入）。');
+    noteDbOwners();
+    return removed;
+  }
+  // 目前分頁還在：重畫（分頁條要去掉被關掉的那幾個）
+  renderDocTabs(docSession() ?? docTabs[0]);
+  noteDbOwners();
+  return removed;
+}
+
+/** 這個庫還沒有本文分頁：保留分頁條，只把本文區換成提示。 */
+export function showEmptyDoc(msg: string): void {
+  docActive = -1;
+  setPinnedHit(null);
+  const el = document.getElementById('docText');
+  if (el) el.innerHTML = '<p class="dim">' + msg + '</p>';
+  const pager = document.getElementById('docPager') as HTMLElement | null;
+  if (pager) pager.hidden = true;
+  const strip = document.getElementById('docTabStrip');
+  // 分頁條保留（可以點別庫的分頁），只是沒有 active
+  strip?.querySelectorAll('.docTab').forEach((n) => n.classList.remove('active'));
+  const bar = document.getElementById('docTabs') as HTMLElement | null;
+  if (bar) bar.hidden = docTabs.length < 1;
+  void updateDocLogo();
+}
+
+/**
+ * `openFile` 收尾：決定分頁條要不要顯示。
+ *
+ * 共享分頁開啟時，別的庫的本文分頁要留著（作者 2026-11-01）——以前這裡一律
+ * 清空分頁條，跨庫分頁就消失了。沒有分頁才整條收起來。
+ */
+export function refreshDocTabsAfterOpen(): void {
+  const bar = document.getElementById('docTabs') as HTMLElement | null;
+  const strip = document.getElementById('docTabStrip');
+  if (!docTabs.length) {
+    if (bar) bar.hidden = true;
+    if (strip) strip.innerHTML = '';
+    const pager = document.getElementById('docPager') as HTMLElement | null;
+    if (pager) pager.hidden = true;
+    return;
+  }
+  renderDocTabs(docSession() ?? docTabs[0]);
+  // 這個庫還沒有本文分頁（共享分頁）：分頁條留著，本文區顯示提示
+  if (docActive < 0) showEmptyDoc('這個庫還沒有開啟本文；點左側目錄或摘要就會載入。');
+}
+
 /** a fresh database invalidates every open tab and every derived page cache */
 export function resetDocPane(): void {
   destroyActiveEditor();
-  docTabs = [];
-  docActive = 0;
+  // 共享 docTab：換庫不清分頁（每個分頁自己帶 ctx；切庫後由 dbs 選分頁）
+  if (!sharedDocTabsOn()) {
+    docTabs = [];
+    docActive = 0;
+  } else {
+    docActive = -1;
+  }
   docFontSized = false;
   boundsCache.clear();
   paintAsked.clear();
@@ -2041,6 +2623,7 @@ export function resetDocPane(): void {
   setJumpRange(null);
   clearCharBand();
   pagerLog.length = 0;
+  noteDbOwners();
 }
 
 // 修訂數變動：docTab 的紅底即時更新（dbChip 由 dbs.ts 自己訂閱）
@@ -2049,7 +2632,7 @@ onEditsChange(() => {
   if (s) { renderDocTabs(s); setEditControls(s); }
 });
 
-import { DocRow } from './adb';
+import { AdbReader, DocRow } from './adb';
 
 import { VaPaMapper } from './vapa';
 import { updateDocLogo } from './logo';
@@ -2061,19 +2644,43 @@ function snapshotDocPane() {
   // the CodeMirror view is not serialisable; write its text into the session first
   stageActiveEditor();
   saveLastReadNow();
-  return { docTabs, docActive, docSeq, lastDocLines, lastLink, lastFit };
+  // 作者 2026-11-01：切換 adb 時要把閱讀位置帶回來（同一個分頁、同一頁內的捲動與選取區）
+  const scrollTop = document.querySelector<HTMLElement>('#docText .docBody')?.scrollTop ?? 0;
+  const sel = captureDocSelection();
+  return { docTabs, docActive, docSeq, lastDocLines, lastLink, lastFit, scrollTop, sel };
 }
+
+/**
+ * 還原某一庫的分頁。
+ *
+ * ctx 不是可序列化的狀態（它是 reader／mapper 的參考），所以每個分頁只帶 `dbId`；
+ * 這裡用 `resolveDocCtx` 從還開著的 slot 重新解析。解析不到的（那個庫已經關了）
+ * 就把分頁丟掉 —— 留著它只會在下次重畫時碰到已關閉的 reader。
+ */
 function restoreDocPane(s: any): void {
   destroyActiveEditor();
-  docTabs = s.docTabs ?? [];
-  docActive = s.docActive ?? 0;
-  docSeq = s.docSeq ?? 0;
-  lastDocLines = s.lastDocLines ?? [];
-  lastLink = s.lastLink ?? null;
-  lastFit = s.lastFit ?? null;
+  const tabs: DocSession[] = [];
+  for (const t of (s?.docTabs ?? []) as DocSession[]) {
+    const dbId = t?.ctx?.dbId ?? 0;
+    const ctx = dbId ? resolveDocCtx(dbId) : null;
+    if (!ctx) continue;
+    tabs.push({ ...t, ctx });
+  }
+  docTabs = tabs;
+  docActive = Math.max(-1, Math.min(Number(s?.docActive ?? 0) || 0, docTabs.length - 1));
+  docSeq = s?.docSeq ?? 0;
+  lastDocLines = s?.lastDocLines ?? [];
+  lastLink = s?.lastLink ?? null;
+  lastFit = s?.lastFit ?? null;
+  pendingView = (typeof s?.scrollTop === 'number' || s?.sel)
+    ? { scrollTop: typeof s?.scrollTop === 'number' ? s.scrollTop : undefined, sel: s?.sel ?? undefined }
+    : null;
   boundsCache.clear();
   paintAsked.clear();
   docFontSized = true;          // the size is a reader preference, not per database
+  noteDbOwners();
 }
-export { DOCFS_DEFAULT, DOCFS_KEY, DOCFS_MAX, DOCFS_MIN, DOCFS_READABLE_MIN, DOC_TEXT_FAMILY, DocSession, PAGE_LINES, PROBE_FS, applySideFonts, autoFitFont, boundsCache, boundsOfRealm, closeDocTab, docActive, docFontSized, docOfVa, docScrollWired, docSeq, docSession, docTabs, docTextWidth, edgeLine, ensurePage, fetchPage, fitDebugInfo, goPage, lastDocLines, lastFit, lastLink, longestOf, makeTextMeasurer, pageBounds, pageOfLine, pagerLog, paintAsked, pendingProbeCleanup, pickProbeLine, readDocFont, readSideFont, realmFirstLine, realmKey, realmLastLine, renderDoc, renderDocTabs, renderPager, restoreDocPane, scheduleCursorSync, scrollToVa, sessionFor, sessionForRealm, setDocFont, setSideFont, shortLabel, showsLine, snapshotDocPane, switchDocTab, wholeRealm };
+
+export { DOCFS_DEFAULT, DOCFS_KEY, DOCFS_MAX, DOCFS_MIN, DOCFS_READABLE_MIN, DOC_TEXT_FAMILY, DocSession, PAGE_LINES, PROBE_FS, applySideFonts, autoFitFont, boundsCache, boundsOfRealm, closeDocTab, docActive, docFontSized, docOfVa, docScrollWired, docSeq, docSession, docTabs, docTextWidth, edgeLine, ensurePage, fetchPage, fitDebugInfo, goPage, lastDocLines, lastFit, lastLink, longestOf, makeTextMeasurer, pageBounds, pageOfLine, pagerLog, paintAsked, pendingProbeCleanup, pickProbeLine, readDocFont, readSideFont, realmFirstLine, realmKey, realmLastLine, renderDoc, renderDocTabs, renderPager, restoreDocPane, scheduleCursorSync, scrollToVa, sessionFor, sessionForRealm, setDocFont, setSideFont, shortLabel, showsLine, snapshotDocPane, switchDocTab, wholeRealm, ctxOf };
+
 

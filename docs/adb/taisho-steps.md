@@ -6,26 +6,58 @@
 >
 > 成品：`build/taisho-85.adb`（部署時改名 `taisho.adb`）。
 
-## 0. 成品數據（2026-10-29 重建，修好行表；CBETA 2026.R2）
+## 0. 成品數據（2026-11-01 第二批；CBETA 2026.R2）
 
 | 項目 | 數值 |
 |---|---|
-| 檔案 | 315.7 MiB（331,018,737 bytes） |
-| SHA-256 | `f03f9efecd3e9b6997513d9e4a6566d74276b7603bbbccf1da47de168880b2b3` |
-| 文字 | 6,745,533 行（max VA 122,178,837；比上一版多 1 行，見下） |
+| 檔案 | 314.7 MiB（329,957,672 bytes） |
+| SHA-256 | `AB9C58023B633614E0E2D9E3641C38F061DEABB2CC99A3EA22A8C0EA3E90534A` |
+| 文字 | 6,745,515 行（max VA 122,054,261） |
 | 冊／書／卷 | 85／3,000／17,998 |
 | 頁欄（`<頁 id="NpMc"/>`） | 238,278（全部唯一） |
 | 標記 | 36 種 |
-| tokens | 35,146 種／121,094,314 筆 |
+| tokens | 27,225 種／120,969,738 筆 |
 | resources | `taisho_logo.png`（297,879 bytes） |
 | 檔頭 | `dbname=taisho`、`dbcname=大正新脩大藏經`、`dbtype=4`、`srcBlockSize=16384`、`compression=1`、`andtagid=21`（頁） |
 
+> **2026-11-01 重打包（tokenizer）**：代理對改成「一個 supplementary 字元＝1 個 VA」
+> （見 [han-position.md](./han-position.md)）。文字裡原本就有 14 個悉曇字元，
+> 舊規則各算 2 個 token；現在各算 1 個，所以 maxVA 122,054,275 → **122,054,261**、
+> hits 少 14。**頁 id、行界、文字內容都不變**。
+
+> **缺字改成 Unicode（2026-10-31）**：`<g ref="#CB…"/>` 不再留 `&CB…;`。規則：
+> `<g>` 內文只有一個字就用它；否則用 `teiHeader/charDecl` 的 `<mapping type="unicode">`
+> （含 `normal_unicode`）；只有 PUA 對應的沿用 PUA 字元。CB 缺字已全部換掉（`&CB…;` 0 個）；
+> 其中 **931 碼／2,425 次只有 PUA**（charDecl 沒有 unicode），文字裡是 plane-15 PUA，
+> 因此不會出現在 `taisho-missing-gaiji.tsv`，另見
+> [missing-char.md](./missing-char.md) §4.4 與 `docs/adb/taisho-pua-gaiji.tsv`。
+>
+> **PUA → 通用字（2026-11-01 第二批）**：這 931 碼裡，CBETA 外字庫有
+> `norm_big5_char` 的 **216 碼／1,047 次**已換成通用字（1 字換 1 字）。plane-15 PUA
+> 2,425 → **1,378 次**、931 → **715 碼**；`&CB…;` 仍 0。頁 id、行數（6,745,515）、
+> maxVA（122,054,261）與每行 VA 都不變。成品 329,957,672 bytes、SHA-256
+> `AB9C58023B633614E0E2D9E3641C38F061DEABB2CC99A3EA22A8C0EA3E90534A`、
+> tokens 27,225（舊 27,429；少 216 個 PUA、多 12 個新通用字 token）。
+> 替換帳是 `build/pua-norm.tsv`，工具 `tools/pua-norm.py`（見 [missing-char.md](./missing-char.md) §2.5）。
+>
+> **SAT 梵字（&SD）也換掉了（2026-10-31 第二次重建）**：SAT 2018 的 `&SD-XXXX;`
+> 依 `SD-XXXX → U+FA000+XXXX` 換成第 16 平面 PUA，115,246 次／895 碼全部歸零，
+> 由內嵌的 Accelon Siddham 字型顯示。SAT 另有 `&SDxxxxx;`（無連字號、非 4 位 hex）
+> 3,665 碼／3,672 次，沒有公式可換，保留原樣（多為悉曇連字，`charDecl` 有
+> 對應的 Unicode 序列，見 [missing-char.md](./missing-char.md)）。
+> 行數與頁欄不變（6,745,515 行、238,278 頁）；tokens 28,410 → 27,429（含 2026-11-01 代理對修正）。
+>
+> **2026-10-31 之後的 `tei2adb`**：SD／RJ 不再需要 charDecl，會直接依
+> `SD-XXXX → U+FA000+XXXX`／`RJ-XXXX → U+100000+XXXX` 換成 PUA，並由內嵌的
+> Siddam／Ranjana 字型顯示；CB 缺字只有 PUA 時沿用 PUA。完整規則見
+> [missing-char.md](./missing-char.md)。
+>
 > **行表修正（2026-10-29）**：`index-builder` 的 `lines.physical` 照 Delphi `addbuffer`
 > 把每行長度截在 `MAXLINELEN`（8192 bytes = 4,096 字）。舊版有一行 5,427 字
 > （第 4,479,231 行），之後 2.27M 行的位移全部短少 2,662 bytes，造成 69,454 行
 > 斷在標籤內（`<頁 id="63p967` 被切成兩行，閱讀器顯示成文字）。現在
 > `tei-pack.ts` 打包前會把超過 4,000 字的行切開（不切進標籤、不切開代理對），
-> 全表掃描 6,745,533 行：**斷在標籤內 0 行**。內文逐字相同（解壓後
+> 全表掃描 6,745,515 行：**斷在標籤內 0 行**。內文逐字相同（解壓後
 > SHA-256 `b4b2f621…` 與舊版一致），只有行界不同。
 >
 > 上一版（有缺陷）：331,018,733 bytes、SHA-256 `b4ef2398…`、6,745,532 行。
@@ -60,9 +92,18 @@
 :: 1) TEI → 文字（約 8 分鐘；-tei 可用 ; 串多個根目錄，同一冊取第一個找得到的）
 build\tei2adb.exe -tei "D:\2026\xml-p5\T;D:\2023\sat2018\T" -vol 1-85 -release 2026.R2 -out build\tei-all-2026R2.txt
 
+:: 1.5) plane-15 PUA 有 norm_big5_char 的換成通用字（2026-11-01 起；216 碼／1,047 次）
+::      第一次先 make 產生 build\pua-norm.tsv，之後可直接 apply
+python tools\pua-norm.py make
+python tools\pua-norm.py apply build\tei-all-2026R2.txt build\tei-all-2026R2-norm.txt
+
 :: 2) 文字 → adb（約 75 秒；最後的 "" 表示不要加 posmap align）
-bun run ts/tools/tei-pack.ts build\tei-all-2026R2.txt build\taisho-2026R2.adb taisho 大正新脩大藏經 logo\taisho_logo.png ""
+bun run ts/tools/tei-pack.ts build\tei-all-2026R2-norm.txt build\taisho-2026R2-norm.adb taisho 大正新脩大藏經 logo\taisho_logo.png ""
 ```
+
+`build\tei-all-2026R2.txt`（tei2adb 原始輸出）要保留，`pua-norm.py make` 靠它重算
+替換帳；`build\tei-all-2026R2-norm.txt` 才是打包的輸入。規則與驗證見
+[missing-char.md](./missing-char.md) §2.5。
 
 指定單冊做 pilot：
 
@@ -116,7 +157,7 @@ bun run build/tmp-idcheck2.ts build\taisho-85.adb 51p185b
 | `<byline>` | 純文字 | |
 | `<app><lem>` | 文字 | 取 CBETA 採用的讀法 |
 | `<app><rdg>`、`<note>`（含巢狀） | 丟棄 | 校勘不進 adb |
-| `<g ref="#CB00178"/>` | `&CB00178;` | 缺字先保留 CB 碼位，之後用 glyphwiki 構形序處理 |
+| `<g ref="#CB00178"/>` | `㮈`（Unicode）；沒有對應才 `&CB00178;` | 2026-10-31：`<g>` 內有替代字優先，其次 `charDecl` 的 `<mapping type="unicode">`；都沒有才留碼位並記進缺字表 |
 | `<cb:tt>` 內 `xml:lang="sa"/"pi"`、`place="foot"` | 丟棄 | 梵／巴對照不進正文 |
 | 檔案根 `T01n0001` | `<段/><書 id="n1">長阿含經</書>` | 書 id 依出現順序 `n1…n3000` |
 | 冊目錄 | `<冊 id="N">部名</冊>` | 部名見 §6 |
@@ -145,10 +186,12 @@ bun run build/tmp-idcheck2.ts build\taisho-85.adb 51p185b
    這 29 冊取 SAT 2018（文本與底本為 public domain，數位文字依 SAT 2018 授權標注）；用字、標點、修訂讀法都跟 2005 版不同。
 2. **校勘不進 adb**：`<app>` 只取 `lem`（CBETA 採用的讀法），`<note>`／`<rdg>` 全丟。
    舊 adb 也沒有校勘結構。
-3. **缺字尚未映射**：`&CB00178;` 目前是純文字，也會被 token index 收成 `&cb00178;` 這種 token；
-   之後要按 `charDecl` 的 charmap 換成 PUA／glyphwiki 構形。
+3. **缺字大多已換成 Unicode**（2026-10-31）：`<g>` 內有替代字就用它；自閉合的就查 `teiHeader/charDecl` 的
+   `<mapping type="unicode">`。`&SD-XXXX;` 已全部換成 PUA；仍換不掉的
+   `&SDxxxxx;`（3,665 碼／3,672 次，悉曇連字）保留 `&…;`，列在
+   `docs/adb/taisho-missing-gaiji.tsv`。
 4. **品／附文不刻意對齊舊 adb**：定位靠 vol/page/column/line，不靠品節點。
-5. **resources 只有 logo**：沒有缺字圖（因為缺字用 `&CB…;` 佔位）。
+5. **resources 只有 logo**：沒有缺字圖（缺字已多數換成 Unicode；少數 SAT 缺字仍是 `&…;`）。
 6. 舊 adb 的 `其他` 標題裡有 `&lac;`（闕文）實體，CBETA 2026.R2 沒有；兩邊節點數必然不同。
 
 ### 7.1 2026-10-28 補：56–84 冊的書名
@@ -201,7 +244,7 @@ bun run build/tmp-idcheck2.ts build\taisho-85.adb 51p185b
 | `app`/`lem`/`rdg` | 校勘 | lem 收、rdg 丟 |
 | `note` | `type=orig/mod/rest`、`place=foot/inline/text` | 全丟（含巢狀） |
 | `cb:tt`/`cb:t` | 梵巴對照 | sa/pi、place=foot 丟 |
-| `g` | `ref="#CB00178"` | → `&CB00178;` |
+| `g` | `ref="#CB00178"` | → 替代字／charDecl 的 Unicode；沒有才 `&CB00178;` |
 | `span class="tx"` | 56–84 冊 | 無語意，照收文字 |
 | `anchor`、`milestone`、`space`、`br` | | 忽略 |
 
@@ -214,7 +257,7 @@ bun run build/tmp-idcheck2.ts build\taisho-85.adb 51p185b
 5. **`<back>` 的 `taisho-notes`** 只有 `<head>大正 校註</head>`，正文全在 note 裡 → 整段丟，否則每部經尾巴都多一個空標題。
 6. **56–84 冊沒有 `<pb>`**，頁欄只能從 `lb n` 的前 5 碼推，且同一欄的第一行要補 `頁` 標記。
 7. **`title level="m"` 內可能嵌 `<g>`**（如 `佛說<g ref="#CB00178"/>女祇域因緣經`）→ 取經名時要清標記。
-8. **`charDecl` 的 charmap**：`CB00166` → `U+F00A6`（PUA）／`U+267DB`；目前不解析，只留 CB 碼位。
+8. **`charDecl` 的 charmap**：`CB00166` → `U+F00A6`（PUA）／`U+267DB`；2026-10-31 起解析 `<mapping type="unicode">`（不採用 PUA），PUA 只在沒有 unicode 時才考慮（目前不用）。
 9. **檔名＝冊/經/卷**：`T01n0001_001.xml` → 冊 1、經 0001、卷 001；排序後即是閱讀順序。
 10. **`lb` 的 `ed` 屬性**有三種寫法（`ed="T"`、無 `ed`、屬性順序不同），不能用字串比對，要解析屬性。
 
@@ -241,8 +284,15 @@ T2250《阿毘達磨俱舍論指要鈔》（T63，頁 807a）在 **Kanseki Repos
 
 ## 9. 後續工作
 
-1. **缺字**：讀 `teiHeader/charDecl` 的 charmap，把 `&CB00178;` 換成對應 Unicode／PUA，
-   或接 `D:\2023\glyphwiki` 的構形序產生字形。
+1. **缺字（2026-11-01 第二批）**：CB 缺字已按 `<g>` 內文與 `charDecl` 換成 Unicode；
+   plane-15 PUA 有 `norm_big5_char` 的 216 碼／1,047 次已換成通用字，剩下 715 碼／1,378 次
+   （只有組字式，清單 `docs/adb/taisho-pua-gaiji.tsv`、IDS 用
+   `docs/adb/taisho-ids-input.tsv`）。
+   SAT 2018 的 `&SD-XXXX;` 已換成 PUA（115,246 次／895 碼，字型已內嵌）。
+   剩下 `&SDxxxxx;`（3,665 碼）是悉曇連字，`charDecl` 有 Unicode 序列但沒有單一碼位，
+   列在 `docs/adb/taisho-missing-gaiji.tsv`；閱讀器顯示時已換成序列，用內嵌的
+   Noto Sans Siddham 子集排（2026-10-31，`siddham-seq.ts`）。完整規則見
+   [missing-char.md](./missing-char.md)。
 2. **校勘**（若以後要）：`app/lem/rdg` 與 `note type="mod"` 已有完整資料，可另設標記與面板。
 3. **圖片資源**：舊 adb 的 35,981 張缺字圖可選擇性沿用（先確認字號對得上）。
 4. **品／附文**：若要跟舊 adb 對齊，用舊 `taisho-struct.tsv` 的標題清單逐冊比對。
@@ -255,6 +305,9 @@ T2250《阿毘達磨俱舍論指要鈔》（T63，頁 807a）在 **Kanseki Repos
 | `cmd/tei2adb/main.go` | TEI → 文字（含所有規則；改規則從這裡改） |
 | `ts/tools/tei-pack.ts` | 文字 → adb（含 logo） |
 | `build/tei-all.txt` | 中間產物，372 MB UTF-8，可重新產生（`build/` 不進版控） |
+| `build/tei-all-2026R2-norm.txt` | 換過通用字的打包輸入（與原始輸出行數相同） |
+| `tools/pua-norm.py`、`build/pua-norm.tsv` | PUA → 通用字工具與 216 列替換帳 |
+| `docs/adb/taisho-gaiji-dict.tsv`、`.md` | 剩下 715 碼的 glyph（dict.cbeta.org）＋組字式＋第一次出現 |
 | `build/taisho-85.adb` | 成品（部署為 `taisho.adb`） |
 | `build/tmp-idcheck2.ts` | 錨點鏈驗證 |
 | `build/taisho-struct.tsv` | 舊 adb 的結構清單（冊/書/卷/序/…＋標題），對照用 |

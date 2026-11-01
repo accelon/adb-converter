@@ -1,7 +1,7 @@
 /**
  * Build the mockup into ONE self-contained HTML file.
  *
- *   bun run tools/build-viewer.ts [-o ../build/accelon26.html]
+ *   bun run tools/build-viewer.ts [-o D:\\accelon3\\accelon26.html]（預設就寫到 D:\\accelon3）
  *
  * Why a single file with an inline classic script: on file:// an ES module is
  * blocked by CORS ("Origin 'null'"), and fetch() cannot read sibling files at
@@ -19,10 +19,13 @@ import { buildSingleFileHtml } from './page-build';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
-const out = resolve(opt('o', resolve(import.meta.dir, '../../build/accelon26.html')));
+// 作者 2026-10-31（說了很多次）：viewer 一律寫到 D:/accelon3（本機部署位置），
+// 不是 repo 的 build/。要換位置用 -o 或 ACCELON3_DIR。
+const DEPLOY_DIR = process.env.ACCELON3_DIR || 'D:/accelon3';
+const out = resolve(opt('o', resolve(DEPLOY_DIR, 'accelon26.html')));
 
-const { html, jsKiB, iconKiB } = await buildSingleFileHtml();
+const { html, jsKiB, iconKiB, fontKiB } = await buildSingleFileHtml();
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, html, 'utf8');
-console.log(`wrote ${out}  (${(html.length / 1024).toFixed(1)} KiB, script ${jsKiB} KiB, icon ${iconKiB} KiB)`);
+console.log(`wrote ${out}  (${(html.length / 1024).toFixed(1)} KiB, script ${jsKiB} KiB, icon ${iconKiB} KiB, fonts ${fontKiB} KiB)`);
 console.log('open it by double click (file://) and pick an .adb, or serve it over http.');

@@ -344,8 +344,11 @@ export function openImageView(name: string, url: string, bytes: Uint8Array): voi
   ivUrl = url;
   ivBytes = bytes;
   ivSvg = /\.svg$/i.test(name);
-  // SVG 是黑墨透明底：暗色系的主題色背景下幾乎看不見，鋪一張白紙（作者 2026-10-29）
-  img.style.background = ivSvg ? '#fff' : '';
+  img.classList.toggle('svg', ivSvg);
+  // SVG 是黑墨透明底：暗色系背景下幾乎看不見，鋪一張白紙（作者 2026-10-29）。
+  // 但使用者開了「SVG 反轉」時不鋪（反轉後就是亮線；作者 2026-10-31）。
+  const inverted = ivSvg && document.documentElement.classList.contains('svg-invert');
+  img.style.background = ivSvg && !inverted ? '#fff' : '';
   img.onload = () => { ivFit(); };
   img.src = url;
   img.alt = name;

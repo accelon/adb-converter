@@ -18,6 +18,11 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
   本工作區不改 ys 的正文／資料、不部署 ys.adb。ys 工作區也可能直接修改本區的
   `docs/adb/ys*.md`，那些檔案以那邊為準；本區只改閱讀器與官網。
 - 還在這裡的 adb 實驗（例如 `jingqun`）可以改，但要知道它將來可能搬走。
+- **開新的 adb 工作區**（作者 2026-11-01）：先把
+  `docs/adb/new-adb-AGENTS.md` 複製成 `D:\2026\<name>\AGENTS.md`，填好
+  `{{DB}}`／`{{TITLE}}`／`{{WORKDIR}}`／`{{SOURCE}}`，再開新工作區；步驟見
+  `docs/adb/new-adb-workspace.md`。新工作區的 `AGENTS.md` 會要求它回本區讀
+  「紀律、共用 know-how、版本紀錄」三份文件。
 - **成品一律放 `D:\accelon3`**（作者 2026-10-30）：`*.adb`、`accelon26.html`、
   `accelon26.exe` 都在那個資料夾；`build/` 只放建置中間檔與可重建的輸出。
   桌面版開機用 `ListAdbs` 列出工作目錄與 exe 所在資料夾的 `*.adb`，放在別處它找不到。
@@ -113,10 +118,17 @@ bun run tools/cbeta-base.ts --check
 - `publish-adb.ts` 會拒絕 `wip`／`revision` 的庫；>30 MB 要明確 `--allow-large`。
 - 不要把 `.local/server.env`、主機指紋或密碼貼進回覆、log、commit。
 
+- **腳注 `pg` 屬性（2026-11-01，作者定案）**：從 **docx** 轉來的 adb（`fuyan`、`yl38`…）每節重新編號，
+  所以 `<註>`／`<釋>` **要帶 `pg="<頁 id>"`**（建置時把頁 id 一起寫進去，不要改 `n` 的規則）；
+  從 **TEI** 來的（`ys`、`taisho`、`wxzj`）註號本身唯一，**不需要 `pg`**。
+  閱讀器配對順序是「pg 相同 → 同頁最近 → 頁碼最近」，兩種來源並存。詳見 `docs/adb/stable-adb.md` §3.1。
 - **術語 `<术 sk|pi|tb>`（2026-11-01）**：所有含梵／巴／藏對照的庫共用 `ts/src/terms/terms.ts` ＋ `data/terms.tsv` ＋ `data/term-fixes.tsv`；新文字用 `bun run tools/terms.ts apply`，既有標記用 `fix`，glossary 容器用 `glossary`。詳見 `docs/adb/terms.md`。
 
 ## 5. 發佈規則
 
+- **作者說「發佈」＝建置＋部署＋commit（2026-11-02 指示）**：跑完 `tools/release.ts` 與
+  `tools/deploy.ts`（兩個站同步、線上驗證）之後，把程式碼 **commit 並 push**，
+  不要留一批未提交的改動。commit 訊息用繁體中文，寫清楚這一版改了什麼。
 - **只有使用者明確說「發佈」才跑 `release.ts`**。它會建置、寫 `versions.json`、
   產生 `www/accelon26.zip` 與 `www/releases/accelon26-YYYY-MM-DD.zip`。
 - 一天最多一個 release；同日重發會合併 `release_notes.json` 並覆蓋當天 ZIP，

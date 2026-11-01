@@ -18,8 +18,8 @@ import { buildSingleFileHtml } from './page-build';
 const here = import.meta.dir;
 const out = resolve(here, '../../wails/assets/index.html');
 
-const { html, jsKiB, iconKiB } = await buildSingleFileHtml();
+const { html, jsKiB, iconKiB, fontKiB } = await buildSingleFileHtml();
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, html, 'utf8');
-console.log(`wrote ${out}  (${(html.length / 1024).toFixed(1)} KiB, script ${jsKiB} KiB, icon ${iconKiB} KiB)`);
+console.log(`wrote ${out}  (${(html.length / 1024).toFixed(1)} KiB, script ${jsKiB} KiB, icon ${iconKiB} KiB, fonts ${fontKiB} KiB)`);
 console.log('now publish/build the host:  cd ts && bun run tools/release.ts --no-build');

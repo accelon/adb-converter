@@ -643,6 +643,11 @@ export class Accelon3Renderer {
         }
         continue;
       }
+      // `<hr/>`：一條水平線（作者 2026-11-01：注釋群與正文分界）
+      if (name === 'hr') {
+        if (!closing) html += '<hr class="docHr">';
+        continue;
+      }
       // `<术 sk="…">` 等：術語（作者 2026-10-31）。漢詞照常顯示；外語依設定
       // hover（title 提示）／inline（漢詞（外語））／off（只顯示漢詞）。
       if (name === '术' || name === '_术') {

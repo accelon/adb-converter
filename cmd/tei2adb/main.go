@@ -8,7 +8,8 @@
 //
 // 標記沿用舊 taisho.adb：檔／冊／段／書／頁／卷／序／經／品／分／會／其他。
 // 校勘：取 <app><lem> 的文字（＝CBETA 採用的讀法），<note>/<rdg> 一律丟棄。
-// 缺字：<g ref="#CB00178"/> → 文字 "&CB00178;"（之後再用 glyphwiki 構形序處理）。
+// 缺字：<g ref="#CB00178"/> → 優先換成 teiHeader/charDecl 的 Unicode（<mapping type="unicode">）；
+// 沒有 Unicode 對應的才留 "&CB00178;" 並記進缺字表（作者 2026-10-31）。
 package main
 
 import (
@@ -19,6 +20,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -123,6 +125,20 @@ type emitter struct {
 	stats       map[string]int
 	seenPages   map[string]bool
 	count       int
+	// 缺字：teiHeader/charDecl 的 charmap（CB 碼 → Unicode 字；見 docs/adb/taisho-steps.md）
+	gaiji     map[string]rune
+	// 沒有 unicode 只有 PUA 的缺字（沿用舊版行為，避免重建後多出 &CB…; 實體）
+	gaijiPUA  map[string]rune
+	// PUA 梵字 → 悉曇 Unicode 序列（-sanskrit-seq；有給才用）
+	seqMap       map[rune]string
+	curChar   string
+	uniBuf    strings.Builder
+	inUnicode bool
+	inPUA     bool
+	missing   map[string]int
+	gStack    []string
+	gText     []bool
+	gInner    []strings.Builder
 }
 
 func (e *emitter) flush() {
@@ -191,6 +207,38 @@ func escapeText(s string) string {
 	return s
 }
 
+// isPUA：Unicode 私人使用區（BMP PUA、第 15／16 平面）。CBETA 的缺字與梵字都用這些碼位。
+func isPUA(r rune) bool {
+	return (r >= 0xE000 && r <= 0xF8FF) || (r >= 0xF0000 && r <= 0x10FFFD)
+}
+
+// sanskritPUA：CBETA 梵字碼 → Unicode 私用區（SD-XXXX → U+FA000+XXXX；
+// RJ-XXXX → U+100000+XXXX；規則與 cbeta_sanskrit.csv 的 pua 欄相同）。
+func sanskritPUA(ref string) (rune, bool) {
+	i := strings.IndexByte(ref, '-')
+	if i <= 0 {
+		return 0, false
+	}
+	var base rune
+	switch ref[:i] {
+	case "SD":
+		base = 0xFA000
+	case "RJ":
+		base = 0x100000
+	default:
+		return 0, false
+	}
+	n, err := strconv.ParseInt(ref[i+1:], 16, 32)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	r := base + rune(n)
+	if r > 0x10FFFD {
+		return 0, false
+	}
+	return r, true
+}
+
 func main() {
 	tei := flag.String("tei", `D:\2023\sat2018\T`, "TEI 根目錄（多個用 ; 分隔；同一冊取第一個找得到的）")
 	vols := flag.String("vol", "1", "冊範圍，如 1 或 1-85")
@@ -200,6 +248,7 @@ func main() {
 	out := flag.String("out", "build/tei.txt", "輸出文字檔")
 	canon := flag.String("canon", "T", "藏別：T（大正藏）或 X（卍續藏）")
 	release := flag.String("release", "2026.R2", "CBETA 版本字串（寫進檔頭的來源說明）")
+	seqPath := flag.String("sanskrit-seq", "", "PUA → 悉曇 Unicode 序列的 TSV（pua,id,romanized,seq,note）；有給就輸出序列")
 	flag.Parse()
 	canonValue := strings.ToUpper(strings.TrimSpace(*canon))
 
@@ -240,7 +289,13 @@ func main() {
 		defer pclOut.Flush()
 	}
 
-	e := &emitter{out: w, canon: canonValue, stats: map[string]int{}, seenPages: map[string]bool{}}
+	seqMap := map[rune]string{}
+	if *seqPath != "" {
+		seqMap = loadSeqMap(*seqPath)
+	}
+
+	e := &emitter{out: w, canon: canonValue, stats: map[string]int{}, seenPages: map[string]bool{},
+		gaiji: map[string]rune{}, gaijiPUA: map[string]rune{}, missing: map[string]int{}, seqMap: seqMap}
 	if canonValue == "X" {
 		e.emit(strings.ReplaceAll(xHeader, "{{RELEASE}}", *release))
 	} else {
@@ -326,6 +381,92 @@ func main() {
 		fmt.Fprintf(os.Stderr, " %s=%d", k, e.stats[k])
 	}
 	fmt.Fprintln(os.Stderr)
+	writeMissingGaiji(filepath.Join(filepath.Dir(*out), missingGaijiName(canonValue)), e.missing)
+	fmt.Fprintf(os.Stderr, "gaiji=%d missing=%d\n", len(e.gaiji), len(e.missing))
+}
+
+// takeUnicode：把 <mapping type="unicode">U+XXXX</mapping> 收進 gaiji 表
+func (e *emitter) takeUnicode() {
+	e.inUnicode = false
+	code := strings.TrimSpace(e.uniBuf.String())
+	e.uniBuf.Reset()
+	if e.curChar == "" || !strings.HasPrefix(code, "U+") {
+		return
+	}
+	v, err := strconv.ParseInt(code[2:], 16, 32)
+	if err != nil || v < 0 || v > 0x10FFFF {
+		return
+	}
+	e.gaiji[e.curChar] = rune(v)
+}
+
+// takePUA：把 <mapping type="PUA">U+F1115</mapping> 收進 PUA 表。
+// CBETA 有些缺字只有 PUA（原字型的私用碼），沒有 unicode；舊版直接留 PUA 字元，
+// 新版沿用同樣行為，避免重建後把 6,000 多個字變成 &CB…; 實體。
+func (e *emitter) takePUA() {
+	e.inPUA = false
+	code := strings.TrimSpace(e.uniBuf.String())
+	e.uniBuf.Reset()
+	if e.curChar == "" || !strings.HasPrefix(code, "U+") {
+		return
+	}
+	v, err := strconv.ParseInt(code[2:], 16, 32)
+	if err != nil || v < 0 || v > 0x10FFFF {
+		return
+	}
+	e.gaijiPUA[e.curChar] = rune(v)
+}
+
+// loadSeqMap：讀 `pua,id,romanized,seq,note` 的 TSV；只收 seq 非空的列。
+func loadSeqMap(path string) map[rune]string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		panic(err)
+	}
+	out := map[rune]string{}
+	for i, line := range strings.Split(string(data), "\n") {
+		if i == 0 || strings.TrimSpace(line) == "" {
+			continue
+		}
+		cols := strings.Split(line, "\t")
+		if len(cols) < 4 {
+			continue
+		}
+		code := strings.TrimPrefix(strings.TrimSpace(cols[0]), "U+")
+		v, err := strconv.ParseInt(code, 16, 32)
+		if err != nil {
+			continue
+		}
+		seq := cols[3]
+		if seq == "" {
+			continue
+		}
+		out[rune(v)] = seq
+	}
+	return out
+}
+
+// missingGaijiName：缺字表的檔名（T 藏／X 藏分開，免得 wxzj 覆蓋 taisho 的清單）。
+func missingGaijiName(canon string) string {
+	if canon == "X" {
+		return "wxzj-missing-gaiji.tsv"
+	}
+	return "taisho-missing-gaiji.tsv"
+}
+
+// writeMissingGaiji：沒有 Unicode 對應的缺字（保留 &CB…; 佔位）寫成 TSV 給作者補表
+func writeMissingGaiji(path string, missing map[string]int) {
+	codes := make([]string, 0, len(missing))
+	for c := range missing {
+		codes = append(codes, c)
+	}
+	sort.Strings(codes)
+	var b strings.Builder
+	b.WriteString("code\tcount\n")
+	for _, c := range codes {
+		fmt.Fprintf(&b, "%s\t%d\n", c, missing[c])
+	}
+	_ = os.WriteFile(path, []byte(b.String()), 0o644)
 }
 
 func parseRange(s string) (int, int) {
@@ -426,7 +567,7 @@ func sutraTitle(path string) string {
 	if i >= 0 {
 		rest := head[i+len(key):]
 		if j := strings.Index(rest, "</title>"); j >= 0 {
-			return cleanTitle(rest[:j])
+			return resolveGaijiText(cleanTitle(rest[:j]), path)
 		}
 	}
 	// 56–84 冊的檔頭只有「大正新脩大藏經數位版, No. N 題名」，沒有 level="m"。
@@ -449,7 +590,7 @@ func sutraTitle(path string) string {
 				for p < len(t) && t[p] == ' ' {
 					p++
 				}
-				return cleanTitle(strings.TrimSpace(t[p:]))
+				return resolveGaijiText(cleanTitle(strings.TrimSpace(t[p:])), path)
 			}
 		}
 	}
@@ -474,11 +615,59 @@ func cleanTitle(s string) string {
 			if e := strings.IndexAny(code, `"`); e >= 0 {
 				code = code[:e]
 			}
+			// `<g ref="#CB…">㮈</g>`：內文只有一個字時就是替代字，優先使用（2026-10-31）
+			if !strings.HasSuffix(tag, "/>") {
+				if e := strings.Index(s[i+j+1:], "</g>"); e >= 0 && e <= 24 {
+					inner := strings.TrimSpace(s[i+j+1 : i+j+1+e])
+					if len([]rune(inner)) == 1 {
+						b.WriteString(inner)
+						i += j + 1 + e + len("</g>") - 1
+						continue
+					}
+				}
+			}
 			b.WriteString("&" + code + ";")
 		}
 		i += j
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// gaijiUnicode：從檔案的 teiHeader/charDecl 取 CB 碼 → Unicode（只取 type="unicode"）
+func gaijiUnicode(path string) map[string]rune {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	s := string(b)
+	re := regexp.MustCompile(`<char xml:id="([^"]+)">[\s\S]*?<mapping type="(?:normal_)?unicode">U\+([0-9A-Fa-f]+)</mapping>`)
+	m := map[string]rune{}
+	for _, x := range re.FindAllStringSubmatch(s, -1) {
+		v, err := strconv.ParseInt(x[2], 16, 32)
+		if err == nil && v >= 0 && v <= 0x10FFFF {
+			m[x[1]] = rune(v)
+		}
+	}
+	return m
+}
+
+// resolveGaijiText：把標題裡剩下的 &CODE; 用該檔的 charDecl 換掉（沒有對應就保留）
+func resolveGaijiText(s, path string) string {
+	if !strings.Contains(s, "&") {
+		return s
+	}
+	m := gaijiUnicode(path)
+	if len(m) == 0 {
+		return s
+	}
+	re := regexp.MustCompile(`&([A-Za-z0-9][A-Za-z0-9-]*);`)
+	return re.ReplaceAllStringFunc(s, func(t string) string {
+		code := strings.TrimSuffix(strings.TrimPrefix(t, "&"), ";")
+		if r, ok := m[code]; ok {
+			return string(r)
+		}
+		return t
+	})
 }
 
 func (e *emitter) parseFile(path, sutra string, juan int, linesOut, pclOut *bufio.Writer) *bufio.Writer {
@@ -508,6 +697,22 @@ func (e *emitter) parseFile(path, sutra string, juan int, linesOut, pclOut *bufi
 		case xml.StartElement:
 			name := t.Name.Local
 			if e.skip > 0 {
+				// teiHeader 的 charDecl：CB 缺字碼 → Unicode（作者 2026-10-31）
+				if e.skipKind == "header" {
+					switch name {
+					case "char":
+						e.curChar = attr(t, "id")
+					case "mapping":
+						switch ty := attr(t, "type"); ty {
+						case "unicode", "normal_unicode":
+							e.inUnicode = true
+							e.uniBuf.Reset()
+						case "PUA":
+							e.inPUA = true
+							e.uniBuf.Reset()
+						}
+					}
+				}
 				// 校勘／夾註裡偶爾夾著真正的換頁標記（例 T01 0731b 在 note 內），
 				// 文字不收，但頁碼要留下，否則 yinshun 的 taisho?1p731b 會斷。
 				if name == "pb" && e.skipKind == "note" {
@@ -619,9 +824,13 @@ func (e *emitter) parseFile(path, sutra string, juan int, linesOut, pclOut *bufi
 					e.tag = "其他"
 				}
 			case "g":
+				// <g ref="#CB01368">𩜁</g>：內文有替代字就用它；自閉合且 charDecl 有
+				// Unicode 對應就補上；兩者都沒有才留 &CB…; 並記進缺字表（作者 2026-10-31）。
 				ref := strings.TrimPrefix(attr(t, "ref"), "#")
 				if ref != "" {
-					e.emit("&" + ref + ";")
+					e.gStack = append(e.gStack, ref)
+					e.gText = append(e.gText, false)
+					e.gInner = append(e.gInner, strings.Builder{})
 					e.stats["g"]++
 				}
 			case "app", "lem", "space", "anchor", "milestone", "title", "p", "byline", "docNumber", "cb:juan":
@@ -629,6 +838,19 @@ func (e *emitter) parseFile(path, sutra string, juan int, linesOut, pclOut *bufi
 			}
 		case xml.EndElement:
 			if e.skip > 0 {
+				name := t.Name.Local
+				if e.skipKind == "header" {
+					switch name {
+					case "mapping":
+						if e.inUnicode {
+							e.takeUnicode()
+						} else if e.inPUA {
+							e.takePUA()
+						}
+					case "char":
+						e.curChar = ""
+					}
+				}
 				e.skip--
 				continue
 			}
@@ -644,13 +866,84 @@ func (e *emitter) parseFile(path, sutra string, juan int, linesOut, pclOut *bufi
 				}
 			case "juan":
 				e.juanClose = false
+			case "g":
+				if n := len(e.gStack); n > 0 {
+					ref := e.gStack[n-1]
+					text := e.gText[n-1]
+					inner := strings.TrimSpace(e.gInner[n-1].String())
+					e.gStack = e.gStack[:n-1]
+					e.gText = e.gText[:n-1]
+					e.gInner = e.gInner[:n-1]
+					runes := []rune(inner)
+					one := text && len(runes) == 1
+					out := ""
+					switch {
+					case strings.HasPrefix(ref, "SD-") || strings.HasPrefix(ref, "RJ-"):
+						// 梵字：<g> 內文已經是 plane 16 PUA（SD/RJ），直接用；
+						// 自閉合或內文不是 PUA 時，按 CBETA 規則算 U+FA000／U+100000。
+						// 這兩個平面有內嵌的 Accelon Siddham／Ranjana 字型（2026-10-31）。
+						if one && isPUA(runes[0]) {
+							out = string(runes[0])
+						} else if r, ok := sanskritPUA(ref); ok {
+							out = string(r)
+						} else {
+							out = "&" + ref + ";"
+							e.missing[ref]++
+						}
+						// 有對照表就把 PUA 換成 Noto 排得出來的 Unicode 序列
+						// （序列在 tokenizer 裡仍算 1 個 VA；見 ts/src/tokenize.ts）
+						if rs := []rune(out); len(rs) == 1 {
+							if s, ok := e.seqMap[rs[0]]; ok {
+								out = s
+							}
+						}
+					case strings.HasPrefix(ref, "CB"):
+						// CB 缺字：<g> 內文是真字就用；若是 PUA（原字型的私用碼），
+						// 改用 teiHeader/charDecl 的 Unicode；只有 PUA 對應的就沿用
+						// PUA 字元（舊版行為；2026-10-31 之前就是這樣）；都沒有才留 &CB…;。
+						if one && !isPUA(runes[0]) {
+							out = inner
+						} else if r, ok := e.gaiji[ref]; ok {
+							out = string(r)
+						} else if r, ok := e.gaijiPUA[ref]; ok {
+							out = string(r)
+						} else {
+							out = "&" + ref + ";"
+							e.missing[ref]++
+						}
+					default:
+						// 其他 ref（CBETA 自訂碼等）：內文優先，其次 charDecl。
+						if one {
+							out = inner
+						} else if r, ok := e.gaiji[ref]; ok {
+							out = string(r)
+						} else {
+							out = "&" + ref + ";"
+							e.missing[ref]++
+						}
+					}
+					if inHead {
+						e.head.WriteString(out)
+					} else {
+						e.emit(out)
+					}
+				}
 			}
 		case xml.CharData:
 			if e.skip > 0 {
+				if e.inUnicode || e.inPUA {
+					e.uniBuf.WriteString(string(t))
+				}
 				continue
 			}
 			s := textOf(string(t))
 			if strings.TrimSpace(s) == "" {
+				continue
+			}
+			if n := len(e.gText); n > 0 {
+				// <g> 內文先收起來，等 </g> 再決定要不要用（單一字才用；組字式會丟掉）
+				e.gText[n-1] = true
+				e.gInner[n-1].WriteString(s)
 				continue
 			}
 			if inHead {
@@ -735,3 +1028,4 @@ func lbPageCol(n string) string {
 	}
 	return ""
 }
+

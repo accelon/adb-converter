@@ -208,7 +208,7 @@ try {
   const hintInfo = JSON.parse(await cdp.eval<string>(hintProbe)) as { text: string; display: string; anim: string; rightOfAdd: boolean; allHidden: boolean };
   ok('沒有資料庫時：📁 右邊閃爍「← 開啟資料庫」，且不顯示放大鏡',
     hintInfo.display !== 'none' && hintInfo.anim.includes('dbHintFlash') && hintInfo.rightOfAdd
-    && hintInfo.text === '← 開啟資料庫'
+    && hintInfo.text === '← 按 📁 下載或開啟資料庫'
     && hintInfo.allHidden === true,
     `${hintInfo.text}｜display=${hintInfo.display} anim=${hintInfo.anim} 在📁右邊=${hintInfo.rightOfAdd}、放大鏡隱藏=${hintInfo.allHidden}`);
   await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
@@ -443,14 +443,11 @@ try {
   ok('進階模式可切換，關閉時收起進階分頁並回到預設分頁',
     advMode.offHidden && advMode.onHidden && !!advMode.firstTab && advMode.offTab === advMode.firstTab,
     JSON.stringify(advMode));
-  // 詞典型 adb（fgdict）沒有 docHead；一般文本（13j／yinshun）才有，而且 .dim 只在進階模式顯示
-  const isDictDb = await cdp.eval<boolean>('window.__accelon26.state().dict === true');
+  // 2026-10-31 起閱讀模式不再畫 .docHead（標題／頁碼改成 hover 浮層，見 doc-pane.ts），
+  // 所以兩種模式都沒有 docHead；只有編輯態（docHeadEditing）才有。
   ok('docHead 的統計列（.dim）只在進階模式顯示（詞典型 adb 根本沒有 docHead）',
-    isDictDb ? advMode.headOff === '(no docHead)' && advMode.headOn === '(no docHead)'
-      : advMode.headOff === 'none' && advMode.headOn !== 'none',
-    isDictDb
-      ? `詞典型 adb：docHead 不存在（一般 ${advMode.headOff}／進階 ${advMode.headOn}）`
-      : `一般模式 display=${advMode.headOff}；進階模式 display=${advMode.headOn}`);
+    advMode.headOff === '(no docHead)' && advMode.headOn === '(no docHead)',
+    `一般模式 display=${advMode.headOff}；進階模式 display=${advMode.headOn}`);
 
   // header 三顆開關都是圖示，沒有中文 label（中文只放在 tooltip）
   const icons = await cdp.eval<{ labels: string[]; tips: string[]; adv: string }>(`
@@ -831,15 +828,8 @@ try {
       const autumnLs = localStorage.getItem('accelon26.theme');
       document.querySelector('#themeSeg button[data-theme="dark"]').click();
       await sleep(150);
-      // 點擊查字典（作者 2026-10-22）：開關存 localStorage，預設開
-      const dictAuto = document.getElementById('setDictAuto');
-      const dictDefault = !!dictAuto?.checked;
-      dictAuto.checked = false; dictAuto.dispatchEvent(new Event('change'));
-      await sleep(250);
-      const dictOff = localStorage.getItem('accelon26.dict.auto');
-      dictAuto.checked = true; dictAuto.dispatchEvent(new Event('change'));
-      await sleep(250);
-      const dictOn = localStorage.getItem('accelon26.dict.auto');
+      // 2026-10-28 起查字典改由「本文選取 → 浮動選單」明確觸發，介面已沒有
+      // 「點擊查字典」開關（accelon26.dict.auto 不再使用），所以這裡不再測它。
       // 辭典順序獨立成頁（作者 2026-10-26）：清單不在「介面」分頁，要切到「辭典順序」才畫
       const dictPane = document.querySelector('#setBody .setPane[data-setpane="dict"]');
       const dictSection = !!dictPane?.querySelector('#dictOrderList');
@@ -867,7 +857,7 @@ try {
       return {
         before, opened, advOn, advOff, advIsLast, demoOrig, demoSafe,
         dict: {
-          section: dictSection, orderInUi, default: dictDefault, off: dictOff, on: dictOn,
+          section: dictSection, orderInUi,
           files: dictFiles, onlyDefault, onlyFiles, onlyAllIsdict, onlyState, backRows, dbIsFg: dictDbIsFg,
         },
         theme: { labels: themeLabels, autumn: autumnTheme, ls: autumnLs },
@@ -882,9 +872,10 @@ try {
   ok('設置頁可以切換進階模式（取代原本的 🧑‍💻 按鈕）',
     settings.advOn.advanced === true && settings.advOn.body === true && settings.advOff === false,
     `勾選後 advanced=${settings.advOn.advanced}／body=${settings.advOn.body}；取消後=${settings.advOff}`);
-  ok('設置頁的「進階模式」在「介面」分頁的最後一列',
-    settings.advIsLast === true,
-    `進階模式是介面分頁最後一列=${settings.advIsLast}`);
+  // 2026-10-31 設置頁重新分頁：進階模式獨立成「進階」分頁，不再是「介面」的最後一列
+  ok('設置頁的「進階模式」在「進階」分頁（2026-10-31 重整）',
+    settings.opened.hasAdvanced === true && settings.advOn.advanced === true,
+    `有開關=${settings.opened.hasAdvanced}、勾選後 advanced=${settings.advOn.advanced}`);
   ok('文字顯示是三態（保持原樣／無損簡體／強制簡體）',
     JSON.stringify(settings.opened.segs) === JSON.stringify(['保持原樣', '無損簡體', '強制簡體']),
     JSON.stringify(settings.opened.segs));
@@ -898,9 +889,6 @@ try {
     && settings.demoSafe[1].text !== settings.demoSafe[2].text,
     `無損「${settings.demoSafe[1].text}」（${settings.demoSafe[1].marks} 個差異字）／`
     + `強制「${settings.demoOrig[2].text}」（${settings.demoOrig[2].marks} 個）`);
-  ok('點擊查字典：介面有開關（預設開，關閉會存起來）',
-    settings.dict.default === true && settings.dict.off === '0' && settings.dict.on === '1',
-    JSON.stringify(settings.dict));
   ok('辭典順序獨立成「辭典順序」分頁（介面分頁不再有清單）',
     settings.dict.section === true && settings.dict.orderInUi === false,
     `辭典分頁有清單=${settings.dict.section}、介面分頁還有清單=${settings.dict.orderInUi}`);
@@ -1053,8 +1041,10 @@ try {
       };
     })()
   `);
+  // 2026-10-31 設置頁重新分頁（介面／閱讀／進階／辭典順序／標籤樣式／繁簡／悉曇）：
+  // 「介面」仍是最左，標籤樣式是其中一個分頁（不再假設分頁數固定為 4）
   ok('設置多了「標籤樣式」分頁：介面最左、沒有預覽、顯示儲存位置',
-    tagStyle.tabs.length === 4 && tagStyle.tabs.join('|') === '介面|辭典順序|標籤樣式|繁簡'
+    tagStyle.tabs[0] === '介面' && tagStyle.tabs.includes('標籤樣式') && tagStyle.tabs.includes('辭典順序')
     && tagStyle.rowCount >= 11 && tagStyle.initial.preview === false
     && tagStyle.store.includes('localStorage'),
     JSON.stringify({ tabs: tagStyle.tabs, rows: tagStyle.rowCount, preview: tagStyle.initial.preview, store: tagStyle.store }));
@@ -1388,6 +1378,10 @@ try {
       const st = () => window.__accelon26.state();
       const rows = () => [...document.querySelectorAll('#dirTree .tRow')];
       if (!document.querySelector('#dirTree .tRow')) return { skipped: true };
+      // 先清掉全文搜尋：2026-10-31 起「點有命中的節點」會先跳到它的第一筆命中
+      // （走摘要，realm 是整個檔），那就不是這裡要測的「開這一節」。
+      const q = document.querySelector('#query');
+      if (q && q.value) { q.value = ''; q.dispatchEvent(new Event('input')); await sleep(600); }
       // 展開第一本書，點它底下的第一個「章」
       const first = rows()[0];
       if (first?.querySelector('.tTwisty')?.textContent.trim() !== '▾') first?.querySelector('.tTwisty')?.click();
@@ -1463,9 +1457,10 @@ try {
   if (trail.skipped) {
     console.log('      （此庫沒有可展開的目錄樹，略過祖先標題列的檢查）');
   } else {
-    ok('本文上方是 breadcrumb：所有祖先（短標籤），字級同內文',
+    // 2026-10-31 起麵包屑是正文的 0.86 倍（長路徑少佔寬度），不再是「字級同內文」
+    ok('本文上方是 breadcrumb：所有祖先（短標籤），字級約為內文的 0.86 倍',
       trail.trail0.includes(trail.bookLabel) && trail.bookLabel.length > 0
-      && trail.crumbFont === trail.bodyFont,
+      && Math.abs(parseFloat(trail.crumbFont) / parseFloat(trail.bodyFont) - 0.86) < 0.06,
       `點「${trail.clicked}」→ 路徑 ${JSON.stringify(trail.trail0)}（完整 ${JSON.stringify(trail.trail0Full)}）`
       + `｜字級 ${trail.crumbFont}／內文 ${trail.bodyFont}`);
     ok('小節（只有一頁）也看得到上一頁／下一頁',
@@ -1547,7 +1542,10 @@ try {
       const wait = async (fn, n = 90) => { for (let i = 0; i < n; i++) { if (fn()) return true; await new Promise(r => setTimeout(r, 200)); } return false; };
       const st = () => window.__accelon26.state();
       const box = document.querySelector('#showHardBreaks');
-      const boxShown = getComputedStyle(document.querySelector('#hbToggle')).display !== 'none';
+      // #hbToggle 已移除（作者 2026-10-31：設定列改成 label 包住 checkbox），
+      // 所以「看得到這個開關」改成看它所在的設定列。
+      const boxRow = box?.closest('.setRow') ?? box;
+      const boxShown = !!boxRow && getComputedStyle(boxRow).display !== 'none';
       const before = {
         hard: window.__accelon26.hardBreaksOn(),
         pages: document.querySelectorAll('#docText .pageBreak').length,
@@ -1627,8 +1625,9 @@ try {
       };
     })()
   `);
-  ok('詞典型 adb 不顯示 docHead（一般文本照常顯示）',
-    dictHead.docHead === (dictHead.dict ? 0 : 1),
+  // 2026-10-31 起閱讀模式不再畫 .docHead（標題／頁碼改成 hover 浮層），所以兩種庫都沒有
+  ok('本文不顯示 docHead（2026-10-31 起標題改成 hover 浮層）',
+    dictHead.docHead === 0,
     `dict=${dictHead.dict}、docHead ${dictHead.docHead} 個、分頁「${dictHead.tab}」、內文開頭「${dictHead.headword}」`);
 
   // ---- 右欄「詞典」分頁（作者 2026-10）：點本文 → 開頭模式查詞條（長的在前）→ 點詞條看正文
@@ -1757,7 +1756,7 @@ try {
       window.__accelon26.openSettings();
       await sleep(300);
       const box = document.getElementById('setPageMarks');
-      const inInterface = !!box?.closest('section.setSection')?.querySelector('h3')?.textContent.includes('介面');
+      const inInterface = !!box && !!box.closest('#settingsBox');
       const defaultOn = window.__accelon26.pageMarksOn();
       const on = count();
       // 關 → 完全不渲染（硬換行模式：頁分隔不見）
@@ -1787,9 +1786,9 @@ try {
       return { inInterface, defaultOn, on, off, back, reflowOn, reflowOff, storedOff, storedOn, hint: box.closest('label')?.textContent ?? '' };
     })()
   `);
-  ok('設置頁「顯示原書頁碼」在「介面」區，預設開啟',
+  ok('設置頁有「顯示原書頁碼」開關，預設開啟',
     pageMarks.inInterface === true && pageMarks.defaultOn === true,
-    `在介面區=${pageMarks.inInterface}、預設=${pageMarks.defaultOn}`);
+    `在設置頁=${pageMarks.inInterface}、預設=${pageMarks.defaultOn}`);
   ok('關閉「顯示原書頁碼」：<頁>／<_頁> 完全不渲染（原書分行模式）',
     pageMarks.on.breaks > 0 && pageMarks.off.breaks === 0 && pageMarks.off.pane === 0
     && pageMarks.back.breaks === pageMarks.on.breaks && pageMarks.storedOff === '0' && pageMarks.storedOn === '1',
@@ -2158,6 +2157,9 @@ try {
       await new Promise(r => setTimeout(r, 700));
       const afterMove = { mid: tabs().length, text: st().text.tabs.length };
       // 右欄捲動不該連動左邊的樹（右欄純參考）
+      // 先等中間那一欄穩定：Shift+點搬到右欄之後，本文會換成另一個分頁，
+      // 它的 renderDoc → paintHit／scheduleCursorSync 是「下一幀」才把目錄游標定下來。
+      await new Promise(r => setTimeout(r, 600));
       const cursorBefore = st().cursorNode;
       const treeActiveBefore = document.querySelectorAll('#dirTree .tRow.active').length;
       const body = document.getElementById('textBody');
@@ -2196,9 +2198,10 @@ try {
         const el = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
         return { id: btn.id, inButton: !!el?.closest?.('button') && el.closest('button').id === btn.id };
       });
+      // 2026-10-31 起正文字級按鈕住在分頁列右端的 .docTabTools（原本在 #docBar）
       const where = {
         left: !!document.querySelector('#colLeft #fsLeftPick'),
-        body: !!document.querySelector('#docBar #fsBodyPick'),
+        body: !!document.querySelector('.docTabTools #fsBodyPick'),
         right: !!document.querySelector('#colRight #fsRightPick'),
       };
       // 已經沒有下拉選單了
@@ -2237,7 +2240,7 @@ try {
     rightFs.icons.length === 3 && rightFs.icons.every((t: string) => t === 'TT')
     && rightFs.hasText === false && rightFs.noSelect === true,
     `圖示 ${JSON.stringify(rightFs.icons)}、有文字標籤=${rightFs.hasText}、還有 select=${rightFs.noSelect === false}`);
-  ok('字級控制位置：左在左欄、中在本文工具列、右在右欄',
+  ok('字級控制位置：左在左欄、中在本文分頁列的 .docTabTools、右在右欄',
     rightFs.where.left === true && rightFs.where.body === true && rightFs.where.right === true,
     JSON.stringify(rightFs.where));
   ok('字級按鈕真的點得到（中心點最上層在按鈕裡面）',

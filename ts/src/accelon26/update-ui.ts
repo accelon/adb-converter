@@ -8,7 +8,6 @@
 import { desktopAppInfo, desktopCheckUpdate, desktopReleaseNotes } from './host';
 import type { DesktopAppInfo } from './host';
 
-const POLL_MS = 10 * 60 * 1000;   // 背景檢查在 Go 層（啟動一次、之後每 6 小時）；這裡只是偶爾看一下快取
 
 function brandEl(): HTMLElement | null {
   return document.getElementById('brand');
@@ -105,7 +104,7 @@ export async function showReleaseNotes(since: string): Promise<void> {
 
 /**
  * 桌面版啟動時呼叫一次：hover hint、更新提示、更新後的改版說明。
- * 之後每 POLL_MS 看一下 Go 層背景檢查的結果（不主動連網）。
+ * 作者 2026-11-01：不再輪詢；啟動時 Go 已檢查一次，之後由「說明」頁開啟時即時檢查。
  */
 export async function initDesktopBrand(onStatus?: (msg: string, kind?: 'info' | 'err' | 'busy') => void): Promise<void> {
   const info = await desktopAppInfo();
@@ -113,13 +112,5 @@ export async function initDesktopBrand(onStatus?: (msg: string, kind?: 'info' | 
   showBrandBuildTime(info);
   if (info.updatedFrom) void showReleaseNotes(info.updatedFrom);
   if (info.updateAvailable) flashUpdate(info, onStatus);
-  window.setInterval(() => {
-    void (async () => {
-      const now = await desktopAppInfo();
-      if (!now) return;
-      showBrandBuildTime(now);
-      if (now.updateAvailable && !brandEl()?.classList.contains('update')) flashUpdate(now, onStatus);
-    })();
-  }, POLL_MS);
-  void desktopCheckUpdate;   // 需要時（例如選單）可以主動檢查；平常不必
 }
+

@@ -58,17 +58,10 @@ func sanitizeAdbName(name string) string {
 	return clean
 }
 
-// seedDirs 是「adb 會出現的資料夾」：目前工作目錄與執行檔所在目錄。
-// 兩者通常是同一個（雙擊 exe）；從捷徑用不同的「開始位置」啟動時才會分開。
+// seedDirs 只回傳**唯一**的 adb 資料夾（作者 2026-11-01）：
+// exe 旁可寫就用 exe 旁，否則 %APPDATA%\Accelon26\adb。
 func seedDirs() []string {
-	var out []string
-	if cwd, err := os.Getwd(); err == nil && cwd != "" {
-		out = append(out, cwd)
-	}
-	if exe, err := os.Executable(); err == nil {
-		out = append(out, filepath.Dir(exe))
-	}
-	return out
+	return []string{adbRootDir()}
 }
 
 // SaveAdb 把剛建好的 adb 寫到執行檔旁邊，失敗才退到下載資料夾／暫存。
@@ -86,11 +79,8 @@ func (h *AdbHost) SaveAdb(name string, b64 string) SaveAdbResult {
 		return SaveAdbResult{Error: "這不是 .adb 檔（檔頭簽名不符）"}
 	}
 
-	targets := seedDirs()             // exe 目錄優先，其次工作目錄
-	fallback := downloadsDir()        // 兩者都不可寫時才用
-	if fallback != "" {
-		targets = append(targets, fallback)
-	}
+	targets := seedDirs() // 唯一 adb 資料夾
+	_ = os.MkdirAll(targets[0], 0o755)
 	targets = append(targets, filepath.Join(os.TempDir(), "accelon26-import"))
 	res := saveAdbInto(targets, clean, data)
 	if res.OK {

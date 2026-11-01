@@ -5,7 +5,7 @@
  * ./viewer and the other split modules as ESM live bindings; a module OWNS the
  * state it declares, and other modules get/set it through that module's exports.
  */
-import { $, displayName, escapeHtml, fmtInt, mapper, mods, reader, session } from './viewer';
+import { $, displayName, escapeHtml, fmtInt, mapper, reader, session } from './viewer';
 import { setSide, showTab } from './ui';
 import { dirTrees, realmHits, renderDirTree, renderFreq } from './scopes';
 import { revealHit } from './link';
@@ -13,6 +13,7 @@ import { hueFor, hueStyle, kwMarks, setKwMarks } from './kw-marks';
 import { noteSearch, resetEngineStats } from './engine-stats';
 import { renderPageBlocks } from './render_accelon3';
 import { simConverter } from './doc-pane';
+import { foldGlossary, loadGlossary } from './glossary';
 
 /** search state */
 let lastResult: SearchResult | null = null;
@@ -44,6 +45,8 @@ let activeGroup = -1;
 const SNIPPET_LIMIT = 30;
 
 let snippetShown = SNIPPET_LIMIT;
+/** 上一張點過的摘要卡（va/units/query）：同一張重複點時沿用分頁，不疊新分頁。 */
+let lastSnippet: { va: number; units: number; query: string } | null = null;
 
 /** when a node's 命中數 was clicked, the 摘要 pane is scoped to that node */
 let snippetScope: { realm: { from: number; to: number }; label: string } | null = null;
@@ -60,6 +63,8 @@ let snippetScopeQuery = '';
  * 重新輸入之後，這個約束取消).
  */
 let lastQuery = '';
+/** 西文查詢換成漢詞時，摘要要附註的說明（2026-10-31）。 */
+let glossNote = '';
 
 // -------------------------------------------------------------- full text search
 /**
@@ -86,8 +91,30 @@ async function runSearch(query: string) {
     $('#searchMore').textContent = '';
     return;
   }
+  // 西文查詢（2026-10-31）：外語在 <术> 屬性裡，全文索引沒有；先用詞彙表換成漢詞。
+  // 詞彙表可能對到多個漢詞，逐一試（最多 4 個），取第一個在索引裡找得到的。
+  let qq = q;
+  let hans: string[] = [];
+  glossNote = '';
+  if (/[A-Za-z\u00C0-\u024F]/.test(q) && !/[\u3400-\u9fff]/.test(q) && reader) {
+    const rows = await loadGlossary(reader);
+    const fq = foldGlossary(q);
+    const hits = rows?.filter((r) => r.fold.includes(fq)) ?? [];
+    if (hits.length) {
+      const exact = hits.filter((r) => r.fold === fq);
+      const pool = (exact.length ? exact : hits).sort((a, b) => b.count - a.count);
+      hans = [...new Set(pool.map((r) => r.han))].slice(0, 4);
+      qq = hans[0];
+      glossNote = `（西文「${q}」→ ${hans.join('、')}）`;
+    }
+  }
   // searchAuto: 單一詞組走舊引擎，多詞組／運算子走 BM25
-  const res = await searchAutoVia(session, reader?.io ?? null, q);
+  let res = await searchAutoVia(session, reader?.io ?? null, qq);
+  for (const h of hans.slice(1)) {
+    if (!res.missing.length) break;
+    const r2 = await searchAutoVia(session, reader?.io ?? null, h);
+    if (!r2.missing.length) { res = r2; break; }
+  }
   if (seq !== searchSeq) return;          // a newer keystroke won
   lastQuery = q;
   // 每個關鍵字一個顏色（塗本文與摘要都用同一組色相）
@@ -117,6 +144,10 @@ async function runSearch(query: string) {
   });
   refreshTreeHits();   // the badges are hit counts: repaint them with THIS result
   await renderSearchResult(res, seq);
+  if (glossNote && seq === searchSeq) {
+    const meta = $('#searchMeta');
+    if (meta) meta.textContent = (meta.textContent ?? '') + ' ' + glossNote;
+  }
 }
 
 async function renderSearchResult(res: SearchResult, seq: number) {
@@ -285,8 +316,18 @@ async function renderSnippets(seq: number) {
       const token = m
         ? (m.clauses[Number(el.dataset.clause ?? 0)]?.text ?? cur?.query ?? '')
         : (cur?.tokens.map((t) => t.token).join('') ?? '');
-      // Ctrl (Cmd) + click opens the hit in a NEW document tab
-      void revealHit(Number(el.dataset.va), token, Number(el.dataset.units), mods(ev));
+      /**
+       * 作者 2026-11-01：點摘要**預設開新分頁**，不要蓋掉從目錄打開的閱讀頁。
+       * 例外：同一張卡重複點（沒有 Ctrl）沿用剛剛那個分頁，避免疊一堆重複。
+       */
+      const va = Number(el.dataset.va);
+      const units = Number(el.dataset.units);
+      const query = cur?.query ?? '';
+      const ctrl = ev.ctrlKey || ev.metaKey;
+      const same = !ctrl && lastSnippet?.va === va && lastSnippet.units === units
+        && lastSnippet.query === query;
+      lastSnippet = { va, units, query };
+      void revealHit(va, token, units, { newTab: !same });
     };
   });
   const more = $('#searchMore');
@@ -394,6 +435,9 @@ export function resetSummary(): void {
   snippetScope = null;
   snippetScopeQuery = '';
   snippetShown = SNIPPET_LIMIT;
+  // 換庫時把上一輪搜尋的關鍵字也清掉，否則開新庫（或回到書籤）時，
+  // paintKeywordMarks 會拿舊關鍵字把整頁塗滿（作者 2026-10-31 回報）。
+  setKwMarks([]);
 }
 
 /** the 摘要 list scrolled to the end: reveal the next batch (the state lives here) */
@@ -417,5 +461,29 @@ function restoreSummary(s: any): void {
   snippetShown = s.snippetShown ?? SNIPPET_LIMIT;
   activeGroup = s.activeGroup ?? -1;
 }
+
+/**
+ * 切換 adb 後，把「這個庫自己的摘要」重畫回右欄（作者 2026-11-01）。
+ * restoreSummary 只還原變數，DOM 還是上一個庫的；沒有結果就清空。
+ */
+export async function repaintSummary(): Promise<void> {
+  const res = summaryResult ?? lastResult;
+  const meta = $('#searchMeta');
+  const list = $('#searchList');
+  const more = $('#searchMore');
+  if (!res) {
+    if (meta) meta.textContent = '';
+    if (list) list.innerHTML = '';
+    if (more) more.textContent = '';
+    setKwMarks([]);
+    return;
+  }
+  // 關鍵字顏色跟結果一起還原（否則本文與摘要會沿用上一個庫的塗色）
+  const clauses = res.multi?.clauses.filter((c) => c.colorIndex >= 0) ?? [];
+  setKwMarks(clauses.map((c) => ({ text: c.text, hue: hueFor(c.colorIndex, clauses.length) })));
+  await renderSearchResult(res, searchSeq);
+}
 export { SNIPPET_LIMIT, activeGroup, inGroup, lastQuery, lastResult, refreshTreeHits, renderSearchResult, renderSnippets, restoreSummary, runSearch, searchSeq, showNodeHits, snapshotSummary, snippetScope, snippetScopeQuery, snippetShown, summaryResult };
+
+
 

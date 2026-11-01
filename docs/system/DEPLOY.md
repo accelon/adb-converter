@@ -155,8 +155,9 @@ bun run clean --dry-run             # 先看會刪什麼
 
 ## 3. 使用者的程式怎麼判斷
 
-1. 啟動時（以及每 6 小時）背景檢查一次：
-   `GET <更新站>/accelon26/versions.json`（`Cache-Control: no-cache`）。更新站預設主站
+1. 啟動時檢查一次：`GET <更新站>/accelon26/versions.json`（`Cache-Control: no-cache`）。
+   之後**不再背景輪詢**（作者 2026-11-01：降低伺服器負擔）；使用者開「說明／關於」頁時
+   UI 會再呼叫宿主即時檢查一次（90 秒內剛查過就用快取，不重複連網）。更新站預設主站
    `https://shutonggui.cn/accelon26/`，使用者可切到鏡像 `https://nissaya.cn/accelon26/`
    （見 §7.2）；目前這一站連不上時會自動退回另一站。
 2. `buildTime` 比目前這顆 exe 晚 **60 秒以上**才算有新版本（容忍時鐘誤差）。
@@ -325,12 +326,24 @@ cd ts && bun run tools/publish-adb.ts --files ys.adb
 * **新版本一定要有說明**：把新檔的 sha256 與 notes 寫進 `deploy/adb-notes.json`；沒有
   說明時產生器會失敗（`--allow-empty-notes` 只能緊急用）。使用者才不會「更新了卻
   不知道改了什麼」。
-* 程式（`ts/src/accelon26/adb-update.ts` ＋ `wails/adbupdate.go`）開機時抓 manifest。
-  `#dbTabs` 平常就有「資料庫版本」按鈕（有安裝公開資料庫時），sha256 不同時加上
-  紅色的 **New**。對話盒有「可更新」與「版本記錄」兩個頁籤；「可更新」列出**本機版本之後的每一版**（跳過幾版也看得到每一次改變），
+* 程式（`ts/src/accelon26/adb-update.ts` ＋ `wails/adbupdate.go`）在使用者**開啟 adb**、
+  且瀏覽器回報有連線時抓 manifest（`viewer.openFile` 的成功 hook；不再 6 小時背景輪詢、
+  也不在 focus 時查）。啟動開啟 adb 後的第一次檢查若發現新版，會自動開一次更新對話盒。
+  `#dbTabs` 的「資料庫更新」按鈕**只在有新版時出現**（作者 2026-11-01：沒得更新就
+  不必顯示），加上紅色的 **New** 與可更新數量；更新完（或清單比對沒有新版）就消失。
+  對話盒（點那顆按鈕才會開）有「可更新」與「版本記錄」兩個頁籤；「可更新」列出**本機版本之後的每一版**（跳過幾版也看得到每一次改變），
   「版本記錄」列出每一本已安裝公開資料庫的完整歷史。
-* 下載走 Go：先寫同目錄 `.accelon26-*.tmp`，邊下邊算 sha256，**放棄或驗證失敗只刪
-  暫存檔**；全部驗過才解除 mmap 並 `rename` 原子替換。進度用輪詢
+  > 副作用：沒有新版時就沒有進入「版本記錄」的入口（`adbUpdate()` 的資料仍在，
+  > 只是 UI 沒有按鈕）。若作者要保留隨時可看版本記錄，得另外開一個入口。
+* **adb 只認一個資料夾**（2026-11-01）：
+  - 啟動先做寫入測試：exe 所在資料夾可寫 → 用它（正常情況，例如 `D:\Accelon26\*.adb`）。
+  - 不可寫（例如 `C:\Program Files`）→ 改用 `%APPDATA%\Accelon26\adb\`，而且**比對、下載、
+    開啟都只認這一個資料夾**，不會一邊讀 exe 旁、一邊寫 APPDATA。
+  - 「資料庫版本」對話盒上方會顯示目前使用的 adb 資料夾。
+  - 兩邊都有同名 adb 時：以使用中的資料夾為準（可寫時就是 exe 旁），另一邊只在對話盒
+    標示「另一邊也有：…（sha 相同／不同，未覆蓋）」，不自動覆蓋。
+* 下載走 Go：先寫 `<name>.adb.part`，邊下邊算 sha256，**核對通過才 `rename` 成
+  `<name>.adb`**；放棄或驗證失敗只刪 `.part`，原本的檔案不動。進度用輪詢
   （`AdbDownloadStatus`），放棄用 `CancelAdbDownload`。
 * 測試：`cd ts && bun run tools/adb-update-test.ts`（本機假官網：多版本歷史、跳版
   說明、版本記錄頁、New → 進度 → 放棄 → 原檔不變 → 再更新成功）。
@@ -396,3 +409,14 @@ cd ts && bun run tools/publish-adb.ts --files ys.adb
 - **觀察窗只有 4 秒**：新版「起來 5 秒後才崩」抓不到（前五道關卡已經擋掉絕大多數情況）。
 - **autoindex**：`index.html` 放上去之後目錄列表就不會出現；真要 `Options -Indexes` 得改
   `apache2.conf`（`AllowOverride None`，`.htaccess` 無效），那會動到整台伺服器的設定。
+
+## 2026-11-01 桌面版發佈（同日第二次，合併當天說明）
+
+- 版號／建置時間：`2026-11-01T15:57:11Z`（北京時間 23:57）
+- `accelon26.exe`：19,010,560 bytes，sha256 `515708d3f09c8161acaf07e15c49585d08f48c62b0af06a7e059dabd521f1d43`
+- `www/accelon26.zip` 與 `www/releases/accelon26-2026-11-01.zip`：9,149,033 bytes（覆蓋當天那一份）
+- 改版說明：合併進 `wails/release_notes.json` 的 2026-11-01（同日重發，當天累計 30 項）
+- 部署指令：`bun run tools/deploy.ts --site --no-adb`
+  （adb 由各 adb 工作區自己發佈，這次不動 adb manifest／公開頁）
+- 兩站驗證：`versions.json` 的 buildTime／size／sha256 與實際下載的 exe 一致（兩個站都實測 hash）、
+  `releases/accelon26-2026-11-01.zip` HTTP 200（9,149,033 bytes）、不存在的歷史 ZIP 正確 404、首頁 200

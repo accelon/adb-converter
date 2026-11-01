@@ -5,20 +5,24 @@
  * ./viewer and the other split modules as ESM live bindings; a module OWNS the
  * state it declares, and other modules get/set it through that module's exports.
  */
-import { $, altKey, currentFile, currentSource, displayName, docs, escapeHtml, fmtBytes, fmtInt, mapper, mods, newTabKey, openFile, opening, reader, session, setStatus, tokens } from './viewer';
+import { $, altKey, currentFile, currentSource, displayName, docs, escapeHtml, fmtBytes, fmtInt, jumpToAdbLine, mapper, mods, newTabKey, openFile, opening, reader, session, setStatus, tokens } from './viewer';
 import { advanced, showTab } from './ui';
 import { showToken } from './panes';
 import { paintTreeActive, revealHit } from './link';
-import { jumpTaishoCite, openCharPosition, parseCharPosition, parseTaishoCite } from './xref';
+import { jumpPageCite, jumpTaishoCite, openCharPosition, parseCharPosition, parseTaishoCite } from './xref';
+import { parsePageCite } from './page-cite';
+import { dbNameCandidates } from './dbs';
+import { anchorVa } from './page-text';
 import { setJumpRange } from './jump-band';
 import { growUntil, mounted, renderChunked } from './lazy-list';
-import { lastResult, showNodeHits } from './summary';
+import { lastResult, runSearch, showNodeHits, snippetScope } from './summary';
 import { parseQuery, namePattern } from './query';
 import { variantNamePattern, variantSearchOn } from './variants';
 import { computeTierContext, labelDepthIndex, setTierContext, tagChromaIndex, tierContext } from './render_accelon3';
 import { tagColorOf } from './tag-style';
 import { diffPage, findSession, onEditsChange, sourceKey } from './edit-session';
 import { decodeXmlEntities } from '../xml-entities';
+import { GLOSS_LANG_BADGE, GLOSS_LANG_NAME, foldGlossary, hasGlossary, loadGlossary, matchGlossaryAt } from './glossary';
 
 
 function editSessionNow() {
@@ -400,19 +404,23 @@ function syncTreeTabs() {
       btn.title = (hit.map ? 'm="' + hit.map + '"' : 's="' + hit.scope + '"') + (hit.caption ? '｜' + hit.caption : '');
     }
   }
-  // 跳至不看樹宣告：只要庫裡有 <頁> 實例就出現（作者 2026-10）
+  // 詞彙（2026-10-31）：庫裡有 glossary 容器才出現
+  const glossBtn = $('#colLeft .tabBtn[data-tab="glossary"]') as HTMLButtonElement | null;
+  if (glossBtn) glossBtn.hidden = !hasGlossary(reader);
+  // 跳至（作者 2026-11-01）：有樹時，功能併進第一個目錄分頁的搜尋框
+  //（搜尋找不到才試頁 id／位置語法）；完全沒有任何樹的庫才留獨立「跳至」分頁。
   const jumpBtn = $('#colLeft .tabBtn[data-tab="jump"]') as HTMLButtonElement | null;
+  const jumpAlone = present.size === 0 && hasPageTags();
   if (jumpBtn) {
-    const has = hasPageTags();
-    jumpBtn.hidden = !has;
-    if (has) jumpBtn.title = '依 <頁 id> 跳到某一頁（例：49p15、20p0065a）';
+    jumpBtn.hidden = !jumpAlone;
+    if (jumpAlone) jumpBtn.title = '依 <頁 id> 跳到某一頁（例：49p15、20p0065a）';
   }
   syncTreePickers(declared);
   // keep the active tab sane: a dictionary has no 目錄 pane at all
   const active = $('#colLeft .tabBtn.active') as HTMLButtonElement | null;
   if (!active || active.hidden) {
     const first = ['dir', 'terms', 'freq', 'folio', 'latin', 'map'].find((k) => present.has(k))
-      ?? (hasPageTags() ? 'jump' : undefined);
+      ?? (jumpAlone ? 'jump' : undefined);
     if (first) showTab(first, 'left');
   }
 }
@@ -573,7 +581,7 @@ function hitBadge(count: number, total: number, where = '', hint = '', asButton 
   const absTier = count >= 1000 ? 4 : count >= 300 ? 3 : count >= 50 ? 2 : 1;
   const tier = Math.max(shareTier, absTier);
   const big = count >= 1000 ? ' big' : '';
-  const title = `${where}${fmtInt(count)} 筆命中（占全體 ${(share * 100).toFixed(1)}%${hint}）`;
+  const title = `${where}${fmtInt(count)} 筆命中（占全體 ${(share * 100).toFixed(1)}%${hint}；點一下跳到第一筆）`;
   // 目錄樹的命中數要像按鈕（作者 2026-10-29：純數字不直觀，讀者不知道可以點）；
   // 頻次／全文清單是整列可點，就不加按鈕外框。
   return `<span class="tCount hit t${tier}${big}${asButton ? ' tBtn' : ''}" title="${title}">${fmtInt(count)}</span>`;
@@ -682,21 +690,42 @@ async function renderDirTree(): Promise<void> {
       //   tTwisty / tDot / tName  開得起來就開，並聯動本文；開著就只關，不動本文
       //   Ctrl/Cmd + 上述任一       聯動本文時改開一個新的本文分頁
       //   Alt + tTwisty/tName        展開全部子孫（舊版是 Ctrl）
-      //   tCount                    顯示該節點命中的摘要（不移動本文）
+      //   tCount                    顯示該節點命中的摘要，並直接跳到第一筆（2026-10-31）
       el.onclick = (ev) => {
         const t = ev.target as HTMLElement | null;
         const onCount = !!t?.closest('.tCount');
-        const onNode = !!t?.closest('.tTwisty') || !!t?.closest('.tDot') || !!t?.closest('.tName');
+        const onTwisty = !!t?.closest('.tTwisty');
+        const onNode = onTwisty || !!t?.closest('.tDot') || !!t?.closest('.tName');
         if (!onCount && !onNode) return;
         const label = node.label || `VA ${va}`;
         const wantsNewTab = newTabKey(ev);
-
-        // 點 tCount：顯示該節點命中的摘要（功能二：輸入只更新摘要，這裡才是看命中）
-        if (onCount) {
+        /**
+         * 直接跳到這個節點的第一筆命中（2026-10-31）。
+         * 先讓摘要顯示這個節點範圍的命中，再點第一張卡——等於原本
+         * 「點紅數字 → 到摘要點第一筆」兩步；範圍內沒有命中才退回節點起點。
+         */
+        const jumpToFirstHit = async (): Promise<void> => {
           // the count must be the realm's real hit count: the result list stops at
           // 5,000, and `cachedRealmCount` has the exact number the badge showed
-          void showNodeHits({ from: va, to: node.vaEnd }, label, cachedRealmCount(va, node.vaEnd));
-          void revealHit(va, label, 1, { newTab: wantsNewTab, mode: 'node' });
+          const count = cachedRealmCount(va, node.vaEnd);
+          if (count <= 0) {
+            void revealHit(va, label, 1, { newTab: wantsNewTab, mode: 'node' });
+            return;
+          }
+          await showNodeHits({ from: va, to: node.vaEnd }, label, count);
+          // 等摘要回來時使用者可能已經換節點：不是這個範圍就不要亂跳
+          if (!snippetScope || snippetScope.realm.from !== va) return;
+          const first = document.querySelector<HTMLElement>('#searchList .snippet[data-va]');
+          if (!first) {
+            void revealHit(va, label, 1, { newTab: wantsNewTab, mode: 'node' });
+            return;
+          }
+          first.click();
+        };
+
+        // 點 tCount：顯示該節點命中的摘要，並直接跳到第一筆（本來要再點一次摘要）
+        if (onCount) {
+          void jumpToFirstHit();
           return;
         }
 
@@ -704,7 +733,11 @@ async function renderDirTree(): Promise<void> {
         //   未展開（不管點箭頭、色塊、名稱）→ 展開一層子節點，本文跳到這個節點
         //   Alt ＋ 未展開 → 展開所有子孫，本文照樣跳過去
         //   已展開（到任何深度）→ 收合所有子孫，**不移動本文**
-        const link = () => void revealHit(va, label, 1, { newTab: wantsNewTab, mode: 'node' });
+        //
+        // 2026-10-31 修正：Alt 展開全書後每個節點都是「已展開」，點名稱就只會收合、
+        // 不能跳（作者回報「展開了但節點都不能點」）。改成只有點箭頭才收合；
+        // 點名稱／色塊在已展開時仍然跳到本文。
+        const link = () => void jumpToFirstHit();
         const open = d.open.has(va);
 
         if (altKey(ev) && hasKids && !open) {
@@ -712,11 +745,11 @@ async function renderDirTree(): Promise<void> {
           link();
           return;
         }
-        if (open) {
+        if (open && onTwisty) {
           setOpen(false);
           return;
         }
-        if (hasKids) setOpen(true);
+        if (!open && hasKids) setOpen(true);
         link();
       };
     },
@@ -965,6 +998,112 @@ async function renderFreq() {
  * range the scope names. With no input it lists them; with input it filters by
  * substring, and clicking one jumps to its first occurrence.
  */
+/**
+ * 詞彙（`glossary` 容器，2026-10-31）：ys.adb 打包時產生的「語言／外語／漢詞」清單。
+ * 輸入漢詞或外語都可以查；外語可以省略變音符號、不分大小寫，但顯示保留原樣。
+ * 點一列會把漢詞丟進全文搜尋（跟 s="$詞" 一樣的入口）。
+ */
+async function renderGlossary() {
+  const tStart = performance.now();
+  const meta = $('#glossaryMeta');
+  const list = $('#glossaryList');
+  if (!reader) {
+    if (list) list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>';
+    return;
+  }
+  const rows = await loadGlossary(reader);
+  if (!rows) {
+    if (meta) meta.textContent = '';
+    if (list) list.innerHTML = '<p class="dim">此庫沒有 <code>glossary</code> 容器。</p>';
+    return;
+  }
+  const q = ($('#glossaryQuery') as HTMLInputElement | null)?.value ?? '';
+  const matchMode = (document.getElementById('glossaryMatch') as HTMLSelectElement | null)?.value ?? 'any';
+  const hit = q.trim() ? rows.filter((r) => matchGlossaryAt(r, q, matchMode)) : rows;
+  if (meta) {
+    meta.textContent = `詞彙 ${fmtInt(rows.length)} 筆`
+      + (q.trim() ? `；「${q.trim()}」符合 ${fmtInt(hit.length)} 筆（外語可省略變音符號）` : '（輸入漢詞或外語）');
+  }
+  if (!list) return;
+  if (!hit.length) {
+    list.innerHTML = '<p class="dim">沒有符合的詞彙。</p>';
+    return;
+  }
+  // 排序（作者 2026-10-31）：漢語＝依漢詞排，外語＝依外語排（都忽略變音符號）。
+  // 用預先算好的 simp／fold 直接比較（localeCompare 在 4,000 列上太慢）。
+  const t0 = performance.now();
+  const mode = ($('#glossaryMode') as HTMLSelectElement | null)?.value ?? 'han';
+  const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+  const sorted = [...hit];
+  if (mode === 'foreign') {
+    sorted.sort((a, b) => cmp(a.fold, b.fold) || cmp(a.simp, b.simp));
+  } else {
+    sorted.sort((a, b) => cmp(a.simp, b.simp) || cmp(a.fold, b.fold));
+  }
+  const t1 = performance.now();
+  // 一次組字串再一次 innerHTML；第一屏只畫 80 列，其餘按「顯示更多」再追加
+  // （WebView 裡 300 列同時排版就會卡，作者 2026-10-31）。
+  const esc = escapeHtml;
+  const rowHtml = (r: (typeof sorted)[number]) => {
+    const badge = GLOSS_LANG_BADGE[r.lang] ?? r.lang;
+    const badgeHtml = `<span class="glossLang ${r.lang}" title="${GLOSS_LANG_NAME[r.lang] ?? r.lang}">${badge}</span>`;
+    const han = `<b class="glossHan" data-q="${esc(r.han)}" title="點一下查這個漢詞">${esc(r.han)}</b>`;
+    const foreign = `<span class="glossForeign" data-q="${esc(r.foreign)}" title="點一下查這個外語">${badgeHtml}${esc(r.foreign)}</span>`;
+    const body = mode === 'foreign'
+      ? `${badgeHtml}<b class="glossForeign" data-q="${esc(r.foreign)}" title="點一下查這個外語">${esc(r.foreign)}</b> <span class="dim glossHan" data-q="${esc(r.han)}" title="點一下查這個漢詞">${esc(r.han)}</span>`
+      : `${han} ${foreign}`;
+    return `<div class="snippet" data-han="${esc(r.han)}" data-line="${r.line || ''}" data-page="${esc(r.page || '')}" data-off="${r.off ?? -1}" data-hanline="${r.hanline ?? -1}">${body} <span class="dim">×${r.count}</span> <span class="glossFind" data-find="1" title="搜尋所有出現">🔍</span></div>`;
+  };
+  let shown = Math.min(80, sorted.length);
+  list.innerHTML = sorted.slice(0, shown).map(rowHtml).join('') + (sorted.length > shown ? '<p class="dim glossMore" data-more="1">顯示更多…</p>' : '');
+  const t2 = performance.now();
+  if (t2 - t0 > 30) console.debug(`[glossary] filter+sort ${(t1 - t0).toFixed(1)}ms render ${(t2 - t1).toFixed(1)}ms rows ${sorted.length}`);
+  // 事件代理：點詞＝全文檢索（不改輸入區，只更新摘要，作者 2026-10-31）。
+  list.onclick = (ev) => {
+    const t = ev.target as HTMLElement | null;
+    if (t?.dataset?.more) {
+      ev.stopPropagation();
+      const more = list.querySelector('.glossMore');
+      const next = sorted.slice(shown, shown + 200);
+      shown += next.length;
+      more?.insertAdjacentHTML('beforebegin', next.map(rowHtml).join(''));
+      if (shown >= sorted.length) more?.remove();
+      return;
+    }
+    if (t?.dataset?.find) {
+      ev.stopPropagation();
+      const rowFind = t.closest('.snippet') as HTMLElement | null;
+      const hf = rowFind?.dataset.han;
+      if (hf) void runSearch(hf);
+      return;
+    }
+    const row = t?.closest('.snippet') as HTMLElement | null;
+    if (!row) return;
+    // 直接跳到第一次出現：有 page+off 就精準跳到頁內位置（2026-10-31），
+    // 舊資料沒有 off 才退回行號。
+    const pg = row.dataset.page || '';
+    const off = Number(row.dataset.off ?? -1);
+    const ln = Number(row.dataset.line || 0);
+    const hl = Number(row.dataset.hanline ?? -1);
+    const hanN = Math.max(1, [...(row.dataset.han || '')].filter((ch) => /\p{Script=Han}/u.test(ch)).length);
+    // 先用行號＋行內漢字位置（最穩，2026-10-31 實測正確）；沒有才用頁＋頁內位移。
+    if (ln > 0 && hl >= 0) {
+      void openCharPosition({ db: '', anchor: 'L' + (ln - 1), a: hl, b: hl + hanN - 1 });
+      return;
+    }
+    if (pg && off >= 0) {
+      void (async () => {
+        const hit = await openCharPosition({ db: '', anchor: pg, a: off, b: off + hanN - 1 });
+        if (!hit && ln && jumpToAdbLine(ln)) return;
+      })();
+      return;
+    }
+    if (ln && jumpToAdbLine(ln)) return;
+    const h = row.dataset.han;
+    if (h) void runSearch(h);
+  };
+}
+
 async function renderLatin() {
   const meta = $('#latinMeta');
   const list = $('#latinList');
@@ -1038,7 +1177,9 @@ async function freqSegments(): Promise<{ from: number; to: number; name: string 
   const vas: number[] = [];
   for (const tag of tags) {
     const at = tagsC.names.indexOf(tag);
-    if (at >= 0) vas.push(...(await reader.decodeBlockList('tags', at)));
+    // names 可能比 block 數多（ys／fuyan 的 tags 容器就是這樣：35 個 block、36 個名字），
+    // 超出的直接跳過，不然頻次分頁會丟 "tags[35] out of range"。
+    if (at >= 0 && at < tagsC.count) vas.push(...(await reader.decodeBlockList('tags', at)));
   }
   vas.sort((a, b) => a - b);
   const out: { from: number; to: number; name: string }[] = [];
@@ -1543,11 +1684,155 @@ function normalizePageQuery(q: string): string {
   return `${m[1]}p${m[2].padStart(4, '0')}${m[3]}`;
 }
 
+/* ---------------------------------------------------- 目錄路徑跳轉（1.2.3）
+ * 作者 2026-11-01：`1.2.3` ＝第 1 書（層）→ 第 2 章 → 第 3 節，依 TOC 結構計數，
+ * 不是解析標題文字。序／前言／自序算 0；同層沒有編號的節點照 TOC 順序接在後面。
+ */
+const TOC_TIERS = ['書', '章', '節', '項', '目', '小目', '細目'];
+// 標題可能被書名號包住（〈印順法師序〉），所以看的是標題裡有沒有「序」這類字
+const TOC_ORDINAL = /(?:序|前言|自序|序文|序言|原序|編序|推薦序|譯序|導讀)/;
+
+/**
+ * 這個查詢是不是目錄路徑（`1.2`、`一.二.三`）。
+ * 作者 2026-11-01：`.` 與 `-` 可交錯，但**至少兩組數字**才觸發；
+ * 含 `-` 的走節點序號（見 isTocIndexQuery），純 `.` 的走「序＝0」的智慧模式。
+ */
+export function isTocPathQuery(q: string): boolean {
+  return /^[0-9一二三四五六七八九十]+(?:\.[0-9一二三四五六七八九十]+)+$/.test(q.trim());
+}
+
+/** 連字號（或混用）路徑：`1-3-4`、`1.2-3`；至少兩組、全部阿拉伯數字，0 起算 */
+export function isTocIndexQuery(q: string): boolean {
+  const s = q.trim();
+  return s.includes('-') && /^\d+(?:[.-]\d+)+$/.test(s);
+}
+
+/** 中文數字 → 整數（`十`、`十一`、`二十三`；也接受阿拉伯數字） */
+function tocNum(s: string): number | null {
+  if (/^\d+$/.test(s)) return Number(s);
+  const digits: Record<string, number> = {
+    〇: 0, 零: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9,
+  };
+  let total = 0, cur = 0;
+  for (const ch of s) {
+    if (ch === '十') { total += (cur || 1) * 10; cur = 0; }
+    else if (ch === '百') { total += (cur || 1) * 100; cur = 0; }
+    else if (ch in digits) cur = digits[ch];
+    else return null;
+  }
+  return total + cur;
+}
+
+/** 同一層的候選節點：有對應層名（書／章／…）就只取那個標籤，否則整層都算。 */
+function tocLevel(nodes: TreeNode[], tier: string): TreeNode[] {
+  const named = nodes.filter((n) => n.tag === tier);
+  return named.length ? named : nodes;
+}
+
+/**
+ * 依目錄樹跳到 `1.2.3`。認得的路徑一定回 true（成功或已顯示錯誤訊息）；
+ * 不是路徑格式回 false，交給其他「跳至」語法。
+ */
+export async function jumpByTocPath(q: string): Promise<boolean> {
+  const text = q.trim();
+  if (!isTocPathQuery(text)) return false;
+  if (!reader) return false;
+  if (!dirTrees.length) {
+    try { await loadDirectoryTrees(); } catch { /* 建不起來就下面報錯 */ }
+  }
+  const dt = dirTrees[dirActive] ?? dirTrees[0];
+  if (!dt || !dt.roots.length) {
+    setStatus(`找不到 ${text}（這個庫沒有可用的目錄樹）`, 'warn');
+    return true;
+  }
+  const segs: number[] = [];
+  for (const raw of text.split('.')) {
+    const n = tocNum(raw);
+    if (n == null) { setStatus(`看不懂路徑「${text}」`, 'warn'); return true; }
+    segs.push(n);
+  }
+  let level: TreeNode[] = dt.roots;
+  let node: TreeNode | null = null;
+  const trail: string[] = [];
+  for (let i = 0; i < segs.length; i++) {
+    const tier = TOC_TIERS[i] ?? '';
+    const pool = tocLevel(level, tier);
+    const ords = pool.filter((n) => TOC_ORDINAL.test(n.label));
+    const normals = pool.filter((n) => !TOC_ORDINAL.test(n.label));
+    const n = segs[i];
+    if (n === 0) node = ords[0] ?? null;
+    else node = normals[n - 1] ?? null;
+    if (!node) {
+      const where = tier || `第 ${i + 1} 層`;
+      const count = n === 0 ? 0 : normals.length;
+      const why = n === 0
+        ? (ords.length ? '序的位置不對' : `${where}沒有「序」`)
+        : `${where}只有 ${count} 個`;
+      setStatus(`找不到 ${text}（${why}）`, 'warn');
+      return true;
+    }
+    trail.push(node.label || `VA ${node.va}`);
+    level = node.children;
+  }
+  setJumpRange(null);
+  await revealHit(node!.va, node!.label, 1, { mode: 'node', noMark: true });
+  setStatus('已跳到 ' + trail.join(' › '), 'note');
+  return true;
+}
+
+/**
+ * 連字號路徑（`1-3-4`，作者 2026-11-01）：直接取同層第 n 個節點，**0 起算**。
+ * 不做「序＝0」的重排，也不看中文數字／標題——就是 TOC 上該層節點的清單序號。
+ */
+export async function jumpByTocIndex(q: string): Promise<boolean> {
+  const text = q.trim();
+  if (!isTocIndexQuery(text)) return false;
+  if (!reader) return false;
+  if (!dirTrees.length) {
+    try { await loadDirectoryTrees(); } catch { /* 建不起來就下面報錯 */ }
+  }
+  const dt = dirTrees[dirActive] ?? dirTrees[0];
+  if (!dt || !dt.roots.length) {
+    setStatus(`找不到 ${text}（這個庫沒有可用的目錄樹）`, 'warn');
+    return true;
+  }
+  const segs = text.split(/[.-]/).map(Number);
+  let level: TreeNode[] = dt.roots;
+  let node: TreeNode | null = null;
+  const trail: string[] = [];
+  for (let i = 0; i < segs.length; i++) {
+    const tier = TOC_TIERS[i] ?? '';
+    const pool = tocLevel(level, tier);
+    node = pool[segs[i]] ?? null;
+    if (!node) {
+      const where = tier || `第 ${i + 1} 層`;
+      setStatus(`找不到 ${text}（${where}只有 ${pool.length} 個，序號從 0 起算）`, 'warn');
+      return true;
+    }
+    trail.push(node.label || `VA ${node.va}`);
+    level = node.children;
+  }
+  setJumpRange(null);
+  await revealHit(node!.va, node!.label, 1, { mode: 'node', noMark: true });
+  setStatus('已跳到 ' + trail.join(' › '), 'note');
+  return true;
+}
+
 export async function renderJump(enter = false): Promise<void> {
   const meta = $('#jumpMeta');
   const list = $('#jumpList');
   if (!reader) { list.innerHTML = '<p class="dim">尚未開啟資料庫。</p>'; return; }
   const q = ($('#jumpQuery') as HTMLInputElement | null)?.value.trim() ?? '';
+  // 目錄路徑（2026-11-01）：1.2.3／一.二.三；1-3-4 是 0 起算節點序號
+  if (isTocPathQuery(q) || isTocIndexQuery(q)) {
+    meta.textContent = '目錄路徑：按 Enter 跳到該節點（1.2.3 序＝0；1-3-4 為 0 起算序號）';
+    list.innerHTML = '';
+    if (enter) {
+      if (isTocIndexQuery(q)) await jumpByTocIndex(q);
+      else await jumpByTocPath(q);
+    }
+    return;
+  }
   // 字元級位置（2026-10-30）：選取選單「複製字元級位置」的字串
   //   taisho?5p2c j=12-34 ／ jingang?8p749a j=56-59 ／ foo?L123 j=5-12
   // 直接跳到那一段，並只把這幾個字塗色帶。
@@ -1615,8 +1900,10 @@ export async function renderJump(enter = false): Promise<void> {
   }
   if (enter && hit.length) { go(hit[0]); return; }
   const shown = qn && qn !== q ? qn : q;
-  meta.textContent = `${fmtInt(entries.length)} 頁`
-    + (q ? `；「${shown}」符合 ${fmtInt(hit.length)} 頁（Enter 跳到最接近的一頁）` : '（輸入頁 id 的一部份即可；Enter 直接跳）');
+  // 作者 2026-11-01：不必告知使用者「一共有多少頁」；只提示下一步。
+  meta.textContent = q
+    ? `「${shown}」：按 Enter 跳到最接近的一頁`
+    : '輸入頁 id 的一部份即可；Enter 直接跳';
   if (!hit.length) {
     list.innerHTML = '<p class="dim">沒有符合的頁 id。</p>';
     return;
@@ -1628,6 +1915,54 @@ export async function renderJump(enter = false): Promise<void> {
       el.onclick = (ev) => { setJumpRange(null); void revealHit(e.va, e.label, 1, { ...(mods(ev) ?? {}), mode: 'node', noMark: true }); };
     },
   });
+}
+
+/**
+ * 搜尋找不到時，把查詢當「跳至」語法再試一次（作者 2026-11-01：跳至分頁併入目錄樹）。
+ *
+ * 可接受的寫法：
+ *   - 字元級位置：`taisho?5p2c j=12-34`（選取選單「複製字元級位置」）
+ *   - 大正藏引用：`大正2，206a15-b13`／`T02, no. 99, p. 1a7-9`
+ *   - 頁 id：`49p15`、`8p52a`（英文字母後的 0 可以省略）、含頁 id 的整段引用
+ *
+ * 回傳 true＝已跳頁；false＝不是可接受的語法（呼叫端再顯示「沒有結果」）。
+ */
+export async function jumpByQuery(q: string): Promise<boolean> {
+  const text = q.trim();
+  if (!text || !reader) return false;
+  // 目錄路徑（2026-11-01）：1.2.3／一.二.三；1-3-4 是 0 起算節點序號
+  if (isTocIndexQuery(text)) return jumpByTocIndex(text);
+  if (isTocPathQuery(text)) return jumpByTocPath(text);
+  const pos = parseCharPosition(text);
+  if (pos) {
+    const hit = await openCharPosition(pos);
+    if (hit) setStatus(`已跳到 ${hit.anchor} 第 ${hit.fromHan}–${hit.toHan} 個字`, 'info');
+    return !!hit;
+  }
+  const cite = parseTaishoCite(text);
+  if (cite) { await jumpTaishoCite(cite); return true; }
+  // 先看整串是不是這個庫現成的頁 id（`yl38p24` 是 yl38 的頁 id，庫名本身就帶數字），
+  // 是的話交給下面的頁 id 清單，不要被頁行引用搶走。
+  const asPageId = await anchorVa(reader, text);
+  const pc = asPageId != null ? null : parsePageCite(text, dbNameCandidates());
+  if (pc && await jumpPageCite(pc)) return true;
+  const entries = await jumpEntries();
+  if (!entries.length) return false;
+  const qn = normalizePageQuery(text);
+  const forms = qn && qn !== text ? [qn, text] : [text];
+  let hit = entries.filter((e) => forms.some((f) => e.label.includes(f)));
+  if (!hit.length) {
+    const emb = embeddedPage(entries, text);
+    if (!emb) return false;
+    hit = [emb];
+  }
+  hit.sort((a, b) => {
+    const rank = (label: string): number => Math.min(...forms.map((f) => jumpRank(label, f)));
+    return rank(a.label) - rank(b.label) || a.label.localeCompare(b.label, 'en', { numeric: true });
+  });
+  setJumpRange(null);
+  void revealHit(hit[0].va, hit[0].label, 1, { mode: 'node', noMark: true });
+  return true;
 }
 
 /** mount every row of the current tree (tests assert on the whole list) */
@@ -1778,4 +2113,5 @@ async function resolveSemanticLabels(roots: TreeNode[]): Promise<void> {
   }
 }
 
-export { DirTree, collapseDirTree, countHitsPerSegment, countNodes, depthColor, dirActive, dirError, dirLoading, dirTrees, findNode, folioCache, folioEntries, freqSegments, hitBadge, labelFor, labelTableFor, labelTables, loadDirectoryTrees, lowerBound, nameSegs, realmHits, renderDirTree, renderFolio, renderFreq, renderLatin, renderTerms, restoreScopes, snapshotScopes, syncTreeTabs, tagSegments, tagVas, treePhases, treeScope, wrappedText };
+export { DirTree, collapseDirTree, countHitsPerSegment, countNodes, depthColor, dirActive, dirError, dirLoading, dirTrees, findNode, folioCache, folioEntries, freqSegments, hitBadge, labelFor, labelTableFor, labelTables, loadDirectoryTrees, lowerBound, nameSegs, realmHits, renderDirTree, renderFolio, renderFreq, renderGlossary, renderLatin, renderTerms, restoreScopes, snapshotScopes, syncTreeTabs, tagSegments, tagVas, treePhases, treeScope, wrappedText };
+

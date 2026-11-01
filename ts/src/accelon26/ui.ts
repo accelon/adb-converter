@@ -7,18 +7,21 @@
  */
 import { $, currentFile, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, session, setJumpLineHook, setStatus, tokens, statusText } from './viewer';
 import { type AdbSource } from './adb';
-import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, lineTipEnabled, pageBounds, pagerLog, readDocFont, readSideFont, openHistoryPage, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, saveLastReadNow, setDocFont, setHardBreaks, setLineTip, setPageMarks, setRenderRaw, setSideFont, setSimMode, setTermMode, setTrailMax, simModeOf, stepFontSize, syncFontButtons, termModeOf, trailMaxOf } from './doc-pane';
+import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, ctxOf, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, lineTipEnabled, pageBounds, pagerLog, readDocFont, readSideFont, openHistoryPage, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, saveLastReadNow, setDocFont, setHardBreaks, setLineTip, setPageMarks, setRenderRaw, setSideFont, setSimMode, setSharedDocTabs, staleRenderCount, tabDbIds, trailAnchorVa, setTermMode, setTrailMax, sharedDocTabsOn, simModeOf, stepFontSize, syncFontButtons, termModeOf, trailMaxOf } from './doc-pane';
 import { renderTextPane } from './text-pane';
 import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
 import { formatAddress, parseAddress, type PosMap } from './posmap';
 import { addressAtLine, convertText, initMap, mapPosMap, mapState, renderMap } from './map-pane';
-import { initNoteLinks } from './notes';
+import { initNoteLinks, notePagesOf } from './notes';
 import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
-import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderGlossary, renderJump, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully, treeSnapshot } from './scopes';
-import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
+import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderGlossary, renderJump, jumpByQuery, jumpByTocPath, jumpByTocIndex, isTocPathQuery, isTocIndexQuery, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully, treeSnapshot } from './scopes';
+import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, repaintSummary, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 import { backendKind, goQueryCount, lastGoAnswer } from './backend';
 import { isDictDb } from './db-kind';
-import { closeSearchAll, initSearchAll, openSearchAll, runSearchAll, searchAllState } from './allsearch';
+import { resolveDocCtx } from './doc-ctx';
+import { parsePageCite } from './page-cite';
+import { parseWildcard } from './wildcard';
+import { allSearchMode, closeSearchAll, initSearchAll, openSearchAll, runSearchAll, searchAllState, setAllSearchMode, stopSearchAll } from './allsearch';
 import { dictLookupAt, dictPaneState, initDictPane } from './dict-pane';
 import { listDicts, type DictListEntry } from './dict-lookup';
 import { dictOnlyIsdict, dictOrder, orderByFile, setDictOnlyIsdict, setDictOrder } from './dict-settings';
@@ -38,7 +41,7 @@ import {
 } from './settings';
 import { tagChromaIndex } from './render_accelon3';
 import { renderSanskritDemo } from './siddham-demo';
-import type { TreeNode } from './search';
+import { nodeOwningVa, type TreeNode } from './search';
 
 // -------------------------------------------------------------------- wiring
 /**
@@ -340,6 +343,10 @@ function updateSettingsUi(): void {
   if (tmode) tmode.value = termModeOf();
   const lt = $('#setLineTip') as HTMLInputElement | null;
   if (lt) lt.checked = lineTipEnabled();
+  const jc = $('#setJumpCheat') as HTMLInputElement | null;
+  if (jc) jc.checked = jumpCheatOn();
+  const sdt = $('#setSharedDocTabs') as HTMLInputElement | null;
+  if (sdt) sdt.checked = sharedDocTabsOn();
   const mode = simModeOf();
   document.querySelectorAll<HTMLElement>('#simSeg button').forEach((b) => {
     b.classList.toggle('active', Number(b.dataset.mode) === mode);
@@ -400,6 +407,27 @@ document.addEventListener('accelon:jump-page', (ev) => {
   })();
 });
 
+/** 「閱讀狀態」的名稱（記在 JSON 裡；設定頁下次開啟還看得到，作者 2026-11-01） */
+const READ_STATE_NAME_KEY = 'accelon26.readstate.name';
+
+/**
+ * 離開 exe 之前存一次「閱讀狀態」（作者 2026-11-01）。
+ *
+ * 平常不寫任何東西；這是唯一會寫的地方。全部用 localStorage 的同步寫入，
+ * 所以視窗正在關閉（WebView2 可能已經不讓頁面做非同步工作）時也寫得進去。
+ *
+ * 存兩份：
+ *   1. `accelon26.openset.v1`：開著哪幾個 adb、哪一個是 active（下次啟動恢復用）
+ *   2. `accelon26.lastRead.v1`：目前這一頁的捲動位置與**選取區**（每個檔一份）
+ *
+ * 由 `beforeunload`／`pagehide`，以及 Wails 的 WindowClosing（Go 端 ExecJS）呼叫。
+ * 重複呼叫沒有關係（只是再寫一次同樣的值）。
+ */
+export function saveOnExit(): void {
+  try { writeOpenSetNow(); } catch { /* 記不住就算了，不要擋關窗 */ }
+  try { saveLastReadNow({ view: true }); } catch { /* 同上 */ }
+}
+
 function initSettings(): void {
   ($('#settingsBtn') as HTMLButtonElement | null)?.addEventListener('click', () => openSettings());
   ($('#settingsClose') as HTMLElement | null)?.addEventListener('click', () => closeSettings());
@@ -446,6 +474,67 @@ function initSettings(): void {
     updateSettingsUi();
     setStatus(on ? '滑過本文顯示頁位置：開（校對用）' : '滑過本文顯示頁位置：關', 'info');
   });
+  // 輸入跳至提示（作者 2026-11-01）：卡片上的「不再提示」會關閉這個開關
+  ($('#setJumpCheat') as HTMLInputElement | null)?.addEventListener('change', (ev) => {
+    const on = (ev.target as HTMLInputElement).checked;
+    setJumpCheat(on);
+    setStatus(on ? '輸入跳至提示：開（空白停留 1.5 秒顯示）' : '輸入跳至提示：關', 'info');
+  });
+  // 共享本文分頁（作者 2026-11-01）：預設關；開啟後所有 adb 共用同一條 docTab
+  ($('#setSharedDocTabs') as HTMLInputElement | null)?.addEventListener('change', (ev) => {
+    const on = (ev.target as HTMLInputElement).checked;
+    setSharedDocTabs(on);
+    setStatus(on ? '共享本文分頁：開（切換 adb 會保留分頁）' : '共享本文分頁：關（各庫各自一組）', 'info');
+  });
+  // 閱讀狀態匯出／載入（作者 2026-11-01）：回報問題時把「開著的 adb ＋ 本文分頁 ＋
+  // 選取區」存成 JSON，作者載入後就能重現同一個畫面。檔名＝修訂者 ID＋本地時間。
+  const rsName = $('#readStateName') as HTMLInputElement | null;
+  if (rsName) {
+    try { rsName.value = localStorage.getItem(READ_STATE_NAME_KEY) || ''; } catch { /* 私密模式 */ }
+    rsName.addEventListener('change', () => {
+      try { localStorage.setItem(READ_STATE_NAME_KEY, rsName.value.trim()); } catch { /* 私密模式 */ }
+    });
+  }
+  ($('#readStateExport') as HTMLButtonElement | null)?.addEventListener('click', () => {
+    const out = $('#readStateStatus') as HTMLElement | null;
+    try {
+      const { filename, state } = exportReadState(rsName?.value ?? '');
+      const sel = state.active?.selection ? '、含選取區' : '';
+      const msg = `已匯出 ${filename}（${state.dbs.length} 個 adb、${state.tabs.length} 個本文分頁${sel}）`;
+      setStatus(msg, 'info');
+      if (out) out.textContent = msg;
+    } catch (e) {
+      const msg = '匯出閱讀狀態失敗：' + (e as Error).message;
+      setStatus(msg, 'err');
+      if (out) out.textContent = msg;
+    }
+  });
+  const rsFile = $('#readStateFile') as HTMLInputElement | null;
+  ($('#readStateImport') as HTMLButtonElement | null)?.addEventListener('click', () => rsFile?.click());
+  rsFile?.addEventListener('change', () => {
+    const f = rsFile.files?.[0];
+    rsFile.value = '';
+    if (!f) return;
+    const out = $('#readStateStatus') as HTMLElement | null;
+    void loadReadStateFile(f).then((r) => {
+      if (!r.ok) {
+        const msg = '載入閱讀狀態失敗：' + (r.error || '未知錯誤');
+        setStatus(msg, 'err');
+        if (out) out.textContent = msg;
+        return;
+      }
+      // 注意：不要在這裡 refreshAll() —— 那會重畫本文、把剛還原的選取區清掉
+      const parts = (r.applied ?? []).join('、');
+      const miss = r.missing?.length ? `；找不到：${r.missing.join('、')}` : '';
+      const msg = `已載入 ${f.name}（${parts}${miss}）`;
+      setStatus(msg, miss ? 'warn' : 'info');
+      if (out) out.textContent = msg;
+    }).catch((e) => {
+      const msg = '載入閱讀狀態失敗：' + (e as Error).message;
+      setStatus(msg, 'err');
+      if (out) out.textContent = msg;
+    });
+  });
   document.querySelectorAll<HTMLElement>('#simSeg button').forEach((b) => {
     b.addEventListener('click', () => setSimDisplay(Number(b.dataset.mode) as 0 | 1 | 2));
   });
@@ -456,8 +545,7 @@ function initSettings(): void {
   wireTagStyle();
 }
 
-/* ================================================================== 標籤樣式（作者 2026-10-22）
- *
+/* ================================================================== 標籤樣式（作者 2026-10-22） *
  * 設置 → 標籤樣式：全域／此資料庫、每個標籤的顏色／大小／字型、天干地支 22 層，
  * 以及 settings.json 的位置與匯出／匯入。資料模型在 tag-style.ts、讀寫在 settings.ts；
  * 這裡只做 DOM 與事件。
@@ -1147,9 +1235,46 @@ async function bootDesktop(): Promise<void> {
   void initDesktopBrand((msg, kind) => setStatus(msg, kind ?? 'info'));
   void initDesktopWindowKeys();   // F11 全螢幕／Esc 回視窗（全螢幕時沒有標題列）
   const srcs = await refreshHostDbs();
-  void checkAdbUpdates(true);   // 公開資料庫有沒有新版（catalog 已好；順便等鏡像探測完）
   if (!srcs.length) return;
-  if (!openDbs.length) await openPicked([await pickStartupDb(srcs)]);
+  // 作者 2026-11-01：啟動要把上次開著的 adb 全部開回來，不要每次都只剩一個。
+  if (!openDbs.length && await restoreOpenSet(srcs)) {
+    // 恢復成功就不再用「挑一個有 logo 的」那條路
+  } else if (!openDbs.length) {
+    await openPicked([await pickStartupDb(srcs)]);
+  }
+  // 作者 2026-11-01：adb 更新只在「開啟 adb」時檢查（viewer.openFile 的 hook），
+  // 這裡不再另外檢查、也不輪詢；啟動開庫本身就會觸發。
+}
+
+/**
+ * 依 settings.json 記下的清單，把上次開著的 adb 開回來（桌面版啟動用）。
+ * 回傳有沒有恢復成功；false 就退回「挑一個有 logo 的庫」。
+ *
+ * 順序：紀錄是 dbTabs 由左到右，而 `openFile` 會把新開的放最左，
+ * 所以**反著開**才會得到同樣的排列。開完再切回上次 active 的那一個。
+ */
+async function restoreOpenSet(srcs: AdbSource[]): Promise<boolean> {
+  const set = savedOpenSet();
+  if (!set) return false;
+  const { found, missing, active } = resolveOpenSet(srcs, set);
+  if (!found.length) {
+    if (missing.length) setStatus('上次開著的 adb 找不到了（' + missing.map((m) => m.file).join('、') + '），改開現有的', 'warn');
+    return false;
+  }
+  for (const src of [...found].reverse()) {
+    if (openDbs.length >= MAX_DBS) break;
+    try { await openFile(src); } catch { /* 單一檔壞掉不要擋其他 */ }
+  }
+  if (!openDbs.length) return false;
+  if (active) {
+    const recs = openDbRecs();
+    const at = recs.findIndex((r) => recKey(r) === active);
+    if (at >= 0 && openDbs[at] && activeSlot()?.id !== openDbs[at].id) switchTo(openDbs[at].id);
+  }
+  const names = openDbs.map((d) => d.name).join('、');
+  setStatus(`已恢復上次開著的 ${openDbs.length} 個資料庫：${names}`, missing.length ? 'warn' : 'info');
+  if (missing.length) console.warn('[open-set] 找不到：', missing.map((m) => m.file));
+  return true;
 }
 
 /** 啟動要開的那一個：第一個有自帶 logo 的庫；都沒有就第一個。
@@ -1208,6 +1333,123 @@ const TOUR_APP = {
   },
 };
 
+const JUMP_CHEAT_KEY = 'accelon26.jumpcheat';
+/** 「輸入跳至提示」預設開；按過一次「不再提示」就存 0（作者 2026-11-01）。 */
+function jumpCheatOn(): boolean {
+  try { return localStorage.getItem(JUMP_CHEAT_KEY) !== '0'; } catch { return true; }
+}
+function hideJumpCheat(): void {
+  const card = $('#jumpCheatCard') as HTMLElement | null;
+  if (card) card.hidden = true;
+}
+function setJumpCheat(on: boolean): void {
+  try { localStorage.setItem(JUMP_CHEAT_KEY, on ? '1' : '0'); } catch { /* 無痕模式 */ }
+  const cb = $('#setJumpCheat') as HTMLInputElement | null;
+  if (cb) cb.checked = on;
+  if (!on) hideJumpCheat();
+}
+
+/** 搜尋框目前會走哪一種檢索（作者 2026-11-01；顯示在輸入框右側）。 */
+function queryModeOf(s: string): string {
+  const q = s.trim();
+  if (!q) return '';
+  if (isTocIndexQuery(q)) return '節點序號';
+  if (isTocPathQuery(q)) return '目錄路徑';
+  if (q.startsWith('#')) return '行號';
+  if (/\sj=\d+-\d+$/.test(q)) return '字元位置';
+  if (parseTaishoCite(q)) return '大正引用';
+  if (parsePageCite(q, dbNameCandidates())) return '頁行';
+  if (/^(?:[\w.-]+\?)?\d+p[\da-z-]+$/i.test(q)) return '頁 id';
+  return '全文';
+}
+
+/**
+ * 「跳至」語法 cheat card（作者 2026-11-01）。
+ * 輸入框取得 focus、內容空白、停 1.5 秒 → 在正下方顯示；一有輸入或失去 focus 立即收起。
+ */
+function wireJumpCheat(input: HTMLInputElement | null): void {
+  if (!input) return;
+  const card = $('#jumpCheatCard') as HTMLElement | null;
+  if (!card) return;
+  const citeRow = card.querySelector<HTMLElement>('#ccCiteRow');
+  const pageEl = card.querySelector<HTMLElement>('#ccPage');
+  const pageHint = card.querySelector<HTMLElement>('#ccPageHint');
+  const posEl = card.querySelector<HTMLElement>('#ccPos');
+  const lineEl = card.querySelector<HTMLElement>('#ccLine');
+  // 「不再提示」只綁一次（wireJumpCheat 會對兩個輸入框各呼叫一次）
+  if (card.dataset.gotIt !== '1') {
+    card.dataset.gotIt = '1';
+    card.querySelector<HTMLButtonElement>('#ccGotIt')?.addEventListener('click', () => {
+      setJumpCheat(false);
+      setStatus('已關閉「輸入跳至提示」；可在 設置 → 閱讀 重新開啟', 'info');
+    });
+  }
+  let filledFor = '';
+  /**
+   * 依目前 adb 調整卡片內容（作者 2026-11-01）：不是 taisho 就不顯示「大正引用」，
+   * 例子也換成該庫的頁 id／dbname。
+   */
+  const fill = async (): Promise<void> => {
+    const r = reader;
+    const db = r?.header.dbname || '';
+    if (!db || db === filledFor) return;
+    filledFor = db;
+    const isTaisho = /^taisho/i.test(db) || /大正/.test(r?.header.dbcname ?? '');
+    if (citeRow) citeRow.hidden = !isTaisho;
+    if (posEl) posEl.textContent = isTaisho ? 'taisho?5p2c j=12-34' : `${db}?<頁 id> j=12-34`;
+    if (lineEl) lineEl.textContent = `#L123@${db}`;
+    // 頁行引用（作者 2026-11-01）：例子依庫換（ys 有 46 部書、fuyan 只有 1 部）
+    const pageLineEl = card.querySelector<HTMLElement>('#ccPageLine');
+    if (pageLineEl) {
+      const prefix = db.slice(0, 1).toLowerCase() || 'y';
+      pageLineEl.textContent = /^ys/i.test(db) ? 'y38p7a8'
+        : /^fuyan/i.test(db) ? 'f1p7a3'
+          : `${prefix}1p7a8`;
+    }
+    if (isTaisho) {
+      if (pageEl) pageEl.textContent = '8p848c';
+      if (pageHint) pageHint.innerHTML = '、<code>49p15</code>（英文字母後的 0 可以省略）';
+      return;
+    }
+    let sample = '';
+    try {
+      const av = r ? await r.attributeValues('頁.id') : null;
+      const vals = av?.values ?? [];
+      // 作者 2026-11-01：範例不要用 p0 這種頭幾頁；優先挑頁碼 8 的那一頁
+      sample = vals.find((v) => /p0*8[a-z]?$/.test(v))
+        ?? vals.find((v) => !/p0+$/.test(v))
+        ?? vals[0]
+        ?? '';
+    } catch { /* 沒有頁 id 就用通用寫法 */ }
+    if (pageEl) pageEl.textContent = sample || '頁 id';
+    if (pageHint) pageHint.textContent = sample ? '（英文字母後的 0 可以省略；輸入片段即可）' : '（輸入頁 id 的一部份即可）';
+  };
+  let timer = 0;
+  const hide = (): void => { window.clearTimeout(timer); timer = 0; card.hidden = true; };
+  const show = (): void => {
+    if (!jumpCheatOn()) return;
+    if (document.activeElement !== input || input.value.trim()) return;
+    const r = input.getBoundingClientRect();
+    const width = Math.min(Math.max(r.width, 320), window.innerWidth - 16);
+    const left = Math.min(Math.max(8, r.left), window.innerWidth - 8 - width);
+    card.style.width = width + 'px';
+    card.style.left = Math.round(left) + 'px';
+    card.style.top = Math.round(r.bottom + 6) + 'px';
+    card.hidden = false;
+  };
+  input.addEventListener('focus', () => {
+    hide();
+    if (!jumpCheatOn()) return;
+    void fill();                       // 1.5 秒內先依 adb 換好內容
+    if (!input.value.trim()) timer = window.setTimeout(show, 1500);
+  });
+  input.addEventListener('input', hide);
+  input.addEventListener('blur', hide);
+  // 捲動或視窗大小改變時，固定的卡片位置會不準；直接收起
+  window.addEventListener('scroll', hide, true);
+  window.addEventListener('resize', hide);
+}
+
 function boot() {
   applyCols();
   attachSplitter($('#splitLeft'), 'left');
@@ -1219,7 +1461,6 @@ function boot() {
   initSettings();
   // 更新鏡像（作者 2026-10-29）：設定頁的選項＋自動探測；選好後 adb 清單重新讀
   initUpdateMirrorUi();
-  onMirrorApplied(() => { void checkAdbUpdates(true); });
   void initUpdateMirror();
   // 主題（作者 2026-10-18）：暗色系／亮色系／春綠／秋黃，預設暗色系
   initTheme((name) => setStatus('主題：' + THEME_LABEL[name], 'info'));
@@ -1337,7 +1578,37 @@ function boot() {
       if (ev.key === 'Escape' && dbPickOpen()) setDbPickOpen(false);
     });
   }
-  setDbHooks({ refresh: () => { refreshAll(); void refreshReverse(); }, clear: clearDbUi });
+  setDbHooks({ refresh: () => { refreshAll(); void refreshReverse(); void repaintSummary(); }, clear: clearDbUi });
+  // 作者 2026-11-01：「開著哪幾個 adb」與「本文的捲動／選取區」**只在離開 exe 之前**
+  // 存一次（saveOnExit）—— 平時不寫。三個訊號都接：beforeunload（瀏覽器／WebView2）、
+  // pagehide（部分環境只發這個）、以及 Wails 的 WindowClosing（Go 端 ExecJS 呼叫）。
+  window.addEventListener('beforeunload', () => saveOnExit());
+  window.addEventListener('pagehide', () => saveOnExit());
+  // 舊版曾把「開著哪幾個 adb（含路徑）」寫進 settings.json；settings.json 不該放
+  // 這台機器的路徑（別人的環境不一樣），啟動時清掉一次（作者 2026-11-01）。
+  void dropLegacyReadingSetting();
+  // 「閱讀狀態」匯出需要的介面資訊（read-state.ts 只負責組 JSON，值由這裡給）
+  setReadStateUiInfo(() => ({
+    leftTab: $('#colLeft .tabBtn.active')?.getAttribute('data-tab') ?? null,
+    rightTab: $('#colRight .tabBtn.active')?.getAttribute('data-tab') ?? null,
+    cols: readCols(),
+    theme: themeOf(),
+    advanced,
+    build: ((window as unknown as { __ACCELON_BUILD__?: { buildTimeText?: string } }).__ACCELON_BUILD__?.buildTimeText) ?? '',
+    backend: backendKind(reader?.io ?? null),
+    searchQuery: lastQuery,
+    hitTotal: hitTotal(),
+    snippetScope: snippetScope ? { from: snippetScope.realm.from, to: snippetScope.realm.to, label: snippetScope.label } : null,
+    cursorNode: cursorNode ? { va: cursorNode.va, tag: cursorNode.tag, name: nodeLabelOf(cursorNode) } : null,
+    lastLink,
+    pagerLog: pagerLog.slice(-4),
+    dbLog,
+    dirActive,
+    docRows: document.querySelectorAll('#docText .docLine').length,
+    marks: document.querySelectorAll('#docText mark.docHit').length,
+  }));
+  // 共享 docTab（作者 2026-11-01）：點分頁只換本文、**不換 adb**；
+  // 要切庫是按 header 的 🌲（`revealCursorInTree` 會處理），所以這裡不再需要 hook。
 
   // dbChip 的「n 頁修訂」按鈕 → 產生新 ADB（file:// 版下載 blob）；F2 也走這裡
   const requestRebuild = (): void => {
@@ -1396,6 +1667,24 @@ function boot() {
       toggleSide('left');
       setStatus('左欄：' + (readCols().left > 0 ? '開' : '關') + '（Ctrl+B）', 'info');
     }
+  }, true);
+  // Ctrl+Alt+F：把 focus 移到左欄目前分頁的輸入框（作者 2026-11-01）
+  window.addEventListener('keydown', (ev) => {
+    const mod = ev.ctrlKey || ev.metaKey;
+    if (!mod || !ev.altKey || ev.shiftKey || ev.repeat || ev.defaultPrevented) return;
+    if ((ev.code || '').replace(/^Key/, '').toLowerCase() !== 'f'
+      && ev.key.toLowerCase() !== 'f') return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (anyModalOpen()) return;
+    if (readCols().left <= 0) toggleSide('left');
+    let target = document.querySelector<HTMLInputElement>('#colLeft .tabPane.active input[type="search"]');
+    if (!target) {
+      // 目前分頁（書籤／目錄…）沒有輸入框：切回目錄再 focus 搜尋框
+      showTab('dir', 'left');
+      target = document.getElementById('query') as HTMLInputElement | null;
+    }
+    target?.focus();
   }, true);
   // Alt+1…5 切換 adb；Alt+O 開 adb 清單；Alt+S 搜尋所有 adb；Alt+A 關於；
   // Alt+←／→ 上一頁／下一頁（2026-10-30）
@@ -1528,8 +1817,8 @@ function boot() {
     }
     // 目前分頁的 realm 已經包含這一行就留在原分頁，不要為此另開整個檔的分頁
     const act = docSession();
-    if (act && !act.history) {
-      const b = boundsOfRealm(act.realm);
+    if (act && !act.history && ctxOf(act)?.dbId === (activeSlot()?.id ?? 0)) {
+      const b = boundsOfRealm(ctxOf(act), act.realm);
       if (target.line >= b.first && target.line <= b.last) {
         await ensurePage(act, target.line);
         requestAnimationFrame(() => document.getElementById('L' + target.line)?.scrollIntoView({ block: 'center' }));
@@ -1545,16 +1834,42 @@ function boot() {
    * 全文搜尋的 Enter：直接跳到第一筆（2026-10-31）。
    * 不自己開本文，而是點第一個 snippet，讓它走原本的「開本文／塗色／記住 active」流程。
    */
-  const jumpToFirstHit = (q: string): void => {
+  const jumpToFirstHit = (q: string): boolean => {
     const first = document.querySelector<HTMLElement>('#searchList .snippet[data-va]');
-    if (!first) { setStatus(`「${q}」沒有結果`, 'warn'); return; }
+    if (!first) return false;
     first.click();
+    return true;
+  };
+  // 作者 2026-11-01：「跳至」分頁取消，併進第一個目錄樹的搜尋框。
+  // 先當全文搜尋；**搜尋找不到時**才判讀頁 id／大正引用／字元級位置語法。
+  const tryJumpQuery = async (q: string): Promise<void> => {
+    if (await jumpByQuery(q)) return;
+    setStatus(`「${q}」沒有結果`, 'warn');
   };
   // live search: re-run on every keystroke (posting lists are cached per token)
   const query = $('#query') as HTMLInputElement;
+  const modeBadge = $('#queryMode') as HTMLElement | null;
+  /** 作者 2026-11-01：在搜尋框右側顯示目前觸發的檢索模式 */
+  const syncQueryMode = (): void => {
+    if (!modeBadge) return;
+    const mode = queryModeOf(query.value);
+    modeBadge.hidden = !mode;
+    modeBadge.textContent = mode;
+  };
+  syncQueryMode();
   let timer: number | undefined;
+  const isPathMode = (): boolean => {
+    const m = queryModeOf(query.value);
+    return m === '目錄路徑' || m === '節點序號';
+  };
   query.oninput = () => {
     window.clearTimeout(timer);
+    syncQueryMode();
+    // 目錄路徑／節點序號（作者 2026-11-01）：不跑全文搜尋、不要摘要；等 Enter 再跳
+    if (isPathMode()) {
+      if (lastQuery || lastResult) void runSearch('');   // 清掉上一輪摘要與塗色
+      return;
+    }
     // #行號：等 Enter，不要邊打邊查
     if (lineJumpTarget(query.value)) return;
     timer = window.setTimeout(() => void runSearch(query.value), 120);
@@ -1567,9 +1882,19 @@ function boot() {
       if (jump) { void jumpToLine(jump); return; }
       const q = query.value.trim();
       if (!q) return;
+      // 目錄路徑：直接走 TOC，不經過搜尋（作者 2026-11-01）
+      if (isTocIndexQuery(q)) { void jumpByTocIndex(q); return; }
+      if (isTocPathQuery(q)) { void jumpByTocPath(q); return; }
       // 全文搜尋：Enter 直接跳到第一筆（2026-10-31）。同一個查詢不必重跑。
-      if (lastQuery === q && lastResult) { jumpToFirstHit(q); return; }
-      void runSearch(query.value).then(() => jumpToFirstHit(q));
+      if (lastQuery === q && lastResult) {
+        if (jumpToFirstHit(q)) return;
+        void tryJumpQuery(q);
+        return;
+      }
+      void runSearch(query.value).then(() => {
+        if (jumpToFirstHit(q)) return;
+        void tryJumpQuery(q);
+      });
       return;
     }
     // Escape must NOT clear the box (author, 2026-10): the ✕ is the way to clear, and
@@ -1577,7 +1902,7 @@ function boot() {
     // clears ITSELF on Escape (Chromium default action), so the event has to be stopped.
     if (ev.key === 'Escape') ev.preventDefault();
   };
-  $('#queryClear').onclick = () => { query.value = ''; void runSearch(''); query.focus(); };
+  wireJumpCheat(query);
   $('#searchList').addEventListener('scroll', (ev) => {
     const el = ev.target as HTMLElement;
     if (!lastResult) return;
@@ -1617,6 +1942,7 @@ function boot() {
   {
     const input = $('#jumpQuery') as HTMLInputElement | null;
     if (input) {
+      wireJumpCheat(input);
       let t = 0;
       const run = (enter: boolean) => void renderJump(enter);
       input.oninput = () => { window.clearTimeout(t); t = window.setTimeout(() => run(false), 120); };
@@ -1773,6 +2099,8 @@ export function installDebugApi(): void {
   },
   /** 「對照」分頁的狀態（測試用） */
   mapState: () => mapState(),
+  /** 搜尋找不到時的「跳至」語法（測試用；成功回 true） */
+  jumpByQuery,
   /** 這個庫宣告的 <樹>（測試用：s=／t=／m= 與分頁名） */
   treesInfo: () => (session?.trees ?? []).map((t) => ({
     scope: t.scope, tiers: t.tiers, map: t.map ?? '', caption: t.caption ?? '', va: t.va,
@@ -1794,6 +2122,10 @@ export function installDebugApi(): void {
   resetTagStyles: () => { resetTagStyles(); saveSettingsSoon(); },
   /** 搜尋所有 adb */
   openSearchAll, closeSearchAll, runSearchAll, searchAllState,
+  /** 三種模式（作者 2026-11-01）：index／single／all；wildcardParse 給測試驗語法 */
+  setAllSearchMode, allSearchMode, stopSearchAll,
+  wildcardParse: (text: string) => { const p = parseWildcard(text); return { ok: p.ok, error: p.error ?? '', describe: p.describe, narrowChar: p.narrowChar }; },
+
   /** 詞典分頁 */
   dictLookupAt, dictPaneState,
   /** 操作導覽（🎬）：劇本 → 宏 → 播放器 */
@@ -1809,6 +2141,19 @@ export function installDebugApi(): void {
   mirror: mirrorState, setMirrorMode, reprobeMirror,
   /** 快速鍵卡片（作者 2026-10-29）：About →「⌨ 快速鍵」 */
   openShortcuts, closeShortcuts,
+  /** 頁行引用（作者 2026-11-01）：只解析，給測試／診斷用 */
+  pageCite: (text: string) => { const c = parsePageCite(text, dbNameCandidates()); return c ? { db: c.db, book: c.book ?? null, page: c.page ?? null, col: c.col, line: c.line ?? null } : null; },
+  /** 解析並回報會跳到哪一頁哪一行（會切換／開啟目標庫；測試用） */
+  pageCiteResolve: async (text: string) => {
+    const c = parsePageCite(text, dbNameCandidates());
+    if (!c) return null;
+    const hit = await resolvePageCite(c);
+    return hit ? { db: hit.db, book: c.book, bookCount: hit.bookCount, pages: hit.pages, id: hit.id, col: hit.col, baseLine: hit.baseLine, line: hit.line } : null;
+  },
+  /** 搜尋框會走哪一種檢索（測試 use） */
+  queryMode: (text: string) => queryModeOf(text),
+  /** 腳注診斷（測試用）：某個 n 的所有 <註>/<釋>、各在哪一行哪一頁、帶什麼 pg */
+  notePagesOf: (n: string) => notePagesOf(n),
   shortcutsState: () => ({ open: shortcutsOpen(), count: shortcutCount() }),
   /** 修訂者 ID（About 頁／測試） */
   setUserId, userId: getUserId,
@@ -1823,6 +2168,23 @@ export function installDebugApi(): void {
   treeSnapshot,
   setDocFont, autoFitFont, docFont: () => readDocFont(),
   setAdvanced, isAdvanced: () => advanced,
+  /** 共享 docTab（跨庫分頁並存；測試與診斷用，作者 2026-11-01） */
+  setSharedDocTabs, sharedDocTabsOn,
+  /** 閱讀狀態（作者 2026-11-01；測試／診斷用，不會真的下載檔案） */
+  readState: (name = '') => buildReadState(name),
+  readStateJson: (name = '') => JSON.stringify(buildReadState(name), null, 2),
+  readStateFilename: () => readStateFileName(getUserId(), new Date()),
+  readStateApply: (json: string) => applyReadState(JSON.parse(json)),
+  readStateLoadFile: (f: File) => loadReadStateFile(f),
+  /** 上次開著哪幾個 adb（桌面版啟動恢復用；診斷看得到） */
+  openSet: () => savedOpenSet(),
+  /** 離開 exe 之前的那一次存檔（Wails 的 WindowClosing 會透過 ExecJS 呼叫；測試也用它） */
+  saveOnExit,
+  /** 測試用：模擬「重啟前的紀錄」，再呼叫 restoreOpenSet 驗恢復 */
+  openSetWrite: (set: unknown) => { if (set) localStorage.setItem('accelon26.openset.v1', JSON.stringify(set)); else localStorage.removeItem('accelon26.openset.v1'); },
+  openSetRestore: (srcs: AdbSource[]) => restoreOpenSet(srcs),
+  catalogSources: () => catalog.map((e) => e.file),
+  closeDbById: (id: number) => closeDb(id),
   openBreakdown: () => lastOpen,
   /** diagnostics: what a tree tier instance looks like at its VA */
   treeDebug: async (va: number) => {
@@ -1844,6 +2206,51 @@ export function installDebugApi(): void {
       scrollWidth: body?.scrollWidth ?? 0,
       longestLine: Math.max(0, ...lastDocLines.map((l) => l.length)),
       sample: lastDocLines.length,
+    };
+  },
+  /**
+   * 麵包屑與本文是否一致（作者 2026-11-01 回報「切換 adb／頁籤時 breadcrumb 與本文不一致」）。
+   *
+   * 全部從**畫面上的 DOM** 與**目前的 session** 各自算一次，再讓測試比對：
+   *   * `rows`：畫面上實際出現的行號 → 應該落在目前分頁的 realm 範圍內
+   *   * `textNode`：畫面上第一行（或釘選那一行）屬於哪個目錄節點
+   *   * `anchorNode`：麵包屑用的那個 VA 屬於哪個節點（＝state 的 pinned.va / realm.from）
+   *   * `trailLabels`：畫面上麵包屑的文字
+   */
+  trailInfo: () => {
+    const s = docSession();
+    const ctx = ctxOf(s);
+    const v = ctx?.mapper?.linesVirtual ?? [];
+    const d = dirTrees[dirActive];
+    const nodeOfVa = (va: number): { va: number; label: string; depth: number } | null => {
+      if (!d) return null;
+      const n = nodeOwningVa(d.roots, va, docs);
+      return n ? { va: n.va, label: d.labels.get(n.va) || n.label, depth: n.depth } : null;
+    };
+    const rows = [...document.querySelectorAll<HTMLElement>('#docText .docLine')].map((r) => Number(r.id.replace(/^L/, '')));
+    const range = s ? (() => { const b = boundsOfRealm(ctxOf(s), s.realm); return { first: b.first, last: b.last }; })() : null;
+    const pinnedLine = typeof s?.pinned?.line === 'number' ? s.pinned.line : null;
+    const onPage = pinnedLine != null && rows.length > 0 && pinnedLine >= rows[0] && pinnedLine <= rows[rows.length - 1];
+    // 麵包屑實際用的錨點（由 renderDoc 記下來）：釘選那一行在這一頁才用它，
+    // 否則用這一頁的第一行（2026-11-01 修「麵包屑與本文不一致」）
+    const anchorVa = trailAnchorVa() || (s ? (typeof s.pinned?.va === 'number' ? s.pinned.va : s.realm.from) : 0);
+    return {
+      db: ctx?.dbName ?? null,
+      isActiveDb: !!ctx && ctx.dbId === (activeSlot()?.id ?? 0),
+      docTab: docActive,
+      tabName: s?.name ?? null,
+      realm: s?.realm ?? null,
+      range,
+      rows: rows.length ? { first: rows[0], last: rows[rows.length - 1], count: rows.length } : null,
+      rowsInsideRange: !!(range && rows.length && rows[0] >= range.first && rows[rows.length - 1] <= range.last),
+      pinned: s?.pinned ? { va: s.pinned.va, line: s.pinned.line, onPage } : null,
+      anchorVa,
+      anchorNode: nodeOfVa(anchorVa),
+      textNode: rows.length ? nodeOfVa(v[onPage ? (pinnedLine as number) : rows[0]] ?? 0) : null,
+      trailLabels: [...document.querySelectorAll('#docTrail .trail, #docTrail .trailSib, #docTrail .trailMore')]
+        .map((x) => (x.textContent ?? '').replace(/[▾▸]/g, '').trim()),
+      trailCurrent: (document.querySelector('#docTrail .trailSib.cur') ?? document.querySelector('#docTrail .trailMore'))?.textContent?.replace(/[▾▸]/g, '').trim() ?? '',
+      staleRenders: staleRenderCount(),
     };
   },
   state: () => ({
@@ -1872,6 +2279,8 @@ export function installDebugApi(): void {
     hostSearch: lastGoAnswer,   // 桌面版：上一次由 Go 回答的查詢（網頁版 null）
     dbPick: activeCatalogKey(),
     dbPickOpen: dbPickOpen(),
+    /** adb 選單目前的排序（`k`＝id／file／chars／size／date，`d`＝1 升冪、-1 降冪） */
+    dbPickSort: dbPickSortState(),
     logo: logoState(),
     leftTab: $('#colLeft .tabBtn.active')?.getAttribute('data-tab') ?? null,
     treePhases,
@@ -1882,12 +2291,28 @@ export function installDebugApi(): void {
     docTabs: docTabs.map((t) => ({
       name: t.name, from: t.realm.from, to: t.realm.to, page: t.page,
       pagelines: t.cache?.dt?.lines.length ?? 0,
+      /** 這個分頁屬於哪一庫（跨庫分頁並存時看得出來） */
+      db: ctxOf(t)?.dbName ?? null,
+      dbId: ctxOf(t)?.dbId ?? 0,
+      /** 記住的捲動位置（切回這個分頁會回到那裡） */
+      scroll: typeof t.scrollTop === 'number' ? t.scrollTop : null,
     })),
     docPage: docSession() ? docSession()!.page + 1 : 0,
-    docPages: docSession() ? pageBounds(docSession()!.realm, docSession()!.page).pages : 0,
-    docTabPages: docSession() ? boundsOfRealm(docSession()!.realm).pages : 0,
+    docPages: docSession() ? pageBounds(ctxOf(docSession()), docSession()!.realm, docSession()!.page).pages : 0,
+    docTabPages: docSession() ? boundsOfRealm(ctxOf(docSession()), docSession()!.realm).pages : 0,
+    /** 目前分頁屬於哪一庫（跨庫分頁時 !== db） */
+    docTabDb: ctxOf(docSession())?.dbName ?? null,
+    docTabDbId: ctxOf(docSession())?.dbId ?? 0,
+    /** 有本文分頁的庫（dbChip 的 owner 標記） */
+    tabDbs: tabDbIds(),
     docPageLines: docSession()?.cache?.dt?.lines.length ?? 0,
     docRealm: docSession()?.realm ?? null,
+    /** 目前分頁的 realm 換成行號範圍（測「畫面上的行是不是這一頁的」用） */
+    docRange: docSession()
+      ? (() => { const b = boundsOfRealm(ctxOf(docSession()), docSession()!.realm); return { first: b.first, last: b.last }; })()
+      : null,
+    /** 丟掉的舊分頁渲染次數（非同步競態的診斷；應該一直是 0） */
+    staleRenders: staleRenderCount(),
     pagerHidden: ($('#docPager') as HTMLElement | null)?.hidden ?? null,
     docStrip: document.querySelectorAll('#docTabStrip .docTab').length,
     snippetScope: snippetScope ? { from: snippetScope.realm.from, to: snippetScope.realm.to, label: snippetScope.label } : null,
@@ -1963,12 +2388,15 @@ export function installDebugApi(): void {
 
 import { loadTree } from './search';
 
-import { MAX_DBS, activeCatalogKey, activeSlot, catalogAdd, catalogAddFile, catalogEmpty, catalogState, closeDb, dbLog, dbPickOpen, needsAddItem, openDbs, pickAddFile, refreshHostDbs, renderDbPick, setDbHooks, setDbPickOpen, switchTo } from './dbs';
+import { setTabBinderPlaceholder } from './noop-unused';
+import { MAX_DBS, activeCatalogKey, activeSlot, catalog, dbNameCandidates, catalogAdd, catalogAddFile, catalogEmpty, catalogState, closeDb, dbLog, dbPickOpen, dbPickSortState, needsAddItem, openDbs, pickAddFile, refreshHostDbs, renderDbPick, setDbHooks, setDbPickOpen, switchTo } from './dbs';
+import { dropLegacyReadingSetting, openDbRecs, recKey, resolveOpenSet, savedOpenSet, writeOpenSetNow } from './open-set';
+import { applyReadState, buildReadState, exportReadState, loadReadStateFile, readStateFileName, setReadStateUiInfo } from './read-state';
 import { editCount, findSession, sourceKey } from './edit-session';
 import { extraRevisions } from './revisions-store';
 import { rebuildAndDownload, rollbackAndDownload, runRebuild } from './rebuild-ui';
 import { initTextPane, renderTextPane, resetTextPane, setEnsureRight, setOpenInMain, textState } from './text-pane';
-import { initXref, lookupBook, openInMain, readerFor, previewForeign, refreshReverse, xrefDebug, xrefJump, xrefProbe } from './xref';
+import { initXref, lookupBook, openInMain, parseTaishoCite, readerFor, previewForeign, refreshReverse, resolvePageCite, xrefDebug, xrefJump, xrefProbe } from './xref';
 import { initEmbed } from './embed';
 import { initHeatTab, renderHeatTab, syncHeatTab } from './heat-tab';
 import { initRevList } from './rev-list';
@@ -1986,7 +2414,7 @@ import { initTheme, setSvgInvert, svgInvertOn, THEME_LABEL, themeOf } from './th
 import { simplifiedStats, toSimplified } from './lossless';
 import { initDesktopBrand } from './update-ui';
 import { adbUpdateState, checkAdbUpdates, closeAdbUpdateDialog, initAdbUpdate, openAdbUpdateDialog, paintAdbUpdateButton } from './adb-update';
-import { initUpdateMirror, initUpdateMirrorUi, mirrorState, onMirrorApplied, reprobeMirror, setMirrorMode } from './mirror';
+import { initUpdateMirror, initUpdateMirrorUi, mirrorState, reprobeMirror, setMirrorMode } from './mirror';
 import { initDesktopWindowKeys } from './window-keys';
 
 export { ADV_KEY, COLS_KEY, DEFAULT_COLS, MAX_SIDE, MIN_SIDE, advanced, applyCols, attachSplitter, boot, defaultLeftTab, readAdvanced, readCols, saveCols, setAdvanced, setSide, showTab, toggleSide };
@@ -2065,6 +2493,17 @@ function clearDbUi(): void {
   ($('#docTabs') as HTMLElement | null)!.hidden = true;
   setStatus('已關閉資料庫', 'info');
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 

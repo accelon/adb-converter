@@ -67,7 +67,7 @@ const CALL_NAMES = new Set([
 /** `分頁` 認得的分頁名（左右兩欄的聯集） */
 const TAB_NAMES = new Set([
   'dir', 'terms', 'freq', 'folio', 'latin', 'token',      // 左欄
-  'sum', 'text', 'dict', 'meta', 'capacity', 'docs', 'images', // 右欄
+  'sum', 'text', 'dict', 'meta', 'capacity', 'docs', 'images', 'heat', // 右欄
 ]);
 
 /** `api:` 條件讀的是 __accelon26.state() 的頂層鍵 */
@@ -325,7 +325,9 @@ function main(): void {
     console.error(`沒有 ${TOUR_DIR}（放 *.tour 劇本的地方）`);
     process.exit(2);
   }
-  const files = readdirSync(TOUR_DIR).filter((f) => f.endsWith('.tour')).sort();
+  const files = readdirSync(TOUR_DIR).filter((f) => f.endsWith('.tour')).sort(
+    (a, b) => (a === 'first-run.tour' ? -1 : b === 'first-run.tour' ? 1 : a.localeCompare(b)),
+  );
   if (!files.length) {
     console.error(`${TOUR_DIR} 裡沒有 .tour 劇本`);
     process.exit(2);

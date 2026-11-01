@@ -54,3 +54,7 @@ build/darwin/
 
 y2adb.exe
 tei2adb.exe
+
+# Python 小工具的位元碼快取
+__pycache__/
+*.pyc

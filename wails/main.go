@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -157,6 +158,23 @@ func main() {
 		win.OnWindowEvent(ev, func(*application.WindowEvent) { tracker.snapshot() })
 	}
 	win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) { tracker.save() })
+	// 離開前請頁面「存一次閱讀狀態」（作者 2026-11-01）：開著哪幾個 adb、
+	// 目前本文分頁的捲動位置與選取區。頁面那邊寫的是 localStorage（同步），
+	// 所以關窗這一刻呼叫就寫得進去；beforeunload／pagehide 是同一支的備援。
+	// 用 sync.Once 只呼叫一次（WindowClosing 與 OnShutdown 都會來）。
+	var exitSaved sync.Once
+	saveReadingState := func() {
+		exitSaved.Do(func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("saveOnExit: %v", r)
+				}
+			}()
+			win.ExecJS("try{window.__accelon26&&window.__accelon26.saveOnExit&&window.__accelon26.saveOnExit()}catch(e){}")
+		})
+	}
+	win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) { saveReadingState() })
+	app.OnShutdown(saveReadingState)
 	app.OnShutdown(tracker.save)
 	// 正常結束時刪掉「上一版」（accelon26-prev.exe）。反過來說：更新交接後自己結束的
 	// 那一支**不刪** —— 那正是新版起不來時使用者的退路。

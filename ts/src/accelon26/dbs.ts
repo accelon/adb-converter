@@ -12,13 +12,17 @@
  * it; the ACTIVE chip carries the ✕ that closes it (and every tab that used it).
  */
 import { $, escapeHtml, fmtBytes, fmtInt, openFile, restoreCore, snapshotCore } from './viewer';
-import { AdbReader, BlobIO, type AdbSource } from './adb';
-import { restoreDocPane, snapshotDocPane } from './doc-pane';
+import { AdbReader, BlobIO, type AdbSource, type DocRow } from './adb';
+import type { VaPaMapper } from './vapa';
+import type { SearchSession } from './search';
+import { setActiveDocDbId, setDocCtxResolver, type DocCtx } from './doc-ctx';
+import { activateTabById, activateTabForDb, activeTabId, closeTabsForDb, dropPageImages, restoreDocPane, setDocActive, setDocTabsChangedHook, sharedDocTabsOn, showEmptyDoc, snapshotDocPane, tabCountOfDb } from './doc-pane';
 import { restorePanes, snapshotPanes } from './panes';
 import { restoreScopes, snapshotScopes } from './scopes';
 import { restoreSummary, snapshotSummary } from './summary';
 import { restoreLink, snapshotLink } from './link';
 import { restoreTextPane, snapshotTextPane } from './text-pane';
+import { SHORT_DB_NAMES } from './short-titles';
 import { backendKind } from './backend';
 import { desktopSources, hostState } from './host';
 import { discardAll, editCount, findSession, hasEdits, onEditsChange, sourceKey } from './edit-session';
@@ -33,14 +37,6 @@ export const MAX_DBS = 5;
  * 現在先寫死（taisho 沒有 集.b 就是「大正」）；下次 rebuild 把 `b=` 放進 集 標籤，
  * 這裡就會自動改用檔頭的值，不必再改程式。
  */
-const SHORT_DB_NAMES: Record<string, string> = {
-  taisho: '大正',
-  wxzj: '卍續',
-  goryeo: '高麗',
-  ys: '印順',
-  tx: '太虛',
-  lc: '呂澂',
-};
 
 const shortFromHead = new Map<string, string>();
 const shortAsked = new Set<string>();
@@ -49,6 +45,12 @@ const dbBase = (n: string): string => n.replace(/\.adb$/i, '').toLowerCase();
 function slotKey(d: DbSlot): string {
   const r = (d.core as { reader?: AdbReader } | undefined)?.reader;
   return (r?.header.dbname || dbBase(d.file.name)).toLowerCase();
+}
+
+/** 某個 dbname 的短名（給標籤用；沒有就回空字串）。 */
+export function dbShortName(dbname: string): string {
+  const k = (dbname || '').toLowerCase();
+  return (k ? shortFromHead.get(k) ?? SHORT_DB_NAMES[k] : '') ?? '';
 }
 
 /** 晶片上的名字（同步；檔頭的 集.b 讀到後會蓋過去）。 */
@@ -95,7 +97,19 @@ export interface DbSlot {
   file: AdbSource;
   /** MRU stamp: the largest is the most recently used (eviction takes the smallest) */
   usedAt: number;
+  /** 這個庫最後看的本文分頁 id（shared 模式下切庫時要回到那一個） */
+  docTabId?: number;
   core: unknown; docPane: unknown; scopes: unknown; summary: unknown; link: unknown; panes: unknown; text: unknown;
+}
+
+/** `core` 快照的形狀（viewer.snapshotCore）；只有 ctx 解析會用到這幾欄 */
+interface CoreSnap {
+  reader?: AdbReader | null;
+  mapper?: VaPaMapper | null;
+  session?: SearchSession | null;
+  docs?: DocRow[];
+  currentFile?: string;
+  currentSource?: AdbSource | null;
 }
 
 /**
@@ -106,6 +120,8 @@ export interface CatalogEntry {
   key: string;          // file identity: name + size + mtime
   file: AdbSource;
   name: string;         // 庫名 from the header
+  /** adb id＝檔頭 dbname（`13j`、`ys`）；選單的預設排序鍵（作者 2026-11-01） */
+  dbname?: string;
   usedAt: number;
 }
 
@@ -113,6 +129,28 @@ export const openDbs: DbSlot[] = [];
 /** every database this session has offered (see CatalogEntry) */
 export const catalog: CatalogEntry[] = [];
 const fileKey = (f: AdbSource): string => f.name + ':' + f.size + ':' + f.lastModified;
+
+/**
+ * 這個環境認得的「庫名」有哪些（頁行引用 `y38p7a8` 要靠它分辨前綴；作者 2026-11-01）。
+ *
+ * 來源：已開啟的庫（檔頭 dbname ＋ 檔名）與 catalog（dbname ＋ 檔名）。
+ * 目前 active 的庫排最前面，同分時優先它。
+ */
+export function dbNameCandidates(): string[] {
+  const out: string[] = [];
+  const put = (n: string): void => {
+    const v = (n ?? '').toLowerCase();
+    if (v && !out.includes(v)) out.push(v);
+  };
+  const dbOf = (d: { core?: unknown }): string =>
+    ((d.core as { reader?: { header?: { dbname?: string } } } | undefined)?.reader?.header?.dbname ?? '');
+  const base = (n: string): string => n.replace(/\.adb$/i, '');
+  const active = activeSlot();
+  if (active) { put(dbOf(active)); put(base(active.file.name)); }
+  for (const d of openDbs) { put(dbOf(d)); put(base(d.file.name)); }
+  for (const e of catalog) { put(e.dbname ?? ''); put(base(e.file.name)); }
+  return out;
+}
 let useSeq = 0;
 /** diagnostics: what each save/restore saw (state().dbLog) */
 export const dbLog: string[] = [];
@@ -128,6 +166,34 @@ export function setDbHooks(h: Hooks): void { hooks = h; }
 
 export const activeSlot = (): DbSlot | null => openDbs.find((d) => d.id === activeId) ?? null;
 export const loadedSlot = (): DbSlot | null => openDbs.find((d) => d.id === loadedId) ?? null;
+
+/**
+ * 由 slot 的 core 快照組出 `DocCtx`（作者 2026-11-01）。
+ *
+ * 本文分頁的 ctx 只存參考，不能序列化；快照裡每個分頁只帶 `dbId`，還原時
+ * 用這個函式從還開著的 slot 重新解析（見 `doc-pane.restoreDocPane`）。
+ * 這裡只讀 `slot.core`（不用全域），所以「正在載入別庫」的途中呼叫也正確。
+ */
+function ctxOfSlot(id: number): DocCtx | null {
+  const slot = openDbs.find((d) => d.id === id);
+  const core = slot?.core as CoreSnap | null | undefined;
+  if (!slot || !core?.reader || !core.mapper) return null;
+  return {
+    dbId: slot.id,
+    reader: core.reader,
+    mapper: core.mapper,
+    session: core.session ?? null,
+    docs: core.docs ?? [],
+    dbName: core.reader.header.dbname ?? slot.name,
+    dbCName: core.reader.header.dbcname ?? '',
+    file: core.currentSource ?? slot.file,
+    fileName: core.currentFile || slot.file.name,
+  };
+}
+
+setDocCtxResolver(ctxOfSlot);
+// 本文分頁屬於哪幾庫變了 → dbChip 的 owner 標記要跟著更新（作者 2026-11-01）
+setDocTabsChangedHook(() => { try { renderDbTabs(); } catch { /* boot 期間還沒有 #dbTabs */ } });
 
 /**
  * Snapshot the database the globals currently belong to, if any.
@@ -160,6 +226,7 @@ export function saveInto(slot: DbSlot): void {
   dbLog.push('save ' + slot.name + ' tabs=' + ((snapshotDocPane() as any).docTabs?.length ?? -1));
   if (dbLog.length > 40) dbLog.shift();
   slot.core = snapshotCore();
+  slot.docTabId = activeTabId();          // 切回來時選回這一個分頁（shared 模式）
   slot.docPane = snapshotDocPane();
   slot.scopes = snapshotScopes();
   slot.summary = snapshotSummary();
@@ -171,7 +238,7 @@ function loadFrom(slot: DbSlot): void {
   dbLog.push('load ' + slot.name + ' tabs=' + ((slot.docPane as any)?.docTabs?.length ?? -1));
   if (dbLog.length > 40) dbLog.shift();
   restoreCore(slot.core);
-  restoreDocPane(slot.docPane);
+  if (!sharedDocTabsOn()) restoreDocPane(slot.docPane);
   restoreScopes(slot.scopes);
   restoreSummary(slot.summary);
   restoreLink(slot.link);
@@ -179,18 +246,29 @@ function loadFrom(slot: DbSlot): void {
   restoreTextPane(slot.text);
   activeId = slot.id;
   loadedId = slot.id;
+  // 「左欄那一庫」換人了：本文分頁的 ctx 判斷（麵包屑／目錄游標／反鏈）靠這個
+  setActiveDocDbId(slot.id);
 }
 
 /** the loaded slot of a catalog entry, if it is loaded */
 export const slotOf = (e: CatalogEntry): DbSlot | null =>
   openDbs.find((s) => fileKey(s.file) === e.key && s.name === e.name) ?? null;
 
-/** remember a picked file (the caller already peeked its header for the name) */
-export function catalogAdd(file: AdbSource, name: string): CatalogEntry {
+/**
+ * remember a picked file (the caller already peeked its header for the name)
+ *
+ * `dbname`／`dbcname` 是 adb 檔頭的 id 與中文名（作者 2026-11-01：選單要按
+ * 「adb id」排序，而且要顯示 id）；呼叫端有讀到檔頭就傳進來，沒有的話用
+ * `AdbSource` 上帶的（桌面宿主會給）。
+ */
+export function catalogAdd(file: AdbSource, name: string, dbname?: string): CatalogEntry {
   const key = fileKey(file);
   const hit = catalog.find((e) => e.key === key && e.name === name);
-  if (hit) return hit;
-  const e: CatalogEntry = { key, file, name, usedAt: ++useSeq };
+  if (hit) {
+    if (!hit.dbname && (dbname || file.dbname)) hit.dbname = dbname || file.dbname;
+    return hit;
+  }
+  const e: CatalogEntry = { key, file, name, dbname: dbname || file.dbname, usedAt: ++useSeq };
   catalog.push(e);
   renderDbPick();
   return e;
@@ -206,11 +284,13 @@ export async function catalogAddFile(file: AdbSource): Promise<CatalogEntry> {
   const hit = catalog.find((e) => e.key === key);
   if (hit) return hit;
   let name = file.name;
+  let dbname = file.dbname;
   try {
     const probe = await AdbReader.open(new BlobIO(file));
+    dbname = probe.header.dbname || dbname;
     name = probe.header.dbcname || probe.header.dbname || file.name;
   } catch { /* keep the file name */ }
-  return catalogAdd(file, name);
+  return catalogAdd(file, name, dbname);
 }
 
 /**
@@ -314,29 +394,113 @@ function fmtDateTime(ms: number): string {
   return fmtDate(ms) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 
+/* ---- 選單排序（作者 2026-11-01） -----------------------------------------------
+ *
+ * 使用者可以按「adb id」「檔名」「建置日期」「大小」升冪／降冪排；**預設 adb id、
+ * 字母序**（A→Z）。點同一個表頭再點一次就反向；換一個表頭時，id／檔名從升冪開始，
+ * 日期／大小從降冪開始（新／大的在前，這是大家看這種表時的直覺）。
+ * 選擇存 localStorage（`accelon26.dbPickSort`），下次打開還一樣。
+ */
+export type DbPickSortKey = 'id' | 'file' | 'chars' | 'size' | 'date';
+
+interface DbPickSort { k: DbPickSortKey; d: 1 | -1 }
+
+const DBPICK_SORT_KEY = 'accelon26.dbPickSort';
+const SORT_KEYS: DbPickSortKey[] = ['id', 'file', 'chars', 'size', 'date'];
+
+function readDbPickSort(): DbPickSort {
+  try {
+    const raw = localStorage.getItem(DBPICK_SORT_KEY);
+    if (!raw) return { k: 'id', d: 1 };
+    const o = JSON.parse(raw) as { k?: string; d?: number };
+    const k = SORT_KEYS.includes(o?.k as DbPickSortKey) ? o!.k as DbPickSortKey : 'id';
+    return { k, d: o?.d === -1 ? -1 : 1 };
+  } catch {
+    return { k: 'id', d: 1 };
+  }
+}
+
+let dbPickSort: DbPickSort = { k: 'id', d: 1 };
+let dbPickSortLoaded = false;
+
+function sortOf(): DbPickSort {
+  if (!dbPickSortLoaded) { dbPickSort = readDbPickSort(); dbPickSortLoaded = true; }
+  return dbPickSort;
+}
+
+/** 目前選單的排序（診斷／測試用） */
+export function dbPickSortState(): { k: DbPickSortKey; d: 1 | -1 } { return { ...sortOf() }; }
+
+/** 改排序並重畫（表頭點擊用；同一個鍵再點＝反向） */
+export function setDbPickSort(k: DbPickSortKey, dir?: 1 | -1): void {
+  const cur = sortOf();
+  const d: 1 | -1 = dir ?? (cur.k === k ? (cur.d === 1 ? -1 : 1) : (k === 'date' || k === 'size' ? -1 : 1));
+  dbPickSort = { k, d };
+  dbPickSortLoaded = true;
+  try { localStorage.setItem(DBPICK_SORT_KEY, JSON.stringify(dbPickSort)); } catch { /* 私密模式 */ }
+  renderDbPick();
+}
+
+/** 檔名（桌面版 path 的 basename；網頁版就是 File.name） */
+function fileNameOf(e: CatalogEntry): string {
+  const f = e.file.path ? (e.file.path.split(/[\\/]/).pop() ?? e.file.name) : e.file.name;
+  return f;
+}
+
+const numOr = (v: number | undefined, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+
+/** 排序用的比較函式；同值時用 adb id／檔名當次序，才不會每次重畫順序都不同。 */
+function compareCatalog(a: CatalogEntry, b: CatalogEntry, s: DbPickSort): number {
+  const by = (x: number, y: number): number => (x === y ? 0 : x < y ? -1 : 1) * s.d;
+  let r = 0;
+  switch (s.k) {
+    case 'file':
+      r = by(fileNameOf(a).localeCompare(fileNameOf(b), 'en', { numeric: true, sensitivity: 'base' }), 0);
+      break;
+    case 'chars':
+      r = by(numOr(charCache.get(a.key), -1), numOr(charCache.get(b.key), -1));
+      break;
+    case 'size':
+      r = by(a.file.size, b.file.size);
+      break;
+    case 'date':
+      r = by(a.file.lastModified, b.file.lastModified);
+      break;
+    default: {   // id
+      const ai = (a.dbname || '').toLowerCase();
+      const bi = (b.dbname || '').toLowerCase();
+      r = by(ai === bi ? 0 : ai < bi ? -1 : 1, 0);
+      break;
+    }
+  }
+  if (r !== 0) return r;
+  // 次序固定：adb id → 檔名（不管主排序是升還是降，這裡一律升冪）
+  const ai = (a.dbname || '').toLowerCase();
+  const bi = (b.dbname || '').toLowerCase();
+  if (ai !== bi) return ai < bi ? -1 : 1;
+  return fileNameOf(a).localeCompare(fileNameOf(b), 'en', { numeric: true, sensitivity: 'base' });
+}
+
 export function renderDbPick(): void {
   const menu = $('#dbPickMenu');
   const btn = $('#dbPickBtn');
   const active = activeSlot();
-  const shown = [...catalog].sort((a, b) => {
-    const ao = slotOf(a) ? 1 : 0, bo = slotOf(b) ? 1 : 0;
-    if (ao !== bo) return bo - ao;
-    return b.usedAt - a.usedAt;
-  });
+  const sort = sortOf();
+  const shown = [...catalog].sort((a, b) => compareCatalog(a, b, sort));
   // 同一個庫名可能有兩個檔案（13j.adb 與 1839.adb 都叫十三經）：表格第一欄就是檔名，
   // 不必再在標籤後面接檔名（作者 2026-10-18 改成表格）。
   if (menu) {
     // 第一項「加入 adb」＝原本 header 的 ＋（作者 2026-10）。只有 file:// 版需要：
     // 桌面版（Wails）啟動時就把工作目錄裡的 adb 全列出來了。
     const addItem = needsAddItem()
-      ? '<tr class="dbPickItem dbPickAdd" data-add="1" tabindex="0" title="開啟 .adb（最多同時 5 個）"><td colspan="4">＋ 加入 adb</td></tr>'
+      ? '<tr class="dbPickItem dbPickAdd" data-add="1" tabindex="0" title="開啟 .adb（最多同時 5 個）"><td colspan="6">＋ 加入 adb</td></tr>'
       : '';
     // 「取得更多 ADB」（作者 2026-10-29）：桌面版直接從官網公開資料庫下載；
     // 一般使用者就看得到，不必先開瀏覽器。離線時變暗但**不隱藏**。
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     const storeRow = hostState().available
       ? `<tr class="dbPickItem dbPickAdd" data-store="1" tabindex="0"${offline ? ' aria-disabled="true"' : ''}`
-        + ` title="${offline ? '目前離線；連上網路後才能取得更多 ADB' : '從官網公開資料庫下載更多 .adb'}"><td colspan="4">⬇ 取得更多 ADB</td></tr>`
+        + ` title="${offline ? '目前離線；連上網路後才能取得更多 ADB' : '從官網公開資料庫下載更多 .adb'}"><td colspan="6">⬇ 取得更多 ADB</td></tr>`
       : '';
     // 「加入 Obsidian」（作者 2026-10-25）：vault → adb，就在這裡轉。網頁版下載到
     // 「下載」資料夾，桌面版寫到執行檔旁邊；兩邊完成後都會更新下面的清單。
@@ -344,31 +508,57 @@ export function renderDbPick(): void {
     const advanced = document.body.classList.contains('advanced');
     const obsidianRows = advanced && vaultAddHandlers
       ? '<tr class="dbPickItem dbPickAdd" data-vault="dir" tabindex="0"'
-        + ' title="把一個 Obsidian vault（整個資料夾）轉成 .adb"><td colspan="4">＋ 加入 Obsidian（資料夾）</td></tr>'
+        + ' title="把一個 Obsidian vault（整個資料夾）轉成 .adb"><td colspan="6">＋ 加入 Obsidian（資料夾）</td></tr>'
         + '<tr class="dbPickItem dbPickAdd" data-vault="zip" tabindex="0"'
-        + ' title="把 Obsidian vault 的 .zip 轉成 .adb"><td colspan="4">＋ 加入 Obsidian（.zip）</td></tr>'
+        + ' title="把 Obsidian vault 的 .zip 轉成 .adb"><td colspan="6">＋ 加入 Obsidian（.zip）</td></tr>'
       : '';
     const rows = shown.map((e) => {
       const s = slotOf(e);
-      // 「adb 名」＝檔名去掉 .adb。桌面宿主的 AdbSource.name 是庫名，真正的檔名在 path。
-      const fname = e.file.path ? (e.file.path.split(/[\\/]/).pop() ?? e.file.name) : e.file.name;
-      const base = fname.replace(/\.adb$/i, '');
+      // 「檔名」＝桌面版 path 的 basename（不含 .adb）；網頁版就是 File.name
+      const base = fileNameOf(e).replace(/\.adb$/i, '');
       const chars = charCache.get(e.key);
-      const cls = 'dbPickItem' + (s && s === active ? ' active' : '');
-      return `<tr class="${cls}" data-key="${escapeHtml(e.key)}" data-name="${escapeHtml(e.name)}" tabindex="0"`
+      const cls = 'dbPickItem' + (s && s === active ? ' active' : '') + (s ? ' loaded' : '');
+      // adb id（檔頭 dbname）：網頁版選檔時沒有讀到就顯示「—」
+      const id = (e.dbname || '').trim();
+      return `<tr class="${cls}" data-key="${escapeHtml(e.key)}" data-name="${escapeHtml(e.name)}" data-id="${escapeHtml(id)}"`
+        + ` data-size="${e.file.size}" data-date="${e.file.lastModified}" tabindex="0"`
         + ` title="${escapeHtml(e.file.name)}${s ? '' : '（尚未載入，選了才讀）'}">`
+        + `<td class="dbPickId">${escapeHtml(id || '—')}</td>`
         + `<td class="dbPickFile">${escapeHtml(base)}</td>`
         + `<td class="dbPickName">${escapeHtml(e.name)}</td>`
         + `<td class="dbPickChars" data-key="${escapeHtml(e.key)}">${chars === undefined ? '…' : fmtInt(chars)}</td>`
+        + `<td class="dbPickSize">${fmtBytes(e.file.size)}</td>`
         + `<td class="dbPickDate">${fmtDate(e.file.lastModified)}</td></tr>`;
     }).join('');
+    // 表頭：點一下就照那一欄排序，再點一次反向（作者 2026-11-01）。
+    // 預設 adb id、升冪（A→Z）；日期／大小換過去時先給降冪（新／大的在前）。
+    const th = (k: DbPickSortKey, label: string, title: string): string => {
+      const on = sort.k === k;
+      const arrow = on ? (sort.d === 1 ? '▲' : '▼') : '';
+      return `<th class="dbPickSortCell${on ? ' on' : ''}" data-sort="${k}" title="${title}">`
+        + `<button type="button" class="dbPickSortBtn">${label}<span class="dbPickArrow">${arrow}</span></button></th>`;
+    };
     menu.innerHTML = shown.length
-      ? '<table class="dbPickTable"><thead><tr><th>檔名</th><th>庫名</th>' +
-        '<th title="取自 adb 檔頭的 max VA（最大的文字位置），是近似值">字數</th><th>建置日期</th></tr></thead>'
+      ? '<table class="dbPickTable"><thead><tr>'
+        + th('id', 'ID', 'adb id（檔頭 dbname）／點一下排序、再點一下反向')
+        + th('file', '檔名', '檔名（不含 .adb）／點一下排序、再點一下反向')
+        + '<th>庫名</th>'
+        + th('chars', '字數', '取自 adb 檔頭的 max VA（最大的文字位置），是近似值；點一下排序')
+        + th('size', '大小', '檔案大小／點一下排序、再點一下反向')
+        + th('date', '建置日期', '檔案時間（建置日期）／點一下排序、再點一下反向')
+        + '</tr></thead>'
         + '<tbody>' + storeRow + addItem + obsidianRows + rows + '</tbody></table>'
       : (storeRow || addItem || obsidianRows
         ? '<table class="dbPickTable"><tbody>' + storeRow + addItem + obsidianRows + '</tbody></table>'
         : '<div class="dbPickEmpty">（這個資料夾沒有 .adb）</div>');
+    // 表頭排序（停止冒泡，不然會被外面的「點空白處收起」收掉）
+    menu.querySelectorAll<HTMLElement>('.dbPickSortCell').forEach((cell) => {
+      cell.onclick = (ev) => {
+        ev.stopPropagation();
+        const k = cell.dataset.sort as DbPickSortKey | undefined;
+        if (k) setDbPickSort(k);
+      };
+    });
     menu.querySelectorAll<HTMLElement>('.dbPickItem[data-store]').forEach((el) => {
       el.onclick = (ev) => {
         ev.stopPropagation();
@@ -534,17 +724,25 @@ export function registerOpenDb(file: AdbSource, name: string): { ok: boolean; re
   const same = openDbs.findIndex((d) => d.name === name);
   const slot: DbSlot = { id: ++seq, name, file, usedAt: ++useSeq, core: null, docPane: null, scopes: null, summary: null, link: null, panes: null, text: null };
   saveInto(slot);
-  if (same >= 0) openDbs[same] = slot;
-  else openDbs.unshift(slot);      // 最後開啟的放 dbTabs 的最左邊
+  if (same >= 0) {
+    // 同名的舊庫被新檔取代：它的本文分頁畫的是舊檔的 reader，一起關掉
+    const old = openDbs[same];
+    closeTabsForDb(old.id);
+    dropPageImages((old.core as CoreSnap | null | undefined)?.reader ?? null);
+    openDbs[same] = slot;
+  } else openDbs.unshift(slot);      // 最後開啟的放 dbTabs 的最左邊
   // At most MAX_DBS stay: the least recently USED one goes (its 本文分頁 go with it).
   while (openDbs.length > MAX_DBS) {
     const lru = worstSlot(slot);
     if (!lru) break;
     dbLog.push('evict ' + lru.name);
+    closeTabsForDb(lru.id);
+    dropPageImages((lru.core as CoreSnap | null | undefined)?.reader ?? null);
     openDbs.splice(openDbs.indexOf(lru), 1);
   }
   activeId = slot.id;
   loadedId = slot.id;
+  setActiveDocDbId(slot.id);
   renderDbTabs();
   renderDbPick();
   // A DIFFERENT file carrying the same database name REPLACES that chip (two chips
@@ -577,7 +775,10 @@ export function renderDbTabs(): void {
     const built = fmtDateTime(d.file.lastModified);
     const title = `${d.name}\n${d.file.name}（${fmtBytes(d.file.size)}）`
       + (built !== '—' ? `\n建置日期 ${built}` : '');
-    return '<span class="dbChip' + (on ? ' active' : '') + '" data-id="' + d.id + '" title="' + escapeHtml(title) + '">'
+    // owner（作者 2026-11-01）：這個庫有本文分頁（跨庫分頁並存時，一眼看出誰有分頁）。
+    // 只是一圈淡外框／小圓點，**不改變 active**。
+    const hasTabs = tabCountOfDb(d.id) > 0;
+    return '<span class="dbChip' + (on ? ' active' : '') + (hasTabs ? ' owner' : '') + '" data-id="' + d.id + '" title="' + escapeHtml(title) + '">'
       + escapeHtml(chipName(d)) + edit
       + '<span class="dbChipClose" data-close="' + d.id + '" title="關閉（含它的所有本文分頁）">✕</span>'
       + '</span>';
@@ -604,7 +805,7 @@ export function renderDbTabs(): void {
  * ("一使用就跳到最左" means: choosing from the adb dropdown). Clicking a CHIP must never
  * reorder anything ("切換 active 時不要亂跳"), it only restyles.
  */
-export function switchTo(id: number, front = false): void {
+export function switchTo(id: number, front = false, activateTab?: number): void {
   const target = openDbs.find((d) => d.id === id);
   const cur = activeSlot();
   if (!target) return;
@@ -616,6 +817,13 @@ export function switchTo(id: number, front = false): void {
   if (target === cur) { renderDbTabs(); renderDbPick(); return; }
   if (cur) saveInto(cur);
   loadFrom(target);
+  if (sharedDocTabsOn()) {
+    // 共享分頁：本文分頁條保留，選回「這個庫最後看的那一個」；沒有就顯示提示
+    if (activateTab != null && activateTab >= 0) setDocActive(activateTab);
+    else if (!activateTabById(target.docTabId ?? 0) && !activateTabForDb(target.id)) {
+      showEmptyDoc('這個庫還沒有開啟本文；點左側目錄或摘要就會載入。');
+    }
+  }
   hooks.refresh();
   renderDbTabs();
   renderDbPick();
@@ -631,12 +839,17 @@ export function closeDb(id: number): void {
   if (n > 0 && !window.confirm('「' + slot.name + '」有 ' + n + ' 頁修訂，關閉會丟失。仍要關閉？')) return;
   if (es) discardAll(es);
   const wasActive = openDbs[at] === activeSlot();
+  // 關庫＝連它的本文分頁一起關（作者 2026-11-01）：分頁的 ctx 持有這一庫的
+  // reader／mapper，桌面版是 mmap，關掉之後再畫會炸；Blob 也不會釋放。
+  const closed = closeTabsForDb(slot.id);
+  dropPageImages((slot.core as CoreSnap | null | undefined)?.reader ?? null);
   openDbs.splice(at, 1);
+  if (closed) dbLog.push('close ' + slot.name + ' tabs=' + closed);
   if (wasActive) {
     // the most recently used of what is left becomes active
     const next = openDbs.reduce<DbSlot | null>((a, d) => (!a || d.usedAt > a.usedAt ? d : a), null);
     if (next) { loadFrom(next); hooks.refresh(); }
-    else hooks.clear();
+    else { setActiveDocDbId(0); hooks.clear(); }
   }
   renderDbTabs();
   renderDbPick();
@@ -659,6 +872,14 @@ export function closeActiveDb(): void {
 // import 它（避免 dbs → adb-update → dbs 的循環）。
 let tabsExtra: (() => void) | null = null;
 export function setDbTabsExtra(fn: (() => void) | null): void { tabsExtra = fn; }
+
+/**
+ * 「開著哪幾個庫／哪一個是 active」**不在這裡存**（作者 2026-11-01）。
+ *
+ * 以前每次開庫／切庫／關庫都寫一次 settings.json；作者要求「平時不必一直存，
+ * 只有退出 exe 之前再存設定」。所以改成離開 exe 時由 `ui.ts` 的 `saveOnExit()`
+ * 一次寫進 localStorage（`open-set.ts` 的 `writeOpenSetNow()`，同步、關窗也寫得進去）。
+ */
 
 const normPath = (p: string): string => p.replace(/\\/g, '/').toLowerCase();
 
@@ -686,3 +907,4 @@ if (typeof window !== 'undefined') {
   window.addEventListener('online', () => renderDbPick());
   window.addEventListener('offline', () => renderDbPick());
 }
+

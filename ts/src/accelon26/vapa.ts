@@ -163,6 +163,8 @@ export class VaPaMapper {
   get linesPhysical(): number[] { return this.linesEnds ?? []; }
   get linesVirtual(): number[] { return this.linesV ?? []; }
   get blocksVirtualStored(): number[] { return this.vaBlocksStored ?? []; }
+  /** source 容器的 block 數（＝全掃時的段數；萬用字元搜尋的進度分母） */
+  get sourceBlocks(): number { return this.srcBlocks; }
   /** bytes per source block (the PA grid stride) */
   get stride(): number { return this.reader.header.srcBlockSize; }
   /** first byte of line `i` in the PA space */

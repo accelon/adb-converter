@@ -50,7 +50,6 @@ const (
 	// 本地建置時間與現在差不到這個 → 開發者本地 exe，不檢查更新。
 	devWindow = 2 * time.Hour
 	// 背景檢查的間隔（啟動時先檢查一次）。
-	updateCheckEvery = 6 * time.Hour
 	// 遠端要比本地新這麼多才算「有新版本」（容忍時區/時鐘誤差）。
 	newerSlack = time.Minute
 	// 線上版本資訊檔（跟 exe 放同一個資料夾）：buildTime 是版本真相，sha256 用來驗下載。
@@ -497,21 +496,19 @@ func (h *AdbHost) CheckUpdate() AppInfo {
 	return h.AppInfo()
 }
 
-// StartUpdateChecker 啟動背景檢查：清掉上次更新留下的 .old，然後先檢查一次，
-// 之後每 updateCheckEvery 檢查一次。**只有真的在跑 GUI 時才呼叫。**
+// StartUpdateChecker 啟動時檢查一次：清掉上次更新留下的 .old，然後查一次線上版本。
+// **只有真的在跑 GUI 時才呼叫。** 之後不再背景輪詢（作者 2026-11-01：降低伺服器負擔）；
+// 使用者開「說明」頁時，UI 會呼叫 CheckUpdate 再即時確認一次。
 // macOS 也照樣檢查（只是查到有新版本之後只能請使用者回官網下載）。
 func (h *AdbHost) StartUpdateChecker() {
 	go func() {
 		cleanupOldExe()
-		for {
-			st := h.checkUpdateNow()
-			if st.BaseUsed != "" && st.BaseUsed != currentMirrorBase() {
-				time.Sleep(2 * time.Second) // 檢查期間換了鏡像：立刻用新站重查
-				continue
-			}
-			h.setUpdateStatus(st)
-			time.Sleep(updateCheckEvery)
+		st := h.checkUpdateNow()
+		if st.BaseUsed != "" && st.BaseUsed != currentMirrorBase() {
+			time.Sleep(2 * time.Second) // 檢查期間換了鏡像：用新站重查
+			st = h.checkUpdateNow()
 		}
+		h.setUpdateStatus(st)
 	}()
 }
 

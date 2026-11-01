@@ -146,6 +146,24 @@
   正解是 `caches/書`（7 個書名）補第一層，不是想辦法從內文撈。
 * **節點名稱**：能用屬性／快取就別走內文；目前還有兩處會走內文（見 §7 P1 第 6 項）。
 
+### 0.3 建置成本 vs 使用者每次成本：能預先算好就預先算好
+
+同一件事可以在建置時算一次，或在使用者每次開庫／點連結時算一次；兩者的量級完全不同：
+
+* 建置：只有建庫的人付一次，幾秒到幾十秒；檔案多幾 MB 也只是換版時傳一次。
+* 使用：**每一位使用者、每一次互動**都要付；多等 1 秒就會變成「這軟體很慢」的印象，
+  而且使用者無法自行改善。
+
+所以：**只要結果放得進 adb（容器／屬性／快取），就不要讓閱讀器每次重算。**
+可以忽略的門檻大致是「建置多花 < 1 分鐘、檔案多 < 10 MB」這個等級；用這種代價換掉
+使用者每次 0.2 秒以上的等待，一律值得。反過來說，為了省建置時間或幾 MB 而讓使用者
+每次等，是把成本推給最沒有能力承擔的人。
+
+案例（2026-10-31）：ys 的 20,752 條 `<聯>` 反鏈表，閱讀器第一次要用時要解
+`聯.i`／`聯.q` 屬性，約 1.7 秒；改成建置時算好、以 `xrev` 容器寫進 ys.adb
+（約 +0.2–0.4 MB、建置多幾秒），閱讀器直接讀表，使用者每次省下這 1.7 秒。
+同理：`<註>`／`<釋>` 的位置用 `tags`＋`註.n`／`釋.n` 查表，而不是掃原文。
+
 ---
 ## 1. 建置與測試指令
 
@@ -511,11 +529,15 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   `#settingsBox`。原本的 🧑‍💻（進階模式）與「繁簡」按鈕都收進來，header 只剩三個圖示
   （◧／◨／🔧）。左上角標題是 `Accelon26`（亮灰 `#d9d9d9`，`26` 仍是金色）。
 
-  * **主題**：`#themeSeg` 三選一——**暗色系（預設）／亮色系／護眼**；設定鍵 `localStorage['accelon26.theme']`，`theme.ts` 是唯一碰 `data-theme` 的地方。通用規則（CSS 變數、boot script、色票、三主題驗收）見 [yap-software-practice.md](./yap-software-practice.md) §7。
-  * **介面**：`#setPageMarks` 顯示原書頁碼（進階模式已移到最下面，見下）。
-  * **進階**（作者 2026-10：搬到設置頁**最下面**一區）：`#setAdvanced` 進階模式
+  * **介面．主題**：`#themeSeg` 四選一——**暗色系（預設）／亮色系／春綠／秋黃**；設定鍵 `localStorage['accelon26.theme']`，`theme.ts` 是唯一碰 `data-theme` 的地方。通用規則（CSS 變數、boot script、色票、三主題驗收）見 [yap-software-practice.md](./yap-software-practice.md) §7。
+    2026-11-01：`#setSvgInvert`（SVG 圖反轉）從「介面」section 併進這裡；暗色模式把黑線 SVG 反轉成亮線，亮色主題不作用。
+  * **介面．更新**：`#setMirror` 鏡像站（程式與資料庫更新共用）。
+  * **閱讀**（2026-11-01 把「路徑字數」移到這裡）：原書分行 `#showHardBreaks`、顯示原書頁碼
+    `#setPageMarks`、術語顯示 `#setTermMode`、debug 行提示 `#setLineTip`、
+    路徑字數 `#setTrailMax`（breadcrumb 每層最多 4／5／6／8 字或不限）。
+  * **進階**（作者 2026-11-01：從「介面」獨立成一個頁籤）：`#setAdvanced` 進階模式
     （token 瀏覽、META／容量／文件／圖片、顯示原始文件）。
-  * **介面．顯示原書頁碼**（`#setPageMarks`，作者 2026-10）：決定 `<頁>`／`<_頁>`／`頁元`
+  * **閱讀．顯示原書頁碼**（`#setPageMarks`，作者 2026-10）：決定 `<頁>`／`<_頁>`／`頁元`
     要不要渲染。開（預設）＝照常（原書分行是右靠頁分隔＋頁碼，連排是行內 `〔n〕`）；
     關＝**整個標籤不渲染**（沒有頁碼、也沒有分隔線），中欄與右欄「文字內容」都一樣。
     狀態存在 `localStorage['accelon26.pagemarks']`，切換時 `rerenderDoc()` 立即重畫。
@@ -806,14 +828,32 @@ UI（作者 2026-10 的頂欄順序）：`#brand` → `#toggleLeft`／`#toggleRi
 `clearDbUi()` 會 `hideDocLogo()`：**關掉資料庫時中間的 logo 一定要收起**（`updateDocLogo()` 會因為 reader
 還指著剛關掉的庫、而 #docText 已經沒有 `.docLine`，又把 logo 打開，所以那裡不能再呼叫它）。
 
+**跨庫本文分頁（2026-11-01）**：每個 `DocSession` 現在帶自己的 `ctx`
+（`ts/src/accelon26/doc-ctx.ts` 的 `DocCtx`＝那一庫的 reader／mapper／session／docs＋
+`dbId`／檔名，只存參考）。所以「共享分頁」（設定 → 記憶 `accelon26.shareddoctabs`，**預設關**）
+開啟後，A 庫的目錄／摘要可以配 B 庫的本文：**點分頁只換本文，不換 adb**；
+唯一會因為本文而切庫的是 header 的 🌲（`revealCursorInTree`）。關閉共享分頁時行為與以前
+完全相同（切庫整組換 `snapshotDocPane`／`restoreDocPane`）。`switchTo` 後要用
+`activateTabById(slot.docTabId)` 選回那一庫最後看的分頁。細節與實測見
+`docs/system/refactor-doctab-adb.md` §10。
+
 **最右上的 adb 清單**（作者 2026-10 第二版：**黃色資料夾按鈕**，不再是 `<select>`）：
 `#dbPickBtn`（📁，`color: #ffd479`）按一下才展開 `#dbPickMenu`（預設 `hidden`；再按一下、
 點空白處或 Esc 收起）。清單列出**這次工作階段選過／拖過的每一個 adb**，只讀 header
 （`catalogAddFile()` → `AdbReader.open(new BlobIO(file))`，幾 KiB）所以**未載入的庫也在清單裡**
 （作者 2026-10-18：不再標「（未載入）」，改用表格分辨）。目前這一個的列標 `.active`。
 
-**清單是表格（作者 2026-10-18）**：`檔名`（不帶 `.adb`）／`庫名`／`字數`／`建置日期`（檔案時間
-`YYYY-MM-DD`）。選單貼在 📁 **正下方、向右展開**（`left: 0`，相對 `.dbPickWrap`）；寬度由
+**清單是表格（作者 2026-10-18；2026-11-01 加排序）**：`ID`（adb id＝檔頭 `dbname`）／
+`檔名`（不帶 `.adb`）／`庫名`／`字數`／`大小`／`建置日期`（檔案時間 `YYYY-MM-DD`）。
+**表頭可以點**：按那一欄升冪、再點一次降冪（▲／▼），可排的欄位是 ID／檔名／字數／大小／
+建置日期（庫名不可排）。**預設是 adb id、字母序**；換到「日期／大小」時先給降冪（新／大的
+在前）。選擇存 `localStorage['accelon26.dbPickSort']`（`{k,d}`），下次打開還一樣。
+排序純粹照選定的欄位，不再「已載入的排前面」——已載入的列左邊有一條淡線（`.loaded`），
+active 那一列仍是 accent 色的線＋底色，所以排序後也認得出自己開著哪幾個。
+`catalog` 的每一筆現在帶 `dbname`（`catalogAdd(file, name, dbname)`；桌面宿主在
+`AdbSource` 上直接給 `dbname`／`dbcname`），沒有 dbname 的（例如網頁版剛選、還沒讀檔頭）
+ID 欄顯示「—」、排序時視為空字串。
+選單貼在 📁 **正下方、向右展開**（`left: 0`，相對 `.dbPickWrap`）；寬度由
 `renderDbPick` 依「按鈕左緣到視窗右緣」寫進 `max-width`，庫名太長就在格子裡省略 —— 以前
 `right: 0` 是向左展開，庫名一長就溢出畫面左邊；改貼右緣又離按鈕太遠，兩個都不對。
 `字數` 不在檔頭裡（要解壓 source 容器才知道），所以**選單打開才
@@ -1563,6 +1603,15 @@ Go 單元測試（`wails/update_test.go`）：目錄可寫／不可寫、遠端�
 | `ts/src/accelon26/host.ts` | 唯一知道宿主存在的地方（動態 import runtime → `AdbSource`） |
 | `ts/tools/desktop-test.ts` | 桌面版回歸（headless `-selftest` ＋ `--gui` 的 WebView2/CDP 檢查） |
 | `ts/tools/build-desktop.ts` | 把同一份單檔 HTML 寫進 `wails/assets/` |
+| `ts/tools/doctab-cross-test.ts` | 跨庫本文分頁（點分頁不換 adb／🌲 才切庫／關庫連帶關分頁；2026-11-01） |
+| `ts/tools/read-state-test.ts` | 閱讀狀態匯出／載入（含本文選取區）＋啟動恢復開著的 adb（2026-11-01） |
+| `ts/tools/desktop-exit-test.ts` | **真 exe** 的「離開時存、重開時回到原處」：兩個庫＋捲動＋選取區（2026-11-01） |
+| `ts/tools/dbpick-sort-test.ts` | adb 選單的排序（預設 adb id、四欄升降冪、存 localStorage；2026-11-01） |
+| `ts/tools/trail-consistency-test.ts` | 麵包屑與本文是否一致（翻頁／切頁籤／切 adb 的隨機壓測；2026-11-01） |
+| `ts/tools/wildcard-test.ts` | 搜尋所有 adb 的三種模式＋萬用字元掃描（語法、進度、中斷；2026-11-01） |
+| `ts/tools/wildcard-scan-cli.ts` | 萬用字元掃描的 CLI（不開 GUI；taisho 驗收用） |
+| `ts/tools/wildcard-desktop-test.ts` | 萬用字元掃描的真 exe 實測（預設小型庫） |
+| `ts/tools/page-cite-test.ts` | 頁行引用 y38p7a8（ys／fuyan 跳頁跳行＋cheat card；2026-11-01） |
 
 ---
 
@@ -2396,3 +2445,306 @@ Go（`wails/import.go` 新）：`SaveAdb` 驗簽名 → 清理檔名（ASCII、`
 * **上線**：2026-10-27 RC2，buildTime `2026-10-27T04:25:00Z`、size `17,994,240`、
   sha256 `80304f1e9c530183ab61f4e4e9faf1c5f82a826d599ce15922544fcc98493b72`；
   `deploy --site` 後線上 versions.json／exe／7z／changelog 都核對過。
+
+## 22. 2026-11-01（第二輪）：啟動恢復開著的 adb、閱讀狀態匯出／載入
+
+### 22.1 桌面版啟動恢復（作者 2026-11-01：「不要每次都重來」）
+
+* 以前 `bootDesktop()` 只挑**一個**庫（`pickStartupDb`：優先有 logo 的最新檔），
+  開著的另外三四個每次都要重開。
+* 現在：`ts/src/accelon26/open-set.ts` 把「開著哪幾個庫（由左到右）＋哪一個是 active」
+  寫進 **`localStorage['accelon26.openset.v1']`**，由 `ui.ts` 的 `saveOnExit()` 在
+  **離開 exe 之前寫一次**（作者 2026-11-01：「平時不必一直存」）。
+  * 之所以不用 settings.json：那是一條**非同步**的宿主呼叫，關窗那一刻不一定等得到；
+    localStorage 是同步的，`WindowClosing` 當下寫得進去。`beforeunload`／`pagehide`
+    也接同一支當備援；Go 端在 `WindowClosing`／`OnShutdown` 用 `ExecJS("__accelon26.saveOnExit()")`
+    再補一次（`sync.Once` 去重）。
+  * 開庫／切庫／關庫**都不寫**（`dbs.ts` 的 `setOpenSetChangedHook` 已移除）。
+  * 全部關掉時（離開那一刻）把紀錄刪掉，下次啟動不會去開使用者早就關掉的庫。
+  * **settings.json 不放 adb 路徑**（作者 2026-11-01：「別人的環境不一樣」）。
+    第一版曾把同一份清單寫進 settings.json 的頂層 `reading`（含 `path`），現在
+    `open-set.ts` 的 `dropLegacyReadingSetting()` 會在啟動時把它清掉一次
+    （`tag-style` 的 `extraTop` 會原樣寫回，所以不清掉的話之後每次存設定都會再寫出去）。
+* 啟動：`bootDesktop()` → `restoreOpenSet(srcs)`；紀錄是 dbTabs 由左到右，而 `openFile()`
+  會把新開的放最左，所以**反著開**才會得到同樣排列；開完切回記錄的 active。
+  找不到的檔（搬走／刪掉）跳過並在狀態列說明；一個都找不到才退回 `pickStartupDb()`。
+
+### 22.1b 離開時也存「本文的捲動位置與選取區」（作者 2026-11-01 追加）
+
+* 上一輪只存了節點／頁碼，所以重開後回到那一頁的**頁首**、選取區也不見了。
+* `accelon26.lastRead.v1` 的每筆紀錄多兩個欄位：`scrollTop`、`sel`（`DocSelection`）。
+  **只有 `saveLastReadNow({ view: true })`（＝`saveOnExit()`）會寫它們**；平時重畫／翻頁
+  只更新頁碼／行號，而且只有在「頁與節點都沒變」時才把舊的 view 一起帶過去。
+* 還原：`restoreLastRead()` 先把 `pendingView` 排好再 `ensurePage()`；`renderDoc` 會
+  **告訴 `paintHit` 不要自己捲到釘選那一行**（`paintHit(..., { noScroll: true })`），
+  等 `paintHit` 把 DOM 改寫完（包 `<mark>`）才把捲動位置與選取區套上去 ——
+  順序反了的話 Range 會被拆掉、位置也會被搶走。
+* 選取區除了「行號＋行內漢字」（跨環境可讀）之外，同一行還會多存 `fromCode`／`toCode`
+  （該行 `.lineText` 的字元位移）：漢字座標會把選取邊界的標點丟掉（`.筮于庿門.` 會變成
+  `筮于庿門`），字元位移則完全精確；還原時先用字元位移（並驗那段文字一模一樣），
+  對不上才退回漢字索引。
+* 切分頁／切庫（記憶體內的快照）也走同一條路：`DocSession.sel` ＋ `snapshotDocPane` 的
+  `scrollTop`／`sel` → `restoreDocPane` → `pendingView`。
+
+### 22.2 閱讀狀態（JSON，回報問題用）
+
+* `ts/src/accelon26/read-state.ts`（新）：`buildReadState()`／`exportReadState()`／
+  `loadReadStateFile()`／`applyReadState()`。設定頁在 **進階 → 閱讀狀態**（名稱輸入框＋
+  匯出／載入兩顆按鈕＋隱藏的 `<input type=file>`）。
+* 檔名：**`<修訂者 ID><yyyyMMddHHmmss>.json`**（本地時區、純數字；ID 去掉檔案系統不行的字元，
+  沒有 ID 時用 `anon`）。`exportedAt` 也寫成本地時間帶時差的 ISO。
+* JSON 內容：`format='accelon26-readstate'`／`version=1`／`name`／`exportedAt`／`userId`／
+  `app`（build、backend、userAgent、screen、timeZone）／`ui`（左右欄分頁、欄寬、字級、
+  原書分行／頁碼、繁簡、術語、lineTip、trailMax、sharedDocTabs）／`dbs`（name、dbname、
+  size；**不含路徑**——adb 跟著 exe 走，作者 2026-11-01）／`tabs`（庫、realm、page、pinned、
+  history、editing、scrollTop）／
+  `active`（目前分頁＋**選取區**＋那一頁前 3 行）／`diagnostics`（搜尋詞、命中數、
+  cursorNode、lastLink、pagerLog、dbLog、docRows、marks）。
+* **選取區**（作者特別要求）：`DocSelection = { fromLine, fromHan, toLine, toHan, text, fromText }`
+  ——「行號＋行內第幾個漢字」和字元色帶（`CharBand`）同一套座標，所以
+  `doc-pane.applyDocSelection()` 可以直接用既有的 `domPosInLine()` 換回 DOM 位置；
+  `captureDocSelection()` 是反方向（`hanAtPoint()`：端點前有幾個漢字）。
+  `toHan` 用「含進去」的語意（與 `domPosInLine(..., after=true)` 一致）。
+* 載入：先 `validateReadState()`（format／version，壞檔給清楚訊息）→ 開回紀錄裡的庫
+  （`ensureOpen()`：先找已開的 slot，再找 catalog 的 File，最後桌面版從 `desktopSources()` 重開）
+  → 切回 active 庫 → 套閱讀開關 → 找／開同一 realm 的分頁 → `ensurePage` → 捲動位置 → 選取區。
+  **不改**主題／進階模式／標籤樣式（那是這台機器的偏好，不是閱讀狀態）。
+  載入後**不要** `refreshAll()`：那會重畫本文、把剛還原的選取區清掉。
+* 測試用 API：`__accelon26.readState()`／`readStateJson()`／`readStateFilename()`／
+  `readStateApply(json)`／`openSet()`／`openSetWrite()`／`openSetRestore(srcs)`／
+  `catalogSources()`／`closeDbById(id)`（都是 test seam，不影響 UI）。
+
+### 22.3 驗證
+
+* `cd ts; bun run tools/read-state-test.ts`（新工具，**29 項全綠**）：匯出內容、設定頁 wiring、
+  **選取區**（真的用 Range 選「禮．筮于庿」→ 載入後 `getSelection()` 一樣）、檔名格式、
+  兩庫來回、壞檔、「全部關掉→用紀錄開回來（順序與 active 都對）」，
+  以及 **離開→重開同一個檔** 的往返：捲到 300、選一段含標點的字 → `saveOnExit()` →
+  關庫 → `openFile` 同一個檔 → **捲動位置 300 回來、選取文字一字不差**。
+* 迴歸：`tools/doctab-cross-test.ts` 24/0、`tools/file-protocol-test.ts` 167/0、`test/verify.ts` 12/0。
+* 桌面 exe 已重建（**本機試用版**，未發佈，見下），PE 子系統 2（GUI）、
+  `-version` 的建置時間來自 ldflags；`tools/desktop-test.ts`（headless）5/0、
+  `-selftest` 在 `D:\accelon3` 列出 30 個 adb。
+* **真 exe 已驗**（`cd ts; bun run tools/desktop-exit-test.ts`，**10 項全綠**）：
+  用真正的 `accelon3\accelon26.exe` ＋ 真正的 WebView2，開兩個庫、捲到 600、選「色界自體中，」
+  → `Window.Close()`（走 Go 的 WindowClosing → ExecJS）→ 同一個 WebView2 目錄再開一次 →
+  兩個庫都回來、active 一樣、同一頁、**捲動 600 回來、選取文字一字不差**。
+  （它用 `ACCELON26_STATE_DIR`／`ACCELON26_WEBVIEW_DIR` 指到 `build/tmp-exit-state`，
+  不會動到使用者真正的資料。）
+* Go 端新增 `main.go` 的 `saveReadingState`（`WindowClosing`／`OnShutdown` 時
+  `ExecJS("__accelon26.saveOnExit()")`，`sync.Once` 去重）；`go vet`／`go test ./...` 都過。
+* 舊的已發佈 exe 備份在 `build/adbupd/accelon26.prev-release.exe`。
+
+## 23. 2026-11-01（第三輪）：麵包屑與本文不一致（作者回報「無法重複」）
+
+**症狀**：切換 adb 或本文頁籤時，看到 breadcrumb 顯示的章節和本文不是同一節；作者說「無法重複」。
+
+**原因（已重現）**：麵包屑的錨點固定用 `s.pinned.va`（點進來的那個命中），但**命中的那一行不一定在這一頁**。
+13j 沒有 `<檔>`，摘要／全文的連結把 realm 設成「整個庫」（211 頁），pinned 釘在命中那一行；
+往後翻三頁之後畫面上已經是「繫辭下」，麵包屑卻還寫「周易 › 乾」。切頁籤會重畫、把這個狀態一起
+帶回來，所以看起來時好時壞 —— 不是隨機，而是「這一頁剛好有沒有含著釘選那一行」。
+
+**修法**（`doc-pane.ts`）：
+* `renderDoc` 算一個「這一頁的錨點」：`pinned.line` 落在本頁就用 `pinned.va`（點節點進來時仍是那個節點），
+  否則用本頁第一行的 VA；傳給 `renderAncestorTrail(s, anchorVa)`。記在 `lastTrailVa` 供診斷。
+* 順手加一道保險：`renderDoc` 發現 `docTabs[docActive] !== s`（非同步競態：`ensurePage` 回來時使用者
+  已經切走）就**不畫**，只把 `staleRenders` 加一（`state().staleRenders` 應該是 0）。
+
+**診斷 API**：`__accelon26.trailInfo()` 一次回報「畫面上的行號／realm 範圍／麵包屑實際用的錨點節點／
+本頁那一行所屬的節點／麵包屑文字」；`state().docRange` 是這一頁的行號範圍。
+
+**測試**：`bun run tools/trail-consistency-test.ts`（6 項全綠）——
+隨機在目錄節點（cache miss）／頁籤／adb 之間快速切 25 次（每次只等 0–30 ms），再驗
+「畫面上的行都在本頁 realm 內」「麵包屑錨點節點＝畫面上那一行所屬的節點」；
+另外一個**決定性案例**：13j 搜「象曰」開一頁（realm＝整庫）→ 翻三頁 → 修好前 anchor=乾(45)、
+text=繫辭下(22300)，修好後兩者都是繫辭下，切走再切回也一致。
+
+## 24. 2026-11-01（第四輪）：搜尋所有 adb 的三種模式＋萬用字元掃描
+
+`#searchAllBtn`（放大鏡）打開的對話盒多了三選一（作者 2026-11-01）：
+
+| 模式 | 做什麼 |
+|---|---|
+| **索引**（預設） | 原本的行為：逐庫用 token 索引查，一個庫查完就更新一次，最後按命中數排 |
+| **單庫萬用** | 萬用字元**掃描**，只掃目前 active 的那一庫 |
+| **全庫萬用** | 同上，掃清單上的每一庫 |
+
+模式存 `localStorage['accelon26.allSearchMode']`；索引模式不顯示進度條與萬用提示。
+
+### 24.1 語法（`wildcard-parse.ts`，純函式）
+
+* `？`（或全形 `？`）＝**恰好一個漢字**；`？？` ＝兩個。
+* `＊`（或 `*`）＝**1–4 個漢字**（`WILD_MANY_MAX`）——不提供「不特定長度」。
+* 其他字元照字面比對（標點、數字、拉丁字母都可以）。
+* **至少要有一個字**：單獨的 `？`／`＊`／`？？`／`？＊` 一律拒絕（那等於列出全部）。
+* 不支援 regex：`.` `[` `]` `(` `)` `|` `+` `^` `$` `\` 直接拒絕並提示改用 `？`／`＊`
+  （作者說的「regex 的 `.` 太寬」）。**只比對漢字**（`\p{Script=Han}`，與 `han.ts` 同一套定義）。
+* 其他上限：最多 6 個 `？`、2 個 `＊`、樣式 40 字元；`＊＊` 連在一起拒絕。
+
+### 24.2 掃描（`wildcard.ts`，需要 reader／mapper）
+
+* **先用 pattern 裡的漢字縮小範圍**：取最長字面區段的第一個漢字 → `SearchSession.lookup()`
+  拿 posting（桌面版走 Go）→ `VaPaMapper.blockOfVa()` 換成 source block，只解壓那幾段。
+  沒有可用字（例如全是拉丁字母）才整庫全掃。
+* 每個 block 先**去掉 XML 標籤**再比對（標籤不能干擾「？ 只比漢字」），並保留上一段的尾巴
+  接起來，跨 block 邊界的命中才不會漏。
+* **進度／中斷**：`progress = { phase, db, dbIndex/dbTotal, blocksDone/blocksTotal, hits, forms, ms }`，
+  UI 有 bar、`已掃 N / M 段（剩 K）`、`找到 X 筆（Y 種字串）`、已用秒數與**中斷**鈕
+  （`abortWildSearch()`，下一個 block 之前就停）。
+* 結果除了每庫命中數，還列**命中的字串**（次數多的在前，最多顯示 300 個；點一下打開該庫、
+  跳到第一次出現的那一行）——研究上要的就是「某字前後可能出現哪些字」。
+* 實作筆記：每庫最多記 5000 種字串（`MAX_FORMS_PER_DB`，超過只計次數）；暫時開的 reader
+  掃完就 `io.close()`，不動 `openDbs` 的 5 個名額。
+
+### 24.3 驗收：taisho 打 `？象`
+
+用新工具 `bun run tools/wildcard-scan-cli.ts --adb D:\accelon3\taisho.adb --pattern ？象`
+（不開 GUI：taisho 光開檔就要幾十秒，掃描本身不需要 DOM）：
+
+```
+開啟＋行表 226 ms；source block 15,433 段；行數 6,745,515
+範圍：「象」posting 19,575 → 5,688 / 15,433 段（5 ms）
+掃描 10,708 ms（42.8 M 字）
+命中 16,806 筆／1,148 種字串
+  香象 1,085   白象 1,000   龍象 872   萬象 867   大象 737   如象 614   乘象 315 …
+```
+
+**與作者的預期不同**：最多的是**香象**（1,085），白象是第 2（1,000）。
+用同樣一支工具改查純字串交叉驗證過（`--pattern 白象` → 1,000；`--pattern 香象` → 1,085），
+所以不是萬用字元多算：taisho 的「香象」確實比「白象」多 85 次（香象王、香象渡河…）。
+
+### 24.4 其他
+
+* 新工具：`tools/wildcard-test.ts`（瀏覽器，20 項）、`tools/wildcard-scan-cli.ts`（CLI）、
+  `tools/wildcard-desktop-test.ts`（真 exe，預設用小型庫；taisho 用 CLI 較快）。
+* 踩到的坑：把 `wildcard.ts` 拆成 `wildcard-parse.ts`（純）＋引擎時，`MAX_FORMS_PER_DB`
+  留在 parse 卻被引擎用到 → 執行時 ReferenceError，整輪掃描不會結束。
+  `export *` **不會**把名字帶進模組自己的作用域，引擎要用的常數要留在引擎。
+
+## 25. 2026-11-01（第五輪）：頁行引用 `y38p7a8`（ys／fuyan 也能跳行）
+
+作者要的寫法（`page-cite.ts` ＋ `xref.ts`）：
+
+```
+y38p7a8    ys 第 38 部書、第 7 頁、a 欄、第 8 行
+y38p7      同上，頁首（少了 a8）
+y38        同上，書首（少了 p7）
+f1p7a3     fuyan 第 1 部書第 7 頁第 3 行（fuyan 沒有分欄 → 一律 a 欄）
+```
+
+* 前綴＝庫的 dbname 或檔名開頭（`y`→ys、`f`→fuyan、`t`→taisho；寫全名 `ys38p7a8` 也可以）。
+  前綴認不出任何庫時**不算這種語法**，交回一般搜尋（所以 `y38` 不會吃掉「y38」這種搜尋）。
+* 全形、大小寫、`p.` 都接受；`#123`／`1.2.3`／`49p15`／`大正2，206a15` 不會被誤吃。
+* **同一頁的 a/b/c 欄算一頁**（`splitPageCol`：id 以「數字＋[a-c]」結尾才拆成頁＋欄）。
+  ys 就是這種：`1pa001a`／`1pa001b`（157 頁有第二欄）；fuyan 的 `05B-p007` 沒有分欄 → 欄 a。
+* 解析：`<書>` 的第 n 個 VA → 那一部書的頁（照文件順序）→ 第 m 頁 → `pageMarkerLine()`
+  拿到頁首行 → 加 `(行-1)`。跳過去用 `linkTo` ＋ `markLineRange`（**頁首也會塗一行**，
+  讀者才看得出跳過去了）；找不到書／頁／頁碼都有明確的狀態訊息。
+* 接在 `jumpByQuery` 裡（大正引用之後、頁 id 清單之前）；搜尋框右側的模式標籤會顯示**「頁行」**。
+
+**cheat card（兩處都要有，作者特別交代）**：
+* 「跳至」提示卡（`#jumpCheatCard`，空白停 1.5 秒出現）多一列 **頁行**，例子依庫換：
+  ys → `y38p7a8`、fuyan → `f1p7a3`、其他 → `<首字母>1p7a8`；
+  提示文字寫明「少了 a8 是頁首、少了 p7 是書首、沒有分欄一律 a 欄」。
+* 快速鍵卡片（`shortcuts.ts` →「搜尋與跳至」）多一列 `y38p7a8 ＋ Enter`。
+
+**實測**（`bun run tools/page-cite-test.ts`，19 項全綠，用真的 ys.adb／fuyan.adb）：
+`y38p7a8` → 頁 id `38p0005a`、行 278343（色帶就在那一行、而且那一行在畫面上）；
+`y38p7` → 頁首 278336；`y38` → 書首 `38pa001a` 278237；`f1p7a3` → `05B-p006` 第 163 行。
+
+**順手修掉的既有 bug**：ys／fuyan 的 `tags` 容器「名字比 block 多」（35 block、36 名字），
+`decodeBlockList` 會丟 `tags[35] out of range`，讓頻次分頁整個失敗（開 ys 就踩到）。
+現在 `decodeBlockList` 對超範圍的索引回空清單（`readBlock` 仍然嚴格）。
+
+### 25.1 修正（同日）：庫名本身帶數字 → `yl38p24`
+
+作者回報：在 yl38 打 `yl38p24` 得到「yl38 只有 2 部書，沒有第 38 部」，但頁碼明明存在。
+
+原因：`yl38` 的頁 id 就是 `yl38p0`…`yl38p347`（**頁 id 本身就長得像「庫名＋p＋頁號」**），
+而舊的解析用固定 regex 先把 `yl` 當庫前綴、`38` 當書號 → 找第 38 部書（yl38 只有 2 部）。
+
+修法（`page-cite.ts` 改成**看實際有哪些庫**才切前綴）：
+1. **(a) 完整庫名優先**：`yl38p24` → 庫 `yl38`、沒有書號、第 24 頁。
+2. **(b) 庫名的字母開頭**（只給**不含數字**的庫名）：`y38p7a8` → `y`→ys、第 38 部書、第 7 頁。
+   含數字的庫名（`yl38`）不參與縮寫，免得 `y38…` 被吃掉。
+3. `jumpByQuery` 先看整串是不是**這個庫現成的頁 id**（`anchorVa`），是就交給頁 id 清單 ——
+   所以 `yl38p24` 仍然直接跳「頁 id `yl38p24`」那一頁（作者要的結果），頁行引用不會搶。
+4. 沒有書號時，頁號算**整個庫**；錯誤訊息也分成「只有 N 部書」與「只有 M 頁」兩種。
+
+庫名候選由 `dbs.ts` 的 `dbNameCandidates()` 提供（已開的庫＋catalog 的 dbname 與檔名，
+active 的排最前面）。cheat card 的提示補上「庫名帶數字就寫全名，如 `yl38p24`」。
+
+測試（`tools/page-cite-test.ts`，22 項全綠，多開一個真的 yl38.adb）：
+`yl38p24` 解析成 `{db:"yl38", book:null, page:24}`；第 24 頁＝頁 id `yl38p23`；
+實際輸入 `yl38p24` → 畫面上的頁碼是 `yl38p24`（頁 id 優先）；`y38p7a8`／`ys38p7a8`／`f1p7a3` 不受影響。
+
+## 26. 2026-11-01（第六輪）：腳注 hover 與點擊不一致（yl38 每節重複編號）
+
+作者回報：yl38p24 底部 `[45]`，點擊跳到正確的釋文，**hover 卻顯示第四章第六節那一條**。
+
+**原因**（`notes.ts`）：`<註>` 與 `<釋>` 是兩份清單（正文的引用／檔尾的釋群），
+yl38 每個「節」都從 1 編號，`n=45` 有 9 條註、9 條釋。舊的挑法是「同頁優先，否則 VA 最近」：
+
+* 頁標記常常落在段落之前，`<註 n="45">` 那一條的頁是 `yl38p25`，對應的釋卻在 `yl38p24`
+  → 同頁候選是**空的**；
+* 空的時候退回「VA 最近」，而釋群在檔尾、九條釋的 VA 都比引用大，於是永遠抓到
+  **第一條**（第一章第二節）——所以每一節的 [45] 都可能顯示第一章那條。
+
+**修法**（只改閱讀器，沒動資料、沒動 `<註>`／`<釋>` 的編號規則）：
+
+1. **hover 與點擊共用一個解析函式** `pickNote()`（`findBody`／`findRef` 都走它），
+   兩邊不可能再算出不同結果。
+2. 配對順序：①同頁且唯一 → ②同頁多條取最近 → ③**兩份清單一樣長就同序號**
+   （第 k 條註 ↔ 第 k 條釋；yl38 正是 9 對 9）→ ④頁碼最接近的那條（平手取後面）
+   → ⑤最後才退回 VA 最近。
+3. 快取 key 加上頁 id（`'b:'+n+':'+page+':'+fromLine`），同一個 n 在不同節不會共用快取。
+4. `<釋 n="1"/>` 標籤自成一行、注文在後幾行的寫法，多往後找幾行（最多 8 行）。
+
+**實測**（`bun run tools/note-link-test.ts`，8 項全綠，真的 yl38.adb／ys.adb）：
+`yl38p25` 的 [45] → hover 與點擊都是「印順法師，《空之探究》，第一章，第二節〈泛說解脫道〉…」；
+`yl38p56` 的 [45] → 兩邊都是「《雜阿含經》卷12（301經）」那條；兩個頁的 [45] 內容不同（證明不再串節）。
+ys（n 不重複，`13.001`）hover 與點擊一致，行為不變。
+診斷工具：`tools/note-probe.ts`（列出某個 n 的所有註／釋、各在哪一頁、舊挑法會挑到哪一條）。
+
+### 26.1 改版（同日，作者定案）：用資料自己的 `pg` 配對
+
+yl38.adb 重建後，`<註>` 與 `<釋>` 都帶了頁 id：
+
+```
+<註 n="45" pg="yl38p24"/>
+<釋 n="45" pg="yl38p24">印順法師，《空之探究》，第一章，第二節…</釋>
+```
+
+（實測：`註.pg` 1,257 條、`釋.pg` 1,267 條；ys／taisho／fuyan 沒有這個屬性。）
+
+`notes.ts` 的 `NoteIndex` 因此多兩張表 `refPg`／`bodyPg`（VA → pg），配對改成
+**pg 優先**（`pickNote`，hover 與點擊共用）：
+
+1. **有 `pg` 且相同 → 直接取**（同名 n 的唯一正解）
+2. 否則**同頁**（由 `<頁>` 的 VA 推）最近一條
+3. 否則 n 相同、**離目前頁最近**那條（平手取後面）
+
+「這一端」的 pg 用**行號**找同一行的那個標籤（`pgAtLine()`：差一行以內都算），因為
+`vaOfLine()` 給的是行首 VA、不一定等於標籤 VA。快取 key 也改成 `'b:'+n+':'+pg+':'+fromLine`
+（沒有 pg 時退化為 `<頁>` 推出來的頁 id）。上一版的「同序號」規則已移除——有 pg 就不需要。
+
+實測（`tools/note-link-test.ts`，9 項全綠）：yl38p25 的 [45] → 第一章第二節〈泛說解脫道〉；
+yl38p56 的 [45] → 《雜阿含經》卷12；45／46／13／14／23 **各在兩個不同節**各測一次，
+hover 與點擊全部一致（14 個測試點）；ys（`13.001`，沒有 pg）行為不變。
+另有 `__accelon26.notePagesOf(n)` 可列出某個 n 的所有註／釋（行、頁、pg），測試靠它挑「兩節」。
+
+**注意**：ys 有 395 條 `<註>` 沒有對應的 `<釋>`（16,355 vs 15,960），那種 hover 會顯示
+「找不到 <釋 n=…>」——這是資料本身，不是配對錯誤。
+
+### 26.2 記下來：`pg` 是 docx 來源才需要的（作者 2026-11-01）
+
+| 來源 | 註號 | 要不要 `pg` | 現況（2026-11-01 實測） |
+|---|---|---|---|
+| **docx**（福嚴講義 `fuyan`／`fuyan-反鏈版`、空之探究 `yl38`／`yl38-test`） | 每「節」從 1 重編（yl38 的 `n=45` 有 9 條） | **要** | `yl38` 有 `註.pg` 1,271／`釋.pg` 1,269；`yl38-test`／`fuyan*` 還沒有（目前資料不重複 n，所以看不出問題） |
+| **TEI**（`ys`、`taisho`、`wxzj`…） | 全書唯一（ys 是 `13.001` 帶卷／序） | **不要** | 沒有 `pg`，閱讀器走「同頁 → 頁碼最近」就正確 |
+
+* docx 的建置只要把每條註／釋自己那一頁的頁 id 寫進 `pg="…"`（與 `<頁 id="…">` 同一個值），
+  **不必改 `n` 的編號規則**（每節重編是原書格式）。
+* 閱讀器（`notes.ts` 的 `pickNote`）三層：**pg 相同 → 同頁最近 → 頁碼最近**；
+  沒有 `pg` 自動退化，所以兩種來源可以並存。
+* 完整規範寫在 `docs/adb/stable-adb.md` §3.1（含驗證指令與工具）。

@@ -233,6 +233,8 @@ export async function renderHeatTab(): Promise<void> {
 
 /** 更新「引紋」按鈕是否可見；若正在看這一頁就重畫。 */
 export async function syncHeatTab(): Promise<void> {
+  // 還沒開庫就不要動按鈕（boot 時 reader 是 null，會把按鈕藏起來；2026-10-31）
+  if (!reader) return;
   const btn = document.querySelector<HTMLElement>('#colRight .tabBtn[data-tab="heat"]');
   if (!btn) return;
   const hosts = await reverseHosts();

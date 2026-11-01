@@ -1,0 +1,143 @@
+#!/usr/bin/env bun
+/**
+ * 暗色模式的 SVG 反轉（2026-10-31）。
+ *
+ *   cd ts && bun run tools/svg-invert-test.ts
+ *
+ * 檢查：暗色時 html.svg-invert、figureSvg 有 filter；切亮色就失效；設定關掉也失效。
+ */
+import { existsSync, rmSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const args = process.argv.slice(2);
+const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
+const ROOT = resolve(import.meta.dir, '../..');
+const HTML = resolve(opt('html', resolve(ROOT, 'build/accelon26.html')));
+const ADB = resolve(opt('adb', 'D:/accelon3/fuyan.adb'));
+const BROWSERS = [
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+];
+const browser = BROWSERS.find((p) => existsSync(p))!;
+const profile = resolve(ROOT, 'build/.chrome-profile-svg-' + process.pid);
+const proc = Bun.spawn([browser, '--headless=new', '--disable-gpu', '--no-first-run',
+  '--remote-debugging-port=0', '--remote-allow-origins=*', '--allow-file-access-from-files',
+  '--window-size=1500,1100', `--user-data-dir=${profile}`, 'about:blank'],
+  { stdout: 'pipe', stderr: 'pipe' });
+async function devtoolsUrl(): Promise<string> {
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    const text = await Bun.file(resolve(profile, 'DevToolsActivePort')).text().catch(() => '');
+    const [port, path] = text.split('\n').map((s) => s.trim());
+    if (Number(port) > 0 && path) return `ws://127.0.0.1:${port}${path}`;
+    await Bun.sleep(200);
+  }
+  throw new Error('no devtools');
+}
+class Cdp {
+  ws!: WebSocket; id = 0; sessionId = '';
+  pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+  logs: string[] = [];
+  static async attach(url: string): Promise<Cdp> {
+    const c = new Cdp();
+    await new Promise<void>((res, rej) => {
+      c.ws = new WebSocket(url);
+      c.ws.onopen = () => res();
+      c.ws.onerror = () => rej(new Error('ws error'));
+      c.ws.onmessage = (ev) => {
+        const m = JSON.parse(String(ev.data));
+        if (m.method === 'Runtime.consoleAPICalled') c.logs.push('[console] ' + (m.params?.args ?? []).map((a: any) => a.value ?? a.description ?? a.type).join(' '));
+        if (m.method === 'Runtime.exceptionThrown') c.logs.push('[exception] ' + (m.params?.exceptionDetails?.exception?.description ?? m.params?.exceptionDetails?.text));
+        if (m.id && c.pending.has(m.id)) {
+          const p = c.pending.get(m.id)!; c.pending.delete(m.id);
+          m.error ? p.reject(new Error(m.error.message)) : p.resolve(m.result);
+        }
+      };
+    });
+    return c;
+  }
+  send(method: string, params: Record<string, unknown> = {}, session = true): Promise<any> {
+    const id = ++this.id;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.ws.send(JSON.stringify({ id, method, params, sessionId: session ? this.sessionId : undefined }));
+    });
+  }
+  async openPage(url: string): Promise<void> {
+    const { targetId } = await this.send('Target.createTarget', { url }, false);
+    const r = await this.send('Target.attachToTarget', { targetId, flatten: true }, false);
+    this.sessionId = r.sessionId;
+    await this.send('Page.enable'); await this.send('Runtime.enable'); await this.send('DOM.enable');
+  }
+  async eval<T>(expression: string): Promise<T> {
+    const r = await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? 'eval failed');
+    return r.result.value as T;
+  }
+}
+const cdp = await Cdp.attach(await devtoolsUrl());
+await cdp.openPage(pathToFileURL(HTML).href + '?v=' + Date.now());
+await Bun.sleep(900);
+const doc = await cdp.send('DOM.getDocument');
+const q = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#file' });
+await cdp.send('DOM.setFileInputFiles', { files: [ADB], nodeId: q.nodeId });
+await cdp.eval('document.querySelector("#file").dispatchEvent(new Event("change"))');
+await Bun.sleep(3000);
+const out = JSON.parse(await cdp.eval<string>(`(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  await window.__accelon26?.closeAbout?.();
+  for (let i = 0; i < 100; i++) { if (document.getElementById('query')) break; await sleep(100); }
+  // 開一個有內文的節點，才有 .docBody 可以放測試 svg
+  const input = document.getElementById('query');
+  input.value = '空與無相';
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+  await sleep(1500);
+  const body = document.querySelector('#docText .lineText') ?? document.querySelector('#docText .docBody');
+  if (!body) return JSON.stringify({ error: 'no doc body' });
+  const addSvg = () => {
+    const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('class', 'figureSvg');
+    s.setAttribute('viewBox', '0 0 10 10');
+    body.appendChild(s);
+    return s;
+  };
+  const filterOf = (s) => getComputedStyle(s).filter;
+  const darkOn = document.documentElement.classList.contains('svg-invert');
+  const s1 = addSvg();
+  const f1 = filterOf(s1);
+  s1.remove();
+  // 切亮色
+  document.querySelector('#themeSeg button[data-theme=light]')?.click();
+  await sleep(100);
+  const lightHas = document.documentElement.classList.contains('svg-invert');
+  const s2 = addSvg(); const f2 = filterOf(s2); s2.remove();
+  // 回暗色
+  document.querySelector('#themeSeg button[data-theme=dark]')?.click();
+  await sleep(100);
+  const darkBack = document.documentElement.classList.contains('svg-invert');
+  // 關掉設定
+  localStorage.setItem('accelon26.svgInvert', 'off');
+  document.querySelector('#themeSeg button[data-theme=light]')?.click();
+  document.querySelector('#themeSeg button[data-theme=dark]')?.click();
+  await sleep(100);
+  const offHas = document.documentElement.classList.contains('svg-invert');
+  localStorage.setItem('accelon26.svgInvert', 'on');
+  return JSON.stringify({ darkOn, f1, lightHas, f2, darkBack, offHas });
+})()`));
+console.log(JSON.stringify(out, null, 1));
+if (cdp.logs.length) console.log('--- console ---\n' + cdp.logs.slice(-6).join('\n'));
+proc.kill();
+await Bun.sleep(200);
+try { rmSync(profile, { recursive: true, force: true }); } catch { /* ignore */ }
+const fails: string[] = [];
+if (!out.darkOn) fails.push('暗色沒有 svg-invert class');
+if (!/invert/.test(out.f1 ?? '')) fails.push('figureSvg 沒有 filter：' + out.f1);
+if (out.lightHas) fails.push('亮色還帶著 svg-invert');
+if (/invert/.test(out.f2 ?? '')) fails.push('亮色還在反轉：' + out.f2);
+if (!out.darkBack) fails.push('切回暗色沒有恢復');
+if (out.offHas) fails.push('設定關掉仍然反轉');
+if (cdp.logs.some((l) => l.startsWith('[exception]'))) fails.push('console 有 exception');
+if (fails.length) { console.error('FAIL:\n- ' + fails.join('\n- ')); process.exit(1); }
+console.log('ok: 暗色模式 SVG 反轉（可切換）');

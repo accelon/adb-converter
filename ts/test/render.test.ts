@@ -53,9 +53,13 @@ ok('頁：變成 .pageBreak 並帶頁碼 12',
   && page.startsWith('周易') && page.endsWith('乾'), page);
 
 const para = r.line('<段/>何故禮拜', 5);
-ok('段：變成 <br class="para"> ＋ 縮排 span（兩個全形空格）',
-  para.startsWith('<br class="para"><span class="paraIndent">　　</span>何故禮拜')
-  && para.includes('　　'), para);
+ok('段：行首只加縮排 span（不插 <br>，避免多空一行）',
+  para.startsWith('<span class="paraIndent">　　</span>何故禮拜')
+  && !para.startsWith('<br'), para);
+
+const paraMid = r.line('何故<段/>禮拜', 6);
+ok('段：行中才插 <br class="para"> ＋ 縮排',
+  paraMid === '何故<br class="para"><span class="paraIndent">　　</span>禮拜', paraMid);
 
 // 2026-10：`<聯 i="…">` 已經是跨庫錨點，不再算「未知標籤」；用真的未知標籤測。
 const unknown = r.line('<未知 i="taisho">參考</未知>正文', 6);
@@ -159,6 +163,22 @@ const softPage = soft.line('周易<頁 n="12"/>乾', 1);
 ok('原書分行關閉：<頁> 是行內頁碼，不是分隔線',
   softPage.includes('class="pageMark"') && softPage.includes('〔12〕') && !softPage.includes('pageBreak'), softPage);
 
+// 圖版後面接頁碼：頁碼只接到圖那一行，後面的文字不能擠進同一行（作者 2026-11-01）
+const figBlockSvg = '<svg width="10" height="10" viewBox="0 0 10 10"><g><rect width="5" height="5"/></g></svg>';
+const figBlocks = renderPageBlocks(
+  ['<圖 n="a.svg" t="圖版"/>', '', '<頁 id="12"/>', '', '後面的文字'],
+  [1, 2, 3, 4, 5],
+  { hardBreaks: true, svgText: () => figBlockSvg },
+  ctx,
+);
+const figHtml = figBlocks.map((b) => b.lines.map((l) => l.html).join('')).join('\n');
+const figBlock = figBlocks.find((b) => b.lines.some((l) => l.html.includes('figureSvg')));
+ok('圖版後面的頁碼／文字不擠進圖那一行',
+  !!figBlock
+  && !figBlock.lines.some((l) => l.html.includes('後面的文字'))
+  && figBlocks.some((b) => b !== figBlock && b.lines.some((l) => l.html.includes('後面的文字'))),
+  figHtml.slice(0, 200));
+
 const blocksHard = renderPageBlocks(['<章>標題', '第一行', '第二行'], [1, 2, 3], { hardBreaks: true }, ctx);
 ok('原書分行（預設）：每一行都是自己的版面塊',
   blocksHard.length === 3 && blocksHard.every((b) => b.kind === 'line'), JSON.stringify(blocksHard.map((b) => b.kind)));
@@ -177,6 +197,70 @@ const markedHtml = marked.line('第一行第二行', 1);
 ok('渲染前就把關鍵字包成 <mark class="kw">',
   markedHtml.includes('<mark class="kw" style="--hue:0">第一行</mark>')
   && markedHtml.includes('<mark class="kw" style="--hue:120">第二行</mark>'), markedHtml);
+
+// <术 sk|pi|tb="…">：hover（預設）／inline／off（作者 2026-10-31）
+const termHover = new Accelon3Renderer(ctx).line('<术 sk="svabhāva">自性</术>是術語', 1);
+ok('術語 hover：漢詞有 term-sk、外語在 title、行內不顯示',
+  termHover.includes('class="term term-sk has-tip"')
+  && termHover.includes('data-lang="sk"')
+  && termHover.includes('data-term="svabhāva"')
+  && termHover.includes('title="梵：svabhāva"')
+  && termHover.includes('>自性</span>')
+  && !termHover.includes('termGloss'), termHover);
+
+const termInline = new Accelon3Renderer(ctx, { termMode: 'inline' }).line('<术 pi="kamma">業</术>', 1);
+ok('術語 inline：漢詞之後出現「（外語）」、不再掛 title',
+  termInline.includes('class="term term-pi"')
+  && !termInline.includes('title=')
+  && termInline.includes('>業</span>')
+  && termInline.includes('<span class="termGloss">（kamma）</span>'), termInline);
+
+const termOff = new Accelon3Renderer(ctx, { termMode: 'off' }).line('<术 tb="…">法</术>', 1);
+ok('術語 off：只留漢詞（仍有虛線外框）、沒有 title／外語',
+  termOff.includes('class="term term-tb"')
+  && !termOff.includes('title=')
+  && !termOff.includes('termGloss')
+  && termOff.includes('>法</span>'), termOff);
+
+const termEmpty = new Accelon3Renderer(ctx).line('<术 sk="">自性</术>', 1);
+ok('術語空值：只顯示漢詞、不爆錯', termEmpty === '自性', termEmpty);
+
+const termQuote = new Accelon3Renderer(ctx).line('<术 sk="a&quot;b">自性</术>', 1);
+ok('術語值含 &quot;：解碼後再轉義',
+  termQuote.includes('data-term="a&quot;b"') && termQuote.includes('title="梵：a&quot;b"'), termQuote);
+
+const termUnknown = new Accelon3Renderer(ctx).line('<术 en="term">自性</术>', 1);
+ok('未知語言鍵：用 term-other，不爆錯',
+  termUnknown.includes('term term-other') && termUnknown.includes('data-lang="en"'), termUnknown);
+
+const termMulti = new Accelon3Renderer(ctx).line('<术 sk="a">甲</术>與<术 pi="b">乙</术>', 1);
+ok('同一行多個術語：各自標記（term-sk／term-pi）',
+  termMulti.includes('term-sk') && termMulti.includes('term-pi')
+  && termMulti.includes('>甲</span>') && termMulti.includes('>乙</span>'), termMulti);
+
+// 跨行：第一行開、第二行收（HTML 要平衡）
+const cross = new Accelon3Renderer(ctx, { termMode: 'inline' });
+const cross1 = cross.line('<术 sk="x">自', 1);
+const cross2 = cross.line('性</术>。', 2);
+ok('術語跨行：兩行都各自開／收，第二行結尾補上外語',
+  cross1.includes('class="term term-sk"') && cross1.trimEnd().endsWith('</span>')
+  && cross2.includes('class="term term-sk"') && cross2.includes('>性</span>')
+  && cross2.includes('（x）'), JSON.stringify({ cross1, cross2 }));
+
+// 圖版 inline SVG：兩張圖的 clipPath id 不能共用（fuyan y37.0347 被第一張切掉，2026-10-31）
+const figSvg = '<svg width="20" height="10" viewBox="0 0 20 10">'
+  + '<defs><clipPath id="clip_1"><rect width="20" height="10"/></clipPath></defs>'
+  + '<g clip-path="url(#clip_1)"><rect width="10" height="5"/></g></svg>';
+const figR = new Accelon3Renderer(ctx, { svgText: () => figSvg });
+const fig1 = figR.line('<圖 n="a.svg" t="圖版"/>', 1);
+const fig2 = figR.line('<圖 n="b.svg" t="圖版"/>', 2);
+const id1 = /id="(svg\d+-clip_1)"/.exec(fig1)?.[1] ?? '';
+const id2 = /id="(svg\d+-clip_1)"/.exec(fig2)?.[1] ?? '';
+ok('inline SVG 的 id 每張圖各自加前綴（clipPath 不會互相蓋掉）',
+  !!id1 && !!id2 && id1 !== id2
+  && fig1.includes(`url(#${id1})`) && fig2.includes(`url(#${id2})`)
+  && !fig1.includes('id="clip_1"') && !fig2.includes('id="clip_1"'),
+  JSON.stringify({ id1, id2 }));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

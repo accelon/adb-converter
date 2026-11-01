@@ -28,10 +28,32 @@ export function themeOf(): ThemeName {
   return current;
 }
 
+/**
+ * SVG 顏色反轉（作者 2026-10-31；fuyan 的圖是黑墨透明底，暗色模式看不見）。
+ * 只作用在「圖」（`svg.figureSvg` 與看圖視窗的 SVG），不動跟著字色走的 `inlineSvg`。
+ * 預設開；只有暗色系（`dark`）才生效。
+ */
+const SVG_KEY = 'accelon26.svgInvert';
+
+export function svgInvertOn(): boolean {
+  try { return localStorage.getItem(SVG_KEY) !== 'off'; } catch { return true; }
+}
+
+export function setSvgInvert(on: boolean): void {
+  try { localStorage.setItem(SVG_KEY, on ? 'on' : 'off'); } catch { /* 私密模式 */ }
+  applySvgInvert();
+}
+
+export function applySvgInvert(): void {
+  const on = current === 'dark' && svgInvertOn();
+  document.documentElement.classList.toggle('svg-invert', on);
+}
+
 function paint(): void {
   const root = document.documentElement;
   if (current === 'dark') root.removeAttribute('data-theme');
   else root.setAttribute('data-theme', current);
+  applySvgInvert();
   for (const b of document.querySelectorAll<HTMLElement>('#themeSeg button')) {
     const on = b.dataset.theme === current;
     b.classList.toggle('active', on);

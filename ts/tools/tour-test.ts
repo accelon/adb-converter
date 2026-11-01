@@ -15,7 +15,7 @@
  *   * Esc 結束、🎬 開選單、進度存進 localStorage
  */
 import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { decodeTour, fromBase64, OP } from '../src/accelon26/tour-format';
 import { TOUR_BLOBS } from '../src/accelon26/tour-data';
@@ -45,7 +45,8 @@ const ok = (name: string, cond: boolean, detail = '') => {
   else { fail++; console.log('  FAIL ' + name + (detail ? '  ' + detail : '')); }
 };
 
-const profile = resolve(import.meta.dir, '../../build/.chrome-profile-tour');
+const profile = resolve(import.meta.dir, '../../build/.chrome-profile-tour-' + process.pid);
+rmSync(profile, { recursive: true, force: true });
 const proc = Bun.spawn([browser, '--headless=new', '--disable-gpu', '--no-first-run',
   `--remote-debugging-port=${PORT}`, '--remote-allow-origins=*',
   '--allow-file-access-from-files', '--window-size=1400,900',

@@ -51,6 +51,12 @@ let userDone = false;
 let skipReq = false;
 /** `停` 那一步被點到了嗎（作者 2026-10-18：點畫面任何地方就往下走） */
 let tapped = false;
+/** 自動播放（作者 2026-10-31）：介紹介面的「停」與場景結束會自己往下，示範／錄影用 */
+let auto = false;
+try { auto = localStorage.getItem('accelon26.tour.auto') === '1'; } catch { /* 無痕模式 */ }
+const AUTO_KEY = 'accelon26.tour.auto';
+const AUTO_TAP_MS = 2800;    // 自動播放時，「停」停多久
+const AUTO_NEXT_MS = 1600;   // 場景結束後，自動進下一場的等待
 let raf = 0;
 const cache = new Map<string, Tour>();
 
@@ -148,7 +154,11 @@ export function tourProgress(id: string): number {
 
 function saveProgress(scene: number): void {
   if (!cur) return;
-  try { localStorage.setItem(PKEY(cur.id), String(scene)); } catch { /* 無痕模式 */ }
+  try {
+    // 只往前記：重播第 0 個場景不該把「看到第幾場」歸零（作者 2026-10-31）
+    const prev = Number(localStorage.getItem(PKEY(cur.id)) ?? '0') || 0;
+    localStorage.setItem(PKEY(cur.id), String(Math.max(prev, scene)));
+  } catch { /* 無痕模式 */ }
 }
 
 // ------------------------------------------------------------------ 氣泡／聚光燈
@@ -261,6 +271,13 @@ function updateUi(): void {
   if (prev) { prev.hidden = false; prev.disabled = cur.scene === 0; }
   const bubble = el('tourBubble');
   if (bubble) bubble.classList.toggle('paused', waitKind === 'pause');
+  // 自動播放的開關永遠看得到（示範模式），狀態寫在按鈕上
+  const ab = el<HTMLButtonElement>('tourAuto');
+  if (ab) {
+    ab.hidden = false;
+    ab.textContent = auto ? '自動播放：開' : '自動播放：關';
+    ab.classList.toggle('primary', auto);
+  }
 }
 
 function beginScene(sc: Scene): void {
@@ -289,6 +306,19 @@ function ask(kind: Wait): Promise<string> {
   phase = kind === 'next' ? 'waiting' : 'running';
   updateUi();
   return new Promise<string>((res) => { pending = (v) => { pending = null; res(v); }; });
+}
+
+/** 場景結束的等待；自動播放時計時自動按「下一場景」（示範／錄影用） */
+function askNext(): Promise<string> {
+  const p = ask('next');
+  if (auto) {
+    const my = seq;
+    const mine = pending;
+    setTimeout(() => {
+      if (seq === my && pending === mine) pending?.('next');
+    }, AUTO_NEXT_MS);
+  }
+  return p;
 }
 
 function fail(msg: string): 'pause' {
@@ -414,10 +444,13 @@ async function waitUser(text: string, cond: string, my: number): Promise<'ok' | 
 async function waitTap(hint: string, my: number): Promise<'ok'> {
   tapped = false;
   waitKind = 'tap';
-  setNote(hint || '（點畫面任何地方，或按空白鍵，繼續）');
+  const t0 = performance.now();
+  setNote(hint || (auto ? `（自動播放：${Math.round(AUTO_TAP_MS / 1000)} 秒後繼續；點一下可以提前）`
+    : '（點畫面任何地方，或按空白鍵，繼續）'));
   updateUi();
   while (my === seq) {
     if (tapped) { tapped = false; setNote(''); return 'ok'; }
+    if (auto && performance.now() - t0 > AUTO_TAP_MS) { setNote(''); return 'ok'; }
     await sleep(80);
   }
   return 'ok';
@@ -471,14 +504,14 @@ async function loop(my: number): Promise<void> {
       cur.step++;
       updateUi();
     }
-    // 一個場景做完：停住，等使用者決定
+    // 一個場景做完：停住，等使用者決定（自動播放時自己往下）
     phase = 'waiting';
     waitKind = 'next';
     setText(sc.body);
-    setNote('');
+    setNote(auto ? '（自動播放：下一場景…）' : '');
     saveProgress(cur.scene);
     updateUi();
-    const act = await ask('next');
+    const act = await askNext();
     if (my !== seq) return;
     if (act === 'stop') return stopTour();
     if (act === 'replay') { void play(cur.id, cur.scene); return; }
@@ -556,10 +589,22 @@ export function openTourMenu(): void {
  * 只有一份劇本就直接播（從上次看到的地方接），多份才開選單讓使用者挑。
  */
 export function startTour(restart = false): void {
-  const first = TOUR_INDEX[0];
-  if (TOUR_INDEX.length === 1 && first) void play(first.id, restart ? 0 : undefined);
+  // 作者 2026-10-31：進階模式給進階導覽，一般模式給第一次使用；氣泡裡的「其他導覽」可換。
+  const adv = document.body.classList.contains('advanced');
+  const preferred = TOUR_INDEX.find((t) => t.id === (adv ? 'advanced' : 'first-run'));
+  if (preferred) { void play(preferred.id, restart ? 0 : undefined); return; }
+  if (TOUR_INDEX.length === 1) { const first = TOUR_INDEX[0]; if (first) void play(first.id, restart ? 0 : undefined); }
   else openTourMenu();
 }
+
+/** 自動播放的開關（示範／錄影用：介紹介面的「停」與場景結束會自己往下） */
+export function setTourAuto(on: boolean): void {
+  auto = on;
+  try { localStorage.setItem(AUTO_KEY, on ? '1' : '0'); } catch { /* 無痕模式 */ }
+  updateUi();
+}
+
+export function tourAuto(): boolean { return auto; }
 
 export function closeTourMenu(): void {
   const box = el('tourBox');
@@ -620,6 +665,8 @@ export function initTour(a: TourApp): void {
   el('tourPrev')?.addEventListener('click', () => { if (cur) void play(cur.id, Math.max(0, cur.scene - 1)); });
   el('tourReplay')?.addEventListener('click', () => { if (cur) void play(cur.id, cur.scene); });
   el('tourDone')?.addEventListener('click', () => { userDone = true; });
+  el('tourAuto')?.addEventListener('click', () => setTourAuto(!auto));
+  el('tourAll')?.addEventListener('click', () => openTourMenu());
   el('tourSkip')?.addEventListener('click', () => {
     if (waitKind === 'pause') { pending?.('next'); return; }
     skipReq = true;
@@ -653,6 +700,7 @@ export function tourState(): Record<string, unknown> {
     phase,
     waitKind,
     note,
+    auto,
     point: pointSel,
     failed: failed.slice(),
     progress: cur ? tourProgress(cur.id) : 0,

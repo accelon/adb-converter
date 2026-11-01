@@ -9,12 +9,12 @@ import (
 
 func TestFontFamilies(t *testing.T) {
 	cases := map[string][]string{
-		`Arial Bold (TrueType)`:                                  {"Arial"},
-		`Arial Italic (TrueType)`:                                {"Arial"},
+		`Arial Bold (TrueType)`:                                 {"Arial"},
+		`Arial Italic (TrueType)`:                               {"Arial"},
 		`Microsoft JhengHei & Microsoft JhengHei UI (TrueType)`: {"Microsoft JhengHei", "Microsoft JhengHei UI"},
-		`PMingLiU-ExtB (TrueType)`:                               {"PMingLiU-ExtB"},
-		`DFKai-SB (TrueType)`:                                    {"DFKai-SB"},
-		`Source Han Serif TC Bold (OpenType)`:                    {"Source Han Serif TC"},
+		`PMingLiU-ExtB (TrueType)`:                              {"PMingLiU-ExtB"},
+		`DFKai-SB (TrueType)`:                                   {"DFKai-SB"},
+		`Source Han Serif TC Bold (OpenType)`:                   {"Source Han Serif TC"},
 	}
 	for in, want := range cases {
 		got := fontFamilies(in)

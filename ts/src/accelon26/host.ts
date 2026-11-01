@@ -326,6 +326,9 @@ export async function desktopRevealInFolder(path: string): Promise<boolean> {  c
     path: e.path,
     size: e.size,
     lastModified: e.modified,
+    // adb id 與中文名：選單排序（adb id）、閱讀狀態比對都用得到
+    dbname: e.dbname || undefined,
+    dbcname: e.dbcname || undefined,
     slice(start: number, end: number) {
       return {
         arrayBuffer: async (): Promise<ArrayBuffer> => {
@@ -440,6 +443,31 @@ export interface DesktopAdbDownloadStatus {
   received: number;
   total: number;
   error?: string;
+}
+
+/** 目前使用的 adb 資料夾（exe 旁或 %APPDATA%\Accelon26\adb；作者 2026-11-01）。 */
+export async function desktopAdbDir(): Promise<string> {
+  const c = await hostCall();
+  if (!c) return '';
+  try {
+    return String(await c.ByName('main.AdbHost.AdbDir') ?? '');
+  } catch {
+    return '';
+  }
+}
+
+/** 另一邊也有同名 adb 的提示（不自動覆蓋）。 */
+export async function desktopAdbDuplicates(): Promise<Array<{
+  name: string; activePath: string; otherPath: string; same: boolean;
+}>> {
+  const c = await hostCall();
+  if (!c) return [];
+  try {
+    const v = await c.ByName('main.AdbHost.AdbDuplicates');
+    return Array.isArray(v) ? v as Array<{ name: string; activePath: string; otherPath: string; same: boolean }> : [];
+  } catch {
+    return [];
+  }
 }
 
 /** 清單網址（正式版是官網；測試用 ACCELON26_ADB_MANIFEST 覆寫）。 */

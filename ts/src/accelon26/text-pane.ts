@@ -9,11 +9,12 @@
  *
  * Who fills it: Ctrl+點 a tree node, or Ctrl+點 (複製) / Shift+點 (搬移) a 本文分頁.
  */
-import { $, displayName, escapeHtml, fmtInt, mapper, reader } from './viewer';
-import { PAGE_LINES, boundsOfRealm, closeDocTab, docTabs, hardBreaksOn, pageBounds, pageMarksOn, renderRawOn } from './doc-pane';
+import { $, displayName, escapeHtml, fmtInt, mapper, reader, setStatus } from './viewer';
+import { PAGE_LINES, activeDocCtx, boundsOfRealm, closeDocTab, docTabs, hardBreaksOn, pageBounds, pageMarksOn, renderRawOn } from './doc-pane';
 import { renderPageBlocks } from './render_accelon3';
 import { isDictDb } from './db-kind';
 import { dirActive, dirTrees, findNode } from './scopes';
+import { openExternalUrl } from './plates';
 
 export interface TextTab {
   id: number; label: string; realm: { from: number; to: number }; page: number;
@@ -22,13 +23,22 @@ export interface TextTab {
 }
 
 /** 由 xref.ts 注入：把別庫的 VA 畫成 HTML（避免 text-pane 依賴 AdbReader） */
-export type ForeignRender = (db: string, va: number, anchor?: string, quote?: string, j?: string) => Promise<{ html: string; title: string }>;
+export type ForeignRender = (db: string, va: number, anchor?: string, quote?: string, j?: string) => Promise<{ html: string; title: string; sat?: string; plate?: string }>;
 let foreignRender: ForeignRender | null = null;
 let ensureRight: (() => void) | null = null;
 /** 由 ui.ts 注入：把右欄打開（點聯時如果側欄收起來了） */
 export function setEnsureRight(fn: () => void): void { ensureRight = fn; }
 export function ensureRightPane(): void { ensureRight?.(); }
 export function setForeignRender(fn: ForeignRender): void { foreignRender = fn; }
+
+/** 由 xref.ts 注入：跨庫分頁的「上一頁／下一頁」（回傳那一頁的 id 與 VA） */
+export type ForeignNeighbor = (db: string, anchor: string, dir: 1 | -1) => Promise<{ anchor: string; va: number } | null>;
+let foreignNeighbor: ForeignNeighbor | null = null;
+export function setForeignNeighbor(fn: ForeignNeighbor): void { foreignNeighbor = fn; }
+/** 跨庫分頁的短名（和大正分頁標籤一致） */
+// 右欄跨庫分頁的標籤：大正＝「大正9p18c」（作者 2026-10-31，不用 T）
+export const foreignTabLabel = (db: string, anchor: string): string =>
+  db === 'taisho' ? '大正' + anchor : db.slice(0, 4) + ' ' + anchor;
 
 type OpenInMainFn = (db: string, opts: { va?: number; anchor?: string; label?: string }) => Promise<boolean>;
 let openInMainFn: OpenInMainFn | null = null;
@@ -99,10 +109,12 @@ export async function openTextTab(realm: { from: number; to: number }, label: st
  */
 export function openForeignTab(db: string, va: number, label: string, newTab = false, anchor?: string, quote?: string, j?: string): void {
   ensureRightPane();
+  // 大正一律用「大正<頁碼>」，不管呼叫端原本叫它 T 還是什麼
+  const lbl = db === 'taisho' && anchor ? foreignTabLabel(db, anchor) : label;
   if (!newTab) {
     const at = textTabs.findIndex((t) => t.foreign);
     if (at >= 0) {
-      textTabs[at] = { ...textTabs[at], label, foreign: { db, va, anchor, quote, j } };
+      textTabs[at] = { ...textTabs[at], label: lbl, foreign: { db, va, anchor, quote, j } };
       textActive = at;
       syncTextTab();
       const btn0 = $('#colRight .tabBtn[data-tab="text"]') as HTMLButtonElement | null;
@@ -110,7 +122,7 @@ export function openForeignTab(db: string, va: number, label: string, newTab = f
       return;
     }
   }
-  textTabs.push({ id: ++seq, label, realm: { from: 0, to: 0 }, page: 0, foreign: { db, va, anchor, quote, j } });
+  textTabs.push({ id: ++seq, label: lbl, realm: { from: 0, to: 0 }, page: 0, foreign: { db, va, anchor, quote, j } });
   textActive = textTabs.length - 1;
   syncTextTab();
   const btn = $('#colRight .tabBtn[data-tab="text"]') as HTMLButtonElement | null;
@@ -135,6 +147,21 @@ export function closeTextTab(i: number): void {
 }
 
 /**
+ * 跨庫分頁翻頁（2026-10-31）：右欄顯示別庫的一頁時，「上一頁／下一頁」換那一庫的
+ * 相鄰頁（例如 T2p183c → 2p184a）。換頁後就不帶原本的引文座標（q／j），只顯示原頁。
+ */
+async function moveForeignPage(dir: 1 | -1): Promise<void> {
+  const t = textTabs[textActive];
+  if (!t?.foreign || !foreignNeighbor) return;
+  const f = t.foreign;
+  const nb = await foreignNeighbor(f.db, f.anchor ?? '', dir);
+  if (!nb) { setStatus(dir > 0 ? '已經是最後一頁' : '已經是第一頁', 'warn'); return; }
+  t.foreign = { db: f.db, va: nb.va, anchor: nb.anchor };
+  t.label = foreignTabLabel(f.db, nb.anchor);
+  void renderTextPane();
+}
+
+/**
  * Draw the active tab's page. This is the ONLY place that decides how a line looks,
  * which is the point of the module: the XML→HTML rendering will land here.
  */
@@ -148,8 +175,34 @@ export async function renderTextPane(): Promise<void> {
     body.innerHTML = '<p class="dim">載入中…</p>';
     const fr = await foreignRender(t.foreign.db, t.foreign.va, t.foreign.anchor, t.foreign.quote, t.foreign.j);
     body.innerHTML = fr.html;
+    // 大正藏：右上給「→SAT」「→圖版」（2026-10-31）；網址由 renderForeign 算好
+    if (fr.sat || fr.plate) {
+      const tools = document.createElement('div');
+      tools.className = 'xrefTools';
+      for (const [label, url] of [['→SAT', fr.sat], ['→圖版', fr.plate]] as const) {
+        if (!url) continue;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'mini';
+        btn.textContent = label;
+        btn.dataset.url = url;
+        btn.title = url;
+        btn.onclick = () => void openExternalUrl(url);
+        tools.appendChild(btn);
+      }
+      body.prepend(tools);
+    }
+    // 跨庫分頁也有「上一頁／下一頁」：換那一庫的相鄰頁（2026-10-31）
     const pager0 = $('#textPager') as HTMLElement | null;
-    if (pager0) pager0.hidden = true;
+    if (pager0) {
+      pager0.hidden = false;
+      const info = $('#textPageInfo');
+      if (info) info.textContent = t.foreign.anchor ? '第 ' + t.foreign.anchor + ' 頁' : '';
+      const prev = $('#textPrev') as HTMLButtonElement | null;
+      const next = $('#textNext') as HTMLButtonElement | null;
+      if (prev) { prev.onclick = () => void moveForeignPage(-1); prev.setAttribute('aria-disabled', 'false'); }
+      if (next) { next.onclick = () => void moveForeignPage(1); next.setAttribute('aria-disabled', 'false'); }
+    }
     // 有塗紅就把那一段捲到視窗中央（回印順時直接看到引註）
     const hit = body.querySelector('mark.xrefHit') as HTMLElement | null;
     if (hit) hit.scrollIntoView({ block: 'center' });
@@ -157,8 +210,10 @@ export async function renderTextPane(): Promise<void> {
     return;
   }
   if (!t || !mapper || !reader) { body.innerHTML = EMPTY; return; }
-  const b = boundsOfRealm(t.realm);
-  const pb = pageBounds(t.realm, t.page);
+  // 右欄的文字內容分頁永遠是「左欄那一庫」的文字（跨庫分頁只在中間那一欄）
+  const ctx = activeDocCtx();
+  const b = boundsOfRealm(ctx, t.realm);
+  const pb = pageBounds(ctx, t.realm, t.page);
   t.page = Math.max(0, Math.min(t.page, pb.pages - 1));
   // the VA span comes from the PAGE's lines (a node can span several files)
   const v = mapper.linesVirtual;

@@ -75,19 +75,13 @@ func TestSaveAdbSanitisesNameAndChecksSignature(t *testing.T) {
 	}
 }
 
-func TestSeedDirsHasWorkingDirectory(t *testing.T) {
+func TestSeedDirsSingleFolder(t *testing.T) {
+	// 作者 2026-11-01：adb 只認一個資料夾（exe 旁可寫，否則 APPDATA）。
 	dirs := seedDirs()
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Skip("no cwd")
+	if len(dirs) != 1 || strings.TrimSpace(dirs[0]) == "" {
+		t.Fatalf("seedDirs() 應該只有一個非空資料夾，got %v", dirs)
 	}
-	found := false
-	for _, d := range dirs {
-		if strings.EqualFold(d, cwd) {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("seedDirs() does not contain the working directory: %v", dirs)
+	if !strings.EqualFold(dirs[0], adbRootDir()) {
+		t.Fatalf("seedDirs()=%q，adbRootDir()=%q", dirs[0], adbRootDir())
 	}
 }

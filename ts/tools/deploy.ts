@@ -8,6 +8,7 @@
  *   cd ts && bun run tools/deploy.ts --site-only    # 只換 www/，完全不碰 exe／versions.json
  *   cd ts && bun run tools/deploy.ts --check        # 只驗線上，不上傳
  *   cd ts && bun run tools/deploy.ts --mirror-only  # 只做鏡像站（--primary-only 只做主站）
+ *   cd ts && bun run tools/deploy.ts --site --no-adb  # 只發桌面版，不重生 adb manifest／公開頁
  *
  * 為什麼要兩個站：大陸使用者一般連不到 nissaya.cn；海外使用者連 nissaya.cn 比較快。
  * 程式會探測兩站並讓使用者選（見 ts/src/accelon26/mirror.ts），所以兩邊的 versions.json
@@ -41,6 +42,9 @@ const SITE_ONLY = args.includes('--site-only');
 const MIRROR_ONLY = args.includes('--mirror-only');
 const PRIMARY_ONLY = args.includes('--primary-only');
 const SITE = WITH_SITE || SITE_ONLY;
+// 只發桌面版、沒有要更新 adb：跳過 manifest／公開數據庫頁的重生，
+// 免得把還沒上傳的新 adb（ys／taisho…）寫進站上的 manifest。
+const NO_ADB = args.includes('--no-adb');
 if (MIRROR_ONLY && PRIMARY_ONLY) {
   console.error('✗ --mirror-only 與 --primary-only 不能同時用');
   process.exit(2);
@@ -138,16 +142,20 @@ function sh(cmd: string[], label: string): string {
   return out;
 }
 
+/** 每次執行獨立的暫存檔名：兩個部署同時跑時，才不會互相刪掉別人的密碼檔（2026-11-01） */
+const RUN_ID = process.pid;
+const pwPath = (t: Target): string => resolve(LOCAL, `.pw-${t.id}-${RUN_ID}.tmp`);
+
 function makeTransport(t: Target) {
   const fingerprint = hostFingerprint(t);
-  const pwFile = resolve(LOCAL, `.pw-${t.id}.tmp`);
+  const pwFile = pwPath(t);
   writeFileSync(pwFile, t.pass + '\n', { mode: 0o600 });
   const upload = (localPath: string, remotePath: string): void => {
     sh([PSCP, '-batch', '-P', t.port, '-hostkey', fingerprint, '-pwfile', pwFile, localPath,
       t.user + '@' + t.host + ':' + remotePath], `[${t.label}] 上傳 ${remotePath}`);
   };
   const remote = (script: string, label: string): string => {
-    const f = resolve(LOCAL, `.remote-${t.id}.sh`);
+    const f = resolve(LOCAL, `.remote-${t.id}-${RUN_ID}.sh`);
     writeFileSync(f, script);
     try {
       return sh([PLINK, '-batch', '-ssh', '-P', t.port, '-l', t.user, '-hostkey', fingerprint,
@@ -205,7 +213,7 @@ function adbNames(): string[] {
     : [];
 }
 
-if (SITE && !CHECK_ONLY) {
+if (SITE && !CHECK_ONLY && !NO_ADB) {
   for (const tool of ['make-changelog.ts', 'make-releases.ts']) {
     const gen = Bun.spawnSync({ cmd: ['bun', 'run', 'tools/' + tool], cwd: resolve(ROOT, 'ts'), stdout: 'inherit', stderr: 'inherit' });
     if (gen.exitCode !== 0) die(tool + ' 產生失敗');
@@ -243,7 +251,7 @@ async function deployTarget(t: Target): Promise<void> {
       const img = resolve(siteDir, 'img');
       if (existsSync(img)) {
         tr!.remote(`cd '${t.docroot}' && mkdir -p img`, '建立 img/ 目錄');
-        sh([PSCP, '-batch', '-r', '-P', t.port, '-hostkey', hostFingerprint(t), '-pwfile', resolve(LOCAL, `.pw-${t.id}.tmp`),
+        sh([PSCP, '-batch', '-r', '-P', t.port, '-hostkey', hostFingerprint(t), '-pwfile', pwPath(t),
           img, t.user + '@' + t.host + ':' + t.docroot + '/'], `[${t.label}] 上傳 www/img/`);
       }
       // 歷史 release ZIP：只上傳站上沒有的（同一天重發會覆蓋同名檔）
@@ -261,8 +269,9 @@ async function deployTarget(t: Target): Promise<void> {
           console.log(`[${t.label}] releases/${name} 已上傳`);
         }
       }
+      // `--no-adb`：adb 由各 adb 工作區自己部署，這裡連 adb/ 頁面都不要上傳
       const adbDir = resolve(ROOT, 'www', 'adb');
-      if (existsSync(adbDir)) {
+      if (!NO_ADB && existsSync(adbDir)) {
         tr!.remote(`cd '${t.docroot}' && mkdir -p adb`, '建立 adb/ 目錄');
         for (const name of adbNames()) {
           tr!.upload(resolve(adbDir, name), t.docroot + '/adb/' + name + '.tmp');
@@ -327,3 +336,4 @@ if (failures.length) {
 console.log(CHECK_ONLY
   ? `\n線上都正常（--check：沒有上傳任何東西）。`
   : `\n已同步：${chosen.map((t) => t.base).join('、')}`);
+

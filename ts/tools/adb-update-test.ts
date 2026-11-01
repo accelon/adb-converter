@@ -286,18 +286,10 @@ try {
   ok('更新後只剩一個 dbChip（舊的同檔 slot 已收掉）',
     (await evalIn<number>('document.querySelectorAll("#dbTabs .dbChip").length')) === 1,
     String(await evalIn<number>('document.querySelectorAll("#dbTabs .dbChip").length')));
-  const afterBtn = await evalIn<string>('document.getElementById("adbUpBtn")?.textContent ?? ""');
-  ok('沒有新版時仍留「資料庫版本」按鈕（可看版本記錄）',
-    afterBtn.includes('資料庫版本') && !afterBtn.includes('New'), afterBtn);
-  await evalIn('(document.getElementById("adbUpBtn").click(), 1)');
-  await Bun.sleep(900);
-  await evalIn('document.getElementById("adbUpTabHistory").click()');
-  const afterHist = JSON.parse(await evalIn<string>(`JSON.stringify({
-    versions: document.querySelectorAll('.adbUpHistList > li').length,
-    text: document.getElementById('adbUpdateList')?.textContent,
-  })`));
-  ok('更新後仍能打開版本記錄（4 版，含最新那版的說明）',
-    afterHist.versions === 4 && afterHist.text.includes(NOTES[0]), JSON.stringify({ versions: afterHist.versions }));
+  // 作者 2026-11-01：沒有需要更新的庫就不必顯示 #adbUpBtn
+  // （以前會一直留一顆「資料庫版本」按鈕）
+  const afterBtn = await evalIn<boolean>('!!document.getElementById("adbUpBtn")');
+  ok('沒有新版時不再顯示 #adbUpBtn', afterBtn === false, afterBtn ? '按鈕還在' : '(沒有按鈕)');
   await shot('adb-update-done.png');
 
   // 5) 更新鏡像：自動探測；切到鏡像／主站時 Go 的更新站要跟著換

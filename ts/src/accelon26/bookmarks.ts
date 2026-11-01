@@ -8,7 +8,7 @@
  */
 import { mapper, reader, setStatus } from './viewer';
 import { lookupBook, openTaishoAt, pageHanText, pageIdAtVa, type BookHit } from './xref';
-import { revealHit } from './link';
+import { cursorNode, focusTreeNode, revealCursorInTree, revealHit } from './link';
 import { openDictLookup } from './dict-pane';
 import { openForeignTab } from './text-pane';
 import {
@@ -16,6 +16,7 @@ import {
 } from './map-pane';
 import { formatAddress } from './posmap';
 import { openExternalUrl } from './plates';
+import { GLOSS_LANG_NAME, foldGlossary, loadGlossary } from './glossary';
 
 interface Bookmark {
   id: string;
@@ -38,6 +39,8 @@ interface SelInfo {
   rect: { left: number; top: number; bottom: number; width: number };
   /** 只有「不超過 10 個字、且不含標點」的短詞才顯示「搜尋」。 */
   searchable: boolean;
+  /** 選取的是原書頁 <頁> 的標記（只給「一般複製」，作者 2026-10-31）。 */
+  pageMark: boolean;
   startLine: number;
   endLine: number;
   /** 選取起點前面有幾個漢字（換算位置用；標點與標記不計）。 */
@@ -78,6 +81,28 @@ function dbKey(): string {
 function bookmarksOf(db = dbKey()): Bookmark[] {
   const list = loadAll()[db] ?? [];
   return list.slice().sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/** 最後加入的書籤（作者 2026-10-31：重開同一個 adb 時回到這裡）。 */
+export function lastBookmark(db = dbKey()): Bookmark | null {
+  return bookmarksOf(db)[0] ?? null;
+}
+
+/**
+ * 開庫後回到最後加入的書籤，並把目錄指到那個節點（作者 2026-10-31）。
+ * 由 viewer 在目錄樹建好後發的 `accelon26:tree-ready` 呼叫。
+ */
+export async function resumeLastBookmark(): Promise<boolean> {
+  const bm = lastBookmark();
+  if (!bm) return false;
+  (globalThis as any).__bmVa = bm.va;
+  await revealHit(bm.va, bm.book || bm.text || bm.pageId, 1, { mode: 'node', noMark: true });
+  // 目錄要等游標節點算出來（paint 之後）才展開；樹是背景建置的，稍等再試
+  for (let i = 0; i < 40 && !cursorNode; i++) await new Promise((r) => setTimeout(r, 50));
+  focusTreeNode(bm.va);          // 目錄指到書籤的節點（不是頁面中段的最深節點）
+  void revealCursorInTree();
+  setStatus('已回到最後的書籤：' + (bm.book || bm.pageId || ''), 'info');
+  return true;
 }
 
 /** 目前 reader 的某個標籤在 VA 之前最近的名稱。 */
@@ -129,6 +154,11 @@ async function selectionInfo(): Promise<SelInfo | null> {
   const rect = rects.length ? rects[0] : range.getBoundingClientRect();
   const compact = text.replace(/\s+/g, '');
   const searchable = Array.from(compact).length <= 10 && !/[\p{P}\p{S}]/u.test(text);
+  // 雙擊原書頁 <頁>：只留「複製文字」（作者 2026-10-31）
+  const anchorEl = range.startContainer.nodeType === 1
+    ? (range.startContainer as Element)
+    : (range.startContainer.parentElement as Element | null);
+  const pageMark = !!anchorEl?.closest?.('.pageBreak, .pageMark');
   const endRoot = range.endContainer;
   const endEl = endRoot.nodeType === 1 ? endRoot as Element : endRoot.parentElement;
   const endLineEl = endEl?.closest?.('#docText .docLine') as HTMLElement | null;
@@ -151,7 +181,7 @@ async function selectionInfo(): Promise<SelInfo | null> {
     pre.setEnd(range.endContainer, range.endOffset);
     for (const ch of pre.toString()) if (HAN_RE.test(ch)) hanPrefixEnd++;
   } catch { hanPrefixEnd = hanPrefix; }
-  return { text, raw, va, pageId, book, page: pageId, rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width }, searchable, startLine: n, endLine, hanPrefix, hanPrefixEnd };
+  return { text, raw, va, pageId, book, page: pageId, rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width }, searchable, pageMark, startLine: n, endLine, hanPrefix, hanPrefixEnd };
 }
 
 async function hanRange(info: SelInfo): Promise<[number, number]> {
@@ -210,6 +240,82 @@ function sutraQuery(text: string): string {
   return /[經論]$/.test(t) ? t : '';
 }
 
+/** 詞彙表查詢的結果：選單那顆按鈕要帶入的字串（null＝這次選取查不到）。 */
+let glossQuery: string | null = null;
+
+/**
+ * 選取文字 → 詞彙表（2026-10-31）：
+ *   選到漢詞且詞彙表有 → 按鈕寫「查梵語／查巴利語／查藏語」；
+ *   選到外語（可省略變音符號）→ 按鈕寫「查漢語」；
+ *   查不到就不顯示。按下後把查詢字串丟進左欄「詞彙」分頁。
+ */
+async function fillGlossary(info: SelInfo): Promise<void> {
+  const btn = document.querySelector<HTMLButtonElement>('#selMenu [data-sel="gloss"]');
+  if (btn) { btn.hidden = true; btn.textContent = ''; }
+  clearDynGloss();
+  glossQuery = null;
+  const text = info.text.trim();
+  if (!btn || !reader || !text) return;
+  const rows = await loadGlossary(reader);
+  if (!rows || pending !== info) return;
+
+  // 選到漢詞 → 每一個對應外語各一筆（例如「涅槃」→ 梵 mahā-parinirvāṇa／nirvāṇa、巴 nibbāna）
+  // 選到外語 → 一筆「查漢語」。作者 2026-10-31。
+  type Item = { label: string; q: string };
+  const items: Item[] = [];
+  const hanHits = rows.filter((r) => r.han === text);
+  if (hanHits.length) {
+    const seen = new Set<string>();
+    for (const r of hanHits) {
+      const key = r.lang + '\u0000' + r.foreign;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      items.push({ label: '查 ' + r.foreign, q: r.foreign });
+    }
+  } else {
+    const f = foldGlossary(text);
+    if (!f) return;
+    const foreignHits = rows.filter((r) => foldGlossary(r.foreign) === f);
+    if (!foreignHits.length) return;
+    const hans = [...new Set(foreignHits.map((r) => r.han))];
+    for (const h of hans) items.push({ label: '查 ' + h, q: h });
+  }
+  if (!items.length) return;
+
+  if (items.length === 1) {
+    btn.textContent = items[0].label;
+    btn.title = '用詞典查「' + items[0].q + '」';
+    glossQuery = items[0].q;
+    btn.hidden = false;
+    return;
+  }
+  // 多筆：在「查看」子選單動態長出多顆按鈕，各查各的對應語。
+  const sub = document.querySelector<HTMLElement>('#selMenu .selSub[data-sub="view"]');
+  if (!sub) return;
+  for (const it of items) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'selDynGloss';
+    b.textContent = it.label;
+    b.title = '用詞典查「' + it.q + '」';
+    b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      hideMenu();
+      void openDictLookup(it.q);
+    });
+    sub.appendChild(b);
+  }
+  if (pending === info) {
+    const mEl = document.getElementById('selMenu');
+    if (mEl) placeMenu(mEl, info);
+  }
+}
+
+function clearDynGloss(): void {
+  document.querySelectorAll('#selMenu .selDynGloss').forEach((el) => el.remove());
+}
+
+
 /** 有開大正藏時，選取書名／結尾經論 → 在選單加一顆「開《…》」。 */
 async function fillSutra(info: SelInfo): Promise<void> {
   sutraHit = null;
@@ -255,6 +361,7 @@ function showMenu(info: SelInfo): void {
   const m = $id('selMenu');
   if (!m) return;
   pending = info;
+  clearDynGloss();
   pendingRef = reader?.header.dbname === 'study' ? taishoRef(info.text) : '';
   plateUrls = {};
   addrRange = '';
@@ -269,9 +376,27 @@ function showMenu(info: SelInfo): void {
   m.querySelectorAll<HTMLButtonElement>('[data-sel]').forEach((b) => { b.hidden = false; });
   const minor = m.querySelector<HTMLButtonElement>('.selMinor');
   if (minor) minor.hidden = false;
-  for (const sel of ['plateT', 'plateK', 'sutra', 'addr']) {
+  for (const sel of ['plateT', 'plateK', 'sutra', 'addr', 'gloss']) {
     const b = actOf(m, sel);
     if (b) b.hidden = true;
+  }
+
+  // 雙擊原書頁 <頁>：只留「複製文字」（作者 2026-10-31）；
+  // 頁碼不是可搜尋／可加書籤／可查字典的文字。
+  if (info.pageMark) {
+    sutraHit = null;
+    for (const kind of ['search', 'view']) {
+      const g = grpOf(m, kind);
+      if (g) g.hidden = true;
+    }
+    for (const sel of ['cite', 'rong', 'qian', 'pos', 'addr', 'gloss']) {
+      const b = actOf(m, sel);
+      if (b) b.hidden = true;
+    }
+    if (minor) minor.hidden = true;
+    openSub(m, 'copy');
+    placeMenu(m, info);
+    return;
   }
 
   fillSearch(m);
@@ -281,7 +406,7 @@ function showMenu(info: SelInfo): void {
     sutraHit = null;
     const gs = grpOf(m, 'search');
     if (gs) gs.hidden = true;
-    for (const sel of ['cite', 'rong', 'qian', 'pos', 'addr', 'dict', 'plateT', 'plateK']) {
+    for (const sel of ['cite', 'rong', 'qian', 'pos', 'addr', 'dict', 'plateT', 'plateK', 'gloss']) {
       const b = actOf(m, sel);
       if (b) b.hidden = true;
     }
@@ -309,6 +434,7 @@ function showMenu(info: SelInfo): void {
   void fillSutra(info);
   void fillPlates(info);
   void fillAddress(info);
+  void fillGlossary(info);
 }
 
 /** 先顯示再量大小，才不會超出視窗。 */
@@ -342,7 +468,11 @@ async function copyText(text: string, message: string): Promise<void> {
 export async function citationFor(info: SelInfo): Promise<string> {
   const r = reader;
   if (!r) return info.text;
-  const header = await r.sourceText(0).catch(() => '');
+  const raw = await r.sourceText(0).catch(() => '');
+  // `sourceText(0)` 是整個 block：檔頭後面緊接著正文。只取第一個 <檔>…</檔>，
+  // 否則會把正文某一段的 <引> 當成模板（fuyan 的引用變成別段經文，2026-11-01）。
+  const tail = raw.indexOf('</檔>');
+  const header = tail >= 0 ? raw.slice(0, tail + 5) : raw;
   const m = /<引(?:\s[^>]*)?>([\s\S]*?)<\/引>/.exec(header);
   const tpl = m?.[1] ?? '《$書;》：「$_;」( $*頁; )';
   const tags = [...tpl.matchAll(/\$(\*?)([^;]+);/g)].map((x) => x[2]);
@@ -566,6 +696,7 @@ async function runAction(action: string): Promise<void> {
   } else if (action === 'addr' && addrRange) {
     await copyText(addrRange, '已複製高麗⇄大正位址範圍');
   } else if (action === 'dict') await openDictLookup(info.text);
+  else if (action === 'gloss' && glossQuery) await openDictLookup(glossQuery);
   else if (action === 'plateT' && plateUrls.taisho) await openExternalUrl(plateUrls.taisho);
   else if (action === 'plateK' && plateUrls.goryeo) await openExternalUrl(plateUrls.goryeo);
   else if (action === 'sutra') {
@@ -582,6 +713,8 @@ async function runAction(action: string): Promise<void> {
 export function initBookmarks(): void {
   if (inited) return;
   inited = true;
+  // 開庫＋目錄樹建好後，回到最後加入的書籤（作者 2026-10-31）
+  document.addEventListener('accelon26:tree-ready', () => { void resumeLastBookmark(); });
   const menu = $id('selMenu');
   menu?.addEventListener('mousedown', (ev) => ev.preventDefault());
 

@@ -159,15 +159,12 @@ func (d *adbDownload) finish(state, errMsg string) {
 }
 
 // StartAdbDownload 開始把 rawurl 下載到 path（必須是既有 .adb），完成後原子替換。
-// 回傳 id，前端用 AdbDownloadStatus(id) 輪詢、CancelAdbDownload(id) 放棄。
+// 作者 2026-11-01：一律寫到 adbRootDir()（比對／下載／開啟同一個資料夾）。
 func (h *AdbHost) StartAdbDownload(rawurl, path, wantSha string, wantSize int64) (string, error) {
 	if !isHTTPURL(rawurl) {
 		return "", errors.New("只支援 http(s) 網址")
 	}
-	abs, err := h.resolve(path)
-	if err != nil {
-		return "", err
-	}
+	abs := filepath.Join(adbRootDir(), filepath.Base(path))
 	if fi, err := os.Stat(abs); err != nil || fi.IsDir() {
 		return "", errors.New("找不到要更新的 adb：" + abs)
 	}
@@ -181,28 +178,11 @@ func (h *AdbHost) StartNewAdbDownload(rawurl, name, wantSha string, wantSize int
 		return "", errors.New("只支援 http(s) 網址")
 	}
 	clean := sanitizeAdbName(name)
-	var target string
-	for _, dir := range append(seedDirs(), downloadsDir()) {
-		if strings.TrimSpace(dir) == "" {
-			continue
-		}
-		_ = os.MkdirAll(dir, 0o755)
-		p := filepath.Join(dir, clean)
-		if _, err := os.Stat(p); err == nil {
-			return "", errors.New("本機已經有 " + clean + "，請用更新功能")
-		}
-		f, err := os.CreateTemp(dir, ".accelon26-*.tmp")
-		if err != nil {
-			continue
-		}
-		tmp := f.Name()
-		_ = f.Close()
-		_ = os.Remove(tmp)
-		target = p
-		break
-	}
-	if target == "" {
-		return "", errors.New("找不到可寫入的資料夾")
+	dir := adbRootDir()
+	_ = os.MkdirAll(dir, 0o755)
+	target := filepath.Join(dir, clean)
+	if _, err := os.Stat(target); err == nil {
+		return "", errors.New("本機已經有 " + clean + "，請用更新功能")
 	}
 	return startAdbDownload(h, rawurl, target, wantSha, wantSize)
 }
@@ -230,12 +210,15 @@ func startAdbDownload(h *AdbHost, rawurl, abs, wantSha string, wantSize int64) (
 }
 
 func runAdbDownload(ctx context.Context, h *AdbHost, d *adbDownload, rawurl, abs, wantSha string) {
-	tmp, err := os.CreateTemp(filepath.Dir(abs), ".accelon26-*.tmp")
+	// 作者 2026-11-01：固定用 <name>.adb.part；sha 核對通過才 rename 成正式檔，
+	// 失敗／取消只刪 .part，原本的 .adb 不動。
+	partName := abs + ".part"
+	tmp, err := os.OpenFile(partName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
-		d.finish("error", "無法在原檔旁建立暫存檔："+err.Error())
+		d.finish("error", "無法在原檔旁建立 "+filepath.Base(partName)+"："+err.Error())
 		return
 	}
-	tmpName := tmp.Name()
+	tmpName := partName
 	renamed := false
 	defer func() {
 		if !renamed {
@@ -393,13 +376,15 @@ func (h *AdbHost) CancelAdbDownload(id string) bool {
 func cleanupStaleAdbTemps() {
 	cutoff := time.Now().Add(-6 * time.Hour)
 	for _, dir := range seedDirs() {
-		matches, err := filepath.Glob(filepath.Join(dir, ".accelon26-*.tmp"))
-		if err != nil {
-			continue
-		}
-		for _, p := range matches {
-			if fi, err := os.Stat(p); err == nil && fi.ModTime().Before(cutoff) {
-				_ = os.Remove(p)
+		for _, pattern := range []string{".accelon26-*.tmp", "*.adb.part"} {
+			matches, err := filepath.Glob(filepath.Join(dir, pattern))
+			if err != nil {
+				continue
+			}
+			for _, p := range matches {
+				if fi, err := os.Stat(p); err == nil && fi.ModTime().Before(cutoff) {
+					_ = os.Remove(p)
+				}
 			}
 		}
 	}

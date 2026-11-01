@@ -23,7 +23,7 @@ import { SNIPPET_LIMIT, lastResult, renderSnippets, resetSummary, runSearch, sea
 import { cursorNode, lastReveal, nodeLabelOf, paintTreeActive, pinnedHit, resetLink, revealCursorInTree, revealHit, showLine } from './link';
 import { resetTextPane } from './text-pane';
 import { setLogoBase, updateDocLogo } from './logo';
-import { DOCFS_DEFAULT, DOCFS_KEY, autoFitFont, boundsCache, boundsOfRealm, docActive, docFontSized, docOfVa, docSession, docTabs, ensurePage, fitDebugInfo, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, paintAsked, readDocFont, renderDocTabs, resetDocPane, restoreLastRead, sessionFor, setDocFont, wholeRealm } from './doc-pane';
+import { DOCFS_DEFAULT, DOCFS_KEY, autoFitFont, boundsCache, boundsOfRealm, docActive, docFontSized, docOfVa, docSession, docTabs, ensurePage, fitDebugInfo, lastDocLines, lastFit, lastLink, pageBounds, pagerLog, paintAsked, readDocFont, refreshDocTabsAfterOpen, renderDocTabs, resetDocPane, restoreLastRead, sessionFor, setDocFont, wholeRealm } from './doc-pane';
 import { paintHit } from './paint';
 import { resetEngineStats } from './engine-stats';
 import { setActiveDb } from './tag-style';
@@ -73,6 +73,7 @@ export function displayName(name: string): string {
 }
 
 let lastStatus = '';
+let statusTimer = 0;
 
 /**
  * The header's status line.
@@ -82,10 +83,11 @@ let lastStatus = '';
  * `__accelon26.status()` / `state().status` report, so tests and diagnostics keep seeing
  * the last message while the header stays clean.
  */
-export function setStatus(msg: string, kind: 'info' | 'err' | 'busy' = 'info') {
+export function setStatus(msg: string, kind: 'info' | 'err' | 'busy' | 'note' = 'info') {
   lastStatus = msg;
   const el = $('#status');
   if (!el) return;
+  window.clearTimeout(statusTimer);
   if (kind === 'info') {
     el.hidden = true;
     el.textContent = '';
@@ -95,6 +97,15 @@ export function setStatus(msg: string, kind: 'info' | 'err' | 'busy' = 'info') {
   el.hidden = false;
   el.textContent = msg;
   el.className = 'status ' + kind;
+  // `note`：顯示 5 秒後自動收起（作者 2026-11-01：目錄路徑的一次性回饋）
+  if (kind === 'note') {
+    statusTimer = window.setTimeout(() => {
+      if (el.textContent !== msg) return;
+      el.hidden = true;
+      el.textContent = '';
+      el.className = 'status';
+    }, 5000);
+  }
 }
 
 /** the last message, whether or not it was shown (diagnostics/tests) */
@@ -123,6 +134,10 @@ export let lastOpen: {
  */
 let lastTreeMs = 0;
 
+/** 開啟 adb 成功後的通知（adb-update.ts 用來檢查更新；作者 2026-11-01）。 */
+let dbOpenedHook: (() => void) | null = null;
+export function setDbOpenedHook(fn: (() => void) | null): void { dbOpenedHook = fn; }
+
 export async function openFile(file: AdbSource): Promise<'opened' | 'existing' | 'refused' | 'busy'> {
   // A load may be triggered twice by the picker (the browser fires `change`, and
   // callers often dispatch one as well). Without this guard the second run would
@@ -141,7 +156,8 @@ export async function openFile(file: AdbSource): Promise<'opened' | 'existing' |
       return 'refused';
     }
     const wantName = probe.header.dbcname || probe.header.dbname;
-    catalogAdd(file, wantName);
+    // 第三個參數是 adb id（檔頭 dbname）：選單預設按它排序（作者 2026-11-01）
+    catalogAdd(file, wantName, probe.header.dbname);
     // The picker fires `change` twice for one pick, and the second run would load the
     // file again — discarding the snapshot of the database being left (its tabs were
     // lost that way). If this exact file is already open, just switch to it.
@@ -232,7 +248,8 @@ export async function openFile(file: AdbSource): Promise<'opened' | 'existing' |
       setDirLoading(false);
       lastTreeMs = performance.now() - tTree;
       if (lastOpen) lastOpen.treeMs = lastTreeMs;
-      void renderDirTree();
+      // 目錄樹好了：書籤模組會在這裡回到最後加入的書籤（作者 2026-10-31）
+      void renderDirTree().then(() => document.dispatchEvent(new Event('accelon26:tree-ready')));
     });
     resetSummary();
     ($('#query') as HTMLInputElement).value = '';
@@ -269,22 +286,21 @@ export async function openFile(file: AdbSource): Promise<'opened' | 'existing' |
       setStatus(`${dbName}：${file.name} 取代了同名的庫（它的舊分頁已關閉）`, 'info');
     }
     void updateDocLogo();          // 本文區還空著 → 顯示這個庫自己的 logo
+    // 開庫後通知（2026-10-31）：反鏈表／引紋按鈕要在這裡更新（file:// 開庫不走 dbs 的 hook）
+    document.dispatchEvent(new Event('accelon26:db'));
     opened = true;
   } catch (e) {
     setStatus('開啟失敗：' + (e as Error).message, 'err');
     console.error(e);
   } finally {
     opening = false;
-    const tabs = $('#docTabs') as HTMLElement | null;
-    if (tabs) { tabs.hidden = true; }
-    const strip = $('#docTabStrip');
-    if (strip) strip.innerHTML = '';
-    const pager = $('#docPager') as HTMLElement | null;
-    if (pager) pager.hidden = true;
+    // 共享分頁時別的庫的本文分頁要留著（作者 2026-11-01）；沒有分頁才收起來
+    refreshDocTabsAfterOpen();
   }
   if (opened) {
     // 最後閱讀頁：finally 清空 docTabs 之後才還原，否則會被 Hide 掉
     try { await restoreLastRead(file); } catch { /* 壞資料就當作沒有 */ }
+    dbOpenedHook?.();          // 作者 2026-11-01：開啟 adb 後才檢查是否有 adb 更新
     return 'opened';
   }
   return 'refused';
@@ -332,4 +348,14 @@ export function restoreCore(s: any): void {
   currentDoc = s.currentDoc ?? null;
   lastOpen = s.lastOpen ?? null;
   lastTreeMs = s.lastTreeMs ?? 0;
+}
+
+// 「跳到某一行」的掛鉤（2026-10-31）：ui.ts 的 jumpToLine 在 init 閉包裡，
+// 詞彙分頁要直接跳到某次出現，透過這個 Hook 呼叫，不必 import ui（避免循環）。
+let jumpLineImpl: ((line: number) => void) | null = null;
+export function setJumpLineHook(fn: ((line: number) => void) | null): void { jumpLineImpl = fn; }
+export function jumpToAdbLine(line: number): boolean {
+  if (!jumpLineImpl || !(line > 0)) return false;
+  jumpLineImpl(line);
+  return true;
 }

@@ -39,13 +39,14 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: 'F3', what: '進入／離開編輯（改錯字；要先在「關於」填修訂者 ID）' },
       { keys: 'F9', what: '元素檢查：點畫面任一元素複製它的 id，再按 F9 或 Esc 結束' },
       { keys: 'Ctrl+B', what: '左欄（目錄／搜尋）開關' },
+      { keys: 'Ctrl+Alt+F', what: '把 focus 移到左欄目前分頁的輸入框（沒有就切回目錄）' },
       { keys: 'Ctrl+Alt+B', what: '右欄（摘要／詞典／文字內容）開關' },
       { keys: 'Alt+1…5', what: '切換到第 1–5 個已開啟的 adb（依上方晶片順序；2026-10-30）' },
       { keys: 'Alt+O', what: '開啟 adb 清單（↑↓ 移動、Enter 開、Esc 收起）' },
       { keys: 'Alt+S', what: '搜尋所有 adb' },
       { keys: 'Alt+A', what: '關於（About；再按一次收起）' },
       { keys: 'Alt+←／→', what: '上一頁／下一頁（本文分頁；不是原書的葉）' },
-      { keys: 'F11', what: '全螢幕／視窗切換', desktop: true },
+      { keys: 'F11', what: '全螢幕／視窗切換（網頁版也可以）' },
       { keys: 'Esc', what: '關閉最上層的視窗；全螢幕時回到視窗', desktop: true },
       { keys: 'Esc', what: '關閉最上層的視窗（設置、全庫搜尋、關於、修訂清單、熱圖、書籤選單）' },
     ],
@@ -56,7 +57,10 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     rows: [
       { keys: 'Enter', what: '立即搜尋（不等輸入停頓）' },
       { keys: '#123 ＋ Enter', what: '跳到第 123 行；#L123@db 指定庫' },
-      { keys: 'Enter', what: '「跳至」欄：跳到最接近的頁 id' },
+      { keys: '1.2.3 ＋ Enter', what: '依目錄樹跳：第 1 書第 2 章第 3 節（序＝0；中文數字也可以）' },
+      { keys: '1-3-4 ＋ Enter', what: '依目錄樹跳：0 起算的節點序號（. 與 - 可混用；至少兩組數字才觸發）' },
+      { keys: 'y38p7a8 ＋ Enter', what: '頁行引用：ys 第 38 部書第 7 頁 a 欄第 8 行；少了 a8＝頁首（y38p7）、少了 p7＝書首（y38）；沒有分欄的頁（fuyan）一律 a 欄' },
+      { keys: 'Enter', what: '搜尋找不到時，同一欄可輸入頁 id（49p15）、大正引用（2，206a15）或字元級位置，直接跳過去' },
       { keys: 'Esc', what: '離開搜尋框，查詢字留著' },
     ],
   },
@@ -222,3 +226,4 @@ export function initShortcuts(): void {
     if (ev.key === 'Escape' && open) { ev.stopPropagation(); closeShortcuts(); }
   }, true);
 }
+

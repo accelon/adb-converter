@@ -3,19 +3,19 @@
   "commit": "dbdea41071e1e260ad84b72faefd4587333cf76d",
   "date": "2026-09-06",
   "source": "cbeta-org/xml-p5",
-  "updatedAt": "2026-10-29T15:42:26Z",
+  "updatedAt": "2026-10-31T15:06:31Z",
   "files": {
     "taisho.adb": {
       "canon": "T",
-      "sha256": "f03f9efecd3e9b6997513d9e4a6566d74276b7603bbbccf1da47de168880b2b3",
-      "size": 331018737,
-      "builtAt": "2026-10-29T15:42:26Z"
+      "sha256": "41581591703032c6e5257ced1278c3658d5ea3a00fd7c1a4b5d07729338f13f2",
+      "size": 329957332,
+      "builtAt": "2026-10-31T15:06:31Z"
     },
     "wxzj.adb": {
       "canon": "X",
-      "sha256": "f4f1cbc999535d51362ed432073df3d5919555465920171b622c967eb8ba1ad9",
-      "size": 246706405,
-      "builtAt": "2026-10-29T01:49:39Z"
+      "sha256": "262b11dbe70d9a2dda48cedf1394d0fb3f33503289dae6e8c3daaa134df2d0ec",
+      "size": 245818774,
+      "builtAt": "2026-10-31T14:18:47Z"
     }
   },
   "sourceDate": "2026-09-06",

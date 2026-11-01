@@ -69,6 +69,9 @@ interface NoteIndex {
   refs: Map<string, number[]>;
   /** n → `<釋>` 的 VA（升冪） */
   bodies: Map<string, number[]>;
+  /** `<註>`／`<釋>` 的 VA → 資料自己帶的頁 id（`pg="…"`；作者 2026-11-01） */
+  refPg: Map<number, string>;
+  bodyPg: Map<number, string>;
   /** `<頁>` 的 VA（升冪）與頁 id：給「同頁優先」的配對用 */
   pageVas: number[];
   pageIds: string[];
@@ -79,7 +82,9 @@ async function noteIndexOf(r: AdbReader): Promise<NoteIndex | null> {
   if (noteIdxCache.has(r)) return noteIdxCache.get(r)!;
   const tagsC = r.containers.get('tags');
   if (!tagsC) { noteIdxCache.set(r, null); return null; }
-  const idx: NoteIndex = { refs: new Map(), bodies: new Map(), pageVas: [], pageIds: [] };
+  const idx: NoteIndex = {
+    refs: new Map(), bodies: new Map(), refPg: new Map(), bodyPg: new Map(), pageVas: [], pageIds: [],
+  };
   const build = async (tag: string, attr: string, into: Map<string, number[]>): Promise<void> => {
     const ti = tagsC.names.indexOf(tag);
     if (ti < 0) return;
@@ -96,8 +101,26 @@ async function noteIndexOf(r: AdbReader): Promise<NoteIndex | null> {
       if (arr) arr.push(va); else into.set(n, [va]);
     }
   };
+  /** 頁 id 屬性（`註.pg`／`釋.pg`）→ VA → pg。沒有這個屬性就空表（ys／taisho／fuyan） */
+  const buildPg = async (tag: string, attr: string, into: Map<number, string>): Promise<void> => {
+    const ti = tagsC.names.indexOf(tag);
+    if (ti < 0) return;
+    const av = await r.attributeValues(attr).catch(() => null);
+    if (!av || !av.pointers) return;
+    const vas = await r.decodeBlockList('tags', ti);
+    for (let k = 0; k < av.values.length; k++) {
+      const p = av.pointers[k];
+      if (((p >>> 24) & 0xff) !== ti) continue;
+      const va = vas[(p & 0xffffff) - 1];
+      if (va == null) continue;
+      const pg = av.values[k];
+      if (pg) into.set(va, pg);
+    }
+  };
   await build('註', '註.n', idx.refs);
   await build('釋', '釋.n', idx.bodies);
+  await buildPg('註', '註.pg', idx.refPg);
+  await buildPg('釋', '釋.pg', idx.bodyPg);
   if (!idx.refs.size && !idx.bodies.size) { noteIdxCache.set(r, null); return null; }
   for (const arr of idx.refs.values()) arr.sort((a, b) => a - b);
   for (const arr of idx.bodies.values()) arr.sort((a, b) => a - b);
@@ -125,34 +148,111 @@ async function noteIndexOf(r: AdbReader): Promise<NoteIndex | null> {
   return idx;
 }
 
-/** 這個 VA 落在哪一個 `<頁>`（沒有就空字串） */
-function pageOfVa(idx: NoteIndex, va: number): string {
+/** 這個 VA 落在第幾個 `<頁>`（-1＝在任何頁標記之前） */
+function pageIndexAt(idx: NoteIndex, va: number): number {
   const v = idx.pageVas;
-  if (!v.length) return '';
+  if (!v.length) return -1;
   let lo = 0, hi = v.length - 1, ans = -1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
     if (v[mid] <= va) { ans = mid; lo = mid + 1; } else hi = mid - 1;
   }
-  return ans >= 0 ? idx.pageIds[ans] : '';
+  return ans;
+}
+
+/** 這個 VA 落在哪一個 `<頁>`（沒有就空字串） */
+function pageOfVa(idx: NoteIndex, va: number): string {
+  const at = pageIndexAt(idx, va);
+  return at >= 0 ? idx.pageIds[at] : '';
 }
 
 /**
- * 從候選 VA 挑一個：同一頁優先；同頁之中 preferAfter 決定往後或往前取最近。
- * （作者 2026-11-01：註釋獨立成 `<書>` 之後，n 只在同一節唯一）
+ * 讀「這一端」的 pg：`dir='body'` 時我們手上是一個 `<註>`，要拿它自己的 `pg="…"`。
+ *
+ * `fromVa` 是行首的 VA（`vaOfLine`），不一定等於標籤的 VA，所以用**行號**去找同一行的
+ * 那個標籤（差一行以內都算），再查它的 pg。沒有 pg 的庫（ys／taisho／fuyan）回空字串。
  */
-function pickVa(idx: NoteIndex, vas: number[], fromVa: number, preferAfter: boolean): number {
-  if (!vas.length) return -1;
-  const pg = pageOfVa(idx, fromVa);
-  const same = pg ? vas.filter((v) => pageOfVa(idx, v) === pg) : [];
-  const pool = same.length ? same : vas;
-  let lo = 0, hi = pool.length - 1, at = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (pool[mid] <= fromVa) { at = mid; lo = mid + 1; } else hi = mid - 1;
+function pgAtLine(
+  own: number[] | undefined, ownPg: Map<number, string>, line: number,
+): string {
+  if (!own?.length || !ownPg.size || line < 0) return '';
+  let best = '', bestD = Number.POSITIVE_INFINITY;
+  for (const va of own) {
+    const p = ownPg.get(va);
+    if (!p) continue;
+    const d = Math.abs(lineOfVa(va) - line);
+    if (d < bestD) { bestD = d; best = p; }
+    if (d === 0) break;
   }
-  if (preferAfter) return at + 1 < pool.length ? pool[at + 1] : pool[pool.length - 1];
-  return at >= 0 ? pool[at] : pool[0];
+  return bestD <= 1 ? best : '';
+}
+
+/** 快取 key 用的「這一頁」：優先用資料自己的 pg，沒有才用 `<頁>` 推出來的頁 id */
+function pageKeyOf(
+  idx: NoteIndex, dir: 'body' | 'ref', n: string, fromVa: number, fromLine: number,
+): string {
+  const own = dir === 'body' ? idx.refs.get(n) : idx.bodies.get(n);
+  const ownPg = dir === 'body' ? idx.refPg : idx.bodyPg;
+  return pgAtLine(own, ownPg, fromLine) || pageOfVa(idx, fromVa);
+}
+
+/**
+ * 同一個 n 有多條時，怎麼配對（作者 2026-11-01 定案）。
+ *
+ * yl38 這種「每節重新編號」的庫，`n=45` 有 9 條 `<註>` 與 9 條 `<釋>`，**只有 `pg` 相同
+ * 的那一條是同一節**。所以：
+ *
+ *   1. **有 `pg` 且相同 → 直接取**（資料自己帶的頁 id，最可靠）
+ *   2. 否則**同頁**（由 `<頁>` 的 VA 推）最近一條
+ *   3. 否則 n 相同、**離目前頁最近**的那條（平手取後面）
+ *
+ * 為什麼不能只靠 (2)：頁標記常落在段落之前，引用那條推出來的頁可能比釋文多一頁
+ * （yl38p25 的 `<註>` 對的是 yl38p24 的 `<釋>`），同頁候選就空了；而一味取 VA 最近，
+ * 會一律抓到釋群的第一條（＝第一章），正是作者看到「hover 顯示第四章第六節」的原因。
+ *
+ * **hover 與點擊都走這一個函式**（`findBody`／`findRef`），所以兩邊不可能不一致。
+ * 沒有 pg 的庫自動退化到 (2)(3)，行為與以前相同。
+ */
+function pickNote(
+  idx: NoteIndex, dir: 'body' | 'ref', n: string, fromVa: number, fromLine: number,
+): { va: number; how: 'pg' | 'page' | 'pageNear' | 'nearest' } | null {
+  const target = dir === 'body' ? idx.bodies.get(n) : idx.refs.get(n);
+  const own = dir === 'body' ? idx.refs.get(n) : idx.bodies.get(n);
+  const ownPg = dir === 'body' ? idx.refPg : idx.bodyPg;
+  const targetPg = dir === 'body' ? idx.bodyPg : idx.refPg;
+  if (!target || !target.length) return null;
+  const nearestIn = (list: number[], va: number, after: boolean): number => {
+    let lo = 0, hi = list.length - 1, at = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (list[mid] <= va) { at = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    if (after) return at + 1 < list.length ? list[at + 1] : list[list.length - 1];
+    return at >= 0 ? list[at] : list[0];
+  };
+  // (1) 資料自己的 pg（yl38：`<註 n="45" pg="yl38p24"/>` ↔ `<釋 n="45" pg="yl38p24">`）
+  const fromPg = pgAtLine(own, ownPg, fromLine);
+  if (fromPg) {
+    const samePg = target.filter((v) => targetPg.get(v) === fromPg);
+    if (samePg.length) return { va: nearestIn(samePg, fromVa, dir === 'body'), how: 'pg' };
+  }
+  // (2) 同頁（由 <頁> 的 VA 推）
+  const pg = pageOfVa(idx, fromVa);
+  const samePage = pg ? target.filter((v) => pageOfVa(idx, v) === pg) : [];
+  if (samePage.length) return { va: nearestIn(samePage, fromVa, dir === 'body'), how: 'page' };
+  // (3) n 相同、離目前頁最近（平手取後面那條）
+  const pi = pageIndexAt(idx, fromVa);
+  if (pi >= 0) {
+    let best = -1, bestD = Number.POSITIVE_INFINITY;
+    for (const v of target) {
+      const q = pageIndexAt(idx, v);
+      if (q < 0) continue;
+      const d = Math.abs(q - pi);
+      if (d < bestD || (d === bestD && q >= pi)) { best = v; bestD = d; }
+    }
+    if (best >= 0) return { va: best, how: 'pageNear' };
+  }
+  return { va: nearestIn(target, fromVa, dir === 'body'), how: 'nearest' };
 }
 
 /** 行號 → 該行起點的 VA（`linesVirtual` 是升冪表） */
@@ -180,7 +280,9 @@ async function findBody(n: string, fromLine: number): Promise<NoteHit | null> {
   const m = mapper;
   if (!r || !m || fromLine < 0) return null;
   const memo = cacheOf(r);
-  const key = 'b:' + n + ':' + fromLine;
+  const idx = await noteIndexOf(r);
+  // 快取 key 要含頁 id：同一個 n 在不同節是不同的釋，只靠行號會跨節誤用（作者 2026-11-01）
+  const key = 'b:' + n + ':' + (idx ? pageKeyOf(idx, 'body', n, vaOfLine(fromLine), fromLine) : '') + ':' + fromLine;
   if (memo.has(key)) return memo.get(key)!;
   const last = r.header.lineCount - 1;
 
@@ -203,14 +305,11 @@ async function findBody(n: string, fromLine: number): Promise<NoteHit | null> {
   };
 
   // 有 tags/attributes 就查表（O(log n)），不必掃原文
-  const idx = await noteIndexOf(r);
   if (idx) {
-    const vas = idx.bodies.get(n);
     let hit: NoteHit | null = null;
-    if (vas?.length) {
-      const fromVa = vaOfLine(fromLine);
-      const va = pickVa(idx, vas, fromVa, true);
-      const line = lineOfVa(va);
+    const pick = pickNote(idx, 'body', n, vaOfLine(fromLine), fromLine);
+    if (pick) {
+      const line = lineOfVa(pick.va);
       // tags 的 VA 與 linesVirtual 的行首 VA 可能差一兩行：在附近幾行找一次
       for (const d of [0, 1, -1, 2, -2]) {
         const l = line + d;
@@ -218,6 +317,8 @@ async function findBody(n: string, fromLine: number): Promise<NoteHit | null> {
         hit = await check(l);
         if (hit) break;
       }
+      // `<釋 n="1"/>` 標籤自成一行、注文在後面幾行：再往後找幾行
+      for (let l = line + 3; !hit && l <= Math.min(last, line + 8); l++) hit = await check(l);
     }
     memo.set(key, hit);
     return hit;
@@ -242,7 +343,8 @@ async function findRef(n: string, fromLine: number): Promise<number> {
   const m = mapper;
   if (!r || !m || fromLine < 0) return -1;
   const memo = cacheOf(r);
-  const key = 'r:' + n + ':' + fromLine;
+  const idx = await noteIndexOf(r);
+  const key = 'r:' + n + ':' + (idx ? pageKeyOf(idx, 'ref', n, vaOfLine(fromLine), fromLine) : '') + ':' + fromLine;
   const cached = memo.get(key);
   if (cached) return cached.line;
   const last = r.header.lineCount - 1;
@@ -253,15 +355,13 @@ async function findRef(n: string, fromLine: number): Promise<number> {
     return !!noteTagAt(line, '註', n);
   };
 
-  // 有 tags/attributes 就查表（2026-10-31）：找「最近的註」，不必掃原文
-  const idx = await noteIndexOf(r);
+  // 有 tags/attributes 就查表（2026-10-31）：不必掃原文
+  // 與 findBody 共用同一套配對（第 k 條釋 ↔ 第 k 條註；同頁優先）
   if (idx) {
-    const vas = idx.refs.get(n);
     let found = -1;
-    if (vas?.length) {
-      const fromVa = vaOfLine(fromLine);
-      const va = pickVa(idx, vas, fromVa, false);
-      const line = lineOfVa(va);
+    const pick = pickNote(idx, 'ref', n, vaOfLine(fromLine), fromLine);
+    if (pick) {
+      const line = lineOfVa(pick.va);
       for (const d of [0, 1, -1, 2, -2]) {
         const l = line + d;
         if (l < 0 || l > last) continue;
@@ -559,6 +659,23 @@ function onClick(ev: MouseEvent): void {
 }
 
 /** 文件區的委派監聽（只綁一次）：hover 出提示、點擊互相跳轉 */
+/**
+ * 診斷（測試／開發用）：列出某個 n 的所有 `<註>`／`<釋>`、各自在哪一行哪一頁、帶什麼 pg。
+ * 作者 2026-11-01 的驗收要「每個 n 在兩個不同節各測一次」，測試就靠這支挑頁。
+ */
+export async function notePagesOf(n: string): Promise<{
+  refs: { va: number; line: number; page: string; pg: string }[];
+  bodies: { va: number; line: number; page: string; pg: string }[];
+} | null> {
+  const r = reader;
+  if (!r) return null;
+  const idx = await noteIndexOf(r);
+  if (!idx) return null;
+  const list = (arr: number[] | undefined, pgs: Map<number, string>) =>
+    (arr ?? []).map((va) => ({ va, line: lineOfVa(va), page: pageOfVa(idx, va), pg: pgs.get(va) ?? '' }));
+  return { refs: list(idx.refs.get(n), idx.refPg), bodies: list(idx.bodies.get(n), idx.bodyPg) };
+}
+
 export function initNoteLinks(): void {
   if (bound) return;
   bound = true;

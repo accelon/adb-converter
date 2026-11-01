@@ -6,6 +6,18 @@
  * 所以「般若經講記」只寫「般若」，也不加《》。
  * 重新產生：bun run ts/tools/gen-short-titles.ts
  */
+
+/** 資料庫短名（頂欄晶片、分頁標籤、狀態列用）；作者 2026-10-31 加 fuyan。 */
+export const SHORT_DB_NAMES: Record<string, string> = {
+  taisho: '大正',
+  wxzj: '卍續',
+  goryeo: '高麗',
+  ys: '印順',
+  tx: '太虛',
+  lc: '呂澂',
+  fuyan: '福嚴',
+};
+
 export const SHORT_TITLES: Record<string, string> = {
   "大乘起信論講記": "起信",
   "大乘廣五蘊論講記": "五蘊",

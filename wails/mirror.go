@@ -99,7 +99,7 @@ func (h *AdbHost) SetUpdateMirror(base string) bool {
 		return false
 	}
 	if currentMirrorBase() == b {
-		return true            // 沒變：不要清掉剛檢查好的快取
+		return true // 沒變：不要清掉剛檢查好的快取
 	}
 	mirrorSel.mu.Lock()
 	mirrorSel.base = b

@@ -41,6 +41,7 @@ func newTestHost(t *testing.T) (host *AdbHost, dst string, real bool) {
 		t.Fatalf("write %s: %v", dst, err)
 	}
 	t.Chdir(dir)
+	t.Setenv("ACCELON26_ADB_DIR", dir)
 	return &AdbHost{}, dst, real
 }
 

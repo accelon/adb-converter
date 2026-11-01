@@ -37,8 +37,9 @@ export function defaultFontOf(tag: string): string | null {
   return DEFAULT_TAG_FONTS[tag] ?? null;
 }
 
-/** 本文的字型堆疊（與 doc-pane.ts 的 DOC_TEXT_FAMILY 一致） */
-const BODY_STACK = "'Microsoft JhengHei', 'Segoe UI', system-ui, sans-serif";
+/** 本文的字型堆疊（與 doc-pane.ts 的 DOC_TEXT_FAMILY 一致）；
+ *  最前面是內嵌梵字字型：只涵蓋 Unicode 第 16 平面私用區，不影響漢字（作者 2026-10-31） */
+const BODY_STACK = "'Accelon Siddham Uni', 'Accelon Siddham Extra', 'Accelon Ranjana', 'Microsoft JhengHei', 'Segoe UI', system-ui, sans-serif";
 /** 「楷體」不是一個每個系統都有的家族名：Windows 用標楷體／楷體，其他系統再退回本文 */
 const KAI_STACK = "'DFKai-SB', 'KaiTi', '楷體'";
 
@@ -517,3 +518,4 @@ export function counts(): { global: number; adb: number } {
     adb: a ? Object.keys(a.tags ?? {}).length + Object.keys(a.groups ?? {}).length + (a.body ? 1 : 0) : 0,
   };
 }
+

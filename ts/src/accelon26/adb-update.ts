@@ -17,13 +17,14 @@
  * 對話盒有兩個頁籤：「可更新」與「版本記錄」——後者列出每個已安裝公開資料庫的
  * 完整版本歷史，不必等有新版才看得到。
  */
-import { $, escapeHtml, fmtBytes, openFile } from './viewer';
+import { $, escapeHtml, fmtBytes, openFile, setDbOpenedHook } from './viewer';
+import { etaOf } from './time-format';
 import {
   activeSlot, catalog, closeDb, openDbs, replaceCatalogFile, setDbTabsExtra,
   type CatalogEntry,
 } from './dbs';
 import {
-  desktopAdbDownloadStatus, desktopAdbManifestUrl, desktopCancelAdbDownload,
+  desktopAdbDir, desktopAdbDownloadStatus, desktopAdbDuplicates, desktopAdbManifestUrl, desktopCancelAdbDownload,
   desktopFetchText, desktopFileSha256, desktopSources, desktopStartAdbDownload,
 } from './host';
 import { editCount, findSession, sourceKey } from './edit-session';
@@ -95,10 +96,11 @@ export interface UpdateItem {
 const POLL_MS = 150;
 /** 30 MB 是「大底座」的分界：仍可整檔下載，但只隨 CBETA 換版等重大更新，且不列入全部更新。 */
 export const LARGE_ADB_BYTES = 30 * 1024 * 1024;
-const RECHECK_MS = 6 * 60 * 60 * 1000;
 
 let manifestUrl = '';
 let checking = false;
+/** 啟動後第一次檢查到更新時，自動開一次對話盒（作者 2026-11-01）。 */
+let announced = false;
 let checkedAt = 0;
 let loadError = '';
 let items: UpdateItem[] = [];
@@ -268,7 +270,8 @@ function changesOf(it: UpdateItem): ManifestVersion[] {
 
 export async function checkAdbUpdates(force = false): Promise<void> {
   if (checking || activeFile) return;   // 下載中不重讀清單（會把正在下載的那一列換掉）
-  if (!force && checkedAt && Date.now() - checkedAt < 60_000) return;
+  // 作者 2026-11-01：只在「使用者開啟 adb」且連線時檢查；不做 60 秒節流與背景輪詢。
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
   checking = true;
   loadError = '';
   paintAll();
@@ -318,9 +321,10 @@ function paintButton(): void {
   const box = document.getElementById('dbTabs');
   if (!box) return;
   const ups = updates();
-  // 沒有安裝任何公開資料庫就不顯示；有安裝就一直留一顆「資料庫版本」，
-  // 沒新版時也能看版本記錄（作者：讓使用者知道每一次改變）。
-  if (!items.length) {
+  // 作者 2026-11-01：**沒有需要更新的庫就不顯示**。
+  // 以前只要裝過公開資料庫就一直留一顆「資料庫版本」（沒新版也能看版本記錄），
+  // 作者說不必；有新版時才出現（New ＋ 數量），更新完就消失。
+  if (!ups.length) {
     button?.remove();
     button = null;
     return;
@@ -333,14 +337,9 @@ function paintButton(): void {
     button.addEventListener('click', () => { void openAdbUpdateDialog(); });
   }
   const n = ups.length;
-  button.classList.toggle('plain', n === 0);
-  button.innerHTML = n
-    ? '<span class="adbUpNew">New</span><span class="adbUpLabel">資料庫更新</span>'
-      + '<span class="adbUpCount">' + n + '</span>'
-    : '<span class="adbUpLabel">資料庫版本</span>';
-  button.title = n
-    ? `有 ${n} 個資料庫可以更新：${ups.map((i) => i.m.name || i.m.file).join('、')}（點一下看每一版的改變）`
-    : `已安裝 ${items.length} 個公開資料庫；點一下看版本記錄`;
+  button.innerHTML = '<span class="adbUpNew">New</span><span class="adbUpLabel">資料庫更新</span>'
+    + '<span class="adbUpCount">' + n + '</span>';
+  button.title = `有 ${n} 個資料庫可以更新：${ups.map((i) => i.m.name || i.m.file).join('、')}（點一下看每一版的改變）`;
   box.appendChild(button);
 }
 
@@ -355,6 +354,21 @@ function dialogEl<T extends HTMLElement>(id: string): T | null {
   return document.getElementById(id) as T | null;
 }
 
+/** 對話盒上方顯示「目前看的 adb 資料夾」與另一邊同名檔（作者 2026-11-01）。 */
+async function fillAdbDir(): Promise<void> {
+  const el = dialogEl<HTMLElement>('adbUpdateDir');
+  if (!el) return;
+  const dir = await desktopAdbDir();
+  const dups = dir ? await desktopAdbDuplicates() : [];
+  const head = dir ? 'adb 資料夾：' + dir : '';
+  const tail = dups.length
+    ? '｜另一邊也有：' + dups.map((d) => `${d.name}（sha ${d.same ? '相同' : '不同'}，未覆蓋）`).join('、')
+    : '';
+  el.textContent = head + tail;
+  el.title = dups.map((d) => d.name + '\n  這一邊：' + d.activePath + '\n  另一邊：' + d.otherPath).join('\n\n');
+  el.hidden = !el.textContent;
+}
+
 export async function openAdbUpdateDialog(): Promise<void> {
   open = true;
   tab = 'updates';
@@ -363,9 +377,10 @@ export async function openAdbUpdateDialog(): Promise<void> {
   const back = dialogEl<HTMLElement>('adbUpdateBackdrop');
   if (box) box.hidden = false;
   if (back) back.hidden = false;
+  void fillAdbDir();
+  // 作者 2026-11-01：開對話盒不主動連網；清單沿用「開啟 adb」時查到的結果，
+  // 要更新就按「重新檢查」。
   renderDialog();
-  await checkAdbUpdates();      // 60 秒內用剛檢查過的結果，不必每次重算 6 個 sha256
-  if (open) renderDialog();
 }
 
 export function closeAdbUpdateDialog(): void {
@@ -451,6 +466,7 @@ function rowHtml(it: UpdateItem): string {
   const action = !it.hasUpdate || done || prog ? '' :
     `<button type="button" class="mini adbUpGo" data-up="${escapeHtml(m.file)}">${it.phase === 'idle' ? (it.large ? '下載整檔' : '更新') : '重試'}</button>`;
   const pct = it.total > 0 ? Math.min(100, Math.round(it.received / it.total * 100)) : 0;
+  const eta = etaOf(it.received, it.total, it.speed);
   return `<div class="adbUpRow${done ? ' done' : ''}" data-file="${escapeHtml(m.file)}">`
     + '<div class="adbUpHead">'
     + `<div class="adbUpName">${name}<span class="file">${escapeHtml(m.file)}</span></div>`
@@ -468,6 +484,7 @@ function rowHtml(it: UpdateItem): string {
     + '<div class="adbUpNums"><span class="pct">' + pct + '%</span>'
     + `<span class="bytes">${fmtBytes(it.received)} / ${fmtBytes(it.total)}</span>`
     + `<span class="speed">${it.speed > 0 ? fmtBytes(it.speed) + '/s' : ''}</span>`
+    + `<span class="eta">${eta ? '剩餘 ' + eta : ''}</span>`
     + `<button type="button" class="mini adbUpCancel" data-cancel="${escapeHtml(m.file)}">放棄</button>`
     + '</div></div>'
     + '</div>';
@@ -537,6 +554,11 @@ function paintProgress(it: UpdateItem): void {
   if (b) b.textContent = `${fmtBytes(it.received)} / ${fmtBytes(it.total)}`;
   const s = row.querySelector<HTMLElement>('.speed');
   if (s) s.textContent = it.speed > 0 ? fmtBytes(it.speed) + '/s' : '';
+  const e = row.querySelector<HTMLElement>('.eta');
+  if (e) {
+    const eta = etaOf(it.received, it.total, it.speed);
+    e.textContent = eta ? '剩餘 ' + eta : '';
+  }
 }
 
 // ---- 下載 ----------------------------------------------------------------------
@@ -580,7 +602,10 @@ async function pollDownload(it: UpdateItem): Promise<void> {
     it.total = st.total || it.m.size;
     const now = Date.now();
     if (now - lastAt >= 300) {
-      it.speed = Math.max(0, (st.received - lastBytes) * 1000 / (now - lastAt));
+      // 網速平滑：瞬時值（300ms 窗）容易跳，用 0.6/0.4 的指數平均，
+      // 「還要多久」才不會跟著亂跳（作者 2026-10-31）。
+      const inst = Math.max(0, (st.received - lastBytes) * 1000 / (now - lastAt));
+      it.speed = inst > 0 ? (it.speed > 0 ? it.speed * 0.6 + inst * 0.4 : inst) : it.speed * 0.8;
       lastAt = now;
       lastBytes = st.received;
     }
@@ -735,9 +760,20 @@ export function initAdbUpdate(): void {
       closeAdbUpdateDialog();
     }
   }, true);
-  window.setInterval(() => { void checkAdbUpdates(); }, RECHECK_MS);
+  // 作者 2026-11-01：不做背景輪詢，也不在視窗 focus 時查；只有「開啟 adb」才檢查。
+  // 啟動時第一次檢查若發現新版，自動開一次對話盒（之後由使用者自己開）。
+  setDbOpenedHook(() => {
+    void checkAdbUpdates(true).then(() => {
+      if (announced) return;
+      announced = true;
+      if (updates().length) void openAdbUpdateDialog();
+    });
+  });
   paintButton();
 }
 
 /** 診斷／測試用：不開對話盒也能直接觸發檢查。 */
 export { paintButton as paintAdbUpdateButton };
+
+
+
