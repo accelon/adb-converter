@@ -22,15 +22,25 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
   `accelon26.exe` 都在那個資料夾；`build/` 只放建置中間檔與可重建的輸出。
   桌面版開機用 `ListAdbs` 列出工作目錄與 exe 所在資料夾的 `*.adb`，放在別處它找不到。
   網頁版（file://）不能掃資料夾，使用者在 `accelon26.html` 要自己選檔。
+- **viewer 一律寫到 `D:\accelon3\accelon26.html`**（作者 2026-10-31，已交代多次）：
+  `bun run tools/build-viewer.ts` 的預設輸出現在就是那裡，不必再手動從 `build/` 覆寫；
+  `build/accelon26.html` 只是舊位置／`-o` 指定時才會用到。改完 HTML／CSS／前端 TS
+  就直接重建到 `D:\accelon3`，不必等發佈；exe 仍然只在發佈時換。
+- **建置成本 vs 使用者每次成本**（作者 2026-10-31）：能預先算好、存進 adb 的資料
+  （容器／屬性／快取）就不要留給閱讀器每次重算；建置多花幾秒、檔案多幾 MB 可忽略，
+  不要為了省建置時間／空間讓使用者每次等。詳見
+  `docs/system/ACCELON26-HANDOVER.md` §0.3。
 
 ## 2. 目前的重要狀態（2026-10-29）
 
-- 官網公開數據庫 **6 個**：`13j`、`swjzz`、`tx`、`yulinpo`、`ys`（都 <30 MB）
-  ＋ `taisho`（331 MB 大檔）。
+- 官網公開數據庫 **7 個**：`13j`、`swjzz`、`tx`、`yulinpo`、`ys`（都 <30 MB）
+  ＋ `taisho`（331 MB 大檔）＋ `wxzj`（2026-10-31 開放，234.4 MB 大檔）。
 - `taisho.adb`：2026-10-29 起 **available／可下載**（`large:true`、不列入「全部更新」，
   只能整檔下載）；製作說明是 `www/adb/taisho.html`（來源 `docs/adb/taisho-about.md`）。
-- `wxzj.adb`：**施工中**（`status:wip`、`downloadable:false`），官網與桌面版都不提供下載；
-  兩站檔案已刪除（404）。**不要**在沒有使用者明確指示下把它改成 available 或重新上傳。
+- `wxzj.adb`：2026-10-31 起 **available／可下載**（`large:true`、不列入「全部更新」，
+  只能整檔下載）；製作說明是 `www/adb/wxzj.html`（來源 `docs/adb/wxzj-about.md`）。
+  2026-10-31 重建：SD／RJ 梵字換成 PUA（內嵌字型），CB 缺字剩 1,772 碼，
+  見 `docs/adb/missing-char.md`。
 - `fgdict.adb`：作者要大修，已下架（不在 index／manifest，兩站 404）。
 - T56–T84 的文本與底本為 public domain；數位文字取自 SAT 2018，依其授權標注；
   TEI 標記按 CBETA convention 整理。詳見 `docs/adb/stable-adb.md`。
@@ -103,6 +113,8 @@ bun run tools/cbeta-base.ts --check
 - `publish-adb.ts` 會拒絕 `wip`／`revision` 的庫；>30 MB 要明確 `--allow-large`。
 - 不要把 `.local/server.env`、主機指紋或密碼貼進回覆、log、commit。
 
+- **術語 `<术 sk|pi|tb>`（2026-11-01）**：所有含梵／巴／藏對照的庫共用 `ts/src/terms/terms.ts` ＋ `data/terms.tsv` ＋ `data/term-fixes.tsv`；新文字用 `bun run tools/terms.ts apply`，既有標記用 `fix`，glossary 容器用 `glossary`。詳見 `docs/adb/terms.md`。
+
 ## 5. 發佈規則
 
 - **只有使用者明確說「發佈」才跑 `release.ts`**。它會建置、寫 `versions.json`、
@@ -112,7 +124,8 @@ bun run tools/cbeta-base.ts --check
 - 歷史 release ZIP 不刪；`deploy.ts --site` 只補站上沒有的。
 - 發佈後兩站都要同步，並驗證線上 `versions.json`、exe sha、歷史 ZIP 與 404 狀態。
 - 不要未經指示改 `deploy/adb-status.json` 的 `wip`／`revision`，也不要把
-  `wxzj.adb`／`fgdict.adb` 重新上傳（`taisho.adb` 已於 2026-10-29 開放，見 §2）。
+  `fgdict.adb` 重新上傳（`taisho.adb`／`wxzj.adb` 已分別於 2026-10-29、2026-10-31
+  開放，見 §2；底座換版仍照「一年兩三次」）。
 - 把新的 adb／html／exe 放進 `D:\accelon3` 是**本地部署**（見 §1），不算官網發佈；
   官網上線仍然只在使用者說「發佈」時做。
 
@@ -139,3 +152,24 @@ bun run tools/cbeta-base.ts --check
 - `docs/adb/taisho-steps.md`、`wxzj-steps.md`：底座建置
 - `docs/adb/wittern-related-jingang-fahua.md`：Wittern Related Texts 的比對結果
 - `D:\2026\ys\AGENTS.md`：已移出的 ys／tx 專案規則
+
+## glossary 容器與「詞彙」分頁（2026-10-31，ys.adb 專用）
+
+ys.adb 現在多一個外層容器 `glossary`（1 個 block、**未壓縮** UTF-8 JSON Lines）：
+
+```text
+["GLOSSARY1", 4107]
+["sk","svabhāva","自性",12]
+```
+
+- `ts/src/accelon26/glossary.ts`：`loadGlossary()` 讀取並快取（WeakMap per reader）、
+  `foldGlossary()` 去掉變音符號／大小寫／空白（只給輸入比對用）、
+  `matchGlossary()` 漢詞子字串或外語 fold 後子字串。效能（2026-10-31）：`loadGlossary()` 先把每列的 `fold`（外語去變音符號）與 `simp`（漢詞強制簡體）算好存進記憶體，查詢只做字串比對；實測載入約 50 ms、每次查詢（篩選＋排序＋組 HTML）約 1 ms（4,107 列）；輸入去抖 120 ms、一次只重畫 300 列（字串一次 innerHTML，不再逐列 createElement）。
+- 左欄多一個「詞彙」分頁（`data-tab="glossary"`），只有庫裡有 `glossary` 容器時才顯示
+  （`syncTreeTabs()` 內用 `hasGlossary(reader)` 判斷）。
+- 畫面：`renderGlossary()`（scopes.ts）列出「漢詞＋外語（原樣）＋次數」，依語言分組；
+  點一列會把漢詞丟進全文搜尋。
+- 顯示保留變音符號；輸入可省略、可不分大小寫。
+- 「詞彙」分頁有「漢語／外語」排序選單（2026-10-31）：漢語依漢詞排、外語依外語排（都忽略變音符號）；圓圈小字「梵／巴／藏」一律放在**外語前面**，三色不同（`.glossLang.sk/.pi/.tb`）；選「外語」排序時外語排在漢詞前面。漢詞、外語都可以點：點**整列**＝直接跳到該詞第一次出現（`glossary` 每列帶 `page`＋`off`，優先走 `openCharPosition({anchor:"L"+(line-1), a:hanline})`（行號＋行內漢字，2026-10-31 實測正確）；沒有 hanline 才用頁＋頁內位移，再不行才 `jumpToAdbLine()`）；列尾的 🔍＝全文檢索（`runSearch()`），不改輸入區、只更新摘要（2026-10-31 作者指定）。輸入不限語言，漢詞或外語都可以；另有「任意／開頭／中間／結尾」位置選單（`#glossaryMatch`，漢語外語通用，語意同 s="$詞" 的比對位置）。
+- 選取文字 → 浮動選單「查看」多一顆：選到漢詞寫「查梵語／查巴利語／查藏語」，選到外語（可省略變音符號）寫「查漢語」；按鈕文字會帶出對應語（例：選「光音天」→「查梵語 Ābhāsvāra」；選 Ābhāsvāra →「查漢語 光音天」）；**一個對應語一顆按鈕**（例「涅槃」→ 查梵語 mahā-parinirvāṇa、查梵語 nirvāṇa、查巴利語 nibbāna 三顆），查不到就不顯示。注意：`showMenu()` 一定要 `void fillGlossary(info)`；`runAction('gloss')` 走 `openDictLookup()`，否則按鈕永遠不出現、函式還會被 bundler 刪掉（2026-10-31 實際踩過）。按下後用**詞典**查「對應語」（選漢詞→查外語、選外語→查漢詞；不是改「詞彙」輸入區）。
+- **西文查詢**（2026-10-31）：全文索引只有正文，`<术>` 的外語在屬性裡。查詢若全是拉丁字母，`runSearch()` 會先用詞彙表把外語換成漢詞（候選最多 4 個，逐一試到索引找得到為止），摘要會附註「（西文「Apalāla」→ 阿鉢羅、降伏阿波羅）」；沒有詞彙表就照原樣查。\n- 沒有 `glossary` 的庫（taisho、fgdict…）行為完全不變。
