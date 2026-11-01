@@ -59,6 +59,121 @@ function cacheOf(r: AdbReader): Map<string, NoteHit | null> {
 
 const tick = (): Promise<void> => new Promise((res) => setTimeout(res, 0));
 
+/**
+ * 註／釋的位置索引（2026-10-31）。
+ * adb 的 `tags` 已經有每一個 `<註>`／`<釋>` 的 VA，`attributes` 也有 `註.n`／`釋.n`；
+ * 不必掃原文，直接查表（ys 有 28,000 行外的釋，掃原文要 >20 秒）。
+ */
+interface NoteIndex {
+  /** n → `<註>` 的 VA（升冪） */
+  refs: Map<string, number[]>;
+  /** n → `<釋>` 的 VA（升冪） */
+  bodies: Map<string, number[]>;
+  /** `<頁>` 的 VA（升冪）與頁 id：給「同頁優先」的配對用 */
+  pageVas: number[];
+  pageIds: string[];
+}
+const noteIdxCache = new WeakMap<AdbReader, NoteIndex | null>();
+
+async function noteIndexOf(r: AdbReader): Promise<NoteIndex | null> {
+  if (noteIdxCache.has(r)) return noteIdxCache.get(r)!;
+  const tagsC = r.containers.get('tags');
+  if (!tagsC) { noteIdxCache.set(r, null); return null; }
+  const idx: NoteIndex = { refs: new Map(), bodies: new Map(), pageVas: [], pageIds: [] };
+  const build = async (tag: string, attr: string, into: Map<string, number[]>): Promise<void> => {
+    const ti = tagsC.names.indexOf(tag);
+    if (ti < 0) return;
+    const av = await r.attributeValues(attr).catch(() => null);
+    if (!av || !av.pointers) return;
+    const vas = await r.decodeBlockList('tags', ti);
+    for (let k = 0; k < av.values.length; k++) {
+      const p = av.pointers[k];
+      if (((p >>> 24) & 0xff) !== ti) continue;
+      const va = vas[(p & 0xffffff) - 1];
+      if (va == null) continue;
+      const n = av.values[k];
+      const arr = into.get(n);
+      if (arr) arr.push(va); else into.set(n, [va]);
+    }
+  };
+  await build('註', '註.n', idx.refs);
+  await build('釋', '釋.n', idx.bodies);
+  if (!idx.refs.size && !idx.bodies.size) { noteIdxCache.set(r, null); return null; }
+  for (const arr of idx.refs.values()) arr.sort((a, b) => a - b);
+  for (const arr of idx.bodies.values()) arr.sort((a, b) => a - b);
+  // 頁標記（作者 2026-11-01）：註釋獨立成 <書> 之後，每個「節」的 n 都重來，
+  // 只靠「最近的 n」會配到別節；用頁 id 把候選收斂到同一頁。
+  const pi = tagsC.names.indexOf('頁');
+  if (pi >= 0) {
+    const av = await r.attributeValues('頁.id').catch(() => null);
+    const vas = await r.decodeBlockList('tags', pi);
+    const pairs: [number, string][] = [];
+    if (av?.pointers) {
+      for (let k = 0; k < av.values.length; k++) {
+        const p = av.pointers[k];
+        if (((p >>> 24) & 0xff) !== pi) continue;
+        const va = vas[(p & 0xffffff) - 1];
+        if (va == null) continue;
+        pairs.push([va, av.values[k]]);
+      }
+    }
+    pairs.sort((a, b) => a[0] - b[0]);
+    idx.pageVas = pairs.map((x) => x[0]);
+    idx.pageIds = pairs.map((x) => x[1]);
+  }
+  noteIdxCache.set(r, idx);
+  return idx;
+}
+
+/** 這個 VA 落在哪一個 `<頁>`（沒有就空字串） */
+function pageOfVa(idx: NoteIndex, va: number): string {
+  const v = idx.pageVas;
+  if (!v.length) return '';
+  let lo = 0, hi = v.length - 1, ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (v[mid] <= va) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return ans >= 0 ? idx.pageIds[ans] : '';
+}
+
+/**
+ * 從候選 VA 挑一個：同一頁優先；同頁之中 preferAfter 決定往後或往前取最近。
+ * （作者 2026-11-01：註釋獨立成 `<書>` 之後，n 只在同一節唯一）
+ */
+function pickVa(idx: NoteIndex, vas: number[], fromVa: number, preferAfter: boolean): number {
+  if (!vas.length) return -1;
+  const pg = pageOfVa(idx, fromVa);
+  const same = pg ? vas.filter((v) => pageOfVa(idx, v) === pg) : [];
+  const pool = same.length ? same : vas;
+  let lo = 0, hi = pool.length - 1, at = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (pool[mid] <= fromVa) { at = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  if (preferAfter) return at + 1 < pool.length ? pool[at + 1] : pool[pool.length - 1];
+  return at >= 0 ? pool[at] : pool[0];
+}
+
+/** 行號 → 該行起點的 VA（`linesVirtual` 是升冪表） */
+function vaOfLine(line: number): number {
+  const v = mapper?.linesVirtual ?? [];
+  if (!v.length) return 0;
+  return v[Math.min(Math.max(0, line), v.length - 1)] ?? 0;
+}
+
+/** VA → 行號（最後一個 `linesVirtual <= va` 的行） */
+function lineOfVa(va: number): number {
+  const v = mapper?.linesVirtual ?? [];
+  if (!v.length) return -1;
+  let lo = 0, hi = v.length - 1, ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (v[mid] <= va) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return ans;
+}
+
 /** 找 `n` 對應的 `<釋>`：先往後（注文通常在引用之後），再往前 */
 async function findBody(n: string, fromLine: number): Promise<NoteHit | null> {
   const r = reader;
@@ -86,6 +201,27 @@ async function findBody(n: string, fromLine: number): Promise<NoteHit | null> {
     }
     return { line: i, text: plain(text) };
   };
+
+  // 有 tags/attributes 就查表（O(log n)），不必掃原文
+  const idx = await noteIndexOf(r);
+  if (idx) {
+    const vas = idx.bodies.get(n);
+    let hit: NoteHit | null = null;
+    if (vas?.length) {
+      const fromVa = vaOfLine(fromLine);
+      const va = pickVa(idx, vas, fromVa, true);
+      const line = lineOfVa(va);
+      // tags 的 VA 與 linesVirtual 的行首 VA 可能差一兩行：在附近幾行找一次
+      for (const d of [0, 1, -1, 2, -2]) {
+        const l = line + d;
+        if (l < 0 || l > last) continue;
+        hit = await check(l);
+        if (hit) break;
+      }
+    }
+    memo.set(key, hit);
+    return hit;
+  }
 
   let hit: NoteHit | null = null;
   for (let i = fromLine; i <= Math.min(last, fromLine + SCAN_MAX) && !hit; i++) {
@@ -116,6 +252,25 @@ async function findRef(n: string, fromLine: number): Promise<number> {
     if (!line || line.indexOf('<' + '註') < 0) return false;
     return !!noteTagAt(line, '註', n);
   };
+
+  // 有 tags/attributes 就查表（2026-10-31）：找「最近的註」，不必掃原文
+  const idx = await noteIndexOf(r);
+  if (idx) {
+    const vas = idx.refs.get(n);
+    let found = -1;
+    if (vas?.length) {
+      const fromVa = vaOfLine(fromLine);
+      const va = pickVa(idx, vas, fromVa, false);
+      const line = lineOfVa(va);
+      for (const d of [0, 1, -1, 2, -2]) {
+        const l = line + d;
+        if (l < 0 || l > last) continue;
+        if (await check(l)) { found = l; break; }
+      }
+    }
+    if (found >= 0) memo.set(key, { line: found, text: '' });
+    return found;
+  }
 
   let found = -1;
   for (let i = fromLine; i >= Math.max(0, fromLine - SCAN_MAX) && found < 0; i--) {
@@ -187,6 +342,29 @@ async function showTip(ref: HTMLElement): Promise<void> {
   placeTip(ref, tip);
 }
 
+/**
+ * 跳到目標行後閃一下（作者 2026-10-31：註↔釋往返不要讓讀者用眼睛找）。
+ * 行加 `.noteTarget`，編號加 `.noteTargetMark`，2.6 秒後自動移除。
+ */
+function flashTarget(line: number, mark?: HTMLElement | null): void {
+  requestAnimationFrame(() => {
+    const row = document.getElementById('L' + line);
+    if (row) {
+      row.classList.remove('noteTarget');
+      void (row as HTMLElement).offsetWidth;   // 重新觸發動畫
+      row.classList.add('noteTarget');
+      window.setTimeout(() => row.classList.remove('noteTarget'), 2600);
+      const num = mark ?? row.querySelector<HTMLElement>('a.noteRef, a.noteBack');
+      if (num) {
+        num.classList.remove('noteTargetMark');
+        void num.offsetWidth;
+        num.classList.add('noteTargetMark');
+        window.setTimeout(() => num.classList.remove('noteTargetMark'), 2600);
+      }
+    }
+  });
+}
+
 async function jumpToBody(ref: HTMLElement): Promise<void> {
   const n = ref.dataset.note ?? '';
   const from = lineOf(ref);
@@ -195,6 +373,7 @@ async function jumpToBody(ref: HTMLElement): Promise<void> {
   const hit = await findBody(n, from);
   if (!hit) { setStatus(`找不到 <釋 n="${n}">`, 'warn'); return; }
   await revealDocLine(hit.line);
+  flashTarget(hit.line);
 }
 
 async function jumpToRef(body: HTMLElement): Promise<void> {
@@ -205,6 +384,7 @@ async function jumpToRef(body: HTMLElement): Promise<void> {
   const line = await findRef(n, from);
   if (line < 0) { setStatus(`找不到 <註 n="${n}">`, 'warn'); return; }
   await revealDocLine(line);
+  flashTarget(line);
 }
 
 function onClick(ev: MouseEvent): void {
@@ -219,9 +399,10 @@ function onClick(ev: MouseEvent): void {
   }
   const body = t.closest('.noteBody') as HTMLElement | null;
   if (!body) return;
-  // 注文裡的詞條連結、插圖照常運作；有選取（正在複製）也不要跳
-  if (t.closest('a[data-entry], img.inlineImg')) return;
-  if (t.closest('a[href]') && !t.closest('a.noteBack')) return;
+  // 作者 2026-10-31：釋文本身**不要**接受點擊（讀者要選字、複製），
+  // 只有開頭的編號 `[37.085]`（a.noteBack）點下去才回本文的 `<註>`。
+  const back = t.closest('a.noteBack') as HTMLElement | null;
+  if (!back) return;
   const sel = window.getSelection();
   if (sel && !sel.isCollapsed) return;
   ev.preventDefault();
