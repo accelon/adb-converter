@@ -325,6 +325,50 @@ function scheduleHide(): void {
   hideTimer = window.setTimeout(hideTip, 240);
 }
 
+/** HTML 轉義（提示框用 innerHTML） */
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * 用到這個 `<註>` 的那一句（作者 2026-11-01）：
+ * 從註記號往前往後找到句末標點（。？！），讓讀者不必點回正文就知道上下文。
+ */
+function contextSentence(ref: HTMLElement): string {
+  const line = ref.closest('.docLine') as HTMLElement | null;
+  if (!line) return '';
+  const w = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+  let text = '';
+  let at = -1;
+  for (let nd = w.nextNode(); nd; nd = w.nextNode()) {
+    if (at < 0 && (nd === ref || ref.contains(nd))) at = text.length;
+    if (ref.contains(nd)) continue;            // 不要把手註編號 [17] 帶進原文
+    text += nd.nodeValue ?? '';
+  }
+  if (!text.trim()) return '';
+  const TERM = /[。？！?!]/;
+  const pos = at < 0 ? text.length : Math.min(at, text.length);
+  // 往前找句首：記號若緊接在句末之後，再往前多吃一句
+  let k = pos - 1;
+  if (k >= 0 && TERM.test(text[k])) k--;
+  let start = 0;
+  for (; k >= 0; k--) if (TERM.test(text[k])) { start = k + 1; break; }
+  // 這一行以內：句首到記號，加上記號之後到句末（沒有句末就整段）
+  const rest = text.slice(pos);
+  const m = TERM.exec(rest);
+  let ctx = text.slice(start, pos) + (m ? rest.slice(0, m.index + 1) : rest);
+  ctx = ctx.replace(/\s+/g, ' ').trim();
+  // 句子跨行：往下一直接到句末（最多 3 行、160 字）
+  let el = line.nextElementSibling as HTMLElement | null;
+  for (let i = 0; i < 3 && el && ctx.length < 160 && !(ctx && TERM.test(ctx.slice(-1))); i++) {
+    const t = (el.textContent ?? '').replace(/\s+/g, ' ');
+    const mm = TERM.exec(t);
+    ctx += mm ? t.slice(0, mm.index + 1) : t;
+    el = el.nextElementSibling as HTMLElement | null;
+  }
+  return ctx.trim();
+}
+
 async function showTip(ref: HTMLElement): Promise<void> {
   const n = ref.dataset.note;
   const tip = tipEl();
@@ -338,7 +382,11 @@ async function showTip(ref: HTMLElement): Promise<void> {
   placeTip(ref, tip);
   const hit = await findBody(n, from);
   if (tipFor !== ref || tip.hidden) return;
-  tip.textContent = hit?.text || `找不到 <釋 n="${n}">`;
+  const ctx = contextSentence(ref);
+  const body = hit?.text || `找不到 <釋 n="${n}">`;
+  tip.innerHTML =
+    (ctx ? `<div class="noteCtx">${escHtml(ctx)}</div>` : '') +
+    `<div class="noteBody">${escHtml(body)}</div>`;
   placeTip(ref, tip);
 }
 

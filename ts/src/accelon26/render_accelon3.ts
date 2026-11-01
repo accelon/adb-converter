@@ -598,7 +598,7 @@ export class Accelon3Renderer {
       if (NOTE_REF_TAGS.has(name)) {
         const n = attrValue(attrs, 'n');
         if (!closing && n) {
-          html += `<a class="noteRef" data-note="${esc(n)}" href="#" title="註 ${esc(n)}">[${esc(n)}]</a>`;
+          html += `<a class="noteRef" data-note="${esc(n)}" href="#" aria-label="註 ${esc(n)}">[${esc(n)}]</a>`;
           this.sawText = true;
         }
         continue;
