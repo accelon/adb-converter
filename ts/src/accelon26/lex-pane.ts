@@ -8,7 +8,11 @@
  *     詞件、格位、PTS、義項；
  *   - 查不到就明說，不打斷閱讀。
  *
- * 不改既有手勢：word span 只有 cs 有 b/j 才長；漢語譯本沒有 span，選取選單不變。
+ * 不改既有手勢：word span 只有 cs 有 b/j 才長；漢語譯本沒有 span。
+ *
+ * 2026-11-03：漢語譯本**選取文字** → 選取選單「查詞」→ 反向查 `lex.adb` 的「中文」行，
+ * 列出對應的巴利詞（`openLexPaneForHan`）。漢語沒有逐詞語法，所以抽屜只給「候選詞」，
+ * 點一個候選詞再走一般詞條畫面（格位／詞件／例句都由 cs 的 lex 詞條提供）。
  */
 import { AdbReader, BlobIO, type AdbSource } from './adb';
 import { catalog, openDbs } from './dbs';
@@ -18,18 +22,7 @@ import { VaPaMapper } from './vapa';
 import { locatorAtVa } from './page-text';
 import { normalize } from '../tokenize';
 import { revealDocLine } from './doc-pane';
-
-interface LexEntry {
-  word: string;
-  count?: string;
-  gloss?: string;
-  parts?: string;
-  cases?: string;
-  context?: string;
-  pts?: string;
-  senses?: string[];
-  stem?: string;
-}
+import { hanCandidates, hanIndex, parseLexEntry, type HanCandidate, type LexEntry } from './lex-index';
 
 const readers = new WeakMap<object, Promise<AdbReader | null>>();
 const wordMaps = new WeakMap<AdbReader, Promise<Map<string, number>>>();
@@ -99,28 +92,6 @@ async function lexWordMap(r: AdbReader): Promise<Map<string, number>> {
   return p;
 }
 
-function parseEntry(lines: string[]): LexEntry {
-  const clean = (s: string): string => s.replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
-  const first = clean(lines[0] ?? '');
-  const entry: LexEntry = { word: first.replace(/^[（(]\s*/, '').replace(/\s*[）)]$/, '').trim() };
-  const senses: string[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const s = clean(lines[i]);
-    if (!s) continue;
-    let m: RegExpExecArray | null;
-    if ((m = /^([\d,]+)\s*次$/.exec(s))) entry.count = m[1];
-    else if (s.startsWith('詞件：')) entry.parts = s.slice(3);
-    else if (s.startsWith('格位：')) entry.cases = s.slice(3);
-    else if (s.startsWith('上下文：')) entry.context = s.slice(4);
-    else if (s.startsWith('PTS：')) entry.pts = s.slice(4);
-    else if (s.startsWith('義項：')) senses.push(s.slice(3));
-    else if (s.startsWith('詞幹：')) entry.stem = s.slice(3);
-    else if (!entry.gloss) entry.gloss = s;
-  }
-  if (senses.length) entry.senses = senses;
-  return entry;
-}
-
 async function readEntry(r: AdbReader, va: number): Promise<LexEntry | null> {
   const m = new VaPaMapper(r);
   await m.init();
@@ -133,7 +104,49 @@ async function readEntry(r: AdbReader, va: number): Promise<LexEntry | null> {
     if (i > 0 && /<塊(?=[\s>])/.test(s)) break;
     lines.push(s);
   }
-  return lines.length ? parseEntry(lines) : null;
+  return lines.length ? parseLexEntry(lines) : null;
+}
+
+/* ---------------------------------------------- 反向查：漢詞 → 巴利候選（2026-11-03） */
+
+/** 選取漢詞 → 開抽屜列出巴利候選（給選取選單「查詞」用）。 */
+export async function openLexPaneForHan(han: string): Promise<void> {
+  const text = String(han ?? '').trim();
+  if (!text) return;
+  const box = ensurePane();
+  const body = box.querySelector('.lexPaneBody') as HTMLElement;
+  const sub = box.querySelector('.lexPaneSub') as HTMLElement;
+  const my = ++seq;
+  sub.textContent = '漢詞';
+  body.innerHTML = `<div class="lexWord">${escapeHtml(text)}</div>`
+    + '<div class="lexNote">查 lex.adb…</div>';
+  box.hidden = false;
+
+  const lr = await lexReader();
+  if (my !== seq) return;
+  if (!lr) {
+    body.querySelector('.lexNote')!.textContent = '找不到 lex.adb：查詞需要巴利詞解（lex.adb 放在同一資料夾或 catalog）。';
+    return;
+  }
+  let index: Map<string, HanCandidate[]>;
+  try {
+    index = await hanIndex(lr);
+  } catch {
+    if (my !== seq) return;
+    body.querySelector('.lexNote')!.textContent = '讀不到 lex.adb 的詞條（檔案可能損壞）。';
+    return;
+  }
+  if (my !== seq) return;
+  const hits = hanCandidates(index, text);
+  if (!hits.length) {
+    body.querySelector('.lexNote')!.textContent = `lex.adb 沒有含「${text}」的中文詞條。`;
+    return;
+  }
+  body.innerHTML = `<div class="lexWord">${escapeHtml(text)}</div>`
+    + `<div class="lexCodes">查到 ${hits.length} 個巴利詞；點一個看詞形、格位與例句。</div>`
+    + `<div class="lexCands">${hits.map((h) => `<button type="button" class="lexCand" data-word="${escapeHtml(h.word)}">`
+      + `<b>${escapeHtml(h.word)}</b><span class="lexCandGloss">${escapeHtml(h.gloss)}</span>`
+      + `<i>${escapeHtml(h.count)} 次</i></button>`).join('')}</div>`;
 }
 
 let pane: HTMLElement | null = null;
@@ -151,6 +164,13 @@ function ensurePane(): HTMLElement {
   document.body.appendChild(pane);
   pane.querySelector('.lexPaneClose')?.addEventListener('click', closeLexPane);
   pane.addEventListener('click', (ev) => {
+    const cand = (ev.target as Element | null)?.closest?.('.lexCand') as HTMLElement | null;
+    if (cand) {
+      ev.stopPropagation();
+      const w = cand.dataset.word ?? '';
+      if (w) void openLexPane(w);
+      return;
+    }
     const part = (ev.target as Element | null)?.closest?.('.lexPart') as HTMLElement | null;
     if (part) {
       ev.stopPropagation();

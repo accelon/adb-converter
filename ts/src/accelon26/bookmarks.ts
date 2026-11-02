@@ -10,6 +10,7 @@ import { mapper, reader, setStatus } from './viewer';
 import { lookupBook, openTaishoAt, pageHanText, pageIdAtVa, type BookHit } from './xref';
 import { cursorNode, focusTreeNode, revealCursorInTree, revealHit } from './link';
 import { openDictLookup } from './dict-pane';
+import { openLexPaneForHan } from './lex-pane';
 import { openForeignTab } from './text-pane';
 import {
   addressAtLine, mapPosMap, mapSideOf, plateLinksAtLine, taishoPlateForPageId, type PlateLinks,
@@ -376,7 +377,7 @@ function showMenu(info: SelInfo): void {
   m.querySelectorAll<HTMLButtonElement>('[data-sel]').forEach((b) => { b.hidden = false; });
   const minor = m.querySelector<HTMLButtonElement>('.selMinor');
   if (minor) minor.hidden = false;
-  for (const sel of ['plateT', 'plateK', 'sutra', 'addr', 'gloss']) {
+  for (const sel of ['plateT', 'plateK', 'sutra', 'addr', 'gloss', 'lexHan']) {
     const b = actOf(m, sel);
     if (b) b.hidden = true;
   }
@@ -389,7 +390,7 @@ function showMenu(info: SelInfo): void {
       const g = grpOf(m, kind);
       if (g) g.hidden = true;
     }
-    for (const sel of ['cite', 'rong', 'qian', 'pos', 'addr', 'gloss']) {
+    for (const sel of ['cite', 'rong', 'qian', 'pos', 'addr', 'gloss', 'lexHan']) {
       const b = actOf(m, sel);
       if (b) b.hidden = true;
     }
@@ -406,7 +407,7 @@ function showMenu(info: SelInfo): void {
     sutraHit = null;
     const gs = grpOf(m, 'search');
     if (gs) gs.hidden = true;
-    for (const sel of ['cite', 'rong', 'qian', 'pos', 'addr', 'dict', 'plateT', 'plateK', 'gloss']) {
+    for (const sel of ['cite', 'rong', 'qian', 'pos', 'addr', 'dict', 'plateT', 'plateK', 'gloss', 'lexHan']) {
       const b = actOf(m, sel);
       if (b) b.hidden = true;
     }
@@ -431,6 +432,14 @@ function showMenu(info: SelInfo): void {
     if (url && b) { plateUrls.taisho = url; b.hidden = false; b.title = url; }
   }
   placeMenu(m, info);
+  // 漢語譯本沒有逐詞語法（sz D6）：選到漢字才給「查詞」→ 反向查 lex.adb 的中文詞條，
+  // 列出對應巴利詞。詞典庫本身（lex）不用再查自己。
+  const lexBtn = actOf(m, 'lexHan');
+  if (lexBtn) {
+    const han = /[\u3400-\u9fff\uf900-\ufaff]/.test(info.text);
+    lexBtn.hidden = !(han && reader?.header.dbname !== 'lex');
+    if (!lexBtn.hidden) lexBtn.title = `用 lex.adb 反向查「${info.text.trim().slice(0, 12)}」對應的巴利詞`;
+  }
   void fillSutra(info);
   void fillPlates(info);
   void fillAddress(info);
@@ -696,6 +705,7 @@ async function runAction(action: string): Promise<void> {
   } else if (action === 'addr' && addrRange) {
     await copyText(addrRange, '已複製高麗⇄大正位址範圍');
   } else if (action === 'dict') await openDictLookup(info.text);
+  else if (action === 'lexHan') await openLexPaneForHan(info.text);
   else if (action === 'gloss' && glossQuery) await openDictLookup(glossQuery);
   else if (action === 'plateT' && plateUrls.taisho) await openExternalUrl(plateUrls.taisho);
   else if (action === 'plateK' && plateUrls.goryeo) await openExternalUrl(plateUrls.goryeo);

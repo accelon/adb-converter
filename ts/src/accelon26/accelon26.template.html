@@ -337,6 +337,17 @@
   .lexRow { display: grid; grid-template-columns: 3.5em 1fr; gap: 6px; padding: 2px 0; border-bottom: 1px solid var(--border-soft); }
   .lexLabel { color: var(--dim); }
   .lexSenses { margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); }
+  /* 漢詞反查候選（2026-11-03）：選取漢字 →「查詞」→ 巴利詞清單 */
+  .lexCands { display: grid; gap: 2px; margin: 6px 0; }
+  .lexCand {
+    display: grid; grid-template-columns: 1fr auto; gap: 0 8px; align-items: baseline;
+    width: 100%; text-align: left; font: inherit; background: transparent; color: var(--fg);
+    border: 1px solid transparent; border-radius: 5px; padding: 4px 6px; cursor: pointer;
+  }
+  .lexCand:hover { background: var(--hl-bg); border-color: var(--line); }
+  .lexCand b { font-weight: 600; }
+  .lexCand .lexCandGloss { grid-column: 1; color: var(--dim); font-size: 11px; }
+  .lexCand i { grid-row: 1 / span 2; grid-column: 2; color: var(--dim); font-size: 10px; font-variant-numeric: tabular-nums; }
   .lexSenses div { margin: 2px 0; }
   /* 詞條正文沒有原書換行：長行要自動折行（作者 2026-11-02，所有詞典）。
      `pre-wrap` 保留必要的換行與空白，同時允許軟折；長拉丁字串也強制斷開，
@@ -2601,6 +2612,7 @@
     <button type="button" class="selGroupBtn">查看<span class="selCaret">▸</span></button>
     <div class="selSub" data-sub="view">
       <button type="button" data-sel="dict">查字典</button>
+      <button type="button" data-sel="lexHan" hidden title="用 lex.adb 反向查選取漢詞對應的巴利詞">查詞</button>
       <button type="button" data-sel="gloss" hidden></button>
       <button type="button" data-sel="sutra" hidden></button>
       <button type="button" data-sel="plateT" hidden>看大正藏圖版</button>
