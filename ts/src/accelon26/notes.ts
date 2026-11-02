@@ -17,6 +17,7 @@ import { decodeXmlEntities } from '../xml-entities';
 import { mapper, reader, setStatus } from './viewer';
 import { revealDocLine } from './doc-pane';
 import { ancestorTrail, currentNodeAt } from './scopes';
+import { noteLabel } from './note-label';
 import type { AdbReader } from './adb';
 
 interface NoteHit {
@@ -605,7 +606,7 @@ async function showTip(ref: HTMLElement): Promise<void> {
   placeTip(ref, tip);
   const hit = await findBody(n, from);
   if (tipFor !== ref || tip.hidden) return;
-  tip.textContent = hit?.text || `找不到 <釋 n="${n}">`;
+  tip.textContent = hit?.text || `找不到 <釋 n="${noteLabel(n)}">`;
   placeTip(ref, tip);
 }
 
@@ -638,7 +639,7 @@ async function jumpToBody(ref: HTMLElement): Promise<void> {
   hideTip();
   if (!n || from < 0 || !mapper) return;
   const hit = await findBody(n, from);
-  if (!hit) { setStatus(`找不到 <釋 n="${n}">`, 'warn'); return; }
+  if (!hit) { setStatus(`找不到 <釋 n="${noteLabel(n)}">`, 'warn'); return; }
   await revealDocLine(hit.line);
   flashTarget(hit.line);
 }
@@ -694,6 +695,8 @@ export async function notePagesOf(n: string): Promise<{
     (arr ?? []).map((va) => ({ va, line: lineOfVa(va), page: pageOfVa(idx, va), pg: pgs.get(va) ?? '' }));
   return { refs: list(idx.refs.get(n), idx.refPg), bodies: list(idx.bodies.get(n), idx.bodyPg) };
 }
+
+export { noteLabel };
 
 export function initNoteLinks(): void {
   if (bound) return;

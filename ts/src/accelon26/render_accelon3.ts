@@ -18,6 +18,7 @@ import { defaultFontOf, fontFamilyOf, tagStyleOf } from './tag-style';
 import { decodeXmlEntities } from '../xml-entities';
 import { siddhamSequence } from './siddham-seq';
 import { puaSequence } from './pua-seq';
+import { noteLabel } from './note-label';
 
 export interface RenderContext {
   /** 標籤 → 它在樹裡的深度（0＝最上層） */
@@ -441,7 +442,9 @@ export class Accelon3Renderer {
 
   /** 注文開頭的編號（點它回到 `<註>`） */
   private noteBack(n: string): string {
-    return `<a class="noteBack" data-note="${esc(n)}" href="#" title="回到註 ${esc(n)}">[${esc(n)}]</a>`;
+    // `data-note` 存**完整 n**（含 `@冊`）當 key；畫面上只顯示紙本註號（作者 2026-11-02）
+    const label = esc(noteLabel(n));
+    return `<a class="noteBack" data-note="${esc(n)}" href="#" title="回到註 ${label}">[${label}]</a>`;
   }
 
   /** `<頁>`：原書分行時是右靠的分隔；不保留硬換行時是行內的小字頁碼 */
@@ -612,7 +615,9 @@ export class Accelon3Renderer {
       if (NOTE_REF_TAGS.has(name)) {
         const n = attrValue(attrs, 'n');
         if (!closing && n) {
-          html += `<a class="noteRef" data-note="${esc(n)}" href="#" aria-label="註 ${esc(n)}">[${esc(n)}]</a>`;
+          // `data-note` 存完整 n（含 `@冊`）當 key；顯示與 aria-label 只給紙本註號
+          const label = esc(noteLabel(n));
+          html += `<a class="noteRef" data-note="${esc(n)}" href="#" aria-label="註 ${label}">[${label}]</a>`;
           this.sawText = true;
         }
         continue;

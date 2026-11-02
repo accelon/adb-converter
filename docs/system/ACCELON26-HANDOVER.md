@@ -2842,3 +2842,19 @@ hover 與點擊全部一致（14 個測試點）；ys（`13.001`，沒有 pg）�
 實測（`tools/note-link-test.ts`，11 項全綠）：yl38 的 `[45]` 釋文 hover →
 「空之探究講義 › 第一章　《阿含》──空與解脫道 › 第二節　泛說解脫道 › 五、解脫道中的慧學 › （五）如實觀…」
 ＋原文「1、無常　苦　　　無我…[45]」。
+
+### 28.3 註號語法 `n="章.註@冊"`（作者 2026-11-02）
+
+ys.adb 的註號改成 `n="11.001@38"`：`@` 前是紙本註號、`@` 後是冊號（只為全 adb 唯一）。
+
+- 新檔 `ts/src/accelon26/note-label.ts`：`noteLabel(n)` 只切掉 `@冊`（`@38` 這種沒有紙本號的
+  保留原樣）。`notes.ts` 也 re-export 一份，方便呼叫端。
+- **顯示**一律用 label：`render_accelon3.ts` 的 `noteRef`／`noteBack`（`[...]` 與
+  `aria-label`／`title`）、`notes.ts` 的「找不到 `<釋 n=…>`」訊息。
+- **查表**仍用完整 n：`data-note` 屬性、`findBody`／`findRef`（`refs`／`bodies` 的 key）、
+  跳轉與反查都不變——否則跨冊同號會撞。
+- 測試：`bun run test/note-label.test.ts`（7 項）＋ `tools/note-link-test.ts`（14 項，含
+  「ys 只要顯示紙本註號」「data-note 仍是完整 key」「點含 @ 的註仍找到對應釋」）。
+  實測 ys 的 `38p0081a` 附近顯示 `[11.001]`、`data-note="11.001@38"`、點下去落在同一條釋（`[11.001]`）。
+- 目前 UI 沒有「跳到註」輸入框，所以第 4 點（接受兩種寫法）暫無對象；之後若加，用
+  `noteInputCandidates`（`note-label.ts`）擴充即可。

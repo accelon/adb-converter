@@ -368,6 +368,54 @@ try {
     JSON.stringify(crumb));
   ok('原文提示同時還有「原文那句」', (crumb.ctx ?? '').length > 0, JSON.stringify({ ctx: crumb.ctx }));
 
+  // 註號語法 `章.註@冊`（作者 2026-11-02）：畫面上只顯示紙本註號，`@冊` 只在 data-note 裡
+  const at = await cdp.eval<any>(`
+    (async () => {
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      const chips = [...document.querySelectorAll('#dbTabs .dbChip')];
+      chips.find((c) => /印順|ys/.test(c.textContent))?.click();
+      await sleep(1200);
+      const q = document.getElementById('query');
+      q.value = '38p0081a';
+      q.dispatchEvent(new Event('input'));
+      q.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await sleep(1600);
+      const refs = [...document.querySelectorAll('#docText a.noteRef')];
+      const backRefs = [...document.querySelectorAll('#docText a.noteBack')];
+      const shown = [...refs, ...backRefs].map((a) => a.textContent ?? '');
+      const keys = [...refs, ...backRefs].map((a) => a.dataset.note ?? '');
+      // 點一個有 @ 的註：要能找到對應的釋（用完整 key）
+      const withAt = refs.find((a) => (a.dataset.note ?? '').includes('@'));
+      let clicked = null;
+      if (withAt) {
+        const key = withAt.dataset.note ?? '';
+        withAt.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        for (let i = 0; i < 100; i++) {
+          await sleep(80);
+          if (document.querySelector('#docText a.noteBack[data-note="' + key + '"]')) break;
+        }
+        const back = document.querySelector('#docText a.noteBack[data-note="' + key + '"]');
+        clicked = { note: key, landed: !!back, backText: (back?.textContent ?? ''), backKey: back?.dataset.note ?? '' };
+      }
+      return {
+        db: window.__accelon26.state().db,
+        refs: refs.length,
+        sampleShown: shown.slice(0, 4),
+        sampleKeys: keys.slice(0, 4),
+        anyAtShown: shown.some((t) => t.includes('@')),
+        anyAtKey: keys.some((k) => k.includes('@')),
+        clicked,
+      };
+    })()
+  `);
+  ok('ys 的註號顯示不含 @（畫面上只有紙本註號）',
+    at.anyAtShown === false && (at.sampleShown ?? []).length > 0,
+    `顯示 ${JSON.stringify(at.sampleShown)}｜key ${JSON.stringify(at.sampleKeys)}`);
+  ok('data-note 仍是完整 key（含 @冊）', at.anyAtKey === true, JSON.stringify(at.sampleKeys));
+  ok('點含 @ 的註仍能找到對應釋（完整 key）',
+    at.clicked ? at.clicked.landed === true && at.clicked.backKey === at.clicked.note && (at.clicked.backText ?? '').includes('[' + String(at.clicked.note).split('@')[0] + ']') : true,
+    JSON.stringify(at.clicked));
+
   if (cdp.logs.length) console.error(cdp.logs.slice(-8).join('\n'));
 } finally {
   proc.kill();
