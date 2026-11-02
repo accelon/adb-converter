@@ -47,6 +47,50 @@ export const isTibet = (c: number): boolean => c >= 0xf00 && c <= 0xfff;
 /** tokenize.pas: isTibetPunc */
 export const isTibetPunc = (c: number): boolean => c >= 0xf0d && c <= 0xf11;
 
+/** 緬甸文區（Myanmar）：U+1000–109F；擴充 A9E0–A9FF 也一起處理。 */
+const isMyanmar = (c: number): boolean =>
+  (c >= 0x1000 && c <= 0x109f) || (c >= 0xa9e0 && c <= 0xa9ff);
+
+/** 泰文區（Thai）：U+0E00–0E7F。 */
+const isThai = (c: number): boolean => c >= 0x0e00 && c <= 0x0e7f;
+
+/**
+ * 泰文也沒有空格分詞；Delphi tokenizer 會把每個泰文字母當一個 token。
+ * `Intl.Segmenter('th', word)` 在 ICU 有泰文詞典，cllk 需要用這一條。
+ */
+const thSegmenter = (() => {
+  try {
+    return new Intl.Segmenter('th', { granularity: 'word' });
+  } catch {
+    return null;
+  }
+})();
+
+/**
+ * 日文（kmj 日譯）用。`Intl.Segmenter('ja', word)` 會把 `仏陀`、`説い` 切成詞；
+ * 只有明確標成日文的庫才開，避免把中文庫的漢字亂切。
+ */
+const jaSegmenter = (() => {
+  try {
+    return new Intl.Segmenter('ja', { granularity: 'word' });
+  } catch {
+    return null;
+  }
+})();
+
+/**
+ * Burmese 沒有空格分詞；Delphi 的 tokenizer 把每個緬文字母當一個 western token，
+ * cs-mm 的索引因此只有 113 個 token（幾乎是單字）。`Intl.Segmenter('my', word)`
+ * 在 Bun／Chromium 的 ICU 有緬甸詞典，能切成 `အကျွန်ုပ်`、`သည်` 這種詞。
+ */
+const mySegmenter = (() => {
+  try {
+    return new Intl.Segmenter('my', { granularity: 'word' });
+  } catch {
+    return null;
+  }
+})();
+
 /** tokenize.pas: isIDC */
 export const isIDC = (c: number): boolean => c >= 0x2ff0 && c <= 0x2fff;
 
@@ -210,10 +254,13 @@ export class Tokenizer {
    * 而且 adb 是以這個規則建索引」的新庫才開（2026-11-01）。
    */
   private readonly siddhamCluster: boolean;
+  /** 這個庫是否是日文（kmj）：漢字／假名用 ICU 日文詞典切詞。 */
+  private readonly japanese: boolean;
 
-  constructor(line: string, opts: { siddhamCluster?: boolean } = {}) {
+  constructor(line: string, opts: { siddhamCluster?: boolean; japanese?: boolean } = {}) {
     this.data = line;
     this.siddhamCluster = opts.siddhamCluster === true;
+    this.japanese = opts.japanese === true;
   }
 
   get atEnd(): boolean {
@@ -276,6 +323,88 @@ export class Tokenizer {
     return this.data.slice(start, this.ptr);
   }
 
+  /**
+   * 緬甸文：用 ICU 的 word segmenter 取**下一個詞**；不是一個字母一個 token。
+   * 只在連續緬文（到空白／非緬文字元為止）上跑；標點由 segmenter 自己切。
+   */
+  private parseMyanmar(): string {
+    const start = this.ptr;
+    let end = start;
+    while (end < this.data.length) {
+      const cp = this.data.codePointAt(end) ?? 0;
+      if (isBlank(cp) || !(isMyanmar(cp) || isCJKPunc(cp) || cp === 0x200b)) break;
+      end += cp > 0xffff ? 2 : 1;
+    }
+    const text = this.data.slice(start, end);
+    if (!text) {
+      this.ptr++;
+      return this.data[start] ?? '';
+    }
+    if (mySegmenter) {
+      const first = mySegmenter.segment(text)[Symbol.iterator]().next().value as { segment?: string } | undefined;
+      const seg = first?.segment ?? '';
+      if (seg) {
+        this.ptr = start + seg.length;
+        return seg;
+      }
+    }
+    this.ptr = end;
+    return text;
+  }
+
+  /** 泰文：ICU 的 word segmenter；與緬文同一套做法。 */
+  private parseThai(): string {
+    const start = this.ptr;
+    let end = start;
+    while (end < this.data.length) {
+      const cp = this.data.codePointAt(end) ?? 0;
+      if (isBlank(cp) || !(isThai(cp) || isCJKPunc(cp) || cp === 0x200b)) break;
+      end += cp > 0xffff ? 2 : 1;
+    }
+    const text = this.data.slice(start, end);
+    if (!text) {
+      this.ptr++;
+      return this.data[start] ?? '';
+    }
+    if (thSegmenter) {
+      const first = thSegmenter.segment(text)[Symbol.iterator]().next().value as { segment?: string } | undefined;
+      const seg = first?.segment ?? '';
+      if (seg) {
+        this.ptr = start + seg.length;
+        return seg;
+      }
+    }
+    this.ptr = end;
+    return text;
+  }
+
+  /** 日文：漢字／假名連續段用 ICU 日文詞典切；標點由 segmenter 自己切。 */
+  private parseJapanese(): string {
+    const start = this.ptr;
+    let end = start;
+    while (end < this.data.length) {
+      const cp = this.data.codePointAt(end) ?? 0;
+      if (isBlank(cp)) break;
+      if (!(isCJK(cp) || isCJKPunc(cp) || cp === 0x200b)) break;
+      end += cp > 0xffff ? 2 : 1;
+    }
+    const text = this.data.slice(start, end);
+    if (!text) {
+      this.ptr++;
+      return this.data[start] ?? '';
+    }
+    if (jaSegmenter) {
+      const first = jaSegmenter.segment(text)[Symbol.iterator]().next().value as { segment?: string } | undefined;
+      const seg = first?.segment ?? '';
+      if (seg) {
+        this.ptr = start + seg.length;
+        return seg;
+      }
+    }
+    this.ptr = end;
+    return text;
+  }
+
   /** tokenize.pas: TTokenizer.nextLiteral */
   nextLiteral(): string {
     this.tokenStart = this.ptr;
@@ -287,6 +416,10 @@ export class Tokenizer {
       }
       return out;
     }
+
+    if (this.japanese && (isCJK(this.cur()) || isCJKPunc(this.cur()))) return this.parseJapanese();
+    if (isThai(this.cur())) return this.parseThai();
+    if (isMyanmar(this.cur())) return this.parseMyanmar();
 
     if (isWestern(this.cur())) {
       const numberstart = isNumeric(this.cur());

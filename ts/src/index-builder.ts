@@ -73,6 +73,10 @@ export interface BuildIndexOptions {
    * the setting differs per database: yinshun indexes (, kangxi and 13j do not).
    */
   dropPunct?: string;
+  /** true = 純數字 token（目錄編號／頁碼）不進索引，但照樣佔 VA */
+  dropNumeric?: boolean;
+  /** true = 這個庫是日文（kmj）；漢字／假名用 ICU 日文詞典切詞 */
+  japanese?: boolean;
   /** dotag writes self closing tags into the close list too; the docdef tag
    *  format (tfDontCare) decides that and is NOT stored in the adb, so this is
    *  off by default and the tag index is compared without it */
@@ -177,6 +181,12 @@ export function buildIndex(files: string[][], opts: BuildIndexOptions): BuiltInd
     }
     if (opts.dropPunct && indexTokens && token.length === 1 && opts.dropPunct.includes(token)) {
       // the hit is removed after indexing, so the virtual address is still used
+      droppedPunct++;
+      voff++;
+      return;
+    }
+    if (opts.dropNumeric && indexTokens && /^[0-9]+(?:\.[0-9]*)*$/.test(token)) {
+      // 目錄編號／頁碼：不進 token 索引，但照樣佔 VA。
       droppedPunct++;
       voff++;
       return;
@@ -303,7 +313,7 @@ export function buildIndex(files: string[][], opts: BuildIndexOptions): BuiltInd
     if (len > MAXLINELEN) len = MAXLINELEN;
 
     if (len > 0) {
-      const tk = new Tokenizer(line);
+      const tk = new Tokenizer(line, { japanese: opts.japanese });
       for (;;) {
         const poff = totalParsedBytes + tk.offset * 2;
         if (Math.floor(poff / opts.srcBlockSize) + 1 > blocksVirtual.length) {

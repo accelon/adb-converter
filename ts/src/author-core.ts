@@ -43,6 +43,10 @@ export interface AuthorInput {
   srcBlockSize?: number;
   /** single characters to drop from the token index (build time punctuation filter) */
   dropPunct?: string;
+  /** pure numeric tokens (目錄編號／頁碼) 不進索引 */
+  dropNumeric?: boolean;
+  /** true = 日文庫（kmj）：漢字／假名用 ICU 日文詞典切詞 */
+  japanese?: boolean;
   /**
    * 從第一個實例起就快取的標記（舊庫的 docdef 宣告在 adb 之外，文字裡看不到）。
    * 重建時把舊 `caches` 的鍵傳進來，目錄樹才會跟原庫一致。
@@ -166,6 +170,8 @@ export async function authorAdbBytes(input: AuthorInput): Promise<AuthorOutcome>
     validTags: input.validTags ? new Set(input.validTags) : null,
     indexedTags: null,
     dropPunct: input.dropPunct,
+    dropNumeric: input.dropNumeric,
+    japanese: input.japanese,
     dualIndexSelfClosing: false,
     dualTags: input.dualSelfClosingTags ? new Set(input.dualSelfClosingTags) : null,
     // no static set: `t=` / `s="*…"` declarations in the text decide what is cached

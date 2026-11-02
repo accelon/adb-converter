@@ -171,9 +171,9 @@ function lowerBound(xs: number[], target: number, from = 0): number {
 }
 
 /** Tokenize a query the way the index was built. Spaces separate tokens. */
-export function queryTokens(query: string): string[] {
+export function queryTokens(query: string, japanese = false): string[] {
   const out: string[] = [];
-  const tk = new Tokenizer(query);
+  const tk = new Tokenizer(query, { japanese });
   for (;;) {
     const raw = tk.nextLiteral();
     if (raw.length === 0) break;
@@ -984,10 +984,13 @@ export class SearchSession {
   /** 分群標籤（`backend.ts` 需要，唯讀） */
   get groupTagName(): string { return this.groupTag; }
   private groupVa: number[] | null = null;
+  /** kmj 日文：查詢與索引都用 ICU 日文詞典；其他庫不開。 */
+  private readonly japanese: boolean;
 
   constructor(reader: AdbReader) {
     this.reader = reader;
     this.tokensC = reader.containers.get('tokens') ?? null;
+    this.japanese = reader.header.dbname === 'kmj';
   }
 
   /**
@@ -1300,7 +1303,7 @@ export class SearchSession {
   private async clauseFor(c: QueryClause): Promise<{ tokens: string[]; wildcard: boolean; lists: (number[] | null)[]; missing: string[] }> {
     // 單字萬用字元：`菩.心` ＝ 菩 ＋ 任意一個 token ＋ 心（作者 2026-10）
     const { parts, wild } = splitWildcard(c.text);
-    const tokens = wild ? parts.flatMap((p) => queryTokens(p)) : queryTokens(c.text);
+    const tokens = wild ? parts.flatMap((p) => queryTokens(p, this.japanese)) : queryTokens(c.text, this.japanese);
     const lists: (number[] | null)[] = [];
     const missing: string[] = [];
     const pushToken = async (t: string): Promise<void> => {
@@ -1314,7 +1317,7 @@ export class SearchSession {
       // parts[i] 之間各插一個 WILD（`.`）；空片段（開頭／結尾的 `.`）不產生 token
       for (let i = 0; i < parts.length; i++) {
         if (i > 0) lists.push(WILD);
-        for (const t of queryTokens(parts[i])) await pushToken(t);
+        for (const t of queryTokens(parts[i], this.japanese)) await pushToken(t);
       }
     }
     return { tokens, wildcard: wild, lists, missing };

@@ -30,6 +30,10 @@ export interface AuthorInput {
   srcBlockSize?: number;
   /** single characters to drop from the token index (build time punctuation filter) */
   dropPunct?: string;
+  /** pure numeric tokens (目錄編號／頁碼) 不進索引 */
+  dropNumeric?: boolean;
+  /** true = 日文庫（kmj）：漢字／假名用 ICU 日文詞典切詞 */
+  japanese?: boolean;
   /** 從第一個實例起就快取的標記（重建舊庫時沿用它的 `caches` 鍵） */
   cachedTags?: readonly string[];
   /** 自閉合但仍要索引 close hit 的成對標記（舊 docdef 的寫法） */
@@ -74,6 +78,8 @@ export async function authorAdb(input: AuthorInput): Promise<AuthorResult> {
       features: input.features,
       srcBlockSize: input.srcBlockSize,
       dropPunct: input.dropPunct,
+      dropNumeric: input.dropNumeric,
+      japanese: input.japanese,
       cachedTags: input.cachedTags,
       dualSelfClosingTags: input.dualSelfClosingTags,
       validTags: input.validTags,
