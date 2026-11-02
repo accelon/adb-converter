@@ -42,9 +42,9 @@ function hasVa(list: number[], v: number): boolean {
  * 詞組比對，支援單字萬用字元：`lists` 裡的 `null` ＝ `.`（任意一個 token）。
  * 沒有萬用字元時退回 `phraseMatch`（同一套規則，只是快一點）。
  */
-export function phraseMatchPattern(lists: (number[] | null)[], limit = 1_000_000): PhraseHit[] {
+export function phraseMatchPattern(lists: (number[] | null)[], limit = 1_000_000, maxGap = 0): PhraseHit[] {
   if (!lists.length) return [];
-  if (lists.every((l) => l !== null)) return phraseMatch(lists as number[][], limit);
+  if (lists.every((l) => l !== null)) return phraseMatch(lists as number[][], limit, maxGap);
   const n = lists.length;
   // 用第一個「有實際 token」的清單當錨點，回推詞組起點
   const anchorAt = lists.findIndex((l) => l !== null);
@@ -57,10 +57,14 @@ export function phraseMatchPattern(lists: (number[] | null)[], limit = 1_000_000
     for (let i = 0; i < n; i++) {
       const l = lists[i];
       if (!l || i === anchorAt) continue;
-      if (!hasVa(l, start + i)) { ok = false; break; }
+      let found = false;
+      for (let g = 0; g <= maxGap; g++) {
+        if (hasVa(l, start + i + g)) { found = true; break; }
+      }
+      if (!found) { ok = false; break; }
     }
     if (ok) {
-      out.push({ va: start, units: n });
+      out.push({ va: start, units: n + maxGap });
       if (out.length >= limit) break;
     }
   }
@@ -136,26 +140,27 @@ export function matchesInRange(lists: (number[] | null)[], from: number, to: num
  * later list up to its predecessor, and accept when the last equals the first
  * plus the token count minus one.
  */
-export function phraseMatch(lists: number[][], limit = 1_000_000): PhraseHit[] {
+export function phraseMatch(lists: number[][], limit = 1_000_000, maxGap = 0): PhraseHit[] {
   if (!lists.length) return [];
   if (lists.length === 1) return lists[0].slice(0, limit).map((va) => ({ va, units: 1 }));
   const n = lists.length;
   const idx = new Array(n).fill(0);
   const out: PhraseHit[] = [];
-  const last = lists[n - 1];
   for (const start of lists[0]) {
     let target = start;
     let ok = true;
     for (let i = 1; i < n; i++) {
-      idx[i] = lowerBound(lists[i], target, idx[i]);
+      idx[i] = lowerBound(lists[i], target + 1, idx[i]);
       if (idx[i] >= lists[i].length) { ok = false; break; }
-      target = lists[i][idx[i]];
+      const pos = lists[i][idx[i]];
+      // 中文相鄰＝VA 連續；純外文的空白會多佔 VA，允許每個詞之間最多 maxGap。
+      if (pos < start + i || pos > start + i + maxGap) { ok = false; break; }
+      target = pos;
     }
-    if (ok && target === start + n - 1) {
-      out.push({ va: start, units: n });
+    if (ok && target >= start + n - 1 && target <= start + n - 1 + maxGap) {
+      out.push({ va: start, units: n + maxGap });
       if (out.length >= limit) break;
     }
-    void last;
   }
   return out;
 }
@@ -1146,12 +1151,17 @@ export class SearchSession {
   }
 
   /** 單一詞組查詢（等於 `searchAuto` 收到「一個詞、沒有運算子」時走的那一條） */
-  async search(query: string, maxHits = 5000): Promise<SearchResult> {
+  async search(query: string, maxHits = 5000, phrase = false): Promise<SearchResult> {
     const t0 = performance.now();
     this.lastLookups = [];
-    const parsed = parseQuery(query);
-    const clauses = await this.clauseHits(query, maxHits);
+    const parsed = parseQuery(query, phrase);
+    const clauses = await this.clauseHits(query, maxHits, phrase);
     return this.singleResult(parsed, clauses, maxHits, t0);
+  }
+
+  /** 純外文（cs／sc）：把整串查詢當一個相鄰詞組，不對空白切 clause。 */
+  async searchPhrase(query: string, maxHits = 5000): Promise<SearchResult> {
+    return this.search(query, maxHits, true);
   }
 
   // ------------------------------------------------------ BM25 / 多詞組
@@ -1280,8 +1290,8 @@ export class SearchSession {
    * `wildcard` 的詞組用 `null` 當「任意一個 token」（`.`），交給
    * `phraseMatchPattern()`；`variants` 開啟時 `lookup()` 會把同組字的 posting 併起來。
    */
-  async clauseHits(query: string, maxHits = 1_000_000): Promise<ClauseHits[]> {
-    const parsed = parseQuery(query);
+  async clauseHits(query: string, maxHits = 1_000_000, phrase = false): Promise<ClauseHits[]> {
+    const parsed = parseQuery(query, phrase);
     const out: ClauseHits[] = [];
     let colorIndex = 0;
     for (const c of parsed.clauses) {
@@ -1292,7 +1302,7 @@ export class SearchSession {
         colorIndex: c.role === 'excluded' ? -1 : colorIndex++,
       };
       clause.hits = prepared.lists.length && !prepared.missing.length
-        ? phraseMatchPattern(prepared.lists, maxHits)
+        ? phraseMatchPattern(prepared.lists, maxHits, phrase ? 1 : 0)
         : [];
       clause.occurrences = clause.hits.length;
       out.push(clause);

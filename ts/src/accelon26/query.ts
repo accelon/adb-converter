@@ -107,9 +107,15 @@ export function normalizeClause(text: string): { text: string; wild: boolean } {
  * 純函式、不做 tokenizer（tokenizer 在 search.ts 用索引的同一套規則做），
  * 所以這裡只處理「詞組」這一層，回傳的字串原樣保留（含 Latin 大小寫）。
  */
-export function parseQuery(text: string): ParsedQuery {
+export function parseQuery(text: string, phrase = false): ParsedQuery {
   const raw = text ?? '';
   const clauses: QueryClause[] = [];
+  if (phrase) {
+    const { text: t } = normalizeClause(raw.trim());
+    if (!t) return { raw, clauses: [], hasOperators: false, wildcard: false };
+    clauses.push({ text: t, role: 'optional', nearPrev: false, nearOf: -1 });
+    return { raw, clauses, hasOperators: false, wildcard: t.includes('.') };
+  }
   let buf = '';
   let role: ClauseRole | null = null;
   let near = false;

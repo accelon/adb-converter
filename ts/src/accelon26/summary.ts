@@ -27,6 +27,9 @@ let summaryResult: SearchResult | null = null;
 
 let searchSeq = 0;
 
+/** 這一輪查詢實際用的模式：片語／AND／鄰近；一般全文為空。 */
+let lastSearchMode = '';
+
 /**
  * 摘要清單自己的序號（作者 2026-10-29）：每次重畫 +1，較舊的一次畫到一半就放棄。
  * 沒有它，輸入後還在慢慢組卡的「全體摘要」會在點完節點命中數之後才寫進 DOM，
@@ -96,6 +99,7 @@ async function runSearch(query: string) {
     lastResult = null;
     summaryResult = null;
     lastQuery = q;
+    lastSearchMode = '';
     snippetScope = null;
     snippetShown = SNIPPET_LIMIT;
     setKwMarks([]);
@@ -123,14 +127,47 @@ async function runSearch(query: string) {
       glossNote = `（西文「${q}」→ ${hans.join('、')}）`;
     }
   }
-  // searchAuto: 單一詞組走舊引擎，多詞組／運算子走 BM25
-  let res = await searchAutoVia(session, reader?.io ?? null, qq);
+  // 純外文（cs／sc）：空白先當片語（作者 2026-11-02）。找不到再退 AND、再退鄰近。
+  // 中文／混合語料仍走原本的 searchAuto（空白＝optional 詞組）。
+  let res: SearchResult;
+  let searchMode = '';
+  const pureForeign = !!reader && (reader.header.dbname === 'cs' || reader.header.dbname === 'sc');
+  const plain = qq.trim();
+  if (pureForeign && session && /\s/.test(plain) && !/[+\-*"]/.test(plain)) {
+    const phraseRes = await session.searchPhrase(plain);
+    if (phraseRes.hits.length) {
+      res = phraseRes;
+      searchMode = '片語';
+    } else {
+      const andQ = plain.split(/\s+/).filter(Boolean).map((t) => '+' + t).join(' ');
+      const andRes = await searchAutoVia(session, reader?.io ?? null, andQ);
+      if (andRes.hits.length) {
+        res = andRes;
+        searchMode = 'AND';
+      } else {
+        const parts = plain.split(/\s+/).filter(Boolean);
+        const nearQ = '+' + parts[0] + parts.slice(1).map((t) => '*' + t).join('');
+        res = await searchAutoVia(session, reader?.io ?? null, nearQ);
+        searchMode = '鄰近';
+      }
+      // 摘要仍顯示使用者原本的查法，不顯示內部的 +／*。
+      res.query = q;
+    }
+  } else {
+    // searchAuto: 單一詞組走舊引擎，多詞組／運算子走 BM25
+    res = await searchAutoVia(session, reader?.io ?? null, qq);
+  }
   for (const h of hans.slice(1)) {
     if (!res.missing.length) break;
     const r2 = await searchAutoVia(session, reader?.io ?? null, h);
     if (!r2.missing.length) { res = r2; break; }
   }
   if (seq !== searchSeq) return;          // a newer keystroke won
+  lastSearchMode = searchMode;
+  if (searchMode) {
+    const badge = $('#queryMode');
+    if (badge) { badge.hidden = false; badge.textContent = searchMode; }
+  }
   lastQuery = q;
   // 每個關鍵字一個顏色（塗本文與摘要都用同一組色相）
   const clauses = res.multi?.clauses.filter((c) => c.colorIndex >= 0) ?? [];
@@ -447,6 +484,7 @@ function bookNameOf(groups: { name: string; from: number; to: number }[], va: nu
 export function resetSummary(): void {
   lastResult = null;
   summaryResult = null;
+  lastSearchMode = '';
   snippetScope = null;
   snippetScopeQuery = '';
   snippetShown = SNIPPET_LIMIT;
@@ -498,7 +536,4 @@ export async function repaintSummary(): Promise<void> {
   setKwMarks(clauses.map((c) => ({ text: c.text, hue: hueFor(c.colorIndex, clauses.length) })));
   await renderSearchResult(res, searchSeq);
 }
-export { SNIPPET_LIMIT, activeGroup, inGroup, lastQuery, lastResult, refreshTreeHits, renderSearchResult, renderSnippets, restoreSummary, runSearch, searchSeq, showNodeHits, snapshotSummary, snippetScope, snippetScopeQuery, snippetShown, summaryResult };
-
-
-
+export { SNIPPET_LIMIT, activeGroup, inGroup, lastQuery, lastResult, lastSearchMode, refreshTreeHits, renderSearchResult, renderSnippets, restoreSummary, runSearch, searchSeq, showNodeHits, snapshotSummary, snippetScope, snippetScopeQuery, snippetShown, summaryResult };

@@ -189,6 +189,7 @@ const step2 = await cdp.eval<string>(`
     out.query = ${JSON.stringify(QUERY)};
     out.hits = st.hitTotal;
     out.summaryHead = (document.querySelector('#searchMeta')?.innerText ?? '').slice(0, 90);
+    out.queryMode = document.querySelector('#queryMode')?.textContent ?? '';
     const snippets = [...document.querySelectorAll('#searchList .snippet')];
     out.snippetCount = snippets.length;
     out.snippetLeak = snippets.filter((s) => /(聯|圖|章|篇|字) [a-z]+="/.test(s.innerText) || /<\\/?\\w/.test(s.innerText)).length;
