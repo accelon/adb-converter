@@ -17,7 +17,7 @@ import { authorAdb } from '../src/adbauthor';
 import { AdbReader, SyncIO } from '../src/accelon26/adb';
 import { SearchSession } from '../src/accelon26/search';
 import { VaPaMapper } from '../src/accelon26/vapa';
-import { Tokenizer, tokenProfileOf } from '../src/tokenize';
+import { needsIcuTokenizer, Tokenizer, tokenProfileOf } from '../src/tokenize';
 
 const LINES = [
   '<檔 n="kmj"><集>日譯</集></檔>',
@@ -124,5 +124,32 @@ describe('詞內（sub-token）查：Enter 才回退', () => {
       texts.push(el?.element.text ?? '');
     }
     expect(texts.sort()).toEqual(['問題', '話題', '話題']);
+  });
+
+  test('needsIcuTokenizer：泰文／緬文要用 TS 分詞，中文／英文不用', () => {
+    expect(needsIcuTokenizer('ว่าด้วย')).toBe(true);
+    expect(needsIcuTokenizer('မြတ်စွာဘုရားသည်')).toBe(true);
+    expect(needsIcuTokenizer('話題')).toBe(false);
+    expect(needsIcuTokenizer('dhamma')).toBe(false);
+    expect(needsIcuTokenizer('')).toBe(false);
+  });
+
+  test('詞內不限日文：泰文也能用「含這個字串的詞」查', async () => {
+    const res = await authorAdb({
+      dbname: 'cllk',
+      dbcname: '泰譯',
+      lines: ['<檔 n="cllk"><集>泰譯</集></檔>', 'พระพุทธเจ้า ทรงแสดงธรรม'],
+      fullTextIndex: true,
+      log: () => {},
+    });
+    const file = join(mkdtempSync(join(tmpdir(), 'th-sub-')), 'cllk.adb');
+    writeFileSync(file, res.file);
+    const r = await AdbReader.open(new SyncIO(file));
+    const s = new SearchSession(r);
+    expect(s.usesJapanese).toBe(false);
+    const names = await s.subtokenNames('พุทธ');
+    expect(names.length).toBeGreaterThan(0);
+    const sub = await s.subtokenSearch('พุทธ');
+    expect(sub.hits.length).toBeGreaterThan(0);
   });
 });

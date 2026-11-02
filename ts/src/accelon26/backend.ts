@@ -18,6 +18,7 @@ import type { AdbIO } from './adb';
 import { parseQuery } from './query';
 import type { ClauseHits, MultiResult, PhraseHit, SearchResult, SearchSession } from './search';
 import { variantGroupOf, variantSearchOn } from './variants';
+import { needsIcuTokenizer } from '../tokenize';
 
 export type BackendKind = 'go' | 'ts';
 
@@ -95,8 +96,10 @@ export async function queryBackend(
   maxHits = 1_000_000,
 ): Promise<BackendAnswer> {
   // 日文庫（kmj）：Go 後端只會逐字切查詢，「話題」會被切成 話＋題、找不到 → 0 筆。
-  // 這種庫一律留在 TS 後端（切詞規則與索引同一套，見 tokenProfileOf）。
-  if (io?.searchQuery && !session.usesJapanese) {
+  // 泰文／緬文：Go 的 queryTokens() 只認 unicode.IsLetter，母音與附標會被丟掉（實測
+  // 「ว่าด้วย」→「าด」「วย」、「မြတ်စွာဘုရားသည်」→ 單字母）→ 也是 0 筆。
+  // 這兩種查詢一律留在 TS 後端（切詞規則與索引同一套，見 tokenProfileOf／needsIcuTokenizer）。
+  if (io?.searchQuery && !session.usesJapanese && !needsIcuTokenizer(query)) {
     const groups = variantSearchOn() ? variantGroupsFor(query) : [];
     const t0 = Date.now();
     const out = await io.searchQuery(query, maxHits, groups) as { clauses?: GoClause[]; ms?: number } | null;

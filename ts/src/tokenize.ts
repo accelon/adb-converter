@@ -91,6 +91,25 @@ export function tokenProfileOf(dbname: string | undefined): { japanese: boolean 
 }
 
 /**
+ * 查詢裡有沒有「只有 ICU 才切得對」的文字（泰文、緬文）。
+ *
+ * 為什麼要問：桌面版的 Go 後端（`wails/query.go` 的 `queryTokens`）是**逐字／逐字母**切，
+ * 而且只認 `unicode.IsLetter`——泰文的母音與聲調、緬文的附標會被丟掉或拆開：
+ *   「ว่าด้วย」→「าด」「วย」；「မြတ်စွာဘုရားသည်」→「မ」「တ」「စ」…
+ * 所以這種查詢一律留在 TS 後端（用 `Intl.Segmenter`，與索引同一套）。
+ * 日文庫（kmj）另外由 `SearchSession.usesJapanese` 判斷，因為漢字本身不是線索。
+ */
+export function needsIcuTokenizer(text: string): boolean {
+  for (const ch of text) {
+    const c = ch.codePointAt(0) ?? 0;
+    if ((c >= 0x0e00 && c <= 0x0e7f)        // Thai
+      || (c >= 0x1000 && c <= 0x109f)       // Myanmar
+      || (c >= 0xa9e0 && c <= 0xa9ff)) return true;   // Myanmar Extended-A
+  }
+  return false;
+}
+
+/**
  * Burmese 沒有空格分詞；Delphi 的 tokenizer 把每個緬文字母當一個 western token，
  * cs-mm 的索引因此只有 113 個 token（幾乎是單字）。`Intl.Segmenter('my', word)`
  * 在 Bun／Chromium 的 ICU 有緬甸詞典，能切成 `အကျွန်ုပ်`、`သည်` 這種詞。
