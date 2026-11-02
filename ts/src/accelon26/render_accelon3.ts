@@ -558,6 +558,19 @@ export class Accelon3Renderer {
       // `<聯 n="詞條">`：Accelon 的條目連結（LINK，pair，SKIP）。本文只負責長出
       // 可點的錨點；目標怎麼解析成 VA 由 link.ts 的 linkToEntry 做。
       // `<聯 i="taisho?51p185b">`：跨庫／跨頁錨點（作者 2026-10），點擊由 xref.ts 處理。
+      // `<段 n="12">`（作者 2026-11-02）：巴利藏幾個庫的**跨庫對齊鍵**。渲染成可點的
+      // 小晶片，點它列出同結構的庫（parallel.ts），選一個就跳到同一個段。
+      if (name === '段' || name === '_段') {
+        if (!closing) {
+          const segN = attrValue(attrs, 'n');
+          if (segN) {
+            html += `<button type="button" class="segChip" data-seg="${esc(segN)}"`
+              + ` title="第 ${esc(segN)} 段：點一下對讀同結構的庫">¶${esc(segN)}</button>`;
+            this.sawText = true;
+          }
+        }
+        continue;
+      }
       if (name === '聯' || name === '_聯') {
         const target = attrValue(attrs, 'n');
         const xref = attrValue(attrs, 'i');

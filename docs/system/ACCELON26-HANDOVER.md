@@ -2748,3 +2748,28 @@ hover 與點擊全部一致（14 個測試點）；ys（`13.001`，沒有 pg）�
 * 閱讀器（`notes.ts` 的 `pickNote`）三層：**pg 相同 → 同頁最近 → 頁碼最近**；
   沒有 `pg` 自動退化，所以兩種來源可以並存。
 * 完整規範寫在 `docs/adb/stable-adb.md` §3.1（含驗證指令與工具）。
+
+## 27. 2026-11-02：平行段對讀（`<段 n>`）
+
+巴利藏的幾個庫用 `<段 n="12">` 當**跨庫對齊鍵**（同一個段號＝同一段原文的不同譯本）。
+實測（`D:\2026\sz\accelon26\`）：`ccc` 6,554、`cs-mm` 6,554、`sc` 6,554、`yh` 6,554、
+`kmj` 6,555、`hz` 2,806、`pku` 1,360、`xsq` 1,254 條 `<段>`，全部都有 `段.n` 屬性。
+
+**做法**（`ts/src/accelon26/parallel.ts` ＋ `render_accelon3.ts`）：
+
+* 渲染：`<段 n="12">` → 可點的小晶片 `<button class="segChip" data-seg="12">¶12</button>`；
+  只對有 `段.n` 的庫有作用（沒有的庫整段跳過，行為不變）。
+* 點晶片 → 下拉（`#segMenu`，貼在晶片下方）：列出**同結構**的庫，作者指定的清單寫死在
+  `PARALLEL_DBS`：`ccc`／`cs-mm`／`hz`／`kmj`／`pku`／`sc`／`xsq`／`yh`（8 個），
+  再加 `cs`、`cllk`（還沒做 → 標「還沒做」且不可點）；目前這一庫標「目前」。
+* 選一個庫 → `openSegment(file, n)`：已開啟就切過去、catalog 裡有就開、桌面宿主
+  `ListAdbs` 有就開；都找不到就明確說「找不到 xxx.adb：請放在 exe 旁邊」。
+  然後用 `段.n → VA` 查表（每個 reader 快取一次）跳過去，`revealDocLine` 翻到那一行並塗色帶。
+* 段號不存在 → `xxx 沒有第 N 段`（狀態列 warn），不會亂跳。
+
+**測試**：`bun run tools/segment-test.ts`（6 項全綠，真的 ccc.adb／sc.adb／13j.adb）——
+晶片會出現（120 附近的段都在）、下拉 10 列（cs／cllk 標「還沒做」）、選 sc 會打開 sc 並落在
+同一個段（`docTabDb=sc` 且畫面上有 `data-seg="120"`）、段號不存在有訊息、沒有 `<段>` 的庫不長晶片。
+
+**注意**：`cs`、`cllk` 兩個庫還沒做，`PARALLEL_DBS` 已經先列進去（`ready:false`）；
+做好之後把它們的 `ready` 改成 `true` 即可。

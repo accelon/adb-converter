@@ -13,6 +13,7 @@ import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealC
 import { formatAddress, parseAddress, type PosMap } from './posmap';
 import { addressAtLine, convertText, initMap, mapPosMap, mapState, renderMap } from './map-pane';
 import { initNoteLinks, notePagesOf } from './notes';
+import { PARALLEL_DBS, initParallelSegments, openSegment, segmentVa } from './parallel';
 import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderGlossary, renderJump, jumpByQuery, jumpByTocPath, jumpByTocIndex, isTocPathQuery, isTocIndexQuery, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully, treeSnapshot } from './scopes';
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, repaintSummary, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
@@ -1472,6 +1473,7 @@ function boot() {
   initEntryLinks();
   // 本文的 `<註 n>` ↔ `<釋 n>` 腳注連動（作者 2026-10-26）
   initNoteLinks();
+  initParallelSegments();
   setDictHooks.current = () => { setSide('right', true); showTab('dict', 'right'); };
   // 操作導覽（🎬）：劇本 → 宏 → 播放器，見 tour.ts 與 ts/tour/*.tour
   initTour(TOUR_APP);
@@ -2154,6 +2156,10 @@ export function installDebugApi(): void {
   queryMode: (text: string) => queryModeOf(text),
   /** 腳注診斷（測試用）：某個 n 的所有 <註>/<釋>、各在哪一行哪一頁、帶什麼 pg */
   notePagesOf: (n: string) => notePagesOf(n),
+  /** 平行段對讀（作者 2026-11-02）：清單、查段號 VA、打開某庫的某一段 */
+  parallelDbs: () => PARALLEL_DBS.map((d) => ({ ...d })),
+  segmentVa: async (n: string) => (reader ? segmentVa(reader, n) : null),
+  openSegment: (file: string, n: string) => openSegment(file, n),
   shortcutsState: () => ({ open: shortcutsOpen(), count: shortcutCount() }),
   /** 修訂者 ID（About 頁／測試） */
   setUserId, userId: getUserId,

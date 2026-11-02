@@ -1177,7 +1177,39 @@
   .revListQuote { grid-column: 1 / -1; color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* <註 n="…"/> ↔ <釋 n="…">：像 Markdown 腳注（作者 2026-10-26）。
      註是上標的小連結，hover 顯示釋文；點註跳到釋、點釋（或它的編號）跳回註。 */
-  .lineText .noteRef {
+  /* 平行段對讀（作者 2026-11-02）：`<段 n>` 的晶片與下拉 */
+.lineText .segChip {
+  display: inline-flex; align-items: center; vertical-align: baseline;
+  margin: 0 2px; padding: 0 4px; border: 1px solid var(--line); border-radius: 6px;
+  background: transparent; color: var(--dim); font: inherit; font-size: .68em;
+  font-variant-numeric: tabular-nums; cursor: pointer; line-height: 1.5;
+}
+.lineText .segChip:hover { color: var(--fg); border-color: var(--accent); background: var(--panel2); }
+.lineText .segChip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#segMenu {
+  position: fixed; z-index: 96; min-width: 260px; max-width: min(420px, 92vw); max-height: 60vh; overflow: auto;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(0,0,0,.55); padding: 6px;
+}
+#segMenu .segHead {
+  display: flex; align-items: baseline; gap: 8px; padding: 4px 8px 6px;
+  font-weight: 700; font-size: 13px; border-bottom: 1px solid var(--line); margin-bottom: 4px;
+}
+#segMenu .segHead span { color: var(--dim); font-weight: 400; font-size: 11.5px; }
+#segMenu .segRow {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  background: transparent; color: var(--fg); border: 0; border-radius: 6px;
+  font: inherit; font-size: 13px; padding: 5px 8px; cursor: pointer;
+}
+#segMenu .segRow:hover { background: var(--panel2); }
+#segMenu .segRow.cur { background: var(--hl-bg); }
+#segMenu .segRow.todo { color: var(--dim); cursor: not-allowed; }
+#segMenu .segFile { color: var(--dim); font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; }
+#segMenu .segName { flex: 1 1 auto; }
+#segMenu .segTag {
+  color: var(--gold); border: 1px solid var(--line); border-radius: 999px;
+  font-size: 10.5px; padding: 0 6px;
+}.lineText .noteRef {
     color: var(--link); text-decoration: none; font-size: .72em;
     vertical-align: super; padding: 0 1px; cursor: pointer;
   }
