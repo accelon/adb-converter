@@ -344,11 +344,15 @@ export function openImageView(name: string, url: string, bytes: Uint8Array): voi
   ivUrl = url;
   ivBytes = bytes;
   ivSvg = /\.svg$/i.test(name);
+  // ys 的 PNG／GIF 圖版放在 `png/`、`svg/` 下；看圖視窗也要跟 SVG 一樣可反轉。
+  const rasterFigure = !ivSvg && /^(png|svg)\//i.test(name);
   img.classList.toggle('svg', ivSvg);
-  // SVG 是黑墨透明底：暗色系背景下幾乎看不見，鋪一張白紙（作者 2026-10-29）。
-  // 但使用者開了「SVG 反轉」時不鋪（反轉後就是亮線；作者 2026-10-31）。
-  const inverted = ivSvg && document.documentElement.classList.contains('svg-invert');
-  img.style.background = ivSvg && !inverted ? '#fff' : '';
+  img.classList.toggle('rasterFigure', rasterFigure);
+  // 黑墨圖在暗色系背景下幾乎看不見，鋪一張白紙；使用者開了「圖表自適應背景色」
+  // 時不鋪（反轉後就是亮線）。
+  const invertible = ivSvg || rasterFigure;
+  const inverted = invertible && document.documentElement.classList.contains('svg-invert');
+  img.style.background = invertible && !inverted ? '#fff' : '';
   img.onload = () => { ivFit(); };
   img.src = url;
   img.alt = name;

@@ -530,7 +530,8 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   （◧／◨／🔧）。左上角標題是 `Accelon26`（亮灰 `#d9d9d9`，`26` 仍是金色）。
 
   * **介面．主題**：`#themeSeg` 四選一——**暗色系（預設）／亮色系／春綠／秋黃**；設定鍵 `localStorage['accelon26.theme']`，`theme.ts` 是唯一碰 `data-theme` 的地方。通用規則（CSS 變數、boot script、色票、三主題驗收）見 [yap-software-practice.md](./yap-software-practice.md) §7。
-    2026-11-01：`#setSvgInvert`（SVG 圖反轉）從「介面」section 併進這裡；暗色模式把黑線 SVG 反轉成亮線，亮色主題不作用。
+    2026-11-02：`#setSvgInvert` 改名「**圖表自適應背景色**」；暗色模式把黑線的
+    **SVG 與 PNG 圖版**都反轉成亮線，亮色主題不作用。
   * **介面．更新**：`#setMirror` 鏡像站（程式與資料庫更新共用）。
   * **閱讀**（2026-11-01 把「路徑字數」移到這裡）：原書分行 `#showHardBreaks`、顯示原書頁碼
     `#setPageMarks`、術語顯示 `#setTermMode`、debug 行提示 `#setLineTip`、

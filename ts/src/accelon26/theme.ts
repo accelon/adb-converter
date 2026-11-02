@@ -29,9 +29,10 @@ export function themeOf(): ThemeName {
 }
 
 /**
- * SVG 顏色反轉（作者 2026-10-31；fuyan 的圖是黑墨透明底，暗色模式看不見）。
- * 只作用在「圖」（`svg.figureSvg` 與看圖視窗的 SVG），不動跟著字色走的 `inlineSvg`。
- * 預設開；只有暗色系（`dark`）才生效。
+ * 圖表顏色反轉（原「SVG 反轉」；作者 2026-10-31／2026-11-02）。
+ * fuyan／ys 的圖是黑墨白底，暗色模式看不見；SVG 與 PNG 圖版都要反轉。
+ * 只作用在「圖」（`svg.figureSvg`／`img.figureImg` 與看圖視窗），
+ * 不動跟著字色走的 `inlineSvg`。預設開；只有暗色系（`dark`）才生效。
  */
 const SVG_KEY = 'accelon26.svgInvert';
 

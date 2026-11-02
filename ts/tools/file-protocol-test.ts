@@ -1612,6 +1612,35 @@ try {
     reflow.back.hard === true && reflow.back.pages > 0 && reflow.back.paras === 0,
     `頁分隔 ${reflow.back.pages} 個、段落 ${reflow.back.paras}`);
 
+  // 圖表自適應背景色（原 SVG 圖反轉，2026-11-02）：PNG 圖版也要反轉。
+  const figureInvert = await cdp.eval<{ filter: string; bg: string; label: string }>(`
+    (() => {
+      const html = document.documentElement;
+      const had = html.classList.contains('svg-invert');
+      html.classList.add('svg-invert');
+      const box = document.createElement('div');
+      box.className = 'lineText';
+      const img = document.createElement('img');
+      img.className = 'inlineImg figureImg';
+      img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+      box.appendChild(img);
+      document.body.appendChild(box);
+      const cs = getComputedStyle(img);
+      const out = {
+        filter: cs.filter,
+        bg: cs.backgroundColor,
+        label: (document.querySelector('label[for="setSvgInvert"] span')?.textContent ?? '').trim(),
+      };
+      box.remove();
+      if (!had) html.classList.remove('svg-invert');
+      return out;
+    })()
+  `);
+  ok('圖表自適應背景色：PNG figureImg 在暗色模式反轉、不鋪白底',
+    /invert/.test(figureInvert.filter) && figureInvert.bg === 'rgba(0, 0, 0, 0)'
+    && figureInvert.label === '圖表自適應背景色',
+    `filter=${figureInvert.filter}、background=${figureInvert.bg}、選項「${figureInvert.label}」`);
+
   // 詞典型 adb（作者 2026-10）：<集 c="isdict"> 或 $詞 樹 → 本文不顯示 docHead，
   // 免得「詞條名稱」在分頁標題、docHead、命中塗紅裡出現三次
   const dictHead = await cdp.eval<{ dict: boolean; docHead: number; tab: string; headword: string }>(`

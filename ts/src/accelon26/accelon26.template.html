@@ -1361,13 +1361,16 @@
     box-shadow: 0 0 0 1px rgba(0, 0, 0, .10);
     color: #000;
   }
-  /* 暗色模式的「SVG 反轉」（作者 2026-10-31）：黑墨變亮、不必再鋪白紙。
-     只作用在圖（figureSvg 與看圖視窗）；跟著字色走的 inlineSvg 不動。 */
-  html.svg-invert .lineText svg.figureSvg {
+  /* 暗色模式的「圖表自適應背景色」（原「SVG 圖反轉」，作者 2026-10-31／2026-11-02）：
+     SVG 與 PNG 圖版都反轉，黑墨變亮、不必再鋪白紙。
+     只作用在圖（figureSvg／figureImg 與看圖視窗）；跟著字色走的 inlineSvg 不動。 */
+  html.svg-invert .lineText svg.figureSvg,
+  html.svg-invert .lineText img.figureImg {
     background: transparent; box-shadow: none; padding: 0;
     filter: invert(1) hue-rotate(180deg);
   }
-  html.svg-invert #imgViewImg.svg {
+  html.svg-invert #imgViewImg.svg,
+  html.svg-invert #imgViewImg.rasterFigure {
     background: transparent !important;
     filter: invert(1) hue-rotate(180deg);
   }
@@ -2457,8 +2460,8 @@
         <p class="setHint">預設是暗色系。春綠是偏綠的紙色、秋黃是黃棕紙色，長時間閱讀比較不刺眼；換主題只換顏色，不用重開。</p>
         <label class="setRow" for="setSvgInvert">
           <input type="checkbox" id="setSvgInvert" checked>
-          <span>SVG 圖反轉</span>
-          <span class="setHint">暗色模式時把黑線的 SVG 圖反轉成亮線（fuyan 等有插圖的庫），不再鋪白底；亮色主題不作用（作者 2026-10-31）</span>
+          <span>圖表自適應背景色</span>
+          <span class="setHint">暗色模式時把黑線的 SVG／PNG 圖表反轉成亮線（fuyan、ys 等有插圖的庫），不再鋪白底；亮色主題不作用</span>
         </label>
       </section>
       <!-- 更新鏡像（作者 2026-10-29）：程式更新與資料庫更新共用這一個選擇 -->

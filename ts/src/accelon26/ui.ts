@@ -451,11 +451,11 @@ function initSettings(): void {
     updateSettingsUi();
     setStatus(on ? '顯示原書頁碼：開' : '顯示原書頁碼：關（不渲染 <頁>／<_頁>）', 'info');
   });
-  // SVG 圖反轉（作者 2026-10-31；暗色模式把黑線圖反轉成亮線）
+  // 圖表自適應背景色（原 SVG 圖反轉；暗色模式把黑線圖表反轉成亮線，SVG／PNG 都適用）
   ($('#setSvgInvert') as HTMLInputElement | null)?.addEventListener('change', (ev) => {
     const on = (ev.target as HTMLInputElement).checked;
     setSvgInvert(on);
-    setStatus(on ? 'SVG 圖反轉：開（暗色模式）' : 'SVG 圖反轉：關', 'info');
+    setStatus(on ? '圖表自適應背景色：開（暗色模式）' : '圖表自適應背景色：關', 'info');
   });
   // 路徑每層字數（作者 2026-10-31；fuyan 的節點名很長）
   ($('#setTrailMax') as HTMLSelectElement | null)?.addEventListener('change', (ev) => {
