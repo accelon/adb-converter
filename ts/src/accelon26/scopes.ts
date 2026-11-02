@@ -105,7 +105,7 @@ async function labelTableFor(tag: string): Promise<{ vas: number[]; names: strin
   const vas = await tagVas(tag);
   let names = vas.length ? await reader!.cachedStrings(tag) : [];
   if (names.length !== vas.length) {
-    for (const attr of ['n', 'id']) {
+    for (const attr of ['n', 'w', 'id']) {
       const m = await loadInstanceAttrs(reader!, tag, attr);
       if (!m.size) continue;
       names = vas.map((_, i) => m.get(i) ?? '');
@@ -128,7 +128,12 @@ async function labelFor(tag: string, va: number, vaEnd: number): Promise<string>
   const table = await labelTableFor(tag);
   if (table) {
     const i = lowerBound(table.vas, va);
-    if (table.vas[i] === va && table.names[i]) return table.names[i];
+    if (table.vas[i] === va && table.names[i]) {
+      const cached = table.names[i];
+      // 有些庫把 `塊 id="w019952"` 也存進 caches；流水號不是標題，改用內文。
+      // （lex：74,219 塊的目錄若顯示 w074219，等於沒有名字。）
+      if (!/^[a-z]{1,2}\d{3,}$/i.test(cached)) return cached;
+    }
     const wrapped = await wrappedText(tag, va, table.vas);
     if (wrapped) return wrapped;
   }
@@ -1649,6 +1654,97 @@ async function jumpEntries(): Promise<{ label: string; va: number }[]> {
   return out;
 }
 
+/**
+ * 詞典型 adb：`塊` 的內文就是詞形（lex 的 `<塊 id="w019952">(daḍḍhāni)</塊>`）。
+ * 74,219 塊不可能每塊先讀一次 nodeLabel（約 11 秒），所以第一次要「按詞形跳」時，
+ * 把 source 掃一遍（lex 31 MB／約 3 秒），建一次 詞形／id → VA 的索引，之後快取。
+ */
+interface BlockWord { label: string; va: number }
+const blockWordCache = new WeakMap<object, Map<string, BlockWord>>();
+
+function normWord(s: string): string {
+  return s.replace(/^[（(]\s*/, '').replace(/\s*[）)]$/, '').trim().toLowerCase();
+}
+
+async function blockWordIndex(): Promise<Map<string, BlockWord>> {
+  if (!reader) return new Map();
+  const cached = blockWordCache.get(reader);
+  if (cached) return cached;
+  const tags = reader.containers.get('tags');
+  const ti = tags?.names.indexOf('塊') ?? -1;
+  if (!tags || ti < 0) return new Map();
+  const vas = await reader.decodeBlockList('tags', ti);
+  if (!vas.length) return new Map();
+  const out = new Map<string, BlockWord>();
+  const add = (key: string, label: string, va: number): void => {
+    const k = key.toLowerCase();
+    if (k && !out.has(k)) out.set(k, { label, va });
+  };
+  // 新 lex.adb 把詞形寫進 `塊 w="…"`：一次屬性表讀取就建好，不必掃 source。
+  const wav = await reader.attributeValues('塊.w').catch(() => null);
+  if (wav?.values?.length && wav.pointers) {
+    for (let i = 0; i < wav.values.length; i++) {
+      const ptr = wav.pointers[i];
+      if (((ptr >>> 24) & 0xff) !== ti) continue;
+      const va = vas[(ptr & 0xffffff) - 1];
+      if (va === undefined) continue;
+      const label = wav.values[i].replace(/^[（(]\s*/, '').replace(/\s*[）)]$/, '').trim();
+      add(label, label, va);
+    }
+    const idav = await reader.attributeValues('塊.id').catch(() => null);
+    if (idav?.values?.length && idav.pointers) {
+      for (let i = 0; i < idav.values.length; i++) {
+        const ptr = idav.pointers[i];
+        if (((ptr >>> 24) & 0xff) !== ti) continue;
+        const va = vas[(ptr & 0xffffff) - 1];
+        if (va === undefined) continue;
+        add(idav.values[i], idav.values[i], va);
+      }
+    }
+    blockWordCache.set(reader, out);
+    setStatus(`詞形索引完成：${fmtInt(out.size)} 個`, 'info');
+    return out;
+  }
+  setStatus('建立詞形索引…（第一次，約幾秒）', 'info');
+  await new Promise((r) => setTimeout(r, 0));
+  const src = reader.containers.get('source');
+  let text = '';
+  for (let i = 0; src && i < src.count; i++) text += await reader.sourceText(i);
+  const re = /<塊(?=[\s>])([^>]*)>([\s\S]*?)<\/塊>/g;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(text))) {
+    const va = vas[i++];
+    if (va === undefined) break;
+    const body = decodeXmlEntities(m[2].replace(/<[^>]*>/g, '')).trim();
+    const label = body.replace(/^[（(]\s*/, '').replace(/\s*[）)]$/, '').trim();
+    if (label) add(label, label, va);
+    const id = /\bid\s*=\s*"([^"]+)"/.exec(m[1])?.[1];
+    if (id) add(id, label || id, va);
+  }
+  blockWordCache.set(reader, out);
+  setStatus(`詞形索引完成：${fmtInt(out.size)} 個`, 'info');
+  return out;
+}
+
+/** 輸入詞形／塊 id（可寫 `#lex/daḍḍhāni`）→ 跳到該塊；找不到回 false */
+async function jumpByBlockWord(q: string): Promise<boolean> {
+  if (!reader) return false;
+  const tags = reader.containers.get('tags');
+  if (!tags?.names.includes('塊')) return false;
+  // `#lex/daḍḍhāni`：只認目前庫的 dbname（避免把別庫的詞當成本庫）
+  const m = /^#?([^/\s]+)\/(.+)$/.exec(q.trim());
+  if (m && m[1].toLowerCase() !== (reader.header.dbname ?? '').toLowerCase()) return false;
+  const key = (m ? m[2] : q).trim();
+  if (!key) return false;
+  const idx = await blockWordIndex();
+  const hit = idx.get(normWord(key)) ?? idx.get(key.toLowerCase());
+  if (!hit) return false;
+  setStatus(`跳到 ${hit.label}`, 'info');
+  void revealHit(hit.va, hit.label, 1, { mode: 'node', noMark: true });
+  return true;
+}
+
 /** 符合程度：完全相同 → 開頭 → 結尾（例：`0065a` 對 `20p0065a`）→ 中間 */
 function jumpRank(label: string, q: string): number {
   if (label === q) return 0;
@@ -1951,7 +2047,7 @@ export async function jumpByQuery(q: string): Promise<boolean> {
   const pc = asPageId != null ? null : parsePageCite(text, dbNameCandidates());
   if (pc && await jumpPageCite(pc)) return true;
   const entries = await jumpEntries();
-  if (!entries.length) return false;
+  if (!entries.length) return jumpByBlockWord(text);
   const qn = normalizePageQuery(text);
   const forms = qn && qn !== text ? [qn, text] : [text];
   let hit = entries.filter((e) => forms.some((f) => e.label.includes(f)));

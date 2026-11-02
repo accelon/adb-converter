@@ -307,6 +307,8 @@ export class Accelon3Renderer {
   /** 目前開著的術語（跨行時要記得關掉、下一行再開） */
   private termStack: { html: string; shown: boolean; gloss: string }[] = [];
   private termCarry: { html: string; shown: boolean; gloss: string } | null = null;
+  /** 目前開著的 `<詞 b j>`（有詞譜的詞才長 span；dict 的 <詞> 不長） */
+  private wordStack: boolean[] = [];
   /** 這個頁面上的頁碼計數（沒有 n= 時拿它當 id） */
   private pageSeq = 0;
   /** 這一行有沒有可見文字／標題（lineInfo 回報用） */
@@ -705,6 +707,25 @@ export class Accelon3Renderer {
         this.sawText = true;
         continue;
       }
+      // `<詞 b="…" j="…">`（cs 的詞譜）：長一個可點的 word span，給 lex-pane 用。
+      // 詞典的 `<詞>` 沒有 b/j，照舊只留文字，不影響 dict-pane。
+      if (name === '詞' || name === '_詞') {
+        if (closing) {
+          const shown = this.wordStack.pop();
+          if (shown) html += '</span>';
+          continue;
+        }
+        if (selfClose) continue;
+        const b = attrValue(attrs, 'b');
+        const j = attrValue(attrs, 'j');
+        const shown = !!(b || j);
+        if (shown) {
+          html += `<span class="word" data-b="${esc(b)}" data-j="${esc(j)}" title="${esc(b ? b.replace(/\|/g, ' + ') : '')}">`;
+        }
+        this.wordStack.push(shown);
+        this.sawText = true;
+        continue;
+      }
       const depth = this.ctx.depthOf.get(name);
       if (depth === undefined) {
         // 沒有 t= 定義：標籤本身丟掉，文字照留
@@ -743,6 +764,8 @@ export class Accelon3Renderer {
       this.termStack = [];
       this.termCarry = carry;
     }
+    // 詞譜 span 不跨行；行尾若有沒收的（來源壞掉）先收掉。
+    while (this.wordStack.length) if (this.wordStack.pop()) html += '</span>';
     html += '</span>'.repeat(this.notes.filter((x) => x.n).length);
     html += '</span>'.repeat(this.stack.length);
     return { no: lineNo, html, raw: text, visible: this.sawText, heading: this.sawHeading };

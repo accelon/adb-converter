@@ -691,6 +691,12 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
     `般若經典`、`般若經十喻`、`般若學`…，結尾是 `三般若`、`二般若`…。
     非詞典型 adb（13j／印順）則顯示「沒有詞典型 adb」。
 
+  * **lex-pane（2026-11-02）**：`lex-pane.ts` 是**新的右側 drawer**，和 `dict-pane` 分開。
+    `render_accelon3` 只把 cs 的 `<詞 b j>` 長成 `.word` span（詞典的 `<詞>` 沒有 b/j，不長）；
+    單擊 `.word` 開 drawer，顯示詞形、詞譜 b/j；若 lex.adb 在 catalog／桌面清單，會用
+    `attributes/塊.w` 查詞條（次數／中文／詞件／格位／PTS／義項）。沒有 lex.adb 時只顯示
+    b/j，不會擋閱讀。Esc／× 關閉。
+
 二十三）**後端分界（Go／TS）與共用測試集**（作者 2026-10，目標：UI 改動不必跑 Go 測試）。
 
   * **一句話**：後端只回答「詞組出現在哪些 VA」（`ClauseHits`）；分段、BM25、

@@ -166,6 +166,38 @@ async function locatorVa(r: AdbReader, anchor: string): Promise<number | null> {
   return null;
 }
 
+/** VA → `塊.段:句`（sz 的 cs／譯本；有 `塊.id`、`段.n` 的庫才有）。 */
+export async function locatorAtVa(
+  r: AdbReader,
+  va: number,
+): Promise<{ block: string; seg: string; sentence: number } | null> {
+  const blockMap = await attrVas(r, '塊', 'id');
+  const blocks: { va: number; id: string }[] = [];
+  for (const [id, vas] of blockMap) for (const v of vas) blocks.push({ va: v, id });
+  if (!blocks.length) return null;
+  blocks.sort((a, b) => a.va - b.va);
+  let bi = -1;
+  for (let i = 0; i < blocks.length; i++) { if (blocks[i].va <= va) bi = i; else break; }
+  if (bi < 0) return null;
+  const block = blocks[bi];
+  const next = blocks[bi + 1]?.va ?? Number.POSITIVE_INFINITY;
+  const segMap = await attrVas(r, '段', 'n');
+  const segs: { va: number; n: string }[] = [];
+  for (const [n, vas] of segMap) for (const v of vas) segs.push({ va: v, n });
+  segs.sort((a, b) => a.va - b.va);
+  let si = -1;
+  for (let i = 0; i < segs.length; i++) {
+    if (segs[i].va >= block.va && segs[i].va <= va && segs[i].va < next) si = i;
+    if (segs[i].va > va) break;
+  }
+  if (si < 0) return null;
+  const seg = segs[si];
+  const lines = await lineVas(r);
+  const line = lineOf(lines, va);
+  const segLine = lineOf(lines, seg.va);
+  return { block: block.id, seg: seg.n, sentence: Math.max(1, line - segLine + 1) };
+}
+
 /** VA 落在哪一個 source 區塊 */
 export function blockOf(idx: AnchorIndex, va: number): number {
   let blk = 0;

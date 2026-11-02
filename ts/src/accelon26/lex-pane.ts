@@ -1,0 +1,320 @@
+/**
+ * lex-pane（2026-11-02）：詞形／詞譜的右側 drawer。
+ *
+ * 這一版刻意**不碰 dict-pane**：詞典條目仍由右欄「詞典」分頁負責；lex-pane 只處理
+ * cs 的 `<詞 b j>`（詞譜）與 lex.adb 的詞條。先做最小版：
+ *   - 單擊本文的 `.word` → 開 drawer，顯示詞形與詞譜 b/j；
+ *   - 若 lex.adb 已在 catalog／桌面清單裡，順便查它的 `塊 w="詞形"`，顯示次數、中文、
+ *     詞件、格位、PTS、義項；
+ *   - 查不到就明說，不打斷閱讀。
+ *
+ * 不改既有手勢：word span 只有 cs 有 b/j 才長；漢語譯本沒有 span，選取選單不變。
+ */
+import { AdbReader, BlobIO, type AdbSource } from './adb';
+import { catalog, openDbs } from './dbs';
+import { desktopSources } from './host';
+import { reader } from './viewer';
+import { VaPaMapper } from './vapa';
+import { locatorAtVa } from './page-text';
+import { normalize } from '../tokenize';
+import { revealDocLine } from './doc-pane';
+
+interface LexEntry {
+  word: string;
+  count?: string;
+  gloss?: string;
+  parts?: string;
+  cases?: string;
+  context?: string;
+  pts?: string;
+  senses?: string[];
+  stem?: string;
+}
+
+const readers = new WeakMap<object, Promise<AdbReader | null>>();
+const wordMaps = new WeakMap<AdbReader, Promise<Map<string, number>>>();
+const tokenMaps = new WeakMap<AdbReader, Promise<Map<string, number>>>();
+
+async function tokenMap(r: AdbReader): Promise<Map<string, number>> {
+  let p = tokenMaps.get(r);
+  if (!p) {
+    p = (async () => {
+      const m = new Map<string, number>();
+      const arr = await r.tokens();
+      for (let i = 0; i < arr.length; i++) m.set(arr[i].name, i);
+      return m;
+    })();
+    tokenMaps.set(r, p);
+  }
+  return p;
+}
+
+function sourceName(s: AdbSource | string): string {
+  const raw = typeof s === 'string' ? s : ((s as { name?: string }).name ?? '');
+  return raw.split(/[\\/]/).pop() ?? '';
+}
+
+/** 找 lex.adb：目前開著的庫 → catalog → 桌面宿主清單。 */
+async function lexSource(): Promise<AdbSource | null> {
+  const isLex = (s: AdbSource): boolean => /^lex(\.adb)?$/i.test(sourceName(s));
+  for (const d of openDbs) if (d.file && isLex(d.file)) return d.file;
+  const e = catalog.find((x) => isLex(x.file));
+  if (e) return e.file;
+  const host = await desktopSources().catch(() => [] as AdbSource[]);
+  return host.find(isLex) ?? null;
+}
+
+async function lexReader(): Promise<AdbReader | null> {
+  if (reader?.header.dbname === 'lex') return reader;
+  const src = await lexSource();
+  if (!src) return null;
+  if (readers.has(src)) return readers.get(src)!;
+  const p = AdbReader.open(new BlobIO(src)).catch(() => null);
+  readers.set(src, p);
+  return p;
+}
+
+async function lexWordMap(r: AdbReader): Promise<Map<string, number>> {
+  const old = wordMaps.get(r);
+  if (old) return old;
+  const p = (async () => {
+    const out = new Map<string, number>();
+    const tags = r.containers.get('tags');
+    const ti = tags?.names.indexOf('塊') ?? -1;
+    if (!tags || ti < 0) return out;
+    const vas = await r.decodeBlockList('tags', ti);
+    const av = await r.attributeValues('塊.w').catch(() => null);
+    if (!av?.values?.length || !av.pointers) return out;
+    for (let i = 0; i < av.values.length; i++) {
+      const ptr = av.pointers[i];
+      if (((ptr >>> 24) & 0xff) !== ti) continue;
+      const va = vas[(ptr & 0xffffff) - 1];
+      if (va === undefined) continue;
+      const w = av.values[i].replace(/^[（(]\s*/, '').replace(/\s*[）)]$/, '').trim();
+      if (w && !out.has(w.toLowerCase())) out.set(w.toLowerCase(), va);
+    }
+    return out;
+  })();
+  wordMaps.set(r, p);
+  return p;
+}
+
+function parseEntry(lines: string[]): LexEntry {
+  const clean = (s: string): string => s.replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
+  const first = clean(lines[0] ?? '');
+  const entry: LexEntry = { word: first.replace(/^[（(]\s*/, '').replace(/\s*[）)]$/, '').trim() };
+  const senses: string[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const s = clean(lines[i]);
+    if (!s) continue;
+    let m: RegExpExecArray | null;
+    if ((m = /^([\d,]+)\s*次$/.exec(s))) entry.count = m[1];
+    else if (s.startsWith('詞件：')) entry.parts = s.slice(3);
+    else if (s.startsWith('格位：')) entry.cases = s.slice(3);
+    else if (s.startsWith('上下文：')) entry.context = s.slice(4);
+    else if (s.startsWith('PTS：')) entry.pts = s.slice(4);
+    else if (s.startsWith('義項：')) senses.push(s.slice(3));
+    else if (s.startsWith('詞幹：')) entry.stem = s.slice(3);
+    else if (!entry.gloss) entry.gloss = s;
+  }
+  if (senses.length) entry.senses = senses;
+  return entry;
+}
+
+async function readEntry(r: AdbReader, va: number): Promise<LexEntry | null> {
+  const m = new VaPaMapper(r);
+  await m.init();
+  const line = m.lineOfVa(va);
+  if (line < 0) return null;
+  const lines: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const s = await m.lineText(line + i);
+    if (!s) break;
+    if (i > 0 && /<塊(?=[\s>])/.test(s)) break;
+    lines.push(s);
+  }
+  return lines.length ? parseEntry(lines) : null;
+}
+
+let pane: HTMLElement | null = null;
+let seq = 0;
+
+function ensurePane(): HTMLElement {
+  if (pane) return pane;
+  pane = document.createElement('aside');
+  pane.id = 'lexPane';
+  pane.className = 'lexPane';
+  pane.hidden = true;
+  pane.innerHTML = '<div class="lexPaneHead"><b>詞</b><span class="lexPaneSub"></span>'
+    + '<button type="button" class="lexPaneClose" aria-label="關閉">×</button></div>'
+    + '<div class="lexPaneBody"></div>';
+  document.body.appendChild(pane);
+  pane.querySelector('.lexPaneClose')?.addEventListener('click', closeLexPane);
+  pane.addEventListener('click', (ev) => {
+    const part = (ev.target as Element | null)?.closest?.('.lexPart') as HTMLElement | null;
+    if (part) {
+      ev.stopPropagation();
+      const w = part.dataset.word ?? '';
+      if (w) void openLexPane(w);
+      return;
+    }
+    const ex = (ev.target as Element | null)?.closest?.('.lexExample') as HTMLElement | null;
+    if (ex) {
+      ev.stopPropagation();
+      const line = Number(ex.dataset.line);
+      if (Number.isFinite(line)) void revealDocLine(line);
+      return;
+    }
+    const b = (ev.target as Element | null)?.closest?.('.lexCopy') as HTMLElement | null;
+    if (!b) return;
+    ev.stopPropagation();
+    const addr = b.dataset.addr ?? '';
+    void navigator.clipboard?.writeText(addr).then(() => {
+      b.textContent = '已複製';
+      setTimeout(() => { b.textContent = '複製'; }, 1200);
+    }).catch(() => undefined);
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && pane && !pane.hidden) { ev.stopPropagation(); closeLexPane(); }
+  }, true);
+  return pane;
+}
+
+export function closeLexPane(): void {
+  if (pane) pane.hidden = true;
+}
+
+export async function openLexPane(word: string, b = '', j = '', line = 0, ordinal = 0): Promise<void> {
+  const box = ensurePane();
+  const body = box.querySelector('.lexPaneBody') as HTMLElement;
+  const sub = box.querySelector('.lexPaneSub') as HTMLElement;
+  const my = ++seq;
+  let loc = '';
+  let example = '';
+  if (reader && line) {
+    const lv = await reader.linesVirtual();
+    const at = lv[line] != null ? await locatorAtVa(reader, lv[line]) : null;
+    if (at) loc = `${at.block}.${at.seg}:${at.sentence}${ordinal ? `#${ordinal}` : ''}`;
+    try {
+      const m = new VaPaMapper(reader);
+      await m.init();
+      example = (await m.lineText(line)).replace(/<[^>]*>/g, '').trim().slice(0, 240);
+    } catch { /* 例文抓不到不影響詞條 */ }
+  }
+  const where = loc ? `<div class="lexWhere">位置 <span>${escapeHtml(loc)}</span>`
+    + ` <button type="button" class="lexCopy" data-addr="${escapeHtml(loc)}">複製</button></div>`
+    : line ? `<div class="lexWhere">行 ${line}${ordinal ? ` · 第 ${ordinal} 詞` : ''}</div>` : '';
+  sub.textContent = b ? b.replace(/\|/g, ' + ') : '';
+  body.innerHTML = `<div class="lexWord">${escapeHtml(word)}</div>` + where
+    + (b ? `<div class="lexCodes">詞譜：${escapeHtml(b.replace(/\|/g, ' + '))}${j ? `　j=${escapeHtml(j)}` : ''}</div>` : '')
+    + '<div class="lexNote">查 lex.adb…</div>';
+  box.hidden = false;
+
+  const lr = await lexReader();
+  if (my !== seq) return;
+  if (!lr) {
+    body.querySelector('.lexNote')!.textContent = '找不到 lex.adb；只有詞譜 b/j。';
+    return;
+  }
+  const map = await lexWordMap(lr);
+  if (my !== seq) return;
+  const va = map.get(word.trim().toLowerCase());
+  if (va === undefined) {
+    body.querySelector('.lexNote')!.textContent = 'lex.adb 沒有這個詞形。';
+    return;
+  }
+  const entry = await readEntry(lr, va);
+  if (my !== seq) return;
+  if (!entry) {
+    body.querySelector('.lexNote')!.textContent = '讀不到 lex.adb 的詞條。';
+    return;
+  }
+  const examples = reader ? await exampleLines(reader, word) : [];
+  if (my !== seq) return;
+  const row = (label: string, value?: string): string =>
+    value ? `<div class="lexRow"><span class="lexLabel">${label}</span><span>${escapeHtml(value)}</span></div>` : '';
+  body.innerHTML = `<div class="lexWord">${escapeHtml(entry.word || word)}</div>` + where
+    + (b ? `<div class="lexCodes">詞譜：${escapeHtml(b.replace(/\|/g, ' + '))}${j ? `　j=${escapeHtml(j)}` : ''}</div>` : '')
+    + row('次數', entry.count ? entry.count + ' 次' : '')
+    + row('中文', entry.gloss)
+    + row('例', examples.length ? '' : example)
+    + (examples.length ? `<div class="lexExamples"><div class="lexLabel">例句</div>${examples.map((x) => `<button type="button" class="lexExample" data-line="${x.line}">${escapeHtml(x.text)}</button>`).join('')}</div>` : '')
+    + row('詞件', entry.parts)
+    + partTree(entry.word || word, entry.parts)
+    + row('格位', entry.cases)
+    + caseBars(entry.cases)
+    + row('上下文', entry.context)
+    + row('詞幹', entry.stem)
+    + row('PTS', entry.pts)
+    + (entry.senses?.length ? `<div class="lexSenses">${entry.senses.map((s) => `<div>${escapeHtml(s)}</div>`).join('')}</div>` : '');
+}
+
+async function exampleLines(r: AdbReader, word: string): Promise<{ text: string; line: number }[]> {
+  const needle = normalize(word.trim());
+  if (!needle) return [];
+  const idx = (await tokenMap(r)).get(needle) ?? -1;
+  if (idx < 0) return [];
+  const vas = await r.decodeBlockList('tokens', idx);
+  const m = new VaPaMapper(r);
+  await m.init();
+  const needleRe = new RegExp(`(^|[^a-z])${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z]|$)`);
+  const out: { text: string; line: number }[] = [];
+  for (const va of vas.slice(0, 12)) {
+    const line = m.lineOfVa(va);
+    if (line < 0) continue;
+    const s = (await m.lineText(line)).replace(/<[^>]*>/g, '').trim();
+    if (!s || out.some((x) => x.text === s)) continue;
+    // token index 是正規化後的形（tajjanīyakammaṃ → tajjaniyakammam）；
+    // 只取真正含這個詞形的行，避免把同 token 的其他複合詞當例句。
+    if (!needleRe.test(normalize(s))) continue;
+    out.push({ text: s.slice(0, 180), line });
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+function partTree(word: string, parts?: string): string {
+  const xs = (parts ?? '').split(/\s*\+\s*/).filter(Boolean);
+  if (xs.length < 2) return '';
+  return `<div class="lexTree"><div class="lexTreeHead">${escapeHtml(word)}</div>`
+    + xs.map((p, i) => `<div class="lexTreePart">${i === xs.length - 1 ? '└' : '├'} `
+      + `<button type="button" class="lexPart" data-word="${escapeHtml(p)}">${escapeHtml(p)}</button></div>`).join('')
+    + '</div>';
+}
+
+function caseBars(cases?: string): string {  if (!cases) return '';
+  const items = [...cases.matchAll(/([^\d\s·,;、]+)\s*(\d+(?:\.\d+)?)/g)]
+    .map((m) => ({ name: m[1], value: Number(m[2]) }))
+    .filter((x) => Number.isFinite(x.value));
+  if (items.length < 2) return '';
+  const max = Math.max(...items.map((x) => x.value), 1);
+  return `<div class="lexCaseBars">${items.map((x) =>
+    `<div class="lexCaseRow"><span>${escapeHtml(x.name)}</span>`
+    + `<i style="width:${Math.max(2, Math.round((x.value / max) * 100))}%"></i>`
+    + `<b>${x.value}</b></div>`).join('')}</div>`;
+}
+
+function escapeHtml(s: string): string {  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+let bound = false;
+
+/** 只綁一次：單擊 `.word`（沒有拖曳選取時）開 lex-pane。 */
+export function initLexPane(): void {
+  if (bound) return;
+  bound = true;
+  document.addEventListener('click', (ev) => {
+    const el = (ev.target as Element | null)?.closest?.('.lineText .word') as HTMLElement | null;
+    if (!el) return;
+    if (el.closest('a')) return;                 // 連結優先
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return;         // 拖曳選取不搶
+    ev.stopPropagation();
+    const row = el.closest('.docLine') as HTMLElement | null;
+    const line = Number((row?.id ?? '').replace(/^L/, '')) || 0;
+    const box = el.closest('.lineText');
+    const words = box ? [...box.querySelectorAll<HTMLElement>('.word')] : [];
+    const ordinal = words.indexOf(el) + 1;
+    void openLexPane(el.textContent ?? '', el.dataset.b ?? '', el.dataset.j ?? '', line, ordinal);
+  }, true);
+}

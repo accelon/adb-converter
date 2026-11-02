@@ -131,6 +131,8 @@ const step1 = await cdp.eval<string>(`
     out.trail = (document.querySelector('#docText .docTrail')?.innerText ?? '').replace(/\\n/g, ' ').slice(0, 80);
     out.docLines = document.querySelectorAll('#docText .docLine').length;
     out.docText = (document.querySelector('#docText .docBody')?.innerText ?? '').slice(0, 120).replace(/\\n/g, ' | ');
+    out.wordCount = document.querySelectorAll('#docText .word').length;
+    out.firstWord = (document.querySelector('#docText .word')?.textContent ?? '').slice(0, 30);
     const links = [...document.querySelectorAll('#docText a.entryLink')];
     out.entryLinks = links.length;
     out.firstLinks = links.slice(0, 6).map((a) => a.textContent);

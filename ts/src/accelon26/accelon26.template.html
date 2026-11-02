@@ -298,6 +298,46 @@
   .dictHead .db { color: var(--dim); font-weight: 400; font-size: .75em; margin-left: 6px; }
   /* 詞條正文下面：「開頭」／「結尾」兩份親戚清單（作者 2026-10） */
   .dictText { border-bottom: 1px dashed var(--line); padding-bottom: 8px; }
+  /* lex-pane（2026-11-02）：詞形／詞譜 drawer；與 dict-pane 完全分開。 */
+  .lexPane {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 60;
+    width: min(380px, 92vw); display: flex; flex-direction: column;
+    background: var(--panel); border-left: 1px solid var(--line);
+    box-shadow: -12px 0 32px rgba(0,0,0,.35);
+  }
+  .lexPane[hidden] { display: none !important; }
+  .lexPaneHead {
+    display: flex; align-items: baseline; gap: 8px; padding: 10px 12px;
+    border-bottom: 1px solid var(--line); font-size: 15px;
+  }
+  .lexPaneSub { color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lexPaneClose {
+    margin-left: auto; background: transparent; color: var(--dim); border: 1px solid var(--line);
+    border-radius: 5px; font: inherit; font-size: 16px; line-height: 1; padding: 2px 8px; cursor: pointer;
+  }
+  .lexPaneClose:hover { color: var(--fg); border-color: var(--accent); }
+  .lexPaneBody { padding: 12px; overflow: auto; font-size: 14px; line-height: 1.7; }
+  .lexWord { font-size: 1.5em; font-weight: 700; margin-bottom: 2px; }
+  .lexWhere { color: var(--dim); font-size: 11px; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+  .lexCopy { font: inherit; font-size: 10px; padding: 0 4px; margin-left: 4px; color: var(--dim); background: transparent; border: 1px solid currentColor; border-radius: 3px; cursor: pointer; }
+  .lexCodes, .lexNote { color: var(--dim); font-size: 12px; margin-bottom: 8px; }
+  .lexCaseBars { display: grid; gap: 2px; margin: -3px 0 7px; }
+  .lexCaseRow { display: grid; grid-template-columns: 2.5em 1fr 2.2em; align-items: center; gap: 4px; font-size: 10px; color: var(--dim); }
+  .lexCaseRow i { display: block; height: 5px; background: var(--accent, #6a8); border-radius: 3px; }
+  .lexCaseRow b { text-align: right; font-weight: 400; font-variant-numeric: tabular-nums; }
+  .lexTree { margin: 2px 0 8px; font-size: 11px; color: var(--dim); }
+  .lexTreeHead { color: var(--fg); }
+  .lexTreePart { padding-left: 1em; font-family: var(--mono, monospace); }
+  .lexPart { font: inherit; color: var(--accent, #6a8); background: transparent; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .lexExamples { display: grid; gap: 3px; margin: 2px 0 8px; font-size: 11px; color: var(--dim); }
+  .lexExamples > div:not(.lexLabel) { line-height: 1.35; }
+  .lexExamples .lexExample { display: block; width: 100%; text-align: left; font: inherit; font-size: 11px; line-height: 1.35; color: var(--dim); background: transparent; border: 0; padding: 1px 0; cursor: pointer; }
+  .lexExamples .lexExample:hover { color: var(--fg); }
+  .lexExamples .lexLabel { color: var(--fg); font-size: 10px; }
+  .lexRow { display: grid; grid-template-columns: 3.5em 1fr; gap: 6px; padding: 2px 0; border-bottom: 1px solid var(--border-soft); }
+  .lexLabel { color: var(--dim); }
+  .lexSenses { margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); }
+  .lexSenses div { margin: 2px 0; }
   /* 詞條正文沒有原書換行：長行要自動折行（作者 2026-11-02，所有詞典）。
      `pre-wrap` 保留必要的換行與空白，同時允許軟折；長拉丁字串也強制斷開，
      不讓右欄長出水平捲軸。 */
@@ -904,6 +944,9 @@
 /* 跳至：字元級位置（`db?頁 j=a-b`）只塗那幾個字（CSS Custom Highlight，2026-10-30） */
 ::highlight(accelonCharBand) { background-color: rgba(255, 209, 102, .42); color: inherit; }
   .lineText { white-space: pre; flex: 1 1 auto; min-width: 0; }   /* hard-wrapped lines: never soft wrap by default */
+  /* cs 的 `<詞 b j>`：單擊開 lex-pane；只加細虛線，不改變閱讀節奏。 */
+  .lineText .word { cursor: pointer; border-bottom: 1px dotted color-mix(in srgb, var(--accent) 45%, transparent); }
+  .lineText .word:hover { background: var(--hl-bg); border-bottom-color: var(--accent); }
   /* 本文上方的 breadcrumb（作者 2026-10）：字級同內文、顏色同標題；
      點一個節點下拉同層 siblings，並突顯目前這一個。
      作者 2026-10-18：從 .docBody 搬到 head 區（#docText 的直屬子節點）**固定住**，

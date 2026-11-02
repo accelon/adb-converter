@@ -25,6 +25,7 @@ import { parseNoteQuery } from './note-label';
 import { parseWildcard } from './wildcard';
 import { allSearchMode, closeSearchAll, initSearchAll, openSearchAll, runSearchAll, searchAllState, setAllSearchMode, stopSearchAll } from './allsearch';
 import { dictLookupAt, dictPaneState, initDictPane } from './dict-pane';
+import { initLexPane } from './lex-pane';
 import { listDicts, type DictListEntry } from './dict-lookup';
 import { dictOnlyIsdict, dictOrder, orderByFile, setDictOnlyIsdict, setDictOrder } from './dict-settings';
 import { setDictHooks } from './dict-hooks';
@@ -1357,6 +1358,8 @@ function queryModeOf(s: string): string {
   if (!q) return '';
   if (isTocIndexQuery(q)) return '節點序號';
   if (isTocPathQuery(q)) return '目錄路徑';
+  // 詞典庫的「#lex/daḍḍhāni」：先於 #行號，否則會被當成跳行。
+  if (/^#?[\w.-]+\/.+/.test(q)) return '詞形';
   if (q.startsWith('#')) return '行號';
   if (/\sj=\d+-\d+$/.test(q)) return '字元位置';
   if (parseTaishoCite(q)) return '大正引用';
@@ -1471,6 +1474,7 @@ function boot() {
   initSearchAll();
   // 右欄「詞典」分頁：點本文就查詞條（作者 2026-10）
   initDictPane();
+  initLexPane();
   // 本文的 `<聯 n="詞">`（別名／參見）點擊後聯動到該詞條（作者 2026-10）
   initEntryLinks();
   // 本文的 `<註 n>` ↔ `<釋 n>` 腳注連動（作者 2026-10-26）
