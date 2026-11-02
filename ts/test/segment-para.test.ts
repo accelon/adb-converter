@@ -36,6 +36,21 @@ describe('<段> 的分段行為', () => {
     expect(textOf(html)).toBe('前文¶3後文');
   });
 
+  test('「標題＋段」同行：這一行是段落的第一行，續行要接在同一段', () => {
+    // ccc／cs-mm／sc／yh 的實際形狀：`<小節>[小戒]</小節><段 n="7"/>比丘們…`
+    const blocks = renderPageBlocks(
+      ['<小節>[小戒]</小節><段 n="7"/>比丘們！這是那小量', '、低量的戒量狀態。', '<小節>[常恆論]</小節><段 n="30"/>另有沙門'],
+      [1, 2, 3],
+      { hardBreaks: false },
+      { depthOf: new Map([['小節', 3], ['段', 4]]), levels: 5 },
+    );
+    expect(blocks.map((b) => b.kind + ':' + b.lines.length)).toEqual(['para:2', 'para:1']);
+    // 標題仍在第一行、字級由 .h span 決定；後面接段碼與正文
+    const first = blocks[0].lines[0].html;
+    expect(first).toContain('class="h"');
+    expect(first.indexOf('class="segChip"')).toBeGreaterThan(first.indexOf('class="h"'));
+  });
+
   test('沒有 <段> 的庫不受影響：仍然只有空行分段', () => {
     const blocks = renderPageBlocks(['第一行', '第二行', '', '第三行'], [1, 2, 3, 4], { hardBreaks: false }, ctx);
     expect(blocks.map((b) => b.kind + ':' + b.lines.length)).toEqual(['para:2', 'para:1']);

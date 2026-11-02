@@ -282,6 +282,14 @@ export interface RenderedLine {
    * 不能只靠空行，因為日文（kmj）的段與段之間不一定有空行（作者 2026-11-03）。
    */
   segStart?: boolean;
+  /**
+   * 這一行**標題之後**才出現 `<段 n="…">`（例如 `<小節>[小戒]</小節><段 n="7"/>比丘們…`）。
+   *
+   * 這一行要當成「段落的第 1 行」（不是單行標題塊），否則段的第一句會被關在標題塊裡、
+   * 跟同段的續行（下一行起）分成兩個段落（作者 2026-11-03）。
+   * 標題字級在 `.h` span 上，和方塊種類無關，所以這樣不會讓正文變大。
+   */
+  segMid?: boolean;
 }
 
 /** 一個版面塊：段落（多行連排）或標題（單行） */
@@ -323,6 +331,8 @@ export class Accelon3Renderer {
   private sawHeading = false;
   /** 這一行是不是從 `<段 n>` 開始（段首）；連排模式據此另起一段 */
   private sawSegStart = false;
+  /** 這一行是不是「標題之後」才出現 `<段 n>`（要當成段落的第一行） */
+  private sawSegMid = false;
   private readonly opts: Required<Pick<RenderOptions, 'hardBreaks' | 'headScale' | 'pageMarks'>> & {
     marks: { text: string; hue: number }[];
     convert: ((s: string) => string) | null;
@@ -474,6 +484,7 @@ export class Accelon3Renderer {
     this.sawText = false;
     this.sawHeading = false;
     this.sawSegStart = false;
+    this.sawSegMid = false;
     let html = '';
     // 跨行的標題：這一行開頭先把還開著的補回來（行尾會全部收掉）
     for (const s of this.stack) html += this.openSpan(s.tag, s.depth);
@@ -581,8 +592,10 @@ export class Accelon3Renderer {
           if (segN) {
             // 段首：這一行要另起一段（連排模式不能跟上一段黏在一起）。段標記在行中
             // （前面已經有字）時，至少插一個段落換行，讓它從新的一行開始。
-            if (this.sawText) html += '<br class="para">';
-            else this.sawSegStart = true;
+            if (this.sawText) {
+              html += '<br class="para">';
+              this.sawSegMid = true;
+            } else this.sawSegStart = true;
             html += `<button type="button" class="segChip" data-seg="${esc(segN)}"`
               + ` title="第 ${esc(segN)} 段：點一下對讀同結構的庫">¶${esc(segN)}</button>`;
             this.sawText = true;
@@ -782,7 +795,10 @@ export class Accelon3Renderer {
     while (this.wordStack.length) if (this.wordStack.pop()) html += '</span>';
     html += '</span>'.repeat(this.notes.filter((x) => x.n).length);
     html += '</span>'.repeat(this.stack.length);
-    return { no: lineNo, html, raw: text, visible: this.sawText, heading: this.sawHeading, segStart: this.sawSegStart };
+    return {
+      no: lineNo, html, raw: text, visible: this.sawText, heading: this.sawHeading,
+      segStart: this.sawSegStart, segMid: this.sawSegMid,
+    };
   }
 
   /** 只要 HTML 時的簡便入口（測試／舊呼叫端用） */
@@ -947,9 +963,12 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
     // 作者 2026-11-01：標題無論如何都要行首——連排模式下不能和上一段或頁碼黏在一起。
     // `info.heading` 依賴 depthOf（真正的 adb 才有），這裡再用原始標籤補一道保險。
     const rawHeading = /^\s*<(章|節|項|目|小目|細目|釋)[\s>]/.test(lines[i]);
-    if (info.heading || rawHeading) { out.push({ kind: 'heading', lines: [info] }); cur = null; sawBlank = false; lastPage = false; continue; }
-    // 作者 2026-11-03：`<段 n>` 是段首，**即使前後沒有空行**也要另起一段。
-    // 日文的段與段之間常常沒有空行；靠空行分段的話整頁會連成一大坨。
+    // 作者 2026-11-03：`<段 n>` 是段首，**即使前後沒有空行**也要另起一段（日文的段與段
+    // 之間常常沒有空行）。兩種位置：行首（`segStart`）與「標題之後」（`segMid`）。
+    // `segMid` 的行要當**正文段落的第一行**：標題字級在 `.h` span 上，方塊種類不影響字級；
+    // 但若當成 heading 塊，段的第一句會跟同段的續行（下一行起）分成兩個段落。
+    if (info.segMid) { flushBlanks(); cur = null; sawBlank = false; lastPage = false; }
+    if (!info.segMid && (info.heading || rawHeading)) { out.push({ kind: 'heading', lines: [info] }); cur = null; sawBlank = false; lastPage = false; continue; }
     if (info.segStart) { cur = null; sawBlank = false; lastPage = false; }
     if (sawBlank) { cur = null; sawBlank = false; }
     // 這一行以頁碼結尾（…知見<頁/>）→ 後面的空行不算段落界線
