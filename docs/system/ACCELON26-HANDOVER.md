@@ -2806,3 +2806,28 @@ hover 與點擊全部一致（14 個測試點）；ys（`13.001`，沒有 pg）�
 上一窗／下一窗、pager 文字改「第 N 窗」）。第一版曾直接改 `doc-pane`，但 `file-protocol`／
 `read-state` 有 4 項既有行為（頁分隔、塗紅、選取區、翻頁頁數）跟著壞，已**回退**，
 等有完整時間再一併改測試期待值。
+
+### 28.1 分窗存進 adb：`docsplit`／`doclens`（作者 2026-11-02 定案）
+
+分窗結果**寫進 adb**（重建時寫、閱讀器有就用、沒有就當場算），不必等閱讀器每次重算：
+
+| 容器 | 內容 | 編碼 |
+|---|---|---|
+| `docsplit` | 每個讀窗的**起始行號**（升冪；窗尾＝下一個起點−1，最後一窗到 `lineCount−1`） | 一個 block 的打包整數清單（`encodePackedList`／`decodeBlockList`，delta＋vint，和 `tags` 同一套） |
+| `doclens` | 每個讀窗的**字數**（BM25 的 doc 長度；選用） | 同上 |
+
+**實測**（`bun run tools/docsplit-roundtrip.ts <db>`，來回編碼完全相同）：
+
+| adb | 行數 | 節點 | 讀窗 | `docsplit` | `doclens` | 計算 |
+|---|---:|---:|---:|---:|---:|---:|
+| yl38 | 13,768 | 89 | 99 | **158 B** | ~110 B | 0.1 s |
+| ccc | 118,005 | 4,101 | 3,712 | **3,919 B** | ~3,810 B | 0.4 s |
+| ys | 318,227 | 4,279 | 3,845 | **4,668 B** | ~4,168 B | 1.4 s |
+
+**現況**：現有 adb 都還沒有這兩個容器（`docsplitStarts` 回 `null`），閱讀器走「當場算」那條；
+下次各 adb 重建時再寫入即可。建置端 API 已備好：`read-window.ts` 的
+`buildDocsplit(r, mapper, nodes, {lens:true})` → 回 `{starts, lens}`，再由建置流程用
+`encodePackedList` ＋ `buildContainer` 放進 adb。
+
+**BM25**：`doclens` 就是 ranking 要的 doc 長度；`docsplit` 是 doc 邊界。等讀窗接上閱讀器後
+再開一輪，做「舊排名 vs 新排名」前 20 名對照（作者同意分開做）。

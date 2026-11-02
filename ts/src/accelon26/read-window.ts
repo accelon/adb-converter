@@ -233,6 +233,18 @@ export async function computeReadWindow(
 
   // 6) 保底：至少一行
   if (end < first) end = Math.min(capLast, first);
+  // 7) 空窗合併（作者 2026-11-02「最小 20 行、除非大標題」的補強）：
+  //    整窗只有標題／空白時，往後收到有正文為止（不超過 maxLines），免得看到空白頁。
+  let empty = true;
+  for (let i = first; i <= end && i < src.lineCount; i++) {
+    if (!isBlankish(await plainOf(i))) { empty = false; break; }
+  }
+  if (empty && end < capLast) {
+    const limit = Math.min(capLast, first + maxLines - 1);
+    for (let i = end + 1; i <= limit; i++) {
+      if (!isBlankish(await plainOf(i))) { end = i; break; }
+    }
+  }
   return { first, last: end, why };
 }
 
@@ -316,4 +328,76 @@ export async function windowSourceFromReader(
     segStarts: await linesOf('段'),
     pageStarts: await linesOf('頁'),
   };
+}
+
+/* ---------------------------------------------------------------- 建置端寫入
+ *
+ * 作者 2026-11-02：分窗結果存進 adb 的新容器（重建 ADB 時一起寫），閱讀器有就用、
+ * 沒有就當場算。兩個容器都是「一個 block 的打包整數清單」（delta＋vint，
+ * 和 `tags` 用同一個 `encodePackedList`／`decodeBlockList`）：
+ *
+ *   docsplit  n：每個讀窗的**起始行號**（升冪，0 起；窗尾＝下一個起點−1）
+ *   doclens   n：每個讀窗的**字數**（BM25 的 doc 長度；可選）
+ */
+
+/** 讀 `docsplit`（沒有這個容器就回 null） */
+export async function docsplitStarts(r: AdbReader): Promise<number[] | null> {
+  const c = r.containers.get('docsplit');
+  if (!c || !c.count) return null;
+  const list = await r.decodeBlockList('docsplit', 0);
+  return list.length ? list.slice().sort((a, b) => a - b) : null;
+}
+
+/** 讀 `doclens`（沒有就回 null） */
+export async function doclensOf(r: AdbReader): Promise<number[] | null> {
+  const c = r.containers.get('doclens');
+  if (!c || !c.count) return null;
+  const list = await r.decodeBlockList('doclens', 0);
+  return list.length ? list : null;
+}
+/* ---------------------------------------------------------------- 建置端：算出整個庫的分窗
+ *
+ * 重建 ADB 時呼叫一次：把每個讀窗的起點行號算好（規則見檔頭），回傳
+ *   * `starts`：讀窗起點（升冪）
+ *   * `lens`：每窗的字數（BM25 的 doc 長度；不算也可以傳 false）
+ * 呼叫端再用 `adb-bytes.ts` 的 `encodePackedList` ＋ `buildContainer` 寫成
+ * `docsplit`／`doclens` 兩個容器。
+ */
+export async function buildDocsplit(
+  r: AdbReader,
+  mapper: { lineOfVa(va: number): number; lineText(i: number): Promise<string> },
+  nodes: { va: number; depth: number }[],
+  opts: WindowOptions & { lens?: boolean } = {},
+): Promise<{ starts: number[]; lens: number[] }> {
+  const src = await windowSourceFromReader(r, mapper, nodes);
+  const plainOf = async (i: number): Promise<string> =>
+    (await mapper.lineText(i)).replace(/<[^>]*>/g, '').replace(/\s+/g, '');
+  const last = src.lineCount - 1;
+  const starts: number[] = [];
+  const lens: number[] = [];
+  let cur = 0;
+  for (let guard = 0; guard < 5_000_000 && cur <= last; guard++) {
+    const w = await computeReadWindow(src, cur, last, plainOf, { ...opts, minFirst: cur });
+    starts.push(w.first);
+    if (opts.lens) {
+      let n = 0;
+      for (let i = w.first; i <= w.last; i++) n += (await plainOf(i)).length;
+      lens.push(n);
+    }
+    if (w.last >= last) break;
+    cur = w.last + 1;
+  }
+  return { starts, lens };
+}
+
+/** 測試／診斷用：估算打包後的大小（bytes） */
+export function estimatePackedBytes(values: number[]): number {
+  let prev = 0;
+  let added = 0;
+  for (const v of values) {
+    const d = v - prev;
+    prev = v;
+    added += d < 0x80 ? 1 : d < 0x4000 ? 2 : d < 0x200000 ? 3 : d < 0x10000000 ? 4 : 5;
+  }
+  return 4 + Math.floor(added / 512) * 8 + added;
 }
