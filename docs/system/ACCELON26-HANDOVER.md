@@ -2918,3 +2918,17 @@ ys.adb 的註號改成 `n="11.001@38"`：`@` 前是紙本註號、`@` 後是冊�
 
 已知限制：ICU 詞典對專有名詞／複合詞仍可能切錯；例句是 token postings 前幾句，不是人工標註例句庫；
 `cs` 842k 的主因是長複合詞與注疏，尚未做 lemma 分組。
+
+### 29.1 「一個詞一個 token」的庫：VA 換算與查詢後端（2026-11-03）
+
+- **VA 換算必須跟索引同一套分詞**：`VaPaMapper.tokenize()` 也要用 `tokenProfileOf(dbname)`
+  （目前只有 kmj 開日文）。漏了的話，同一行的 VA 從第一個日文詞就錯開：kmj 的「話題」
+  posting VA=484 會被算成「て」→ token 頁籤點下去塗錯字、搜尋命中跳錯位置。
+- **桌面版查詢不能走 Go 後端**：`wails/query.go` 的 `queryTokens()` 是逐字切（CJK 一字一 token），
+  對 kmj 會把「話題」切成 話＋題，`題` 不在索引 → **0 筆**。`backend.ts` 看到
+  `session.usesJapanese` 就改走 TS 後端（與索引同一套切詞）。
+- **詞內查（作者 2026-11-03 定案）**：單字不是獨立 token 時（kmj 的「題」），
+  輸入（live）**不自動回退**，只在摘要提示「按 Enter 用『詞內』查（主題、問題、無題…）」；
+  **Enter 才**回退：把「含這串字的所有 token」的 posting 聯集起來，模式徽章顯示「詞內」。
+  `SearchSession.subtokenNames()`／`subtokenSearch()`；實測 kmj「題」→ 5 個詞、65 筆。
+
