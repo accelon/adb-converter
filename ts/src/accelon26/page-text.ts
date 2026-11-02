@@ -100,7 +100,12 @@ async function attrVas(r: AdbReader, tag: string, attr: string): Promise<Map<str
  * `#詞` 是句內第 k 個詞（1 起算，用空白切），解析時只影響回傳的「位置說明」，
  * VA 仍停在該句——詞的醒目提示由閱讀端自己切文字（見 sz `docs/addressing.md` §8）。
  */
-const LOCATOR_RE = /^([a-z][a-z0-9_-]*)\.([0-9]+)(?::([0-9]+))?(?:#([0-9]+))?$/;
+/**
+ * 塊 id 可以**分多層**（2026-11-02，為 veda 的 `rv.10.90.3`／`bu.2.4.5`／`sb.2.1.1.1`）：
+ * 位址以「最後一個 `.數字`」為段，前面整串（含點）就是塊 id。sz 的 `d1.7`／`dhp-1.1`
+ * 只有一層，行為不變。
+ */
+const LOCATOR_RE = /^([a-z][a-z0-9_-]*(?:\.[0-9]+)*)\.([0-9]+)(?::([0-9]+))?(?:#([0-9]+))?$/;
 const lineVasCache = new WeakMap<AdbReader, number[]>();
 const segVasCache = new WeakMap<AdbReader, number[]>();
 
