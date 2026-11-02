@@ -95,7 +95,12 @@ async function attrVas(r: AdbReader, tag: string, attr: string): Promise<Map<str
  * 句＝`<段>` 所在的那一行算第 1 句，往後每行加 1（一個 adb 行就是一句）。
  * 行界用 `lines.virtual`（每一行的起始 VA），所以不需要額外的 `<句>` 標籤。
  */
-const LOCATOR_RE = /^([a-z][a-z0-9_-]*)\.([0-9]+)(?::([0-9]+))?$/;
+/**
+ * `塊.段[:句][#詞]`：`d1.7`、`d1.7:3`、`d1.7:3#2`。
+ * `#詞` 是句內第 k 個詞（1 起算，用空白切），解析時只影響回傳的「位置說明」，
+ * VA 仍停在該句——詞的醒目提示由閱讀端自己切文字（見 sz `docs/addressing.md` §8）。
+ */
+const LOCATOR_RE = /^([a-z][a-z0-9_-]*)\.([0-9]+)(?::([0-9]+))?(?:#([0-9]+))?$/;
 const lineVasCache = new WeakMap<AdbReader, number[]>();
 const segVasCache = new WeakMap<AdbReader, number[]>();
 

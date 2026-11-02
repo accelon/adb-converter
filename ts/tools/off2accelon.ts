@@ -220,7 +220,7 @@ export interface LineContext {
    * 正文轉寫器（預設只做轉義）。`plain`＝目前正在渲染節點名字（區／書／塊的夾文），
    * 這種地方不能再插行內標籤（例：巴利底本的 `<詞>`），否則目錄名會被拆壞。
    */
-  text?: (s: string, plain: boolean) => string;
+  text?: (s: string, plain: boolean, book?: string) => string;
   /** 目前是否在渲染節點名字 */
   plain?: boolean;
   /** 塊 id 正規化（例：義注加 `a`、複注加 `t`、再複注加 `x`） */
@@ -254,7 +254,7 @@ const countTag = (ctx: LineContext, tag: string): void => {
 
 /** 一段文字 → 輸出文字（有轉寫器就用轉寫器，否則只做轉義）。 */
 const textOf = (s: string, ctx: LineContext): string =>
-  ctx.text ? ctx.text(s, !!ctx.plain) : escapeText(s);
+  ctx.text ? ctx.text(s, !!ctx.plain, ctx.book) : escapeText(s);
 
 /**
  * 夾文內容（含外圍括號）。夾文裡面**也可能有 offtag**（例 yh 的 `『…^f2…』`），
@@ -949,7 +949,7 @@ export interface ConvertOptions {
   /** 只轉這幾本（依給定順序）；不給就照 glob 掃描後排序 */
   books?: string[];
   /** 正文轉寫器（例：巴利底本的儉約巴利 → IAST ＋ `<詞>`）；不給就只做轉義 */
-  text?: (s: string, plain: boolean) => string;
+  text?: (s: string, plain: boolean, book?: string) => string;
   /** 塊 id 正規化（例：義注加 `a`、複注加 `t`、再複注加 `x`） */
   ckTransform?: (id: string, book: string) => string;
   /** 沒有 `^ak` 的書，要用哪個部類代碼當它的區（回傳空字串＝不補） */
