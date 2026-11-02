@@ -2924,11 +2924,17 @@ ys.adb 的註號改成 `n="11.001@38"`：`@` 前是紙本註號、`@` 後是冊�
 - **VA 換算必須跟索引同一套分詞**：`VaPaMapper.tokenize()` 也要用 `tokenProfileOf(dbname)`
   （目前只有 kmj 開日文）。漏了的話，同一行的 VA 從第一個日文詞就錯開：kmj 的「話題」
   posting VA=484 會被算成「て」→ token 頁籤點下去塗錯字、搜尋命中跳錯位置。
-- **桌面版查詢不能走 Go 後端**：`wails/query.go` 的 `queryTokens()` 是逐字切（CJK 一字一 token），
-  對 kmj 會把「話題」切成 話＋題，`題` 不在索引 → **0 筆**。`backend.ts` 看到
-  `session.usesJapanese` 就改走 TS 後端（與索引同一套切詞）。
-- **詞內查（作者 2026-11-03 定案）**：單字不是獨立 token 時（kmj 的「題」），
+- **桌面版查詢不能走 Go 後端**：`wails/query.go` 的 `queryTokens()` 只認 `unicode.IsLetter`，
+  而且 CJK 一字一 token。實測（exe + CDP，修正前 → 後）：
+  - kmj「話題」0 → **40**（Go 切成 話＋題，`題` 不在索引）→ 由 `session.usesJapanese` 擋
+  - cllk「ว่าด้วย」0 → **3,460**（Go 切成「าด」「วย」，泰文母音／聲調被丟）→ `needsIcuTokenizer()`
+  - cs-mm「မြတ်စွာဘုရားသည်」0 → **4,790**（Go 切成「မ」「တ」「စ」…，緬文附標被丟）
+  `backend.ts` 看到這兩種情況就改走 TS 後端；三者的 `goQueries` 都保持 0。
+- **詞內查（作者 2026-11-03 定案，不限日文）**：查詢不是獨立 token 時，
   輸入（live）**不自動回退**，只在摘要提示「按 Enter 用『詞內』查（主題、問題、無題…）」；
   **Enter 才**回退：把「含這串字的所有 token」的 posting 聯集起來，模式徽章顯示「詞內」。
-  `SearchSession.subtokenNames()`／`subtokenSearch()`；實測 kmj「題」→ 5 個詞、65 筆。
+  `SearchSession.subtokenNames()`／`subtokenSearch()`。實測：kmj「題」→ 5 個詞、65 筆；
+  泰文「ระพุท」→ 提示 พระพุทธ／พระพุทธเจ้า，Enter 2,343 筆；緬文「ဘုရားတ」→ 8 筆。
+- **限制**：詞內只找「整串字是某個 token 的一部分」（`包含`）。跨詞的前綴（例如泰文「ว่าด้」
+  ＝ว่า＋ด้วย 的一半）找不到，因為它本來就不是任何一個 token 的子字串。
 
