@@ -6,8 +6,7 @@
  * state it declares, and other modules get/set it through that module's exports.
  */
 import { $, displayName, docs, fmtInt, mapper, reader, setStatus } from './viewer';
-import { dirActive, dirTrees, renderDirTree, tagVas, treeOrder } from './scopes';
-import { growUntil } from './lazy-list';
+import { dirActive, dirTrees, renderDirTree, scrollDirTreeToVa, tagVas, treeOrder } from './scopes';
 import { activeDocCtx, boundsOfRealm, ctxOf, docActive, docOfVa, docSession, docTabs, ensurePage, lastLink, ownsActiveDb, pageBounds, renderDocTabs, sessionFor, sessionForRealm, setDocActive, setDocFontSized, setLastLink, tabCountOfDb, wholeRealm } from './doc-pane';
 import { type DocCtx, isActiveDocCtx } from './doc-ctx';
 import type { AdbReader } from './adb';
@@ -328,12 +327,8 @@ async function revealCursorInTree(): Promise<void> {
     d.open.add(va);
   }
   await renderDirTree();
-  // rows are mounted a chunk at a time (lazy-list), so the row to reveal may not be
-  // in the DOM yet: mount further chunks until it is (a row deep in a 6,966-row tree)
-  const sel = '#dirTree .tRow[data-va="' + cursorNode.va + '"]';
-  await growUntil($('#dirTree'), () => !!document.querySelector(sel));
-  const row = $(sel) as HTMLElement | null;
-  row?.scrollIntoView({ block: 'center' });
+  // 目錄可能是 74,219 列的虛擬清單：直接捲到索引，不用把列一列一列掛進來。
+  scrollDirTreeToVa(cursorNode.va);
   paintTreeActive();
 }
 

@@ -909,11 +909,13 @@ ID 欄顯示「—」、排序時視為空字串。
 修法兩層：
 
 1. **觸發點修對**：目錄樹改成在 `refreshAll()` 裡依「左欄 `dir` 分頁是否顯示」重建，右欄切換不再碰它。
-2. **列分批掛上**（新模組 `lazy-list.ts`）：`renderChunked(box, items, { html, bind, prepare, min })`
+2. **列分批掛上**（模組 `lazy-list.ts`）：`renderChunked(box, items, { html, bind, prepare, min })`
    先掛 `CHUNK = 200` 列，捲到接近底部（或點「還有 N 列…」）再掛下一批。
    `prepare(slice, from, to)` 只為**即將顯示的列**做非同步工作（`labelFor`、`nameSegs`、
-   `caches/詞` 的字串表）；`growUntil(box, pred)` 給「必須捲到某一列」用（🌲 展開樹）。
-   目錄樹用 `min: mounted(box)`：展開／收合後仍保留讀者已經捲出來的那麼多列。
+   `caches/詞` 的字串表）。
+   **目錄樹另外用 `virtual-list.ts`**（2026-11-02）：74,219 塊的 lex 不可能把列全部留在 DOM；
+   固定列高＋上下 spacer，只掛視窗附近（約 50–70 列），捲動時換視窗。`labelFor` 只為視窗內的列解；
+   `growTree()` 會暫時把全部列掛回 DOM 給測試斷言，下一次 `renderVirtual()` 恢復。
 
 同一套分批掛列也用在 名詞（fgdict 22,648 詞條）、頻次（yinshun 6,978 段）、原書分頁（6,959 頁）、
 西文（碼位範圍內的 token）：清單仍然是**完整**的，只是 DOM 一次只放一屏。
@@ -932,9 +934,16 @@ ID 欄顯示「—」、排序時視為空字串。
 實例數相同、內容也與樹標籤一致），其次才用 `treeLabels`，最後才是屬性表 `<tag>.n`／`<tag>.id`。
 所以那 ~160 ms 的背景建樹**可以**拿掉（只影響隱藏面板），但目前刻意留著。
 
-**代價與界線**：`#dirTree` 的列不再保證全部都在 DOM。要數整棵樹的斷言要先 `growTree()`；
+**代價與界線**：`#dirTree` 是虛擬清單，**只掛視窗附近的列**。要數整棵樹的斷言要先 `growTree()`；
 `paintTreeActive()` 只會亮**已掛上**的列。fgdict 沒有 `s="*"`，它的目錄樹面板是隱藏的，
 所以「樹的形狀」斷言（幾本書／逐層展開）在 fgdict 用 `dirTabShown` 跳過（13j／yinshun 完整覆蓋）。
+
+**lex（巴利詞解，2026-11-02）**：74,219 塊、360,797 行。目錄用虛擬清單，40,000 塊附近的名稱
+（`(noavigatadukam)` 等）照樣解得出來；`loadTree` 的入口層不再受 20,000 標籤上限，
+深層由 `prepare` 只解視窗內的列。`caches/塊` 若存的是 `w019952` 這種流水號，`labelFor`
+會跳過它、改讀內文 `(daḍḍhāni)`。
+詞形跳轉：第一次輸入 `daḍḍhāni`（或 `#lex/daḍḍhāni`、`#lex/w019952`）會掃一次 source
+（31 MB，約 3 秒）建 詞形／id → VA 索引，之後快取；走 `jumpByQuery` 的 `jumpByBlockWord`。
 
 **樹的狀態在切換時不會丟**：展開集合 `d.open`、已解出的標籤 `d.labels`、`parentOf` 都在
 `DirTree` 物件裡，而 `DirTree` 由 `snapshotScopes/restoreScopes` 隨資料庫的 slot 一起保存

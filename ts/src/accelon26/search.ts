@@ -487,6 +487,11 @@ export async function loadTree(
     label?: (va: number, vaEnd: number, attrs: Record<string, string>, tag: string) => Promise<string>;
     /** label only the entry tier now; the caller resolves deeper tiers as it draws them */
     entryLabelsOnly?: boolean;
+    /**
+     * 非入口層最多先標幾個（預設 20,000）。入口層（`entryLabelsOnly`）不設限：
+     * 目錄根一定要有名字；更深層由畫面畫到時再 `label`（74,219 塊的詞典庫就是這樣）。
+     */
+    maxLabels?: number;
     attrsAt?: (va: number) => Promise<Record<string, string>>;
   } = {},
 ): Promise<TreeInstance[]> {
@@ -596,10 +601,11 @@ export async function loadTree(
   // that is what makes it a leaf. The tree-level `t=` belongs to the <樹>
   // declaration itself and must NOT be inherited by every instance (doing that
   // made each 書 declare 書 as its own child and exploded the tree).
-  const MAX_LABEL_NODES = 20_000;
+  const maxLabels = opts.maxLabels ?? 20_000;
   for (let i = 0; i < out.length; i++) {
     const inst = out[i];
-    if (opts.label && i < MAX_LABEL_NODES && (opts.entryLabelsOnly ? inst.depth === 0 : true)) {
+    const inEntryTier = opts.entryLabelsOnly ? inst.depth === 0 : true;
+    if (opts.label && inEntryTier && (opts.entryLabelsOnly || i < maxLabels)) {
       const attrs = await readAttrs(inst.va);
       inst.label = await opts.label(inst.va, inst.vaEnd, attrs, inst.tag);
     }

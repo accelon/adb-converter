@@ -16,7 +16,8 @@ import { jumpToNote } from './notes';
 import { dbNameCandidates } from './dbs';
 import { anchorVa } from './page-text';
 import { setJumpRange } from './jump-band';
-import { growUntil, mounted, renderChunked } from './lazy-list';
+import { renderChunked } from './lazy-list';
+import { renderAllVirtualRows, renderVirtual, scrollVirtualToIndex } from './virtual-list';
 import { lastResult, runSearch, showNodeHits, snippetScope } from './summary';
 import { parseQuery, namePattern } from './query';
 import { variantNamePattern, variantSearchOn } from './variants';
@@ -630,12 +631,9 @@ async function renderDirTree(): Promise<void> {
   // also what the 命中數 badge promises (HANDOVER §4 五).
   const exact = exactCounting();
   const totalHits = exact ? await searchTotal() : (lastResult?.hits.length ?? 0);
-  // Rows are mounted a CHUNK at a time (lazy-list): fgdict's tree is 6,966 rows /
-  // ~35k DOM nodes, and building it in one go blocked the main thread for ~390 ms.
-  // `min: mounted(box)` keeps an already opened tree as far open as it was.
-  await renderChunked(box, rows, {
-    // an already open tree stays as far open as the reader had scrolled it
-    min: mounted(box),
+  // 74,219 個塊的目錄不能全部掛進 DOM（作者 2026-11-02）：用固定列高的
+  // 虛擬捲動，只掛視窗附近；標籤只為視窗內的列解讀（`prepare`）。
+  await renderVirtual(box, rows, {
     // Labels are resolved for the ROWS BEING DRAWN (the entry tier first, a node's
     // children when it is expanded) instead of for every node up front.
     prepare: async (slice) => {
@@ -1972,10 +1970,22 @@ export async function jumpByQuery(q: string): Promise<boolean> {
 }
 
 /** mount every row of the current tree (tests assert on the whole list) */
-export async function growTreeFully(): Promise<number> {  const box = $('#dirTree');
+export async function growTreeFully(): Promise<number> {
+  const box = $('#dirTree');
   if (!box) return 0;
-  await growUntil(box, () => !box.querySelector('.moreRows'));
-  return box.querySelectorAll('.tRow').length;
+  return await renderAllVirtualRows(box);
+}
+
+/** 把目錄捲到某個 VA（「在目錄中顯示目前位置」用；虛擬清單不能只靠 growUntil） */
+export function scrollDirTreeToVa(va: number): boolean {
+  const box = $('#dirTree');
+  const d = dirTrees[dirActive];
+  if (!box || !d) return false;
+  const rows = flattenTree(d.roots, (n) => d.open.has(n.va));
+  const i = rows.findIndex((r) => r.node.va === va);
+  if (i < 0) return false;
+  scrollVirtualToIndex(box, i);
+  return true;
 }
 
 export const setDirLoading = (b: boolean): void => { dirLoading = b; };

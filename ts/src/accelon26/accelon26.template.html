@@ -1540,6 +1540,11 @@
   .tRow.ancestor { background: rgba(90,169,255,.10); }
   .tRow.current { background: var(--hl-bg); outline: 1px solid var(--accent); border-radius: 3px; }
   #dirTree { padding: 0; }
+  /* 虛擬目錄（作者 2026-11-02）：只掛視窗附近的列，列高固定才能用 spacer 撐總高。 */
+  #dirTree.virtualList .tRow {
+    height: var(--vrow-h, 22px); box-sizing: border-box; overflow: hidden;
+  }
+  #dirTree .vSpacer { flex: 0 0 auto; pointer-events: none; }
 /* 作者 2026-10：`.dbTabs` 吃掉剩下的寬度 → 狀態列與齒輪被推到最右邊。
    不能只靠 `.status { margin-left:auto }`：狀態列隱藏時（display:none）那個 auto 就沒了，
    齒輪會黏在 chips 後面。 */
