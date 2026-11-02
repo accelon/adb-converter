@@ -16,6 +16,7 @@
 import { decodeXmlEntities } from '../xml-entities';
 import { mapper, reader, setStatus } from './viewer';
 import { revealDocLine } from './doc-pane';
+import { ancestorTrail, currentNodeAt } from './scopes';
 import type { AdbReader } from './adb';
 
 interface NoteHit {
@@ -474,12 +475,12 @@ function contextSentence(ref: HTMLElement): string {
  * 由釋找到對應的 `<註>`（findRef 先比同一頁），再把那一段原文抓出來，
  * 以句末標點（。？！）為界取整句；跨行會往下接。`<註>` 那邊的行為不變。
  */
-async function noteContext(n: string, fromLine: number): Promise<string> {
+async function noteContext(n: string, fromLine: number): Promise<{ crumb: string; html: string }> {
   const r = reader;
   const m = mapper;
-  if (!r || !m || fromLine < 0) return '';
+  if (!r || !m || fromLine < 0) return { crumb: '', html: '' };
   const line = await findRef(n, fromLine).catch(() => -1);
-  if (line < 0) return '';
+  if (line < 0) return { crumb: '', html: '' };
   const TERM = /[。？！?!]/;
   const first = Math.max(0, line - 1);
   const seg: string[] = [];
@@ -518,7 +519,7 @@ async function noteContext(n: string, fromLine: number): Promise<string> {
     i += cp > 0xffff ? 2 : 1;
   }
   const target = noteMarks.find((x) => x.n === n);
-  if (!target) return '';
+  if (!target) return { crumb: '', html: '' };
   const pos = Math.min(target.plain, plain.length);
   let start = 0;
   let k2 = pos - 1;
@@ -550,7 +551,25 @@ async function noteContext(n: string, fromLine: number): Promise<string> {
     i2 += cp2 > 0xffff ? 2 : 1;
   }
   // 句首常殘留前一句的收尾引號／括號（」，）」，去掉
-  return html.trim().replace(/^[」』）】》〉〕］”’]+/, '').trim();
+  const body = html.trim().replace(/^[」』）】》〉〕］”’]+/, '').trim();
+  // 作者 2026-11-02：順便回傳這個註所在那一段的 breadcrumb（不必下拉），
+  // 讓讀者知道這條注釋屬於哪一節；由 `showNoteContext` 放在原文上方。
+  return { crumb: noteCrumb(line), html: body };
+}
+
+/**
+ * 某一行所在的目錄路徑（書 › 章 › 節…）：hover `<釋>` 的原文提示用（作者 2026-11-02）。
+ * 只取左欄那一庫的樹（跨庫分頁時樹不是它的，回空字串＝不顯示）。
+ */
+function noteCrumb(line: number): string {
+  const v = mapper?.linesVirtual ?? [];
+  if (!v.length || line < 0) return '';
+  const va = v[Math.min(line, v.length - 1)] ?? 0;
+  const anc = ancestorTrail(va);
+  const self = currentNodeAt(va);
+  const labels = anc.map((a) => a.label);
+  if (self && (!anc.length || anc[anc.length - 1].va !== self.va)) labels.push(self.label);
+  return labels.filter(Boolean).join(' › ');
 }
 
 /** hover `<釋>` 開頭的 [n]：浮出「原文那句」 */
@@ -565,10 +584,10 @@ async function showNoteContext(ref: HTMLElement): Promise<void> {
   tip.hidden = false;
   tip.textContent = '讀取中…';
   placeTip(ref, tip);
-  const ctx = await noteContext(n, from);
+  const { crumb, html } = await noteContext(n, from);
   if (tipFor !== ref || tip.hidden) return;
-  tip.innerHTML = ctx
-    ? `<div class="noteCtx">${ctx}</div>`
+  tip.innerHTML = html
+    ? (crumb ? `<div class="noteCrumb">${escHtml(crumb)}</div>` : '') + `<div class="noteCtx">${html}</div>`
     : '<div class="noteBody">（找不到對應的註）</div>';
   placeTip(ref, tip);
 }

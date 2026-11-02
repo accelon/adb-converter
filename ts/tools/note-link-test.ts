@@ -315,6 +315,59 @@ try {
   };
   ok('ys（n 不重複）行為不變：hover 與點擊一致', ys.db === 'ys' && ys.same === true, JSON.stringify(ys));
 
+  // hover `<釋>` 開頭的 [n]：原文提示上方要有 breadcrumb（作者 2026-11-02）
+  const crumb = await cdp.eval<any>(`
+    (async () => {
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      const chips = [...document.querySelectorAll('#dbTabs .dbChip')];
+      chips.find((c) => /空之探究|yl38/.test(c.textContent))?.click();
+      await sleep(1200);
+      const q = document.getElementById('query');
+      q.value = 'yl38p25';
+      q.dispatchEvent(new Event('input'));
+      q.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await sleep(1400);
+      const ref = [...document.querySelectorAll('#docText a.noteRef')].find((a) => a.dataset.note === '45');
+      if (!ref) return { missing: true };
+      ref.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      for (let i = 0; i < 120; i++) {
+        await sleep(80);
+        if (document.querySelector('#docText a.noteBack')) break;
+      }
+      const back = [...document.querySelectorAll('#docText a.noteBack')].find((a) => a.dataset.note === '45')
+        ?? document.querySelector('#docText a.noteBack');
+      if (!back) return { noBack: true };
+      const diag = {
+        inLine: !!back.closest('.docLine'),
+        rowId: back.closest('.docLine')?.id ?? '',
+        note: back.dataset.note ?? '',
+        cls: back.className,
+        parent: back.parentElement?.className ?? '',
+      };
+      const tip = document.getElementById('noteTip');
+      tip.hidden = true; tip.textContent = '';
+      back.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
+      for (let i = 0; i < 120; i++) {
+        await sleep(80);
+        if (!tip.hidden && tip.textContent && tip.textContent !== '讀取中…') break;
+      }
+      const crumbEl = tip.querySelector('.noteCrumb');
+      const out = {
+        diag,
+        hasCrumbClass: !!crumbEl,
+        crumb: (crumbEl?.textContent ?? '').trim(),
+        ctx: (tip.querySelector('.noteCtx')?.textContent ?? '').trim().slice(0, 40),
+        tipText: (tip.textContent ?? '').trim().slice(0, 60),
+      };
+      tip.hidden = true; tip.textContent = '';
+      return out;
+    })()
+  `);
+  ok('hover 釋文的 [n]：原文提示上方有 breadcrumb（不可點）',
+    crumb.hasCrumbClass === true && (crumb.crumb ?? '').length > 0 && /›/.test(crumb.crumb ?? ''),
+    JSON.stringify(crumb));
+  ok('原文提示同時還有「原文那句」', (crumb.ctx ?? '').length > 0, JSON.stringify({ ctx: crumb.ctx }));
+
   if (cdp.logs.length) console.error(cdp.logs.slice(-8).join('\n'));
 } finally {
   proc.kill();
