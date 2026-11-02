@@ -27,25 +27,35 @@ export function noteLabel(n: string): string {
   return at > 0 ? n.slice(0, at) : n;
 }
 
-/** `[^註號]` 的查詢 → { key, to }；不是這種語法回 null */
+/** 註／釋查詢（`[註號` 或 `]註號`）→ { key, to }；不是這種語法回 null */
 export interface NoteQuery {
   /** 使用者打的註號（可能含 `@冊`） */
   key: string;
   /** 顯示用的紙本註號 */
   label: string;
-  /** ref＝跳到 `<註>`；body＝跳到 `<釋>`（`]` 後面多一個 `:`） */
+  /** ref＝跳到 `<註>`（前綴 `[`）；body＝跳到 `<釋>`（前綴 `]`） */
   to: 'ref' | 'body';
 }
 
-const NOTE_QUERY_RE = /^\s*\[\^([^\]\s]+)\]\s*(:?)\s*$/;
+/**
+ * 一個字元的前綴（作者 2026-11-02 定案，省掉 `^` 與結尾的 `]`）：
+ *
+ *   [11.001    跳到 `<註>`（正文的引用；`[` 像 Markdown 腳注的開頭）
+ *   ]11.001    跳到 `<釋>`（注文；`]` 像 Markdown 腳注定義的結尾）
+ *
+ * 冊號可給可不給（`[11.001@38`）；舊 adb 直接寫 `[38.160`。
+ * 一定要有前綴：`11.001` 看起來就是目錄路徑（`1.2.3`）。
+ */
+const NOTE_QUERY_RE = /^\s*([[])\s*([^\]\s]+)\s*$|^\s*(\])\s*([^\]\s]+)\s*$/;
 
 export function parseNoteQuery(text: string): NoteQuery | null {
   const m = NOTE_QUERY_RE.exec(text ?? '');
   if (!m) return null;
-  const key = m[1].trim();
+  const prefix = m[1] ?? m[3];
+  const key = (m[2] ?? m[4] ?? '').trim();
   if (!key) return null;
-  return { key, label: noteLabel(key), to: m[2] === ':' ? 'body' : 'ref' };
+  return { key, label: noteLabel(key), to: prefix === ']' ? 'body' : 'ref' };
 }
 
 /** 提示卡要顯示的語法說明 */
-export const NOTE_QUERY_HINT = '[^11.001] 跳到註、[^11.001]: 跳到釋文（舊 adb 直接寫 [^38.160]）';
+export const NOTE_QUERY_HINT = '[11.001 跳到註、]11.001 跳到釋文（舊 adb 直接寫 [38.160）';

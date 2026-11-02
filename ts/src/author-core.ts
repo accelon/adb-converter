@@ -58,6 +58,12 @@ export interface AuthorInput {
    * 寫法（于淩波用 `<大唐西域記>`）就不會被當成新標記，標記表才不會暴增。
    */
   validTags?: readonly string[];
+  /**
+   * false = 不建全文索引：仍保留 tags／lines／blocks 的 VA（tags 讀得到），
+   * 但不存 `tokens` 容器（沒有 token 清單與 postings），搜尋為空。
+   * 給還沒有 tokenizer 的語種或「只要閱讀、不要全文檢索」的庫用。
+   */
+  fullTextIndex?: boolean;
   /** bzip2 one source block (16 KiB of UTF-16LE) */
   compress: (block: Uint8Array) => Promise<Uint8Array> | Uint8Array;
   /** coarse progress for the UI; may be called many times */
@@ -165,6 +171,7 @@ export async function authorAdbBytes(input: AuthorInput): Promise<AuthorOutcome>
     // no static set: `t=` / `s="*…"` declarations in the text decide what is cached
     cachedTags: input.cachedTags ? new Set(input.cachedTags) : null,
     cachedFromStart: true,
+    indexTokens: input.fullTextIndex !== false,
   });
   progress?.('建立索引', 1, 1);
 
@@ -205,7 +212,11 @@ export async function authorAdbBytes(input: AuthorInput): Promise<AuthorOutcome>
 
   const parts = new Map<string, Uint8Array>();
   parts.set('source', buildContainer({ feature: 0, blocks: src.blocks }));
-  parts.set('tokens', hitsContainer(tokenNames, tokenNames.map((k) => built.tokens.get(k) ?? []), BO_UNICODE | BO_SORTED));
+  // fullTextIndex=false：不建 tokens 容器（沒有 token 清單與 postings）；
+  // tags／tables 照舊，VA 也照舊，閱讀器仍能讀正文與標記。
+  if (input.fullTextIndex !== false) {
+    parts.set('tokens', hitsContainer(tokenNames, tokenNames.map((k) => built.tokens.get(k) ?? []), BO_UNICODE | BO_SORTED));
+  }
   parts.set('tags', hitsContainer(tagNames, tagNames.map((k) => built.tags.get(k) ?? []), BO_UNICODE));
   parts.set('tables', hitsContainer(tableNames, tableNames.map((k) => tableValues[k] ?? []), BO_UNICODE | BO_SORTED));
 

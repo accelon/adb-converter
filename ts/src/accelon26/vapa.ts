@@ -114,6 +114,13 @@ interface LineRec {
   vaEnd: number;
 }
 
+/**
+ * 目錄／標題標籤最多取幾個字。原本是 24，那是給漢字標題的長度；
+ * 泰文、巴利、緬文的名字常常超過（例：`(151) ปิณฑปาตปาริสุทธิสูตร` 28 字），
+ * 24 字會截在半個詞中間，目錄看起來就只剩經號。放寬到 60。
+ */
+const LABEL_MAX = 60;
+
 export class VaPaMapper {
   private reader: AdbReader;
   private srcBlocks: number;
@@ -752,8 +759,7 @@ export class VaPaMapper {
    */
   async nodeLabel(va: number, vaEnd: number): Promise<string> {
     const self = await this.elementAt(va);
-    if (!self) return '';
-    const ownAttrs = parseAttrs(self.element.text);
+    if (!self) return '';    const ownAttrs = parseAttrs(self.element.text);
     // Walk the node's own content: a child tag with an `n=` name wins (13j:
     // `<書 t="…" id="周易"><頁元 n="周易"/>`), otherwise use the leading text
     // (yinshun: `<書 t="部" id="2">般若經講記</書>`). The walk stops at this
@@ -778,7 +784,7 @@ export class VaPaMapper {
         if (named && !childName) childName = decodeXmlEntities(named);
       } else if (e.kind === 'token' || e.kind === 'blank') {
         parts.push(decodeXmlEntities(e.kind === 'token' ? (e.normalized ?? e.text) : e.text));
-        if (parts.join('').length >= 24) break;
+        if (parts.join('').length >= LABEL_MAX) break;
       }
       cur = e.va + Math.max(1, e.vaUnits);
     }
@@ -787,11 +793,11 @@ export class VaPaMapper {
     // starts on the same line (yinshun's 書 is a container holding the title first)
     // does not drag body text into the label.
     const cut = text.search(/[。！？；]/);
-    const trimmed = (cut > 0 ? text.slice(0, cut) : text).slice(0, 24);
+    const trimmed = (cut > 0 ? text.slice(0, cut) : text).slice(0, LABEL_MAX);
     if (trimmed) return trimmed;
     if (childName) return childName;
     // last resort: an attribute on the tier tag itself (`l`/`u`/`n`)
-    return decodeXmlEntities(pickName(ownAttrs)).slice(0, 24);
+    return decodeXmlEntities(pickName(ownAttrs)).slice(0, LABEL_MAX);
   }
 
   /**

@@ -1932,8 +1932,8 @@ export async function renderJump(enter = false): Promise<void> {
 export async function jumpByQuery(q: string): Promise<boolean> {
   const text = q.trim();
   if (!text || !reader) return false;
-  // 跳到註／釋（作者 2026-11-02）：`[^11.001]`＝跳到註、`[^11.001]:`＝跳到釋文。
-  // 一定要有 `[^…]` 前綴：`11.001` 看起來就是目錄路徑（1.2.3），不加前綴會和「跳到節點」衝突。
+  // 跳到註／釋（作者 2026-11-02）：`[11.001`＝跳到註、`]11.001`＝跳到釋文（一個字元前綴）。
+  // 一定要有前綴：`11.001` 看起來就是目錄路徑（1.2.3），不加會和「跳到節點」衝突。
   const noteQ = parseNoteQuery(text);
   if (noteQ) return jumpToNote(noteQ);
   // 目錄路徑（2026-11-01）：1.2.3／一.二.三；1-3-4 是 0 起算節點序號

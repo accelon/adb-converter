@@ -1,0 +1,10 @@
+import { AdbReader, SyncIO } from "../src/accelon26/adb";
+const r = await AdbReader.open(new SyncIO("D:/accelon3/ys.adb"));
+const a = await r.attributeValues("註.n");
+const vals = (a?.values ?? []) as string[];
+const withAt = vals.filter((v) => v.includes("@"));
+console.log(`ys 註.n ${vals.length} 條，含 @ 的 ${withAt.length} 條；例：${vals.slice(0, 3).join(" | ")}`);
+console.log(`含 @ 的例子：${withAt.slice(0, 5).join(" | ")}`);
+const b = await r.attributeValues("釋.n");
+const bv = (b?.values ?? []) as string[];
+console.log(`釋.n ${bv.length} 條，含 @ 的 ${bv.filter((v) => v.includes("@")).length} 條；例：${bv.slice(0, 3).join(" | ")}`);

@@ -92,6 +92,13 @@ export interface BuildIndexOptions {
   /** true = cachedTags is the initial set (older builds); false = only the
    *  dynamic s= declarations decide (index.pas:992) */
   cachedFromStart?: boolean;
+  /**
+   * false = 只建「容器用」的結構（tags／lines／blocks 的 VA），**不存 token
+   * 清單與 postings**。VA 仍照 tokenizer 的 token 數前進，所以 tags／頁／行
+   * 的座標與有索引的版本完全相同；差別只有沒有 `tokens` 容器、搜尋為空。
+   * 給「這個語種還沒有可用的 tokenizer」或「只要閱讀、不要全文檢索」的庫用。
+   */
+  indexTokens?: boolean;
 }
 
 function push(map: Map<string, number[]>, key: string, value: number): void {
@@ -127,6 +134,7 @@ export function trimCacheLine(input: string): string {
 export function buildIndex(files: string[][], opts: BuildIndexOptions): BuiltIndex {
   const tagLength = TAGLENGTH;
   const ignoreBlank = !!opts.ignoreBlank;
+  const indexTokens = opts.indexTokens !== false;
   // line index (global) at which each source file ends
   const fileEnds = new Set<number>();
   {
@@ -167,14 +175,20 @@ export function buildIndex(files: string[][], opts: BuildIndexOptions): BuiltInd
       badTokens++;
       return;
     }
-    if (opts.dropPunct && token.length === 1 && opts.dropPunct.includes(token)) {
+    if (opts.dropPunct && indexTokens && token.length === 1 && opts.dropPunct.includes(token)) {
       // the hit is removed after indexing, so the virtual address is still used
       droppedPunct++;
       voff++;
       return;
     }
-    push(tokens, token, voff);
     totalTokenLength += token.length;
+    if (!indexTokens) {
+      // 純容器模式：token 不進索引，但仍佔一個 VA，讓 lines／tags 的座標與
+      // 有索引的版本一致（tags 讀得到）。
+      voff++;
+      return;
+    }
+    push(tokens, token, voff);
     tokenHits++;
     voff++;
   };

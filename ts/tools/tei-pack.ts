@@ -13,9 +13,11 @@ import { basename } from 'node:path';
 import { authorAdb } from '../src/adbauthor';
 import { buildContainer, BO_NAMED, BO_UNICODE } from '../src/accelon26/adb-bytes';
 
-const [, , textFile, outFile, dbname = 'taisho', dbcname = '大正新脩大藏經', logoPath = 'logo/taisho_logo.png', mapFile = 'build/posmap.bin', studyIndexFile = 'build/jingqun/study-index.json'] = process.argv;
+const rawArgs = process.argv.slice(2);
+const noIndex = rawArgs.includes('--no-index');
+const [textFile, outFile, dbname = 'taisho', dbcname = '大正新脩大藏經', logoPath = 'logo/taisho_logo.png', mapFile = 'build/posmap.bin', studyIndexFile = 'build/jingqun/study-index.json'] = rawArgs.filter((a) => a !== '--no-index');
 if (!textFile || !outFile) {
-  console.error('usage: bun run ts/tools/tei-pack.ts <text.txt> <out.adb> [dbname] [dbcname] [logo.png]');
+  console.error('usage: bun run ts/tools/tei-pack.ts <text.txt> <out.adb> [dbname] [dbcname] [logo.png] [--no-index]');
   process.exit(2);
 }
 
@@ -85,13 +87,14 @@ const res = await authorAdb({
   lines,
   resources,
   dbtype: 4,
+  fullTextIndex: !noIndex,
   extraContainers,
   log: (m) => console.error(m),
 });
 writeFileSync(outFile, res.file);
 console.error(
   `wrote ${basename(outFile)}: ${(res.file.length / 1048576).toFixed(1)} MiB, ${res.lines} lines, ` +
-    `${res.tokens} tokens/${res.tokenHits} hits, ${res.tagNames.length} tags, ` +
+    `${res.tokens} tokens/${res.tokenHits} hits${noIndex ? ' (no full-text index)' : ''}, ${res.tagNames.length} tags, ` +
     `${res.resources} resource(s) ${res.resourceBytes} bytes, ` +
     `maxVA=${res.maxBlockOffset}, ${((Date.now() - t0) / 1000).toFixed(1)}s`,
 );

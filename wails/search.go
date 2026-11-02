@@ -461,7 +461,9 @@ func (h *AdbHost) Postings(path string, token string) ([]int32, error) {
 	}
 	toks, ok := f.container("tokens")
 	if !ok {
-		return nil, fmt.Errorf("no tokens container")
+		// 純容器 adb（建置時 --no-index）：沒有全文索引，搜尋一律 0 筆，
+		// 不要讓閱讀器整個壞掉。
+		return []int32{}, nil
 	}
 	i := tokenIndexByName(toks, token)
 	if i < 0 {

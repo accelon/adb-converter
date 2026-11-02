@@ -36,6 +36,12 @@ export interface AuthorInput {
   dualSelfClosingTags?: readonly string[];
   /** 只承認這些標記（舊 docdef 的 validTags；正文用 `<…>` 包書名時很重要） */
   validTags?: readonly string[];
+  /**
+   * false = 不建全文索引：tags／lines／blocks 的 VA 照舊（tags 讀得到），
+   * 但不存 `tokens` 容器（沒有 token 清單與 postings），搜尋為空。
+   * 給還沒有 tokenizer 的語種或「只要閱讀、不要全文檢索」的庫用。
+   */
+  fullTextIndex?: boolean;
   log?: (msg: string) => void;
   extraContainers?: Record<string, Uint8Array>;
 }
@@ -71,6 +77,7 @@ export async function authorAdb(input: AuthorInput): Promise<AuthorResult> {
       cachedTags: input.cachedTags,
       dualSelfClosingTags: input.dualSelfClosingTags,
       validTags: input.validTags,
+      fullTextIndex: input.fullTextIndex,
       extraContainers: input.extraContainers,
       compress: (block) => encoder.encode(block),
       onProgress: (phase, done, total) => {

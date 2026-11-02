@@ -47,6 +47,7 @@
 | [adb/xref-j-lessons.md](./adb/xref-j-lessons.md) | `<聯 j>` 字元級反鏈的座標系、七個坑、修復順序 |
 | [adb/backlink-skill.md](./adb/backlink-skill.md) | 反鏈（誰引用這一頁）的流程 |
 | [adb/cbeta-adb-skill.md](./adb/cbeta-adb-skill.md) | CBETA TEI → adb 的六步流程與檢查表 |
+| [adb/off-to-accelon.md](./adb/off-to-accelon.md) | **`.off` → Accelon XML** 的規格：對照表（區／書／塊／段）、一行一句、註文分檔、`塊.段` 定位、驗收清單 |
 | [adb/old-adb-upgrade-skill.md](./adb/old-adb-upgrade-skill.md) | 舊 adb 升級 |
 | [adb/pua.md](./adb/pua.md) | 缺字清單（PUA／IDS／書影） |
 | [adb/siddham-ranjana.md](./adb/siddham-ranjana.md) | 悉曇／蘭札碼位、字型、設置頁測試 |

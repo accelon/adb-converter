@@ -91,6 +91,21 @@ async function runSearch(query: string) {
     $('#searchMore').textContent = '';
     return;
   }
+  // 純容器 adb（--no-index）：正文、目錄、頁碼都正常，只是沒有 token 索引可搜。
+  if (reader && !reader.hasFullTextIndex) {
+    lastResult = null;
+    summaryResult = null;
+    lastQuery = q;
+    snippetScope = null;
+    snippetShown = SNIPPET_LIMIT;
+    setKwMarks([]);
+    resetEngineStats();
+    refreshTreeHits();
+    $('#searchList').innerHTML = '';
+    $('#searchMeta').textContent = '此資料庫未建全文索引（建置時略過），仍可閱讀與瀏覽。';
+    $('#searchMore').textContent = '';
+    return;
+  }
   // 西文查詢（2026-10-31）：外語在 <术> 屬性裡，全文索引沒有；先用詞彙表換成漢詞。
   // 詞彙表可能對到多個漢詞，逐一試（最多 4 個），取第一個在索引裡找得到的。
   let qq = q;

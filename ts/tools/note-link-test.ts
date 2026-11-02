@@ -440,22 +440,22 @@ try {
           mode: window.__accelon26.queryMode ? window.__accelon26.queryMode(text) : '',
         };
       };
-      const toRef = await go('[^11.001]');
-      const toBody = await go('[^11.001]:');
+      const toRef = await go('[11.001');
+      const toBody = await go(']11.001');
       // 裸的 11.001 不可以被當成註（要維持目錄路徑的行為）
       const bare = window.__accelon26.queryMode ? window.__accelon26.queryMode('11.001') : '';
-      return { toRef, toBody, bareMode: bare, noteMode: window.__accelon26.queryMode('[^11.001]') };
+      return { toRef, toBody, bareMode: bare, noteMode: window.__accelon26.queryMode('[11.001') };
     })()
   `);
-  ok('搜尋框 [^11.001] 跳到註（畫面上有那一號的註記號）',
+  ok('搜尋框 [11.001 跳到註（畫面上有那一號的註記號）',
     jump.toRef?.wantRef === true,
     JSON.stringify(jump.toRef));
-  ok('搜尋框 [^11.001]: 跳到釋文（畫面上有那一號的釋）',
+  ok('搜尋框 ]11.001 跳到釋文（畫面上有那一號的釋）',
     jump.toBody?.wantBack === true,
     JSON.stringify(jump.toBody));
   ok('兩者的模式標籤都是「註／釋」，而裸的 11.001 仍是目錄路徑',
     jump.noteMode === '註／釋' && jump.bareMode !== '註／釋',
-    `[^11.001]=${jump.noteMode}、11.001=${jump.bareMode}`);
+    `[11.001=${jump.noteMode}、11.001=${jump.bareMode}`);
 
   if (cdp.logs.length) console.error(cdp.logs.slice(-8).join('\n'));
 } finally {

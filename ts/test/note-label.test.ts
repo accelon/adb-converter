@@ -24,16 +24,17 @@ eq("noteLabel('@38')（沒有紙本號：保留原樣）", noteLabel('@38'), '@3
 eq("noteLabel('a@b@c')（只切第一個 @）", noteLabel('a@b@c'), 'a');
 
 // `[^…]` 查詢（跳到註／釋）：一定要有前綴，否則會和目錄路徑 1.2.3 衝突
-eq("[^11.001] → 跳到註", parseNoteQuery('[^11.001]'), { key: '11.001', label: '11.001', to: 'ref' });
-eq("[^11.001]: → 跳到釋", parseNoteQuery('[^11.001]:'), { key: '11.001', label: '11.001', to: 'body' });
-eq('[^11.001@38] 保留完整 key、label 去掉 @冊', parseNoteQuery('[^11.001@38]'), { key: '11.001@38', label: '11.001', to: 'ref' });
-eq('[^11.001@38]: 跳到釋', parseNoteQuery('[^11.001@38]:'), { key: '11.001@38', label: '11.001', to: 'body' });
-eq('舊 adb [^38.160]', parseNoteQuery('[^38.160]'), { key: '38.160', label: '38.160', to: 'ref' });
-eq('空白容錯', parseNoteQuery('  [^11.001]  '), { key: '11.001', label: '11.001', to: 'ref' });
+eq('[11.001 → 跳到註', parseNoteQuery('[11.001'), { key: '11.001', label: '11.001', to: 'ref' });
+eq(']11.001 → 跳到釋', parseNoteQuery(']11.001'), { key: '11.001', label: '11.001', to: 'body' });
+eq('[11.001@38 保留完整 key、label 去掉 @冊', parseNoteQuery('[11.001@38'), { key: '11.001@38', label: '11.001', to: 'ref' });
+eq(']11.001@38 跳到釋', parseNoteQuery(']11.001@38'), { key: '11.001@38', label: '11.001', to: 'body' });
+eq('舊 adb ]38.160', parseNoteQuery(']38.160'), { key: '38.160', label: '38.160', to: 'body' });
+eq('舊 adb [38.160', parseNoteQuery('[38.160'), { key: '38.160', label: '38.160', to: 'ref' });
+eq('空白容錯', parseNoteQuery('  [11.001  '), { key: '11.001', label: '11.001', to: 'ref' });
 eq('裸的 11.001 不是註語法（是目錄路徑）', parseNoteQuery('11.001'), null);
 eq('裸的 1.2.3 不是註語法', parseNoteQuery('1.2.3'), null);
-eq('[^] 空的不是註語法', parseNoteQuery('[^]'), null);
-eq('沒有右括號不是註語法', parseNoteQuery('[^11.001'), null);
+eq('[^11.001] 舊寫法不再接受（省掉 ^ 與 ]）', parseNoteQuery('[^11.001]'), null);
+eq('只有前綴沒有註號', parseNoteQuery('['), null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

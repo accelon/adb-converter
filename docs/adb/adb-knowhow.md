@@ -29,7 +29,7 @@
 | 容器 | 內容 | 誰產生 |
 |---|---|---|
 | `source` | 內文（一行一個 adb 行，bzip2 分塊） | `authorAdb` |
-| `tokens` | 全文索引 | `authorAdb` |
+| `tokens` | 全文索引（`fullTextIndex:false` 時**不建**） | `authorAdb` |
 | `tags` | 每個標籤的 VA 清單 | `authorAdb` |
 | `tables` | `lines.physical`、`lines.virtual`、`blocks.virtual`、`tags.virtual`、`doclengths` | `authorAdb` |
 | `attributes` / `attributes.sorted` | 標籤屬性（`頁.id`、`書.id`…） | `authorAdb`（由文字重算） |
@@ -44,6 +44,11 @@
   blocks／bytes／names。
 - `attributes`、`tables` 一律**從新文字重算**，不要照抄舊檔，否則 VA 對不上。
 - 標籤要進目錄／快取，靠文字裡的 `t=`、`s=`、`l=` 宣告，不是另外寫設定檔。
+- **純容器模式（2026-11-02）**：`authorAdb({ fullTextIndex: false })`（`tei-pack` 加
+  `--no-index`）仍照 tokenizer 的 token 數推進 VA，所以 `tags`／`lines`／`blocks` 的
+  VA 與有索引版本完全相同；差別是**不建 `tokens` 容器**（沒有 token 清單與 postings），
+  搜尋 0 筆。適合還沒有 tokenizer 的語種，或「只要閱讀、不要全文檢索」的庫；
+  正文、目錄、頁碼都不受影響。
 - 「建置多花幾秒、檔案多幾 MB」可以接受；**不要把重算留給使用者每次開檔**。
 
 ---

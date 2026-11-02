@@ -366,6 +366,10 @@ export class AdbReader {
 
   private constructor(io: AdbIO) { this.io = io; }
 
+  /** 這個庫有沒有建全文索引（沒有 `tokens` 容器＝建置時用了 `--no-index`）。
+   *  閱讀／目錄／頁碼仍可用；搜尋會是 0 筆，UI 可據此顯示說明。 */
+  get hasFullTextIndex(): boolean { return this.containers.has('tokens'); }
+
   static async open(io: AdbIO): Promise<AdbReader> {
     const r = new AdbReader(io);
     const head = await io.read(0, FILE_HEADER_SIZE);
