@@ -1697,6 +1697,31 @@ try {
     ok('詞典：點一個詞條 → 下方顯示它的正文',
       dictPane.body.length > 10 && /比丘/.test(dictPane.body),
       `點「${dictPane.clickTarget}」→ 正文「${dictPane.body}」`);
+    // 作者 2026-11-02：詞條正文沒有原書換行，長行要自動折行（所有詞典）。
+    const dictWrap = await cdp.eval<{ ws: string; overflow: number; body: number; lines: number; sample: string }>(`
+      (() => {
+        const body = document.getElementById('dictBody');
+        const lines = [...body.querySelectorAll('.dictText .lineText')];
+        let worst = 0;
+        let sample = '';
+        for (const el of lines) {
+          const d = el.scrollWidth - el.clientWidth;
+          if (d > worst) { worst = d; sample = (el.textContent || '').slice(0, 20); }
+        }
+        return {
+          ws: lines[0] ? getComputedStyle(lines[0]).whiteSpace : '',
+          overflow: worst,
+          body: body.scrollWidth - body.clientWidth,
+          lines: lines.length,
+          sample,
+        };
+      })()
+    `);
+    ok('詞典：長行自動折行（pre-wrap，右欄沒有水平溢出）',
+      dictWrap.lines > 0 && dictWrap.ws === 'pre-wrap'
+      && dictWrap.overflow <= 1 && dictWrap.body <= 1,
+      `white-space=${dictWrap.ws}、行 ${dictWrap.lines}、最大溢出 ${dictWrap.overflow}px、右欄 ${dictWrap.body}px` +
+      (dictWrap.sample ? `、例「${dictWrap.sample}」` : ''));
     // 作者 2026-10 的三個邊界：順世（詞條只有 順世外道）、般若經（不該帶出 般若經十喻）、
     // 點詞條後的「開頭／結尾」兩份親戚清單
     const dictEdges = await cdp.eval<any>(`

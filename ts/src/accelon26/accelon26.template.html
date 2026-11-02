@@ -298,6 +298,11 @@
   .dictHead .db { color: var(--dim); font-weight: 400; font-size: .75em; margin-left: 6px; }
   /* 詞條正文下面：「開頭」／「結尾」兩份親戚清單（作者 2026-10） */
   .dictText { border-bottom: 1px dashed var(--line); padding-bottom: 8px; }
+  /* 詞條正文沒有原書換行：長行要自動折行（作者 2026-11-02，所有詞典）。
+     `pre-wrap` 保留必要的換行與空白，同時允許軟折；長拉丁字串也強制斷開，
+     不讓右欄長出水平捲軸。 */
+  #dictBody .docLine { display: block; }
+  #dictBody .docLine .lineText { white-space: pre-wrap; overflow-wrap: anywhere; }
   .dictMore { margin-top: 8px; }
   .dictMoreTabs { display: flex; gap: 6px; margin-bottom: 4px; }
   .dictMoreTab {

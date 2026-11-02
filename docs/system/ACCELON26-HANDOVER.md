@@ -680,6 +680,9 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
        開頭／結尾的其他詞條，讓讀者沿著詞條往下挖。開頭排序是**和點到的那句話共同前綴較長者
        優先**（`般若` → `般若經典`、`般若經十喻` 排在 `般若學`／`般若二種相` 前面）；
        結尾短的先（`三般若`、`二般若`、`深般若`…）。點任何一個「親戚」就把它變成清單的一列。
+    5. **詞條正文沒有原書換行，長行要自動折行**（作者 2026-11-02，所有詞典）：`#dictBody`
+       裡的 `.docLine` 改為 block、`.lineText` 用 `white-space: pre-wrap` ＋
+       `overflow-wrap: anywhere`。保留必要的換行與空白，同時不再讓右欄長出水平捲軸。
   * 詞條名稱表與 `tags` 的實例 VA 一一對應（`cachedStrings(tag)` 與 `decodeBlockList('tags', i)`
     長度相同才用），所以不必掃本文；索引建一次就快取（`dictIndexState()` 可看）。
     實測：佛光大辭典 22,648 條（`詞`）、康熙字典 46,024 條（`字`）、漢語大詞典 353,116 條。
