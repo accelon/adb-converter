@@ -79,6 +79,18 @@ const jaSegmenter = (() => {
 })();
 
 /**
+ * 這個庫的 tokenizer 設定。**索引端（index-builder）與閱讀端（SearchSession、VaPaMapper）
+ * 必須用同一套**，否則同一個 VA 會指到不同的字（2026-11-03 實際踩過：kmj 的索引用日文
+ * 詞典切詞、VaPaMapper 卻逐字切，於是「話題」的 VA 被算成「て」，token 頁籤點下去塗錯字）。
+ *
+ * 目前只有 `kmj`（光明寺日譯）開日文詞典。adb 標頭**沒有**存這個旗標（見 index-builder
+ * 的 `japanese` 選項），所以閱讀端只能靠 dbname 判斷；建置端則由 `pack.ts` 明確傳入。
+ */
+export function tokenProfileOf(dbname: string | undefined): { japanese: boolean } {
+  return { japanese: (dbname ?? '').toLowerCase() === 'kmj' };
+}
+
+/**
  * Burmese 沒有空格分詞；Delphi 的 tokenizer 把每個緬文字母當一個 western token，
  * cs-mm 的索引因此只有 113 個 token（幾乎是單字）。`Intl.Segmenter('my', word)`
  * 在 Bun／Chromium 的 ICU 有緬甸詞典，能切成 `အကျွန်ုပ်`、`သည်` 這種詞。

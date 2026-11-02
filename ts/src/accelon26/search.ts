@@ -18,7 +18,7 @@
  */
 import { AdbReader, type Container, type DocRow } from './adb';
 import { parseAttrs } from './vapa';
-import { normalize, Tokenizer } from '../tokenize';
+import { normalize, tokenProfileOf, Tokenizer } from '../tokenize';
 import { tntTrim, isPunctuation, isWhitespace } from '../unicode';
 import { parseQuery, splitWildcard, PROXIMITY_TOKENS, type QueryClause } from './query';
 import { variantGroupOf, variantSearchOn } from './variants';
@@ -1001,7 +1001,7 @@ export class SearchSession {
   constructor(reader: AdbReader) {
     this.reader = reader;
     this.tokensC = reader.containers.get('tokens') ?? null;
-    this.japanese = reader.header.dbname === 'kmj';
+    this.japanese = tokenProfileOf(reader.header.dbname).japanese;
   }
 
   /**

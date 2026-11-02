@@ -27,7 +27,7 @@
  * paths respect that by bucketing each element by `floor(pa / srcblocksize)`.
  */
 import { AdbReader, binarySearchLE, type Container } from './adb';
-import { Tokenizer, isSkipTag, normalize } from '../tokenize';
+import { Tokenizer, isSkipTag, normalize, tokenProfileOf } from '../tokenize';
 import { decodeXmlEntities } from '../xml-entities';
 import { tntTrim } from '../unicode';
 
@@ -435,7 +435,9 @@ export class VaPaMapper {
     const positions: TokenPos[] = [];
     let va = vaStart;
     if (text.length > 0) {
-      const tk = new Tokenizer(text);
+      // 與索引同一套分詞（2026-11-03）：kmj 的 token 是日文詞，「話題」佔一個 VA。
+      // 這裡若用預設的逐字切，整行的 VA 會與 tokens 容器的偏移錯開，elementAt/highlight 全錯。
+      const tk = new Tokenizer(text, tokenProfileOf(this.reader.header.dbname));
       for (;;) {
         const raw = tk.nextLiteral();
         // `tk.offset` is the offset of the token that was just read (the
