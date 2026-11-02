@@ -1164,6 +1164,73 @@ export class SearchSession {
     return this.search(query, maxHits, true);
   }
 
+  // ------------------------------------------------ 詞內（sub-token）查（2026-11-03）
+
+  /**
+   * 這個庫是不是「一個詞一個 token」的多字語言（目前只有 kmj 的日文）。
+   *
+   * 為什麼查詢端要知道：桌面版的 Go 後端（`queryBackend`）把查詢字串**逐字**切，
+   * 對 kmj 會把「話題」切成 話＋題，`題` 不在索引裡 → 0 筆。所以這種庫一律留在 TS 後端。
+   */
+  get usesJapanese(): boolean { return this.japanese; }
+
+  private namesCache: string[] | null = null;
+
+  /** tokens 容器的名稱表（adb 內已按 UTF-16 排序；快取起來給詞內查與提示用） */
+  async tokenNames(): Promise<string[]> {
+    if (this.namesCache) return this.namesCache;
+    this.namesCache = this.tokensC ? [...this.tokensC.names] : [];
+    return this.namesCache;
+  }
+
+  /**
+   * 「詞內」候選：名稱**包含**這串字的 token（kmj 的「題」→ 話題／問題／主題／議題…）。
+   *
+   * 只給 Enter 的明確回退與輸入時的提示用；live search 不會自己跑這條，
+   * 免得打一個字就冒出幾百筆（作者 2026-11-03）。
+   */
+  async subtokenNames(text: string, limit = 1000): Promise<string[]> {
+    const needle = normalize(text).trim();
+    if (!needle) return [];
+    const out: string[] = [];
+    for (const n of await this.tokenNames()) {
+      if (n !== needle && n.includes(needle)) {
+        out.push(n);
+        if (out.length >= limit) break;
+      }
+    }
+    return out;
+  }
+
+  /** 詞內查：把「含這串字的所有 token」的 posting 聯集起來，回單一詞組的結果。 */
+  async subtokenSearch(text: string, maxHits = 5000): Promise<SearchResult> {
+    const t0 = performance.now();
+    const parsed = parseQuery(text);
+    const names = await this.subtokenNames(text);
+    const all: number[] = [];
+    for (const name of names) {
+      const st = await this.lookup(name);
+      for (const va of st.postings) all.push(va);
+    }
+    all.sort((a, b) => a - b);
+    const hits: PhraseHit[] = all
+      .filter((v, i) => i === 0 || v !== all[i - 1])
+      .slice(0, maxHits)
+      .map((va) => ({ va, units: 1 }));
+    const clause: ClauseHits = {
+      text,
+      tokens: names,
+      role: 'optional',
+      nearOf: -1,
+      wildcard: false,
+      missing: names.length ? [] : [normalize(text)],
+      occurrences: hits.length,
+      hits,
+      colorIndex: 0,
+    };
+    return this.singleResult(parsed, [clause], maxHits, t0);
+  }
+
   // ------------------------------------------------------ BM25 / 多詞組
   private segCache: Segment[] | null = null;
   private segSource = '';

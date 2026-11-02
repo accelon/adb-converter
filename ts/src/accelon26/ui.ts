@@ -1893,13 +1893,14 @@ function boot() {
       // 目錄路徑：直接走 TOC，不經過搜尋（作者 2026-11-01）
       if (isTocIndexQuery(q)) { void jumpByTocIndex(q); return; }
       if (isTocPathQuery(q)) { void jumpByTocPath(q); return; }
-      // 全文搜尋：Enter 直接跳到第一筆（2026-10-31）。同一個查詢不必重跑。
-      if (lastQuery === q && lastResult) {
+      // 全文搜尋：Enter 直接跳到第一筆（2026-10-31）。同一個查詢不必重跑；
+      // 但上一次 0 筆時要重跑一次（帶「詞內」回退，作者 2026-11-03）。
+      if (lastQuery === q && lastResult && lastResult.hits.length) {
         if (jumpToFirstHit(q)) return;
         void tryJumpQuery(q);
         return;
       }
-      void runSearch(query.value).then(() => {
+      void runSearch(query.value, { subtoken: true }).then(() => {
         if (jumpToFirstHit(q)) return;
         void tryJumpQuery(q);
       });

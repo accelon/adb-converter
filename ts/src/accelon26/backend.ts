@@ -94,7 +94,9 @@ export async function queryBackend(
   query: string,
   maxHits = 1_000_000,
 ): Promise<BackendAnswer> {
-  if (io?.searchQuery) {
+  // 日文庫（kmj）：Go 後端只會逐字切查詢，「話題」會被切成 話＋題、找不到 → 0 筆。
+  // 這種庫一律留在 TS 後端（切詞規則與索引同一套，見 tokenProfileOf）。
+  if (io?.searchQuery && !session.usesJapanese) {
     const groups = variantSearchOn() ? variantGroupsFor(query) : [];
     const t0 = Date.now();
     const out = await io.searchQuery(query, maxHits, groups) as { clauses?: GoClause[]; ms?: number } | null;

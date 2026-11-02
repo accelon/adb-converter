@@ -75,7 +75,14 @@ let glossNote = '';
  * already seen is cached by `SearchSession`, so typing one more character only
  * costs the new token's block read plus the phrase pass.
  */
-async function runSearch(query: string) {
+/**
+ * 執行一次全文搜尋並更新摘要。
+ *
+ * `opts.subtoken`：Enter 才傳（作者 2026-11-03）。一般（live）搜尋 0 筆時**不**自動回退，
+ * 只會在摘要提示；Enter 時才退到「詞內」——把含這串字的所有 token 的 posting 聯集起來
+ * （kmj 的「題」→ 話題／問題／主題…）。
+ */
+async function runSearch(query: string, opts: { subtoken?: boolean } = {}) {
   if (!session || !mapper) return;
   const seq = ++searchSeq;
   void renderFreq();   // the 頻次 tab re-groups on every search
@@ -162,6 +169,12 @@ async function runSearch(query: string) {
     const r2 = await searchAutoVia(session, reader?.io ?? null, h);
     if (!r2.missing.length) { res = r2; break; }
   }
+  // 詞內回退（作者 2026-11-03）：**只有 Enter 才做**。輸入時不回退，免得打一個字就爆量；
+  // 輸入時只提示（見下面）。例：kmj 搜「題」不是獨立 token，Enter 時改成「含題的詞」。
+  if (opts.subtoken && session && !res.hits.length) {
+    const sub = await session.subtokenSearch(qq);
+    if (sub.hits.length) { res = sub; searchMode = '詞內'; }
+  }
   if (seq !== searchSeq) return;          // a newer keystroke won
   lastSearchMode = searchMode;
   if (searchMode) {
@@ -199,6 +212,17 @@ async function runSearch(query: string) {
   if (glossNote && seq === searchSeq) {
     const meta = $('#searchMeta');
     if (meta) meta.textContent = (meta.textContent ?? '') + ' ' + glossNote;
+  }
+  // 0 筆時的提示（**不自動回退**）：告訴使用者 Enter 可以改用「詞內」查，並列出幾個候選詞。
+  if (!res.hits.length && session && searchMode !== '詞內' && seq === searchSeq) {
+    const cands = await session.subtokenNames(qq, 8);
+    if (cands.length && seq === searchSeq) {
+      const meta = $('#searchMeta');
+      if (meta) {
+        meta.textContent = (meta.textContent ?? '')
+          + `　按 Enter 用「詞內」查（${cands.slice(0, 3).join('、')}${cands.length > 3 ? '…' : ''}）`;
+      }
+    }
   }
 }
 

@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { authorAdb } from '../src/adbauthor';
 import { AdbReader, SyncIO } from '../src/accelon26/adb';
+import { SearchSession } from '../src/accelon26/search';
 import { VaPaMapper } from '../src/accelon26/vapa';
 import { Tokenizer, tokenProfileOf } from '../src/tokenize';
 
@@ -81,5 +82,47 @@ describe('日文分詞與 VA 換算', () => {
       const line = m.lineOfVa(va);
       expect(line).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('詞內（sub-token）查：Enter 才回退', () => {
+  test('桌面版不能走 Go 後端（它逐字切查詢，話題會變 話＋題）', async () => {
+    const r = await openJa();
+    expect(new SearchSession(r).usesJapanese).toBe(true);
+    // 非日文庫仍可走 Go
+    const res = await authorAdb({ dbname: '13j', dbcname: '十三經', lines: ['<檔 n="x"><集>甲</集></檔>', '子曰'], fullTextIndex: true, log: () => {} });
+    const file = join(mkdtempSync(join(tmpdir(), 'ja-align-')), 'x.adb');
+    writeFileSync(file, res.file);
+    const r2 = await AdbReader.open(new SyncIO(file));
+    expect(new SearchSession(r2).usesJapanese).toBe(false);
+  });
+
+  test('單字「題」直接搜是 0 筆（不是 bug，是詞索引的先天限制）', async () => {
+    const r = await openJa();
+    const res = await new SearchSession(r).search('題');
+    expect(res.hits.length).toBe(0);
+    expect(res.missing).toContain('題');
+  });
+
+  test('subtokenNames：列出含「題」的詞，整詞本身不算候選', async () => {
+    const s = new SearchSession(await openJa());
+    const names = await s.subtokenNames('題');
+    expect(names.sort()).toEqual(['問題', '話題']);
+    expect(await s.subtokenNames('話題')).toEqual([]);
+  });
+
+  test('subtokenSearch：posting 聯集（話題×2＋問題×1 = 3 筆）', async () => {
+    const r = await openJa();
+    const res = await new SearchSession(r).subtokenSearch('題');
+    expect(res.hits.length).toBe(3);
+    // 三筆都落在含「題」的詞上
+    const m = new VaPaMapper(r);
+    await m.init();
+    const texts: string[] = [];
+    for (const h of res.hits) {
+      const el = await m.elementAt(h.va);
+      texts.push(el?.element.text ?? '');
+    }
+    expect(texts.sort()).toEqual(['問題', '話題', '話題']);
   });
 });
