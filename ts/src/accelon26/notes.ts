@@ -15,7 +15,7 @@
  */
 import { decodeXmlEntities } from '../xml-entities';
 import { mapper, reader, setStatus } from './viewer';
-import { revealDocLine } from './doc-pane';
+import { docSession, markLineRange, revealDocLine } from './doc-pane';
 import { ancestorTrail, currentNodeAt } from './scopes';
 import { noteLabel } from './note-label';
 import type { AdbReader } from './adb';
@@ -697,6 +697,73 @@ export async function notePagesOf(n: string): Promise<{
 }
 
 export { noteLabel };
+
+/**
+ * 「跳到註／釋」用：給註號（`11.001` 或完整的 `11.001@38`）→ 候選的**完整 key**。
+ *
+ * 有 `@` 就是完整 key（跨冊唯一）；只有章.註時，在目前這本書裡找標籤相同的 key。
+ * 用 `[^…]` 前綴（Markdown 腳注寫法）就是為了**不與「跳到節點」（`1.2.3`）衝突**：
+ * `11.001` 本身看起來就是目錄路徑，只有加上前綴才當成註號。
+ */
+export async function noteKeysOf(label: string): Promise<{ refs: string[]; bodies: string[] } | null> {
+  const r = reader;
+  if (!r) return null;
+  const idx = await noteIndexOf(r);
+  if (!idx) return null;
+  const want = (label ?? '').trim();
+  if (!want) return { refs: [], bodies: [] };
+  const collect = (map: Map<string, number[]>): string[] => {
+    const out: string[] = [];
+    for (const key of map.keys()) {
+      if (key === want) return [key];          // 完整 key：直接命中
+      if (noteLabel(key) === want) out.push(key);
+    }
+    return out;
+  };
+  return { refs: collect(idx.refs), bodies: collect(idx.bodies) };
+}
+
+/**
+ * 直接跳到某個註／釋（作者 2026-11-02 的 `[^11.001]` 語法）。
+ *
+ * `to='ref'` 跳正文的 `<註>`、`'body'` 跳 `<釋>`；同一個註號有多條時取**離目前行最近**
+ * 的那一條（舊 adb 同號的情形），與「由近而遠」的配對規則一致。
+ */
+export async function jumpToNote(query: { key: string; to: 'ref' | 'body' }): Promise<boolean> {
+  const r = reader;
+  const m = mapper;
+  if (!r || !m) return false;
+  const idx = await noteIndexOf(r);
+  if (!idx) { setStatus(`${r.header.dbname} 沒有 <註>／<釋>，不能跳到註`, 'warn'); return false; }
+  const keys = await noteKeysOf(query.key);
+  if (!keys) return false;
+  const list = query.to === 'body' ? keys.bodies : keys.refs;
+  if (!list.length) {
+    setStatus(`找不到${query.to === 'body' ? '釋' : '註'} ${noteLabel(query.key)}`, 'warn');
+    return false;
+  }
+  const cur = docSession();
+  const fromLine = cur ? (cur.cache?.dt?.lineNumbers[0] ?? 0) : 0;
+  const v = m.linesVirtual;
+  const fromVa = v[Math.min(Math.max(0, fromLine), v.length - 1)] ?? 0;
+  const vasOf = (key: string): number[] => (query.to === 'body' ? idx.bodies.get(key) : idx.refs.get(key)) ?? [];
+  const nearest = (arr: number[]): number => arr.reduce((a, b) => (Math.abs(b - fromVa) < Math.abs(a - fromVa) ? b : a), arr[0]);
+  let bestKey = list[0];
+  let bestD = Number.POSITIVE_INFINITY;
+  for (const key of list) {
+    const arr = vasOf(key);
+    if (!arr.length) continue;
+    const d = Math.abs(nearest(arr) - fromVa);
+    if (d < bestD) { bestD = d; bestKey = key; }
+  }
+  const va = nearest(vasOf(bestKey));
+  if (va === undefined) { setStatus(`找不到註 ${noteLabel(query.key)}`, 'warn'); return false; }
+  const line = lineOfVa(va);
+  await revealDocLine(line);
+  markLineRange(line, line);
+  setStatus(`${query.to === 'body' ? '釋' : '註'} ${noteLabel(bestKey)}`, 'info');
+  return true;
+}
 
 export function initNoteLinks(): void {
   if (bound) return;

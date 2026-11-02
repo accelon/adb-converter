@@ -21,6 +21,7 @@ import { backendKind, goQueryCount, lastGoAnswer } from './backend';
 import { isDictDb } from './db-kind';
 import { resolveDocCtx } from './doc-ctx';
 import { parsePageCite } from './page-cite';
+import { parseNoteQuery } from './note-label';
 import { parseWildcard } from './wildcard';
 import { allSearchMode, closeSearchAll, initSearchAll, openSearchAll, runSearchAll, searchAllState, setAllSearchMode, stopSearchAll } from './allsearch';
 import { dictLookupAt, dictPaneState, initDictPane } from './dict-pane';
@@ -1359,6 +1360,7 @@ function queryModeOf(s: string): string {
   if (q.startsWith('#')) return '行號';
   if (/\sj=\d+-\d+$/.test(q)) return '字元位置';
   if (parseTaishoCite(q)) return '大正引用';
+  if (parseNoteQuery(q)) return '註／釋';
   if (parsePageCite(q, dbNameCandidates())) return '頁行';
   if (/^(?:[\w.-]+\?)?\d+p[\da-z-]+$/i.test(q)) return '頁 id';
   return '全文';

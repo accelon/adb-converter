@@ -416,6 +416,47 @@ try {
     at.clicked ? at.clicked.landed === true && at.clicked.backKey === at.clicked.note && (at.clicked.backText ?? '').includes('[' + String(at.clicked.note).split('@')[0] + ']') : true,
     JSON.stringify(at.clicked));
 
+  // 搜尋框的「跳到註／釋」語法（作者 2026-11-02）：`[^11.001]`／`[^11.001]:`
+  const jump = await cdp.eval<any>(`
+    (async () => {
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      const q = document.getElementById('query');
+      const go = async (text) => {
+        document.getElementById('searchList').innerHTML = '';
+        q.value = text;
+        q.dispatchEvent(new Event('input'));
+        q.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        await sleep(1600);
+        const mark = document.querySelector('#docText .docLine.noteTarget') ?? document.querySelector('#docText .jumpHit');
+        const refs = [...document.querySelectorAll('#docText a.noteRef')].map((a) => a.dataset.note ?? '');
+        const backs = [...document.querySelectorAll('#docText a.noteBack')].map((a) => a.dataset.note ?? '');
+        return {
+          line: mark ? Number(mark.id.replace(/^L/, '')) : -1,
+          hasRef: refs.length > 0, hasBack: backs.length > 0,
+          refs: refs.slice(0, 4), backs: backs.slice(0, 4),
+          // 註號只有章.註時可能有多冊同號：確認畫面上就有那一號（含任一冊）
+          wantRef: !!document.querySelector('#docText a.noteRef[data-note^="11.001@"], #docText a.noteRef[data-note="11.001"]'),
+          wantBack: !!document.querySelector('#docText a.noteBack[data-note^="11.001@"], #docText a.noteBack[data-note="11.001"]'),
+          mode: window.__accelon26.queryMode ? window.__accelon26.queryMode(text) : '',
+        };
+      };
+      const toRef = await go('[^11.001]');
+      const toBody = await go('[^11.001]:');
+      // 裸的 11.001 不可以被當成註（要維持目錄路徑的行為）
+      const bare = window.__accelon26.queryMode ? window.__accelon26.queryMode('11.001') : '';
+      return { toRef, toBody, bareMode: bare, noteMode: window.__accelon26.queryMode('[^11.001]') };
+    })()
+  `);
+  ok('搜尋框 [^11.001] 跳到註（畫面上有那一號的註記號）',
+    jump.toRef?.wantRef === true,
+    JSON.stringify(jump.toRef));
+  ok('搜尋框 [^11.001]: 跳到釋文（畫面上有那一號的釋）',
+    jump.toBody?.wantBack === true,
+    JSON.stringify(jump.toBody));
+  ok('兩者的模式標籤都是「註／釋」，而裸的 11.001 仍是目錄路徑',
+    jump.noteMode === '註／釋' && jump.bareMode !== '註／釋',
+    `[^11.001]=${jump.noteMode}、11.001=${jump.bareMode}`);
+
   if (cdp.logs.length) console.error(cdp.logs.slice(-8).join('\n'));
 } finally {
   proc.kill();
