@@ -153,6 +153,9 @@ bun run tools/cbeta-base.ts --check
   - adb 底座：`docs/adb/stable-adb.md`
   - 金剛／法華家族：`docs/adb/wittern-related-jingang-fahua.md` 等
 - 回報時說清楚：改了什麼、跑了哪些測試、還有什麼沒驗證。
+- **代寫或改稿作者的文章（散文、發表稿、後記）之前**，先讀 canonical 文風規範
+  `D:\2026\agent-norms\writing-skill.md`（§1 語域 D 抒情散文、§2.8 留白「畫公仔唔使畫出腸」、
+  §7.5 骨架）；本區的落地清單在 `docs/essays/README.md`。
 - 不確定是否算「發佈」時，先問；官網／線上不要直接覆寫（`D:\accelon3` 是本機書庫，
   位置與做法見 §1、§3、§5）。
 
