@@ -47,7 +47,10 @@ for (const file of BACKEND) {
 {
   const ui = ['summary.ts', 'scopes.ts', 'ui.ts', 'doc-pane.ts', 'paint.ts']
     .map((f) => ({ f, src: readFileSync(resolve(dir, f), 'utf8') }));
-  const leaked = ui.filter((u) => /searchQuery\(|SearchQuery/.test(u.src)).map((u) => u.f);
+  // 只抓「呼叫」：`io.searchQuery(...)`／`host.SearchQuery(...)`。
+  // 不可以只寫 `searchQuery`——`state()` 的欄位 `searchQuery: lastQuery` 與
+  // `#allSearchQuery` 的元素 id 都會被誤判（2026-11-03 修）。
+  const leaked = ui.filter((u) => /\.\s*(?:searchQuery|SearchQuery)\s*\(/.test(u.src)).map((u) => u.f);
   ok('UI 不直接呼叫宿主查詢（一律經 backend.ts）', leaked.length === 0, leaked.join(',') || 'clean');
 }
 

@@ -13,7 +13,7 @@ const store = new Map<string, string>();
   get length() { return store.size; },
 } as Storage;
 
-import { autoDictOn, dictOnlyIsdict, dictOrder, orderByFile, selectionDictOn, setAutoDict, setDictOnlyIsdict, setDictOrder, setSelectionDict } from '../src/accelon26/dict-settings';
+import { dictOnlyIsdict, dictOrder, orderByFile, setDictOnlyIsdict, setDictOrder } from '../src/accelon26/dict-settings';
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail = '') => {
@@ -21,20 +21,8 @@ const ok = (name: string, cond: boolean, detail = '') => {
   else { fail++; console.log('  FAIL ' + name + (detail ? '  ' + detail : '')); }
 };
 
-// ---- 自動查字典開關 --------------------------------------------------------
-ok('預設開啟自動查字典', autoDictOn() === true);
-setAutoDict(false);
-ok('關閉後 autoDictOn=false、localStorage 是 0', autoDictOn() === false && store.get('accelon26.dict.auto') === '0');
-setAutoDict(true);
-ok('再打開 autoDictOn=true', autoDictOn() === true && store.get('accelon26.dict.auto') === '1');
-
-// ---- 選取區自動查開關 ------------------------------------------------------
-ok('預設開啟選取區自動查', selectionDictOn() === true);
-setSelectionDict(false);
-ok('關閉後 selectionDictOn=false、localStorage 是 0',
-  selectionDictOn() === false && store.get('accelon26.dict.selection') === '0');
-setSelectionDict(true);
-ok('再打開 selectionDictOn=true', selectionDictOn() === true && store.get('accelon26.dict.selection') === '1');
+// 「自動查字典」「選取區自動查」兩個開關已經移除（2026-10-28 起查詞由選取選單明確觸發），
+// `autoDictOn`／`selectionDictOn` 不再存在；那兩段測試一併刪掉，免得整支測試載入就失敗。
 
 // ---- 只列出 c="isdict"（顯示過濾；作者 2026-10-26） --------------------------
 ok('預設列出全部：dictOnlyIsdict=false', dictOnlyIsdict() === false);
