@@ -463,8 +463,8 @@ cd ts && bun run tools/publish-adb.ts --files ys.adb
   ```
 
   帳密與主機金鑰沿用 `.local/server.env`／`.local/hostkey*.txt`（同 `deploy.ts`）。
-  accelon26 官網首頁 nav 的「文章」連到 `../yap/essays/`，首頁改動用
-  `bun run tools/deploy.ts --site-only --no-adb` 上傳。
+  **accelon26 官網不放「文章」入口**（作者 2026-11-03）：文章只從「發表紀錄」進來，
+  `/accelon26/essays/` 已刪除（兩站 404）。
 - 2026-11-03 已上線：<https://shutonggui.cn/yap/essays/>、
   <https://nissaya.cn/yap/essays/>。
 
