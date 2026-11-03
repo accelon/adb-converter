@@ -176,16 +176,18 @@ async function locatorVa(r: AdbReader, anchor: string): Promise<number | null> {
     if (at < 0) continue;
     const hit = segs[at];
     const j = m[3] ? Number(m[3]) : 1;
-    if (j <= 1) return hit;
     const vas = await lineVas(r);
     const li = lineOf(vas, hit); // 段標記所在的行
+    const mp = await mapperOf(r);
+    // 段標記那一行有文字 → 它就是第 1 句，`:1`（或不寫句）直接停在段首。
+    // 沒有文字（段標記單獨一行）→ 第 1 句順延到第一個有文字的行（sz addressing.md）。
+    if (j <= 1 && (await lineHasText(mp, li))) return hit;
     // 「下一段」要拿全部段標記的序列（同一個 n 會在每本書重複出現）
     const all = await allSegVas(r);
     const pos = lineOf(all, hit);
     const nextVa = all[pos + 1] ?? Number.POSITIVE_INFINITY;
     const lastLine = lineOf(vas, nextVa - 1); // 這一段的最後一行
-    // 句＝段內第 j 個有文字的行（空白行不算；段標記那行沒有文字時第 1 句順延）
-    const mp = await mapperOf(r);
+    // 句＝段內第 j 個有文字的行（空白行不算）
     let seen = 0;
     let lineK = lastLine;
     for (let i = li; i <= lastLine; i++) {

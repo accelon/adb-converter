@@ -20,6 +20,9 @@ const LINES = [
   'beta',
   '<段 n="2"/>gamma',
   'delta',
+  // 段標記單獨一行（只有標記、沒有文字）：第 1 句順延到下一行
+  '<段 n="3"/>',
+  'epsilon',
 ];
 
 async function open(): Promise<AdbReader> {
@@ -56,5 +59,12 @@ describe('句 = 段內第 j 個有文字的行（空行不算）', () => {
     const r = await open();
     expect(await anchorVa(r, 'd1.1:2')).toBe(await vaOf(r, 'beta'));
     expect(await anchorVa(r, 'd1.2:2')).toBe(await vaOf(r, 'delta'));
+  });
+
+  test('段標記單獨一行：第 1 句順延到下一行（兩邊都要對）', async () => {
+    const r = await open();
+    const eps = await vaOf(r, 'epsilon');
+    expect((await locatorAtVa(r, eps))?.sentence).toBe(1);
+    expect(await anchorVa(r, 'd1.3:1')).toBe(eps);
   });
 });
