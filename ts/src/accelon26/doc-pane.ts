@@ -22,6 +22,7 @@ import { SHORT_DB_NAMES } from './short-titles';
 import { charDiff } from './char-diff';
 import { decodeXmlEntities } from '../xml-entities';
 import { mountPageEditor, type PageEditor } from './editor';
+import './reading-pane';   // 精讀模式（🙏／F4）：它只依賴 adb／vapa，不會造成循環
 import { isHan } from './han';
 
 /**
@@ -1531,6 +1532,12 @@ export async function openHistoryPage(detail: { revisionId: string; page: any })
   paintTreeActive();
 }
 
+// 精讀模式切換時重畫正文（發自 reading-pane.ts，避免互相 import）
+window.addEventListener('accelon26:rerender', () => {
+  const s = docSession();
+  if (s) renderDoc(s);
+ });
+
 export function enterEdit(s: DocSession, fromSelection = false): void {
   if (s.history) {
     setStatus('歷史版本只能檢視，不能編輯', 'err');
@@ -1825,6 +1832,14 @@ function renderDoc(s: DocSession): void {
   // 用 A 的資料畫畫面會讓「分頁條／本文／麵包屑」對不起來（作者 2026-11-01 回報的
   // 「切換 adb／頁籤時不一致」之一）。不是畫面上那一頁就不要畫，記一次診斷。
   if (docTabs[docActive] !== s) { staleRenders++; return; }
+  // 精讀模式（作者 2026-11-03）：正文區改掛唯讀 CodeMirror（ruby 在字上方），
+  // 版面其餘部分（左欄目錄、右欄頁籤）照 accelon26 原樣，不另開覆蓋層。
+  // 精讀模式（作者 2026-11-03）：正文區改掛唯讀 CodeMirror；不 import reading-pane
+  // （ui → reading-pane → doc-pane 的循環會讓 boot 炸掉，改用 window 上的 hook）。
+  if (document.body.classList.contains('reading')) {
+    (window as unknown as { __readingMount?: (sel: string, lines: readonly string[]) => void }).__readingMount?.('#docText', dt.lines);
+    return;
+  }
   const ctx = ctxOf(s);
   // 「回到這個分頁時看的地方（捲動＋選取）」只給這一次渲染用；編輯／diff／歷史那幾條
   // 提早 return 的分支就用不到，直接丟掉（不要留給下一次別的渲染）。

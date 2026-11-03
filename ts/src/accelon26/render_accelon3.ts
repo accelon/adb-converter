@@ -770,7 +770,14 @@ export class Accelon3Renderer {
         const j = attrValue(attrs, 'j');
         const shown = !!(b || j);
         if (shown) {
-          html += `<span class="word" data-b="${esc(b)}" data-j="${esc(j)}" title="${esc(b ? b.replace(/\|/g, ' + ') : '')}">`;
+          // 詞譜 `b` 只有在「看起來是 IAST 詞件」時才放進 title。
+          // 2026-11-03：cs-lex 的 `b` 是 provident-pali 編碼（BIkVKU|sNVGEn 這種大小寫混編、
+          // 沒有變音符號），直接當提示只會讓讀者一頭霧水，所以濾掉；真正要顯示 IAST
+          // 得由建置端給（`iast` 屬性）或提供 provident-pali → IAST 對照表。
+          const bText = /^[a-zāīūṅñṭḍṇṃḷĀĪŪ'\-]+(\|[a-zāīūṅñṭḍṇṃḷĀĪŪ'\-]+)*$/.test(b)
+            ? b.replace(/\|/g, ' + ')
+            : '';
+          html += `<span class="word" data-b="${esc(b)}" data-j="${esc(j)}"${bText ? ` title="${esc(bText)}"` : ''}>`;
         }
         this.wordStack.push(shown);
         this.sawText = true;

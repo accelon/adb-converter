@@ -250,7 +250,7 @@
   .extraCell { display: flex; flex-direction: column; align-items: center; min-width: 62px; }
   .extraCell .sanskritGlyph { font-size: 30px; line-height: 1.2; }
   .extraCell code { font-size: 10px; color: var(--dim); }
-  .sanskritLine { white-space: pre; }
+  .sanskritLine { white-space: pre-wrap; overflow-wrap: anywhere; }
   /* 字形右邊的 IAST（作者 2026-10-31）：預設藏起來，勾選後才 inline。
      打開 IAST 後一行會變寬，所以允許在「字＋轉寫」之間換行（不拆開單一組）。 */
   /* SAT 的悉曇連字（&SDxxxxx;）：顯示時換成 Unicode 序列，用 Noto 子集排版。
@@ -954,7 +954,8 @@
 .docLine.jumpHit { background: rgba(255, 209, 102, .16); box-shadow: inset 3px 0 0 rgba(255, 209, 102, .55); }
 /* 跳至：字元級位置（`db?頁 j=a-b`）只塗那幾個字（CSS Custom Highlight，2026-10-30） */
 ::highlight(accelonCharBand) { background-color: rgba(255, 209, 102, .42); color: inherit; }
-  .lineText { white-space: pre; flex: 1 1 auto; min-width: 0; }   /* hard-wrapped lines: never soft wrap by default */
+  /* 作者 2026-11-03：閱讀一律軟換行，不要水平捲（原書硬換行保留，但不裁切長行） */
+  .lineText { white-space: pre-wrap; overflow-wrap: anywhere; flex: 1 1 auto; min-width: 0; }
   /* cs 的 `<詞 b j>`：單擊開 lex-pane；只加細虛線，不改變閱讀節奏。 */
   .lineText .word { cursor: pointer; border-bottom: 1px dotted color-mix(in srgb, var(--accent) 45%, transparent); }
   .lineText .word:hover { background: var(--hl-bg); border-bottom-color: var(--accent); }
@@ -1764,7 +1765,7 @@
   .editBtn:hover { border-color: var(--accent); }
   /* hidden 屬性要贏過 body.advanced .advOnly 的 display（歷史版本要真的看不到鉛筆） */
   #editBtn[hidden] { display: none !important; }
-  .editBtn.on { border-color: var(--accent); background: var(--hl-bg); box-shadow: inset 0 0 0 1px var(--accent); }
+  /* 精讀中：🙏 要看得出來（作者 2026-11-03） */`n  body.reading #readingBtn { border-color: var(--accent); background: var(--hl-bg); box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }`n  .editBtn.on { border-color: var(--accent); background: var(--hl-bg); box-shadow: inset 0 0 0 1px var(--accent); }
   #docEditor { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
   #docEditor .cmHost { flex: 1 1 auto; min-height: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--bg); }
   #docEditor .cm-editor { height: 100%; }
@@ -2033,6 +2034,56 @@
   .adbUpFoot .dim { flex: 1 1 auto; min-width: 0; font-size: 12px; }
   .adbUpFoot .mini.primary { background: var(--accent); color: var(--btn-fg, #fff); border-color: var(--accent); font-weight: 700; }
   .adbUpFoot .mini:disabled { opacity: .45; cursor: default; }
+
+  /* 精讀模式（作者 2026-11-03）：toolbar ＋ 左 70% 精讀頁（CM6）＋ 右 30% 側欄。
+     ruby 在字的上方，字級 75–80%，行距要放大（不然 ruby 會壓到下一行）。 */
+  #readingMode { position: fixed; inset: 0; z-index: 78; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); }
+  #readingMode[hidden] { display: none !important; }
+  .rdBar { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .rdBar .rdTitle { font-weight: 700; }
+  .rdBar .rdWhere { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 32vw; }
+  .rdBar .rdLang, .rdBar .rdToggle { color: var(--dim); display: inline-flex; align-items: center; gap: 4px; }
+  .rdBar select { font: inherit; font-size: 12px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; }
+  .rdBar .rdHint { margin-left: auto; color: var(--dim); font-size: 11px; }
+  .rdBar .rdClose { background: transparent; color: var(--dim); border: 1px solid var(--line); border-radius: 5px; font: inherit; font-size: 16px; line-height: 1; padding: 1px 8px; cursor: pointer; }
+  .rdBar .rdClose:hover { color: var(--fg); border-color: var(--accent); }
+  .rdBody { flex: 1 1 auto; display: flex; min-height: 0; }
+  .rdPage { flex: 0 0 70%; min-width: 0; overflow: auto; padding: 16px 28px 60px; }
+  .rdSide { flex: 1 1 auto; min-width: 0; overflow: auto; padding: 14px 16px; border-left: 1px solid var(--line); font-size: 13px; line-height: 1.8; }
+  .rdSideWord { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .rdSideRuby { color: var(--accent); }
+  .rdSideMeta { color: var(--dim); font-size: 12px; }
+  .rdEmpty { color: var(--dim); font-size: 12px; }
+  /* lex 當右欄頁籤（作者 2026-11-03）：不再 fixed、不再浮動 */
+  #lexInTab { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  /* 精讀頁籤只在精讀模式出現（作者 2026-11-03） */
+  #tabsRight .tabBtn[data-tab="lex"] { display: none; }
+  body.reading #tabsRight .tabBtn[data-tab="lex"] { display: inline-block; }
+  .lexPane.inTab { position: static; inset: auto; width: auto; max-width: none; height: auto; border: 0; box-shadow: none; background: transparent; display: flex; flex-direction: column; }
+  .lexPane.inTab .lexPaneClose { display: none; }
+  .rdSideRow { margin: 6px 0; }
+  .rdSideRow b { display: inline-block; min-width: 3.2em; color: var(--dim); font-weight: 400; font-size: 12px; }
+  /* CM6：字體跟著內文、行距放大給 ruby */
+  .rdPage .cm-editor { background: transparent; color: var(--fg); height: 100%; }
+  .rdPage .cm-editor.cm-focused { outline: none; }
+  .rdPage .cm-scroller { font-family: var(--doc-font, inherit); font-size: 16px; }
+  .rdPage .cm-content { font-family: var(--doc-font, inherit); line-height: 2.9; padding: 0; }
+  .rdPage .cm-line { padding: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* 精讀：正文區的 CM6 也要軟換行（作者 2026-11-03） */
+  #docText .cm-line { white-space: pre-wrap !important; overflow-wrap: anywhere; }
+  /* 精讀：ruby 在字上方、字級 75–80%（作者 2026-11-03） */
+  #docText .cm-content { line-height: 2.8; }
+  #docText ruby.rdRuby rt { font-size: 76%; color: var(--accent); }
+  .rdToolbar { display: flex; gap: 10px; align-items: center; padding: 2px 10px; font-size: 12px; color: var(--dim); border-bottom: 1px solid var(--line); }
+  .rdToolbar[hidden] { display: none !important; }
+  .rdToolbar b { color: var(--fg); }
+  #docText .cm-scroller { overflow-x: hidden; }
+  .rdPage .cm-content { white-space: pre-wrap !important; }
+  /* 真 ruby：注音在字的上方 */
+  .rdPage ruby.rdRuby { ruby-position: over; -webkit-ruby-position: before; cursor: pointer; }
+  .rdPage ruby.rdRuby rt { font-size: 76%; color: var(--accent); opacity: .9; font-family: inherit; }
+  .rdPage ruby.rdRuby:hover { background: var(--hl-bg); }
+
 </style>
 </head>
 <body>
@@ -2191,6 +2242,7 @@
         <div class="docTabStrip" id="docTabStrip"></div>
         <button class="mini" id="docTabAdd" title="新分頁（Ctrl+點任何聯動處也可以）">＋</button>
         <span class="docTabTools">
+          <button type="button" class="mini editBtn" id="readingBtn" title="精讀模式（ruby 注音；F4）" aria-label="精讀模式">🙏</button>
           <button type="button" class="mini editBtn advOnly" id="editBtn" title="編輯這一頁（修錯字；離開會自動暫存）" aria-label="編輯這一頁">✎</button>
           <label class="fsPick diffToggle" id="diffToggle" hidden title="顯示這一頁的修訂：新增綠、刪除紅；不回讀搜尋關鍵字"><input type="checkbox" id="showDiff"> 顯示修訂</label>
           <button type="button" class="fsPick iconOnly fsStep" id="fsBodyPick" data-fs="body" title="正文字級（中間的本文）">

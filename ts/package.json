@@ -21,6 +21,7 @@
     "test:notes": "bun run tools/embed-test.ts --adb ../build/taisho-study.adb --dep build/taisho-85.adb --dep-wait 30000",
     "test:selection": "bun run tools/selection-test.ts --adb ../build/jingang-group.adb",
     "build:viewer": "bun run tools/build-viewer.ts",
+    "dev": "bun run tools/dev-serve.ts",
     "build:notes": "bun run ../jingqun/notes.ts && bun run ../jingqun/build-notes.ts",
     "build:tours": "bun run tools/build-tours.ts",
     "cases": "bun run tools/make-search-cases.ts",

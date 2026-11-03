@@ -27,6 +27,12 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
   `accelon26.exe` 都在那個資料夾；`build/` 只放建置中間檔與可重建的輸出。
   桌面版開機用 `ListAdbs` 列出工作目錄與 exe 所在資料夾的 `*.adb`，放在別處它找不到。
   網頁版（file://）不能掃資料夾，使用者在 `accelon26.html` 要自己選檔。
+- **例外：sz 與其巴利譯本的 adb 一律放 `D:\2026\sz\accelon26`，不放 `D:\accelon3`**
+  （作者 2026-11-03）：`cs`、`cs-mm`、`cllk`、`ccc`、`yh`、`hz`、`pku`、`xsq`、`sc`、`kmj`、
+  `lex`，以及 veda 群的 `veda`／`sa`／`en`／`zh`。這些庫還在密集重建，放同一區才不會
+  兩份檔案互相比舊；`D:\accelon3` 只留已定稿／要發佈的庫。
+- **改前端就立刻跑煙霧測試**（作者 2026-11-03 教訓）：`cd ts && bun run tools/smoke.ts`（dev server 在 8790）；新增或搬動 import 之後再跑 `bun run tools/check-cycles.ts`（基準 64 個環，變多就會 exit 1）。原因：循環 import 不會被 build／型別檢查擋下，只會在執行時讓 `boot()` 中途死掉——按鈕全部沒反應、卻沒有例外訊息，2026-11-03 為此查了半個下午。
+- **桌面版只開與 exe 同一資料夾的 adb**（作者 2026-11-03）：adb 之間會互相聯動（`<聯>`、對照、詞典），單獨拿到別處經常不能用，所以入口直接限制：`ListAdbs` 只掃 exe 資料夾，`Open` 也擋掉資料夾外的路徑。
 - **viewer 一律寫到 `D:\accelon3\accelon26.html`**（作者 2026-10-31，已交代多次）：
   `bun run tools/build-viewer.ts` 的預設輸出現在就是那裡，不必再手動從 `build/` 覆寫；
   `build/accelon26.html` 只是舊位置／`-o` 指定時才會用到。改完 HTML／CSS／前端 TS

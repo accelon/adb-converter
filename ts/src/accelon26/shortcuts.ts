@@ -37,6 +37,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: 'F1', what: '操作導覽（從第一頁開始，一步一步教你用）' },
       { keys: 'F2', what: '重建 ADB：把修訂產生新檔（網頁版下載、桌面版覆寫原檔）' },
       { keys: 'F3', what: '進入／離開編輯（改錯字；要先在「關於」填修訂者 ID）' },
+      { keys: 'F4', what: '進入／離開精讀模式（ruby 注音；Esc 離開）' },
       { keys: 'F9', what: '元素檢查：點畫面任一元素複製它的 id，再按 F9 或 Esc 結束' },
       { keys: 'Ctrl+B', what: '左欄（目錄／搜尋）開關' },
       { keys: 'Ctrl+Alt+F', what: '把 focus 移到左欄目前分頁的輸入框（沒有就切回目錄）' },

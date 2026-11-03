@@ -348,6 +348,12 @@ func (h *AdbHost) ListAdbs() ([]AdbInfo, error) {
 // 開啟會增加一個「釘住」的參考：映射保持到 Close / CloseAll，
 // 因此隨後的 ReadBase64 不需要重新映射。重複 Open 不會重複計數。
 func (h *AdbHost) Open(path string) (*AdbInfo, error) {
+	// 作者 2026-11-03：桌面版**只開與 exe 同一個資料夾的 adb**。
+	// adb 和 docx／pdf 不同，彼此會互相聯動（連結、對照、詞典），單獨拿到別處經常不能用；
+	// 與其讓使用者開到一半才發現，入口就直接擋掉。
+	if !inRootDir(path) {
+		return nil, fmt.Errorf("只開 본 exe 同一資料夾的 adb：%s", filepath.Base(path))
+	}
 	m, err := h.acquire(path)
 	if err != nil {
 		return nil, err
@@ -442,4 +448,17 @@ func (h *AdbHost) CloseAll() {
 		h.dropLocked(key, m)
 	}
 	h.search = nil
+}
+
+// inRootDir 判斷這條路徑是不是在 exe 所在資料夾（桌面版唯一允許的範圍，作者 2026-11-03）。
+func inRootDir(path string) bool {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	root, err := filepath.Abs(adbRootDir())
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(filepath.Dir(abs), root)
 }

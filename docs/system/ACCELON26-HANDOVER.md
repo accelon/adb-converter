@@ -3008,3 +3008,17 @@ cs 有 1,082 段內空行、影響 432 段）——照行號相減算句，`:句
 後面的 `PARA_TAGS`（`<br class="para">` ＋ 兩個全形空格縮排）因此是死碼。
 2026-11-03 修：沒有段號時照 PARA_TAGS 的規則處理（行首只縮排、行中才插 `<br>`），
 段縮排那 2 個測試因此轉綠。有段號的 `<段 n>` 行為不變（晶片／段首／切塊）。
+## 29.5 精讀模式（2026-11-03，第一版）
+
+- 入口：正文分頁列右邊的 **🙏**（`#readingBtn`，編輯鈕左邊；精讀中會 highlight）與 **F4**。
+- 行為：`body.reading` 打開後，`renderDoc()` 改把正文畫成**唯讀 CodeMirror 6**（`mountReadingDoc()`，
+  掛在原本的 `#docText`）；左欄目錄、右欄頁籤不動。ruby 在字上方（`<ruby>`＋`rt`，字級 76%、行高 2.8），
+  一次一種語言（漢／英／日，工具列 `.rdToolbar`）。**Esc 不離開**，只有 🙏／F4。
+- 資料：dev 模式從 `/adb/cs-lex.adb` 抓詞庫（`塊.w` 與 `sc-en／yh／kmj` 行）；目前 sz 的
+  `cs-lex.adb` 是 DN 正文（`<詞 b j>`、沒有 `塊.w`），所以 ruby 顯示 0，等四語詞庫。
+- **依賴紀律（重要）**：`reading-pane.ts` 只 import `adb`／`vapa`；**不可以** import
+  `doc-pane`／`viewer`／`dbs`／`ui`。`ui → reading-pane → doc-pane → viewer → ui` 的循環會讓
+  `boot()` 在讀 adb 時拋 `Index out of bounds`，所有按鈕都沒反應、且沒有例外訊息。
+  現在由 `doc-pane` 用 `import './reading-pane'` 載入，並以 `window.__readingMount` 回呼。
+- 開發流程：`ts/tools/dev-serve.ts`（每次重整重新建置、預設自動開 `cs-lex`、沒有 SSE 自動重整，
+  改完自己 Ctrl+F5）。改前端後跑 `ts/tools/smoke.ts`；動 import 後跑 `ts/tools/check-cycles.ts`（基準 64）。
