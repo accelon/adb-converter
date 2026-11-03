@@ -10,6 +10,7 @@
  */
 import type { AdbReader } from './adb';
 import { hanChars } from './han';
+import { VaPaMapper } from './vapa';
 
 export interface AnchorIndex {
   values: string[];
@@ -108,6 +109,26 @@ async function attrVas(r: AdbReader, tag: string, attr: string): Promise<Map<str
 const LOCATOR_RE = /^([a-z][a-z0-9_-]*(?:\.[0-9]+)*)\.([0-9]+)(?::([0-9]+))?(?:#([0-9]+))?$/;
 const lineVasCache = new WeakMap<AdbReader, number[]>();
 const segVasCache = new WeakMap<AdbReader, number[]>();
+const mapperCache = new WeakMap<AdbReader, Promise<VaPaMapper>>();
+
+function mapperOf(r: AdbReader): Promise<VaPaMapper> {
+  let p = mapperCache.get(r);
+  if (!p) { p = (async () => { const m = new VaPaMapper(r); await m.init(); return m; })(); mapperCache.set(r, p); }
+  return p;
+}
+
+/**
+ * 這一行有沒有文字（去掉標籤與空白後非空）。
+ *
+ * `句` 的單位是「段內第 j 個**有文字的行**」，空白行不算（sz `docs/addressing.md`）。
+ * 各譯本段內空行很多（ccc 23,727、kmj 31,942、yh 15,342），把空行算進去，句號會整段位移
+ * （cs 有 1,082 段內空行、影響 432 段）——2026-11-03 定案，閱讀器要照同一個規格算。
+ */
+async function lineHasText(m: VaPaMapper, line: number): Promise<boolean> {
+  const t = await m.lineText(line);
+  return t.replace(/<[^>]*>/g, '').replace(/[\s\u3000\u00a0]/g, '') !== '';
+}
+
 
 /** 所有 `<段>` 的 VA（遞增），用來找「下一段」的界 */
 async function allSegVas(r: AdbReader): Promise<number[]> {
@@ -163,7 +184,15 @@ async function locatorVa(r: AdbReader, anchor: string): Promise<number | null> {
     const pos = lineOf(all, hit);
     const nextVa = all[pos + 1] ?? Number.POSITIVE_INFINITY;
     const lastLine = lineOf(vas, nextVa - 1); // 這一段的最後一行
-    const lineK = Math.min(li + j - 1, lastLine);
+    // 句＝段內第 j 個有文字的行（空白行不算；段標記那行沒有文字時第 1 句順延）
+    const mp = await mapperOf(r);
+    let seen = 0;
+    let lineK = lastLine;
+    for (let i = li; i <= lastLine; i++) {
+      if (!(await lineHasText(mp, i))) continue;
+      seen++;
+      if (seen === j) { lineK = i; break; }
+    }
     if (lineK <= 0) return hit;
     const startVa = vas[lineK - 1] + 1;
     return startVa > hit ? startVa : hit; // 單行段或超界：夾回段首
@@ -200,7 +229,15 @@ export async function locatorAtVa(
   const lines = await lineVas(r);
   const line = lineOf(lines, va);
   const segLine = lineOf(lines, seg.va);
-  return { block: block.id, seg: seg.n, sentence: Math.max(1, line - segLine + 1) };
+  // 句＝段內第 j 個有文字的行（空白行不算；見 lineHasText 的說明）
+  const m = await mapperOf(r);
+  let sentence = 0;
+  for (let i = segLine; i <= line; i++) {
+    if (await lineHasText(m, i)) sentence++;
+  }
+  // 落在空行或只有段標記的那一行：算它下面（或上面）最近的那一句，最少 1
+  if (sentence < 1) sentence = 1;
+  return { block: block.id, seg: seg.n, sentence };
 }
 
 /** VA 落在哪一個 source 區塊 */
