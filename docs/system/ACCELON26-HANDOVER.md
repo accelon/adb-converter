@@ -2990,3 +2990,21 @@ cs 有 1,082 段內空行、影響 432 段）——照行號相減算句，`:句
 - 測試：`test/segment-sentence.test.ts`（4 項：空行不佔句號、下一段重數、`:2` 跳到有文字的行、
   段標記單獨一行時「句→VA」與「VA→句」兩邊都對）。
 - 這與 sz 正在做的「先詞對齊、再回頭校正句對齊」對齊：句號先與規格一致，句對齊的結果才對得上 UI。
+## 29.4 `render.test.ts` 的 4 個期望值 drift（2026-11-03，待作者定奪）
+
+`render.test.ts` 從 36 pass／6 fail 變成 **38 pass／4 fail**（段縮排那 2 個已修，見下），剩下 4 個都是
+「程式後來改了、測試沒跟上」，不是壞掉。要不要改測試（或改程式）由作者定：
+
+| 測試 | 期望 | 現在的行為 | 判斷 |
+|---|---|---|---|
+| 註：noteRef 錨點 | `title="註 1"` | `aria-label="註 1"`（無 title） | 應是無障礙改動；若要 hover 提示，兩者都給 |
+| 術語 hover | `title="梵：svabhāva"`＋`has-tip` | 無 title | 建構器預設 `termMode='orig'`；app 的預設由 settings 決定（`termModeOf()`）。測試沒傳 `termMode:'hover'` |
+| 術語 off | 仍留 `span.term-tb` | 只留純文字 | 程式註解（2026-10-31）寫「off 模式只留漢詞」，與測試期望相反 |
+| 術語值含 &quot; | `title` 有轉義 | 無 title | 同上（hover 才給 title） |
+
+### 已修：`<段/>` 沒有段號時完全沒作用
+
+`render_accelon3.ts` 的 `name === '段'` 分支會 `continue`，把「沒有 n 的 `<段/>`」整段吃掉；
+後面的 `PARA_TAGS`（`<br class="para">` ＋ 兩個全形空格縮排）因此是死碼。
+2026-11-03 修：沒有段號時照 PARA_TAGS 的規則處理（行首只縮排、行中才插 `<br>`），
+段縮排那 2 個測試因此轉綠。有段號的 `<段 n>` 行為不變（晶片／段首／切塊）。

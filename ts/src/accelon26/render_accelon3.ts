@@ -601,24 +601,29 @@ export class Accelon3Renderer {
       // `<段 n="12">`（作者 2026-11-02）：巴利藏幾個庫的**跨庫對齊鍵**。渲染成可點的
       // 小晶片，點它列出同結構的庫（parallel.ts），選一個就跳到同一個段。
       if (name === '段' || name === '_段') {
-        if (!closing) {
-          const segN = attrValue(attrs, 'n');
-          if (segN) {
-            // `<段>` ≡ `<p>`（Accelon3 語意）：一律從新的一行開始。
-            //   * 行首（前面還沒有可見文字）→ `segStart`，連排模式另起一個 `para`
-            //   * 行中、前面是**標題** → `splitAt`：段碼之前的都算標題，另成一個 heading 塊，
-            //     段碼與其後正文變成新段落（作者 2026-11-03：小節與本文不該黏在一起）
-            //   * 行中、前面不是標題（少數）→ 插 `<br class="para">`，同段內換行
-            if (this.sawText) {
-              if (this.sawHeading) this.splitAt = html.length;
-              else html += '<br class="para">';
-              this.sawSegMid = true;
-            } else this.sawSegStart = true;
-            html += `<button type="button" class="segChip" data-seg="${esc(segN)}"`
-              + ` title="第 ${esc(segN)} 段：點一下對讀同結構的庫">¶${esc(segN)}</button>`;
-            this.sawText = true;
-          }
+        if (closing) continue;
+        const segN = attrValue(attrs, 'n');
+        if (!segN) {
+          // 沒有段號的 `<段/>`：舊式段落分隔（與下面的 PARA_TAGS 相同規則）——
+          // 行首只加縮排 span（不插 <br>，免得先空一行），行中才插 `<br class="para">`。
+          // 2026-11-03 之前這個分支被上面的 `continue` 吃掉，`<段/>` 完全沒有作用。
+          if (this.sawText) html += '<br class="para">';
+          html += '<span class="paraIndent">　　</span>';
+          continue;
         }
+        // 有段號：跨庫對齊鍵的小晶片
+        //   * 行首（前面還沒有可見文字）→ `segStart`，連排模式另起一個 `para`
+        //   * 行中、前面是**標題** → `splitAt`：段碼之前的都算標題，另成一個 heading 塊，
+        //     段碼與其後正文變成新段落（作者 2026-11-03：小節與本文不該黏在一起）
+        //   * 行中、前面不是標題（少數）→ 插 `<br class="para">`，同段內換行
+        if (this.sawText) {
+          if (this.sawHeading) this.splitAt = html.length;
+          else html += '<br class="para">';
+          this.sawSegMid = true;
+        } else this.sawSegStart = true;
+        html += `<button type="button" class="segChip" data-seg="${esc(segN)}"`
+          + ` title="第 ${esc(segN)} 段：點一下對讀同結構的庫">¶${esc(segN)}</button>`;
+        this.sawText = true;
         continue;
       }
       if (name === '聯' || name === '_聯') {
