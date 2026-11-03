@@ -4,7 +4,7 @@
  *   * 鏡像 https://nissaya.cn/accelon26/（境外）
  *
  *   cd ts && bun run tools/deploy.ts                # exe ＋ versions.json（兩站）
- *   cd ts && bun run tools/deploy.ts --site         # 另外上傳 www/（首頁、圖片、7z、文章頁、公開數據庫頁）
+ *   cd ts && bun run tools/deploy.ts --site         # 另外上傳 www/（首頁、圖片、7z、公開數據庫頁）
  *   cd ts && bun run tools/deploy.ts --site-only    # 只換 www/，完全不碰 exe／versions.json
  *   cd ts && bun run tools/deploy.ts --check        # 只驗線上，不上傳
  *   cd ts && bun run tools/deploy.ts --mirror-only  # 只做鏡像站（--primary-only 只做主站）
@@ -218,11 +218,7 @@ function adbNames(): string[] {
     : [];
 }
 
-/** 文章頁（www/essays/，由 tools/make-essays.ts 從 docs/essays/ 產生）。 */
-function essayNames(): string[] {
-  const dir = resolve(ROOT, 'www', 'essays');
-  return existsSync(dir) ? readdirSync(dir).filter((n) => /\.(html|css)$/.test(n)).sort() : [];
-}
+/** 文章頁在 /yap/（作者發表紀錄），不在 www/：由 tools/publish-yap.ts 上傳。 */
 
 // 改版說明（changelog）與歷史版本頁（releases）**一定要重生**：它們是桌面版發布的一部分。
 // 以前這一整段被 `!NO_ADB` 綁住，`--no-adb`（只發桌面版、adb 由各工作區發）時就會漏掉，
@@ -280,16 +276,6 @@ async function deployTarget(t: Target): Promise<void> {
         sh([PSCP, '-batch', '-r', '-P', t.port, '-hostkey', hostFingerprint(t), '-pwfile', pwPath(t),
           img, t.user + '@' + t.host + ':' + t.docroot + '/'], `[${t.label}] 上傳 www/img/`);
       }
-      // 文章頁：一支一支傳（先 .tmp 再 mv），免得多一層 essays/essays/
-      const essays = resolve(siteDir, 'essays');
-      if (existsSync(essays)) {
-        tr!.remote(`cd '${t.docroot}' && mkdir -p essays`, '建立 essays/ 目錄');
-        for (const name of essayNames()) {
-          tr!.upload(resolve(essays, name), t.docroot + '/essays/' + name + '.tmp');
-          tr!.remote(`cd '${t.docroot}/essays' && chmod 644 '${name}.tmp' && mv -f '${name}.tmp' '${name}'`, '換上 essays/' + name);
-        }
-        console.log(`[${t.label}] 文章頁 ${essayNames().length} 個檔案已上傳`);
-      }
       // 歷史 release ZIP：只上傳站上沒有的（同一天重發會覆蓋同名檔）
       const relDir = resolve(ROOT, 'www', 'releases');
       if (existsSync(relDir)) {
@@ -329,7 +315,6 @@ async function verifyTarget(t: Target): Promise<void> {
     const urls: string[] = [...siteNames(), ...siteZipNames()];
     for (const n of adbNames()) urls.push('adb/' + n);
     for (const n of releaseNames()) urls.push('releases/' + n);
-    for (const n of essayNames()) urls.push('essays/' + n);
     for (const u of urls) {
       const r = await fetch(t.base + u, { method: 'HEAD', headers: { 'cache-control': 'no-cache' } });
       if (!r.ok) throw new Error(t.base + u + ' 讀不到（HTTP ' + r.status + '）');

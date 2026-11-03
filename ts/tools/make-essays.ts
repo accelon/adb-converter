@@ -1,17 +1,17 @@
 /**
- * 產生官網「文章」頁（www/essays/）。
+ * 產生「發表紀錄」的文章頁（官網 /yap/essays/）。
  *
  * 源稿在 docs/essays/（canonical，只讀）：本工具只做排版，不改字、不刪段、
  * 不加導讀。篇名、段落、小標題、數字都照源稿原樣輸出。
  *
- *   cd ts && bun run tools/make-essays.ts
+ *   cd ts && bun run tools/make-essays.ts [--out <目錄>]
  *
- * 產出：
- *   www/essays/index.html                        系列索引
- *   www/essays/the-day-the-earth-moved.html      主文
- *   www/essays/appendix-1-for-technical-readers.html
- *   www/essays/appendix-2-for-textual-scholars.html
- *   www/essays/essays.css                        共用版面
+ * 產出（預設直接寫進網站的 yap 工作目錄，兩站共用同一份）：
+ *   <out>/index.html                        系列索引
+ *   <out>/the-day-the-earth-moved.html      主文
+ *   <out>/appendix-1-for-technical-readers.html
+ *   <out>/appendix-2-for-textual-scholars.html
+ *   <out>/essays.css                        共用版面
  *
  * 繁簡：用 agent-norms 的無損簡體表（SAFE_PAIRS），只抽本篇用到的字；
  * 主站 shutonggui.cn 預設簡體、鏡像 nissaya.cn 預設繁體（writing-skill §13）。
@@ -21,7 +21,9 @@ import { resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dir, '../..');
 const SRC = resolve(ROOT, 'docs/essays');
-const OUT = resolve(ROOT, 'www/essays');
+const args = process.argv.slice(2);
+const outArg = args.indexOf('--out');
+const OUT = resolve(outArg >= 0 && args[outArg + 1] ? args[outArg + 1] : 'D:\\nissaya.cn\\html\\yap\\essays');
 const DATA = 'D:\\2026\\agent-norms\\lossless-simplified\\simplified-data.ts';
 
 const SERIES = '從內觀研究所啟程的巴利佛典學習之旅';
@@ -312,11 +314,11 @@ function renderEssay(e: (typeof ESSAYS)[number]) {
   }
   const titleOf = (x: (typeof ESSAYS)[number]) => parse(readFileSync(resolve(SRC, x.md), 'utf8')).title;
   const footLinks = [
-    '      <a href="index.html">← 文章索引</a>',
+    '      <a href="index.html">← 系列索引</a>',
     e.kind === 'main'
       ? ESSAYS.filter((x) => x.kind === 'appendix').map((x) => `      <a href="${x.slug}">${esc(titleOf(x))}</a>`).join('\n')
       : `      <a href="${ESSAYS[0].slug}">主文：${esc(titleOf(ESSAYS[0]))}</a>`,
-    '      <a href="../index.html">accelon26 官網</a>',
+    '      <a href="../index.html">← 發表紀錄</a>',
   ].join('\n');
 
   const header = [
@@ -333,8 +335,8 @@ function renderEssay(e: (typeof ESSAYS)[number]) {
     title: `${src.title} · ${SERIES}`,
     desc: `《${SERIES}》· ${src.title} · ${DATE}`,
     body: `<header>\n${header}\n</header>\n\n<article class="wrap">\n${parts.join('\n\n')}\n</article>`,
-    navBack: 'index.html',
-    navLabel: '← 文章',
+    navBack: '../index.html',
+    navLabel: '← 發表紀錄',
     footer: footLinks,
     text: bodyText,
   });
@@ -357,8 +359,8 @@ function renderIndex() {
     desc: `《${SERIES}》文章索引：主文與兩篇附文。`,
     body: `<header>\n${header}\n</header>\n\n<article class="wrap">\n    <ul class="list">\n${items}\n    </ul>\n  </article>`,
     navBack: '../index.html',
-    navLabel: '← accelon26 官網',
-    footer: '      <a href="../index.html">accelon26 官網</a>',
+    navLabel: '← 發表紀錄',
+    footer: '      <a href="../index.html">← 發表紀錄</a>',
     text: bodyText,
   });
 }
@@ -369,9 +371,9 @@ writeFileSync(resolve(OUT, 'essays.css'), CSS);
 for (const e of ESSAYS) {
   const html = renderEssay(e);
   writeFileSync(resolve(OUT, e.slug), html);
-  console.log(`wrote www/essays/${e.slug}  ${html.length} chars`);
+  console.log(`wrote ${OUT}\\${e.slug}  ${html.length} chars`);
 }
 const idx = renderIndex();
 writeFileSync(resolve(OUT, 'index.html'), idx);
-console.log(`wrote www/essays/index.html  ${idx.length} chars`);
-console.log('wrote www/essays/essays.css');
+console.log(`wrote ${OUT}\\index.html  ${idx.length} chars`);
+console.log(`wrote ${OUT}\\essays.css`);

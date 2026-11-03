@@ -436,26 +436,35 @@ cd ts && bun run tools/publish-adb.ts --files ys.adb
 - 另外記下：`make-adb-manifest` 會嚴格要求每個新 adb 在 `deploy/adb-notes.json` 有說明；
   這次 `yl38.adb` 新版沒有 notes 而失敗（那是 adb 工作區的事），所以桌面版發佈要加 `--no-adb`。
 
-## 9. 文章頁（www/essays/，2026-11-03）
+## 9. 文章頁（yap/essays/，2026-11-03）
 
-作者的散文系列放在官網 `/accelon26/essays/`（兩站都有）：
+作者的散文系列放在「發表紀錄」的 `/yap/essays/`（兩站都有）：
 
 | 路徑 | 內容 |
 |---|---|
 | `docs/essays/*.md` | 源稿（canonical，只讀；要改稿改這裡） |
-| `ts/tools/make-essays.ts` | 產生器：Markdown → `www/essays/*.html`；篇名、日期、檔名在檔頭 `ESSAYS` |
-| `www/essays/index.html` | 系列索引（主文＋兩篇附文） |
-| `www/essays/*.html`、`essays.css` | 文章頁；官網首頁 nav 的「文章」連到索引 |
+| `ts/tools/make-essays.ts` | 產生器：Markdown → `D:\nissaya.cn\html\yap\essays\`（`--out` 可改）；篇名、日期、檔名在檔頭 `ESSAYS` |
+| `yap/essays/index.html` | 系列索引（主文＋兩篇附文） |
+| `yap/index.html` | 發表紀錄；2026 那筆連到 `essays/` |
+| `ts/tools/publish-yap.ts` | 上傳到兩站的 `/var/www/html/yap/`，再從線上抓回來比對 sha256 |
 
+- 網站工作目錄是 `D:\nissaya.cn\html`（兩站共用一份）；`yap/essays/` 是產物，檔頭有
+  「由 docs/essays/ 同步產生」的註記，不要直接改。
 - 產生器只做版面：不改字、不刪段、不加導讀；主文不加小標題，附文保留源稿的 `##`。
-  `www/essays/` 是產物，檔頭有「由 docs/essays/ 同步產生」的註記，不要直接改。
 - 繁簡：用 `simplified-data.ts` 的 `SAFE_PAIRS`（無損），只抽本篇用到的字；主站
   `shutonggui.cn` 預設簡體、鏡像 `nissaya.cn` 預設繁體（writing-skill §13），
   頂欄右側可切換。`著→着` 逐篇看過：有「著作／著名／著者…」這類名詞就整頁不轉。
-- 上線：`cd ts && bun run tools/make-essays.ts`，再
-  `bun run tools/deploy.ts --site-only --no-adb`。`deploy.ts` 會把 `www/essays/`
-  一起上傳並逐一 HEAD 驗證；`--no-adb` 不動 adb 頁，`--site-only` 不動 exe／versions.json。
-  頂層 `accelon26.zip` 同大小就跳過，不會因為發文章而重寫發佈檔。
-- 2026-11-03 已上線：<https://shutonggui.cn/accelon26/essays/>、
-  <https://nissaya.cn/accelon26/essays/>。
+- 上架：
+
+  ```powershell
+  cd ts
+  bun run tools/make-essays.ts     # → D:\nissaya.cn\html\yap\essays\
+  bun run tools/publish-yap.ts     # → 兩站的 /var/www/html/yap/，逐一比對線上 sha256
+  ```
+
+  帳密與主機金鑰沿用 `.local/server.env`／`.local/hostkey*.txt`（同 `deploy.ts`）。
+  accelon26 官網首頁 nav 的「文章」連到 `../yap/essays/`，首頁改動用
+  `bun run tools/deploy.ts --site-only --no-adb` 上傳。
+- 2026-11-03 已上線：<https://shutonggui.cn/yap/essays/>、
+  <https://nissaya.cn/yap/essays/>。
 
