@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<!-- 由 docs/essays/ 同步產生（ts/tools/make-essays.ts 執行）；請改源稿再重建，勿直接編輯本檔。 -->
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文章 · 《從內觀研究所啟程的巴利佛典學習之旅》</title>
+<meta name="description" content="《從內觀研究所啟程的巴利佛典學習之旅》文章索引：主文與兩篇附文。">
+<link rel="stylesheet" href="essays.css">
+</head>
+<body style="visibility:hidden">
+
+<div class="topbar">
+  <div class="tb-inner">
+    <a class="back" href="../index.html">← accelon26 官網</a>
+    <a href="#" id="simToggle" aria-label="切換繁體／簡體">简体</a>
+  </div>
+</div>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">文章</p>
+    <h1>《從內觀研究所啟程的巴利佛典學習之旅》</h1>
+    <p class="byline">2026-11-03</p>
+  </div>
+</header>
+
+<article class="wrap">
+    <ul class="list">
+      <li>
+        <a class="t" href="the-day-the-earth-moved.html">土開始動的那天</a>
+        <span class="m">主文 · 2026-11-03</span>
+      </li>
+      <li>
+        <a class="t" href="appendix-1-for-technical-readers.html">附文一：寫給有技術背景的人</a>
+        <span class="m">2026-11-03</span>
+      </li>
+      <li>
+        <a class="t" href="appendix-2-for-textual-scholars.html">附文二：寫給有文獻背景的人</a>
+        <span class="m">2026-11-03</span>
+      </li>
+    </ul>
+  </article>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-links">
+      <a href="../index.html">accelon26 官網</a>
+    </div>
+    <div class="foot-series">《從內觀研究所啟程的巴利佛典學習之旅》 · 2026-11-03</div>
+  </div>
+</footer>
+
+<noscript><style>body{visibility:visible!important}</style></noscript>
+<script>
+(function () {
+  var P = "習习從从內内寫写動动啟启學学獻献給给觀观", M = {};
+  for (var i = 0; i < P.length; i += 2) M[P.charAt(i)] = P.charAt(i + 1);
+  var SKIP_TAG = /^(SCRIPT|STYLE|CODE|PRE)$/;
+  var SKIP_CLASS = /(^|\s)(mono|ex-code|urlbox|no-sim)(\s|$)/;
+  var nodes = [], orig = [];
+  try {
+    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false), n;
+    while ((n = w.nextNode())) {
+      var p = n.parentNode; if (!p) continue;
+      if (SKIP_TAG.test(p.nodeName)) continue;
+      var cn = p.className;
+      if (typeof cn === "string" && SKIP_CLASS.test(cn)) continue;
+      var v = n.nodeValue;
+      if (!v || !v.replace(/\s/g, "")) continue;
+      nodes.push(n); orig.push(v);
+    }
+  } catch (e) { /* 沒有 TreeWalker 就原樣顯示 */ }
+
+  var titleOrig = document.title;
+  function conv(s) {
+    var o = "";
+    for (var i = 0; i < s.length; i++) { var c = s.charAt(i); o += M[c] || c; }
+    return o;
+  }
+  function apply(sim) {
+    for (var i = 0; i < nodes.length; i++) nodes[i].nodeValue = sim ? conv(orig[i]) : orig[i];
+    document.title = sim ? conv(titleOrig) : titleOrig;
+    document.documentElement.lang = sim ? "zh-Hans" : "zh-Hant";
+    var b = document.getElementById("simToggle");
+    if (b) b.textContent = sim ? "繁體" : "简体";
+  }
+
+  var host = location.hostname.toLowerCase();
+  var q = new URLSearchParams(location.search);
+  var saved = null;
+  try { saved = localStorage.getItem("rut.sim"); } catch (e) {}
+  var sim = saved
+    ? saved === "s"
+    : (q.get("sim") === "1" ? true
+      : q.get("sim") === "0" ? false
+      : (host === "shutonggui.cn" || host === "www.shutonggui.cn"));
+
+  try { apply(sim); } catch (e) {}
+  document.body.style.visibility = "visible";
+
+  var btn = document.getElementById("simToggle");
+  if (btn) btn.addEventListener("click", function (e) {
+    e.preventDefault();
+    sim = !sim; apply(sim);
+    try { localStorage.setItem("rut.sim", sim ? "s" : "t"); } catch (e2) {}
+  });
+}());
+</script>
+</body>
+</html>

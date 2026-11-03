@@ -4,7 +4,7 @@
  *   * 鏡像 https://nissaya.cn/accelon26/（境外）
  *
  *   cd ts && bun run tools/deploy.ts                # exe ＋ versions.json（兩站）
- *   cd ts && bun run tools/deploy.ts --site         # 另外上傳 www/（首頁、圖片、7z、公開數據庫頁）
+ *   cd ts && bun run tools/deploy.ts --site         # 另外上傳 www/（首頁、圖片、7z、文章頁、公開數據庫頁）
  *   cd ts && bun run tools/deploy.ts --site-only    # 只換 www/，完全不碰 exe／versions.json
  *   cd ts && bun run tools/deploy.ts --check        # 只驗線上，不上傳
  *   cd ts && bun run tools/deploy.ts --mirror-only  # 只做鏡像站（--primary-only 只做主站）
@@ -196,9 +196,14 @@ function manifestFor(t: Target): string {
 }
 
 // ---- 官網（所有站一樣的檔案） ----------------------------------------------------
+/** 頂層頁面／清單。ZIP 另外處理：站上同大小就不重傳（發佈 ZIP 不該被順手覆蓋）。 */
 function siteNames(): string[] {
   const siteDir = resolve(ROOT, 'www');
-  return readdirSync(siteDir).filter((n) => n.endsWith('.html') || n.endsWith('.zip') || n.endsWith('.json')).sort();
+  return readdirSync(siteDir).filter((n) => n.endsWith('.html') || n.endsWith('.json')).sort();
+}
+function siteZipNames(): string[] {
+  const siteDir = resolve(ROOT, 'www');
+  return readdirSync(siteDir).filter((n) => n.endsWith('.zip')).sort();
 }
 /** www/releases/*.zip：歷史版本；只補站上沒有的（比大小），不重新上傳整批。 */
 function releaseNames(): string[] {
@@ -211,6 +216,12 @@ function adbNames(): string[] {
   return existsSync(dir)
     ? readdirSync(dir).filter((n) => n.endsWith('.html') || n.endsWith('.txt') || n.endsWith('.json')).sort()
     : [];
+}
+
+/** 文章頁（www/essays/，由 tools/make-essays.ts 從 docs/essays/ 產生）。 */
+function essayNames(): string[] {
+  const dir = resolve(ROOT, 'www', 'essays');
+  return existsSync(dir) ? readdirSync(dir).filter((n) => /\.(html|css)$/.test(n)).sort() : [];
 }
 
 // 改版說明（changelog）與歷史版本頁（releases）**一定要重生**：它們是桌面版發布的一部分。
@@ -253,11 +264,31 @@ async function deployTarget(t: Target): Promise<void> {
         tr!.upload(resolve(siteDir, name), t.docroot + '/' + name + '.tmp');
         tr!.remote(`cd '${t.docroot}' && chmod 644 '${name}.tmp' && mv -f '${name}.tmp' '${name}'`, '換上 ' + name);
       }
+      // 頂層 ZIP（accelon26.zip）：大小一樣就不動，免得只是發文章卻把發佈檔重寫一次
+      for (const name of siteZipNames()) {
+        const local = resolve(siteDir, name);
+        const want = statSync(local).size;
+        const listed = tr!.remote(`stat -c %s '${t.docroot}/${name}' 2>/dev/null || echo 0`, '查 ' + name).trim();
+        const have = Number(listed.split(/\r?\n/).pop() || 0);
+        if (have === want) { console.log(`[${t.label}] ${name} 已在線上（同大小），跳過`); continue; }
+        tr!.upload(local, t.docroot + '/' + name + '.tmp');
+        tr!.remote(`cd '${t.docroot}' && chmod 644 '${name}.tmp' && mv -f '${name}.tmp' '${name}'`, '換上 ' + name);
+      }
       const img = resolve(siteDir, 'img');
       if (existsSync(img)) {
         tr!.remote(`cd '${t.docroot}' && mkdir -p img`, '建立 img/ 目錄');
         sh([PSCP, '-batch', '-r', '-P', t.port, '-hostkey', hostFingerprint(t), '-pwfile', pwPath(t),
           img, t.user + '@' + t.host + ':' + t.docroot + '/'], `[${t.label}] 上傳 www/img/`);
+      }
+      // 文章頁：一支一支傳（先 .tmp 再 mv），免得多一層 essays/essays/
+      const essays = resolve(siteDir, 'essays');
+      if (existsSync(essays)) {
+        tr!.remote(`cd '${t.docroot}' && mkdir -p essays`, '建立 essays/ 目錄');
+        for (const name of essayNames()) {
+          tr!.upload(resolve(essays, name), t.docroot + '/essays/' + name + '.tmp');
+          tr!.remote(`cd '${t.docroot}/essays' && chmod 644 '${name}.tmp' && mv -f '${name}.tmp' '${name}'`, '換上 essays/' + name);
+        }
+        console.log(`[${t.label}] 文章頁 ${essayNames().length} 個檔案已上傳`);
       }
       // 歷史 release ZIP：只上傳站上沒有的（同一天重發會覆蓋同名檔）
       const relDir = resolve(ROOT, 'www', 'releases');
@@ -295,9 +326,10 @@ async function deployTarget(t: Target): Promise<void> {
 // ---- 驗證：從真正的網址抓回來比對 ------------------------------------------------
 async function verifyTarget(t: Target): Promise<void> {
   if (SITE_ONLY) {
-    const urls: string[] = siteNames();
+    const urls: string[] = [...siteNames(), ...siteZipNames()];
     for (const n of adbNames()) urls.push('adb/' + n);
     for (const n of releaseNames()) urls.push('releases/' + n);
+    for (const n of essayNames()) urls.push('essays/' + n);
     for (const u of urls) {
       const r = await fetch(t.base + u, { method: 'HEAD', headers: { 'cache-control': 'no-cache' } });
       if (!r.ok) throw new Error(t.base + u + ' 讀不到（HTTP ' + r.status + '）');
