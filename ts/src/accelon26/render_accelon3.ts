@@ -290,6 +290,17 @@ export interface RenderedLine {
    * 標題字級在 `.h` span 上，和方塊種類無關，所以這樣不會讓正文變大。
    */
   segMid?: boolean;
+  /**
+   * 這一行要切成兩塊：`before` 是標題（heading 塊）、`after` 是段碼起的正文（para/line 塊）。
+   * 來源是 `<小節>[小戒]</小節><段 n="7"/>比丘們…` 這種「標題與段同一行」的寫法——
+   * `<段>` ≡ `<p>`，所以段碼之前屬於標題、之後才是本文（作者 2026-11-03）。
+   */
+  split?: { before: string; after: string };
+  /**
+   * DOM id 後綴（`doc-pane` 用 `L{no}{idSuffix}`）。切出來的標題用 `-h`，
+   * 正文那一塊保留原本的 `L{no}`（塗紅、捲動都以有文字的那一塊為準）。
+   */
+  idSuffix?: string;
 }
 
 /** 一個版面塊：段落（多行連排）或標題（單行） */
@@ -333,6 +344,8 @@ export class Accelon3Renderer {
   private sawSegStart = false;
   /** 這一行是不是「標題之後」才出現 `<段 n>`（要當成段落的第一行） */
   private sawSegMid = false;
+  /** `<段 n>` 之前都是標題：切在這裡（見 RenderedLine.split） */
+  private splitAt: number | null = null;
   private readonly opts: Required<Pick<RenderOptions, 'hardBreaks' | 'headScale' | 'pageMarks'>> & {
     marks: { text: string; hue: number }[];
     convert: ((s: string) => string) | null;
@@ -485,6 +498,7 @@ export class Accelon3Renderer {
     this.sawHeading = false;
     this.sawSegStart = false;
     this.sawSegMid = false;
+    this.splitAt = null;
     let html = '';
     // 跨行的標題：這一行開頭先把還開著的補回來（行尾會全部收掉）
     for (const s of this.stack) html += this.openSpan(s.tag, s.depth);
@@ -590,10 +604,14 @@ export class Accelon3Renderer {
         if (!closing) {
           const segN = attrValue(attrs, 'n');
           if (segN) {
-            // 段首：這一行要另起一段（連排模式不能跟上一段黏在一起）。段標記在行中
-            // （前面已經有字）時，至少插一個段落換行，讓它從新的一行開始。
+            // `<段>` ≡ `<p>`（Accelon3 語意）：一律從新的一行開始。
+            //   * 行首（前面還沒有可見文字）→ `segStart`，連排模式另起一個 `para`
+            //   * 行中、前面是**標題** → `splitAt`：段碼之前的都算標題，另成一個 heading 塊，
+            //     段碼與其後正文變成新段落（作者 2026-11-03：小節與本文不該黏在一起）
+            //   * 行中、前面不是標題（少數）→ 插 `<br class="para">`，同段內換行
             if (this.sawText) {
-              html += '<br class="para">';
+              if (this.sawHeading) this.splitAt = html.length;
+              else html += '<br class="para">';
               this.sawSegMid = true;
             } else this.sawSegStart = true;
             html += `<button type="button" class="segChip" data-seg="${esc(segN)}"`
@@ -795,9 +813,19 @@ export class Accelon3Renderer {
     while (this.wordStack.length) if (this.wordStack.pop()) html += '</span>';
     html += '</span>'.repeat(this.notes.filter((x) => x.n).length);
     html += '</span>'.repeat(this.stack.length);
+    // 段碼之前是標題：把那一段切出去當獨立的 heading 塊（`RenderedLine.split`）。
+    // 切點之後沒有可見文字（例如行尾只有 `<段/>`）就退回插 `<br class="para">`。
+    let split: { before: string; after: string } | undefined;
+    if (this.splitAt != null && this.splitAt > 0) {
+      const before = html.slice(0, this.splitAt);
+      const after = html.slice(this.splitAt);
+      const visibleAfter = after.replace(/<[^>]*>/g, '').replace(/[\s\u3000\u00a0]/g, '');
+      if (visibleAfter) split = { before, after };
+      else html = before + '<br class="para">' + after;
+    }
     return {
       no: lineNo, html, raw: text, visible: this.sawText, heading: this.sawHeading,
-      segStart: this.sawSegStart, segMid: this.sawSegMid,
+      segStart: this.sawSegStart, segMid: this.sawSegMid, split,
     };
   }
 
@@ -872,7 +900,7 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
     if (!prev || prev.kind !== 'line' || !prev.lines.length) return false;
     const last = prev.lines[prev.lines.length - 1];
     last.html += prefix
-      + `<span class="lineText contLine" id="L${info.no}" data-src="${esc(info.raw)}">${info.html}</span>`;
+      + `<span class="lineText contLine" id="L${info.no}${info.idSuffix ?? ''}" data-src="${esc(info.raw)}">${info.html}</span>`;
     return true;
   };
   /** 前一個 block 是不是圖版：圖不能和後面的文字擠在同一行（作者 2026-11-01） */
@@ -889,7 +917,24 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
     return true;
   };
   for (let i = 0; i < lines.length; i++) {
-    const info = r.lineInfo(lines[i], lineNumbers[i] ?? i);
+    let info = r.lineInfo(lines[i], lineNumbers[i] ?? i);
+    // 「標題＋段」同一行（`<段>` ≡ `<p>`，作者 2026-11-03）：段碼之前是標題，先推出去
+    // 當自己的 heading 塊；剩下的（段碼＋本文）照一般流程走，續行才會接在同一段。
+    if (info.split) {
+      const head: RenderedLine = {
+        ...info, html: info.split.before, heading: true,
+        segStart: false, segMid: false, split: undefined, idSuffix: '-h',
+      };
+      flushBlanks();
+      out.push({ kind: hard ? 'line' : 'heading', lines: [head] });
+      cur = null;
+      sawBlank = false;
+      lastPage = false;
+      info = {
+        ...info, html: info.split.after, heading: false,
+        segStart: true, segMid: false, split: undefined, idSuffix: '',
+      };
+    }
     if (hard) {
       // 頁碼行本身 visible=true（sawText 會被頁碼設起來），所以要看「拿掉頁碼後還剩什麼」
       const rest = info.html
@@ -968,7 +1013,7 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
     // `segMid` 的行要當**正文段落的第一行**：標題字級在 `.h` span 上，方塊種類不影響字級；
     // 但若當成 heading 塊，段的第一句會跟同段的續行（下一行起）分成兩個段落。
     if (info.segMid) { flushBlanks(); cur = null; sawBlank = false; lastPage = false; }
-    if (!info.segMid && (info.heading || rawHeading)) { out.push({ kind: 'heading', lines: [info] }); cur = null; sawBlank = false; lastPage = false; continue; }
+    if (!info.segMid && !info.segStart && (info.heading || rawHeading)) { out.push({ kind: 'heading', lines: [info] }); cur = null; sawBlank = false; lastPage = false; continue; }
     if (info.segStart) { cur = null; sawBlank = false; lastPage = false; }
     if (sawBlank) { cur = null; sawBlank = false; }
     // 這一行以頁碼結尾（…知見<頁/>）→ 後面的空行不算段落界線

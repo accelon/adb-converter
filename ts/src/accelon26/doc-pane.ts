@@ -1099,7 +1099,7 @@ function renderBlocks(blocks: RenderBlock[], s: DocSession): string {
     if (block.kind === 'line') {
       const l = block.lines[0];
       const cls = 'docLine' + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
-      return '<div class="' + cls + '" id="L' + l.no + '" data-src="' + escapeHtml(l.raw) + '">'
+      return '<div class="' + cls + '" id="L' + l.no + (l.idSuffix ?? '') + '" data-src="' + escapeHtml(l.raw) + '">'
         + '<div class="lineText">' + l.html + '</div></div>';
     }
     const inner = block.lines.map((l, i) => {
@@ -1107,7 +1107,7 @@ function renderBlocks(blocks: RenderBlock[], s: DocSession): string {
       // 英文行接起來要留一個空白，中文不用（作者 2026-10：把硬換行去掉）
       const prev = i > 0 ? block.lines[i - 1].raw : '';
       const join = i > 0 && /[A-Za-z0-9]$/.test(prev) && /^[A-Za-z0-9]/.test(l.raw) ? ' ' : '';
-      return join + '<span class="' + cls + '" id="L' + l.no + '" data-src="' + escapeHtml(l.raw) + '">'
+      return join + '<span class="' + cls + '" id="L' + l.no + (l.idSuffix ?? '') + '" data-src="' + escapeHtml(l.raw) + '">'
         + '<span class="lineText">' + l.html + '</span></span>';
     }).join('');
     const tag = block.kind === 'heading' ? 'div' : 'p';

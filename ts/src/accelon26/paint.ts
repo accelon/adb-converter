@@ -97,8 +97,23 @@ function markPhraseInLine(line: number | undefined, phrase: string | undefined, 
   // 顯示模式（無損／強制簡體）下畫面上的字已經轉過，比對的字串也要跟著轉
   const conv = simConverter();
   const needle = conv ? conv(phrase) : phrase;
-  const box = document.getElementById('L' + line)?.querySelector<HTMLElement>('.lineText');
-  if (!box) return null;
+  // 「標題＋段」同行的來源行會切成兩列（`L{n}-h` 標題、`L{n}` 正文，見 render_accelon3），
+  // 查詢可能落在任何一半，所以兩塊都試。
+  const boxes = [`L${line}`, `L${line}-h`]
+    .map((id) => document.getElementById(id)?.querySelector<HTMLElement>('.lineText'))
+    .filter((x): x is HTMLElement => !!x);
+  for (const box of boxes) {
+    const marked = markInBox(box, needle, va, hue, all);
+    if (marked) {
+      if (!noScroll) marked.scrollIntoView({ block: 'center' });
+      return marked;
+    }
+  }
+  return null;
+}
+
+/** 在一個 `.lineText` 裡把 `needle` 包成 mark（由後往前，位移才不會被前面節點影響） */
+function markInBox(box: HTMLElement, needle: string, va: number, hue: number, all: boolean): HTMLElement | null {
   const text = lineTextOf(textNodesOf(box));
   const at: number[] = [];
   let from = 0;
@@ -113,8 +128,6 @@ function markPhraseInLine(line: number | undefined, phrase: string | undefined, 
     const mark = markRange(textNodesOf(box), at[k], at[k] + needle.length, va, hue);
     if (mark && !first) first = mark;
   }
-  if (!first) return null;
-  if (!noScroll) first.scrollIntoView({ block: 'center' });
   return first;
 }
 

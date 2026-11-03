@@ -36,19 +36,33 @@ describe('<段> 的分段行為', () => {
     expect(textOf(html)).toBe('前文¶3後文');
   });
 
-  test('「標題＋段」同行：這一行是段落的第一行，續行要接在同一段', () => {
+  test('「標題＋段」同行：標題自成 heading 塊，段與續行合成一段', () => {
     // ccc／cs-mm／sc／yh 的實際形狀：`<小節>[小戒]</小節><段 n="7"/>比丘們…`
+    const ctx3: RenderContext = { depthOf: new Map([['小節', 3], ['段', 4]]), levels: 5 };
     const blocks = renderPageBlocks(
       ['<小節>[小戒]</小節><段 n="7"/>比丘們！這是那小量', '、低量的戒量狀態。', '<小節>[常恆論]</小節><段 n="30"/>另有沙門'],
       [1, 2, 3],
       { hardBreaks: false },
-      { depthOf: new Map([['小節', 3], ['段', 4]]), levels: 5 },
+      ctx3,
     );
-    expect(blocks.map((b) => b.kind + ':' + b.lines.length)).toEqual(['para:2', 'para:1']);
-    // 標題仍在第一行、字級由 .h span 決定；後面接段碼與正文
-    const first = blocks[0].lines[0].html;
-    expect(first).toContain('class="h"');
-    expect(first.indexOf('class="segChip"')).toBeGreaterThan(first.indexOf('class="h"'));
+    expect(blocks.map((b) => b.kind + ':' + b.lines.length))
+      .toEqual(['heading:1', 'para:2', 'heading:1', 'para:1']);
+    // 標題塊：只有標題，沒有段碼；段落塊：從段碼開始
+    expect(blocks[0].lines[0].html).toContain('class="h"');
+    expect(blocks[0].lines[0].html).not.toContain('segChip');
+    expect(blocks[1].lines[0].html.startsWith('<button')).toBe(true);
+    // DOM id：標題帶 -h，正文保留原本行號（塗紅／捲動以有文字的那一塊為準）
+    expect(blocks[0].lines[0].idSuffix).toBe('-h');
+    expect(blocks[1].lines[0].idSuffix ?? '').toBe('');
+    expect(blocks[1].lines[0].no).toBe(blocks[0].lines[0].no);
+  });
+
+  test('原書分行：「標題＋段」同行也切成兩列（id 不重複）', () => {
+    const ctx3: RenderContext = { depthOf: new Map([['小節', 3], ['段', 4]]), levels: 5 };
+    const blocks = renderPageBlocks(['<小節>[小戒]</小節><段 n="7"/>比丘們…'], [9], { hardBreaks: true }, ctx3);
+    expect(blocks.map((b) => b.kind)).toEqual(['line', 'line']);
+    expect(blocks[0].lines[0].idSuffix).toBe('-h');
+    expect(blocks[1].lines[0].idSuffix ?? '').toBe('');
   });
 
   test('沒有 <段> 的庫不受影響：仍然只有空行分段', () => {
