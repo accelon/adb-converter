@@ -18,11 +18,12 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
   本工作區不改 ys 的正文／資料、不部署 ys.adb。ys 工作區也可能直接修改本區的
   `docs/adb/ys*.md`，那些檔案以那邊為準；本區只改閱讀器與官網。
 - 還在這裡的 adb 實驗（例如 `jingqun`）可以改，但要知道它將來可能搬走。
-- **開新的 adb 工作區**（作者 2026-11-01）：先把
-  `docs/adb/new-adb-AGENTS.md` 複製成 `D:\2026\<name>\AGENTS.md`，填好
-  `{{DB}}`／`{{TITLE}}`／`{{WORKDIR}}`／`{{SOURCE}}`，再開新工作區；步驟見
-  `docs/adb/new-adb-workspace.md`。新工作區的 `AGENTS.md` 會要求它回本區讀
-  「紀律、共用 know-how、版本紀錄」三份文件。
+- **開新工作區一律到 `D:\2026\agent-norms` 拿模板**（作者 2026-11-04，改 2026-11-01 舊做法）：
+  adb 庫用 `D:\2026\agent-norms\new-adb-AGENTS.md`，一般專案用
+  `new-workspace-AGENTS.md`；步驟看 `D:\2026\agent-norms\new-workspace.md`（adb 另有
+  `new-adb-workspace.md`）。本區 `docs/adb/new-adb-workspace.md`、`new-adb-AGENTS.md`
+  只剩一行指標，**不要在那裡補內容**。新工作區的 `AGENTS.md` 會要求它回 agent-norms
+  讀紀律，並回本區讀「共用 know-how、版本紀錄」。
 - **成品一律放 `D:\accelon3`**（作者 2026-10-30）：`*.adb`、`accelon26.html`、
   `accelon26.exe` 都在那個資料夾；`build/` 只放建置中間檔與可重建的輸出。
   桌面版開機用 `ListAdbs` 列出工作目錄與 exe 所在資料夾的 `*.adb`，放在別處它找不到。
@@ -149,6 +150,14 @@ bun run tools/cbeta-base.ts --check
 
 ## 6. 改動與回報
 
+- **背景工作與行程（2026-11-04 作者指示）**：不要讓 dev server／CDP 測試／瀏覽器／exe 留在背景。
+  起背景工作要記下 job id；收工前用 `job_list` 加
+  `Get-CimInstance Win32_Process -Filter "Name='bun.exe'"` 檢查，把 bun／node／`accelon26`／
+  測試瀏覽器（`--user-data-dir=...build/...`）一併收掉。**不能只 kill pwsh 外層**——
+  子行程會變孤兒繼續跑（2026-11-04 留下 7 個 bun，作者風扇一直吹）。
+  長跑工作要加 timeout；回報前確認 `Get-Process bun,accelon26` 沒有殘留，
+  除非使用者明說要留 dev server。canonical 版見
+  `D:\2026\agent-norms\yap-software-practice.md` §12（所有工作區）。
 - 文件、UI、註解用繁體中文；程式識別字用英文。
 - 優先用小而集中的 diff；不要碰與任務無關的檔案。
 - 工作區可能同時有其他人的未提交改動；**不要** `git add -A`、`git restore .`、`git reset --hard`

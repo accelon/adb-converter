@@ -245,4 +245,4 @@ bun run ts/tools/terms.ts glossary   # 產生 glossary 容器內容
 | 舊庫升級 | `old-adb-upgrade-skill.md` |
 | 印順 `ys` | `ys.md`、`ys-steps.md`（`D:\2026\ys` 為準） |
 | 福嚴 `fuyan` | `D:\2026\fuyan\README.md`、`REPORT-05B.md` |
-| 開新 adb 工作區 | `new-adb-workspace.md`、`new-adb-AGENTS.md`（複製模板到新資料夾） |
+| 開新 adb 工作區 | **`D:\2026\agent-norms\new-adb-workspace.md`**（canonical，2026-11-04 移出）；本區 `new-adb-workspace.md` 只有指標 |

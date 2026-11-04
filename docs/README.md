@@ -10,7 +10,7 @@
 |---|---|
 | [adb/adb-knowhow.md](./adb/adb-knowhow.md) | **共用 know-how**：容器、VA、漢字位置、缺字／字型、`glossary`／`<术>`、`<聯 j>`、建置六步、檢查表、已知問題 |
 | [adb/adb-version-log.md](./adb/adb-version-log.md) | **版本紀錄（canonical）**：各 adb 每次建置的日期／sha／大小／工作區／說明；adb 工作區建置後要加一列 |
-| [adb/new-adb-workspace.md](./adb/new-adb-workspace.md)、[adb/new-adb-AGENTS.md](./adb/new-adb-AGENTS.md) | **開新 adb 工作區**：先把 `AGENTS.md` 模板帶進新資料夾（要求回本區讀紀律），再開工作區 |
+| [adb/new-adb-workspace.md](./adb/new-adb-workspace.md) | 開新 adb 工作區（**已移到 agent-norms**）：canonical 是 `D:\2026\agent-norms\new-adb-workspace.md`，模板 `new-adb-AGENTS.md`；本區只留指標 |
 | [adb/stable-adb.md](./adb/stable-adb.md) | 底座／標注／功能三層、CBETA 換版流程、30 MB 與流量政策 |
 | [adb/missing-char.md](./adb/missing-char.md) | **重要**：缺字（`&CB;`／`&SD;`／`&RJ;`）與字型 |
 | [adb/han-position.md](./adb/han-position.md) | 漢字位置一律 code point；`j`／`off`／`hanline` 與 Range 的換算、遷移 |
@@ -37,6 +37,7 @@
 | [adb/public-databases.md](./adb/public-databases.md) | 官網公開資料庫 manifest 與桌面下載 |
 | [adb/goryeo-steps.md](./adb/goryeo-steps.md) | 高麗藏 `goryeo.adb` 建置步驟；工作區 `D:\2026\goryeo`（2026-11-01 建立） |
 | `D:\2026\fuyan\README.md`、`REPORT-05B.md` | 福嚴 `fuyan.adb`（外部工作區） |
+| [github.com/accelon/vedic](https://github.com/accelon/vedic) | **吠陀與奧義書三語平行** `veda.adb`＋`sa`／`en`／`zh`（獨立 repo，本地 `D:\2026\vedic`；成品仍產到 `D:\2026\sz\accelon26`） |
 
 ## 共用機制與工具鏈
 
