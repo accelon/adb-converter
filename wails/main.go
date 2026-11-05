@@ -246,8 +246,8 @@ func main() {
 	log.Fatal(app.Run())
 }
 
-// runSelfTest 是不開 GUI 的自檢：列出當前工作目錄裡的 *.adb（只讀 256 位元組檔頭），
-// 印出 mmap+base64 的讀取耗時，並驗證越界讀取會回報錯誤。回傳行程結束碼。
+// runSelfTest 是不開 GUI 的自檢：列出 adb 資料夾（預設＝exe 所在資料夾）裡的 *.adb（只讀
+// 256 位元組檔頭），印出 mmap+base64 的讀取耗時，並驗證越界讀取會回報錯誤。回傳行程結束碼。
 //
 //	go build -o ..\build\desktop\accelon26.exe .
 //	cd ..
