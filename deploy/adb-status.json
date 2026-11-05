@@ -1,11 +1,23 @@
 {
-  "_comment": "公開資料庫的狀態。status: available（可下載）／wip（施工中，不下載）／revision（整修中）。downloadable:false 的庫只記在 manifest 版本歷史裡，官網與桌面版都不提供下載。source／licenseNote 是給使用者看的出處與授權說明。",
+  "_comment": "公開資料庫的狀態。status: available（可下載）／wip（施工中，不下載）／revision（整修中）。downloadable:false 的庫只記在 manifest 版本歷史裡，官網與桌面版都不提供下載。source／licenseNote 是給使用者看的出處與授權說明。official:true 是官方委託製作，公開頁會加醒目標記；pin 是置頂順序（1 最前，沒有的照 index.txt 的順序）。",
   "fuyan.adb": {
     "status": "available",
-    "label": "內測（限福嚴師生）",
-    "source": "釋厚觀《空之探究講義》（2004）Word 講稿，福嚴佛學院",
+    "official": true,
+    "pin": 1,
+    "label": "可下載",
+    "source": "釋厚觀《空之探究講義》（2004）Word 講稿，福嚴佛學院（官方委託製作）",
     "licenseNote": "講義文字、圖表版權屬福嚴佛學院；內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。",
-    "note": "內測中，限福嚴師生。2026-11-01：字元級 j 改用 code point 計（擴充 B 區算 1），1,176 條大正引用重算。32 張圖表以 SVG 內嵌。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。"
+    "note": "釋厚觀《空之探究講義》全 349 頁、1,254 條註。2026-11-01：字元級 j 改用 code point 計（擴充 B 區算 1），1,176 條大正引用重算；32 張圖表以 SVG 內嵌。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。"
+  },
+  "ys.adb": {
+    "status": "available",
+    "official": true,
+    "pin": 2
+  },
+  "tx.adb": {
+    "status": "available",
+    "official": true,
+    "pin": 3
   },
   "taisho.adb": {
     "status": "available",
@@ -35,10 +47,10 @@
     "note": "作者要大修，先下架，暫不公開下載。"
   },
   "yl38.adb": {
-    "status": "available",
-    "label": "內測（限福嚴師生）",
+    "status": "revision",
+    "label": "已下架",
     "source": "釋厚觀《空之探究講義》（2004）Word 講稿，福嚴佛學院講義（yl38：正文＋腳注釋群兩本書）",
     "licenseNote": "講義文字、圖表版權屬福嚴佛學院；內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。",
-    "note": "內測中，限福嚴師生，請勿外傳。正文與腳注釋群分成兩本書（注釋群目錄到節），頁碼為 yl38p1 起；1,176 條引印順著作用的 <聯> 已對到 ys.adb。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。"
+    "note": "作者 2026-11-05 指示下架：同一份講義以單本書版 fuyan.adb 為準，yl38（正文＋腳注釋群兩本書）不再公開；兩站的檔案已刪除（404），舊版本記錄仍留在 deploy/adb-history.json。"
   }
 }

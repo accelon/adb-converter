@@ -286,6 +286,9 @@ cd ts && bun run tools/deploy.ts --site-only    # 連 www/adb/ 一起上傳，�
   建置日期（檔案時間 —— adb 檔頭沒有日期欄位）、檔案大小。
 * 產出 `www/adb/index.html`（版面直接沿用 `www/index.html` 的 `<style>` 與頁首頁尾，官網改樣式
   時這頁會跟著改）與 `index.txt`（清單存檔）。
+* 「官方委託製作」與置頂（2026-11-05）：看 `deploy/adb-status.json` 的 `official:true` 與
+  `pin`。有 official 的列在題名旁加金色「官方委託製作」標記、整列淡金底；`pin` 小的排最前面
+  （1 最前），其餘照 `index.txt` 的順序。這兩個欄位只影響公開頁，`manifest.json` 不帶。
 
 `deploy.ts --site`／`--site-only` 會把 `www/adb/*.html`、`*.txt`、`*.json` 一起傳上去（不會傳 `.adb`）。
 
@@ -395,6 +398,9 @@ cd ts && bun run tools/publish-adb.ts --files ys.adb
   兩站的 `adb/taisho.adb`、`adb/wxzj.adb` 已刪除（404）。整理完成後可改成 available，
   讓使用者整檔下載。
 * `fgdict.adb` 作者要大修：已從 index／manifest 移除，兩站檔案刪除（404）。
+* `yl38.adb`（福嚴講義（空之探究））2026-11-05 作者指示下架：已從 index／manifest 移除，
+  兩站檔案刪除（404）；同一份講義以單本書版 `fuyan.adb` 為準，舊版本記錄仍留在
+  `deploy/adb-history.json`。同日 `fuyan.adb`、`ys.adb`、`tx.adb` 改列「官方委託製作」並置頂。
 * App 的 `adb-update.ts`：大型底座（>30 MB）照樣顯示「下載整檔」，但不列入「全部更新」；
   `downloadable:false` 才完全不出現下載按鈕。
 

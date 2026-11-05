@@ -17,6 +17,9 @@
  *   檔案大小   stat
  *
  * 頁面的 <style>／頁首／頁尾直接從 www/index.html 抓過來，所以官網改樣式時這頁會跟著改。
+ *
+ * 「官方委託製作」與置頂（作者 2026-11-05）：看 deploy/adb-status.json 的 official／pin。
+ * 有 official 的列在題名旁加醒目標記，pin 小的排最前面（其餘照 index.txt 的順序）。
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -134,15 +137,33 @@ try {
   allDbs = mf.dbs ?? [];
   wip = allDbs.filter((d) => d.downloadable === false || (d.status && d.status !== 'available'));
 } catch { /* 還沒有 manifest 就只列可下載的 */ }
-// 可下載但帶說明的庫（例：內測中、限某校師生）
+// 可下載但帶說明的庫（例：限某校師生）
 const wipNotes = allDbs.filter((d) => d.statusNote && d.statusLabel && d.statusLabel !== '可下載' && d.downloadable !== false);
+
+// 官方委託製作＋置頂（作者 2026-11-05）：狀態檔的 official／pin 只影響這一頁的呈現，
+// 不進 manifest（manifest 是給閱讀器比對版本用的）。沒列 pin 的照 index.txt 的順序。
+const pins = new Map<string, { official: boolean; pin: number }>();
+try {
+  const st = JSON.parse(readFileSync(resolve(ROOT, 'deploy/adb-status.json'), 'utf8')) as Record<string, { official?: boolean; pin?: number } | string>;
+  for (const [file, v] of Object.entries(st)) {
+    if (file.startsWith('_') || typeof v !== 'object' || !v) continue;
+    if (!v.official && !v.pin) continue;
+    pins.set(file.toLowerCase(), { official: !!v.official, pin: v.pin ?? 0 });
+  }
+} catch { /* 沒有狀態檔就照 index.txt 的順序、不標記 */ }
+const pinOf = (file: string) => pins.get(file.toLowerCase())?.pin ?? Number.MAX_SAFE_INTEGER;
+const isOfficial = (file: string) => !!pins.get(file.toLowerCase())?.official;
+
+// 置頂：pin 小的在前（Array.sort 穩定；同 pin 或沒 pin 的保持 index.txt 的順序）
+rows.sort((a, b) => pinOf(a.fileName) - pinOf(b.fileName));
+const officialNames = rows.filter((r) => isOfficial(r.fileName)).map((r) => r.name);
 
 const totalChars = rows.reduce((a, r) => a + (r.chars ?? 0), 0);
 const totalSize = rows.reduce((a, r) => a + r.size, 0);
 const known = rows.filter((r) => r.chars !== null).length;
 
-const body = rows.map((r) => `        <tr>
-          <td class="db"><b>${esc(r.name)}</b><span class="file">${esc(r.fileName)}</span>${docOf.has(r.fileName) ? `<a class="docLink" href="${esc(docOf.get(r.fileName)!)}">改版說明</a>` : ''}</td>
+const body = rows.map((r) => `        <tr${isOfficial(r.fileName) ? ' class="official"' : ''}>
+          <td class="db"><b>${esc(r.name)}</b>${isOfficial(r.fileName) ? '<span class="officialTag">官方委託製作</span>' : ''}<span class="file">${esc(r.fileName)}</span>${docOf.has(r.fileName) ? `<a class="docLink" href="${esc(docOf.get(r.fileName)!)}">改版說明</a>` : ''}</td>
           <td class="num">${r.chars === null ? '—' : fmtInt(r.chars)}</td>
           <td class="num">${fmtDate(r.mtime)}</td>
           <td class="num">${r.size ? fmtSize(r.size) : '—'}</td>
@@ -174,6 +195,16 @@ const html = `<!DOCTYPE html>
   .dbTable .db .docLink { display: inline-block; margin-top: 3px; font-size: 12.5px; color: var(--accent); }
   .dbTable .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); }
   .dbTable .dl { text-align: right; white-space: nowrap; }
+  /* 官方委託製作（作者 2026-11-05）：置頂、題名旁一個金色標記、整列淡金底 */
+  .dbTable tr.official { background: rgba(169,114,10,.06); }
+  html[data-theme="dark"] .dbTable tr.official { background: rgba(255,212,121,.07); }
+  .dbTable tr.official td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+  .officialTag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+    background: var(--gold); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .02em;
+    vertical-align: 1px; white-space: nowrap; }
+  html[data-theme="dark"] .officialTag { color: #231a05; }
+  .dbOfficialNote { margin: 20px 0 0; color: var(--muted2); font-size: 14.5px; }
+  .dbOfficialNote b { color: var(--gold); }
   .dbWarn { margin: 16px 0 0; padding: 12px 16px; border-left: 3px solid var(--gold);
     background: var(--panel); color: var(--muted2); font-size: 13.5px; line-height: 1.7; }
   .dbWarn b { color: var(--fg); margin-right: 6px; }
@@ -225,6 +256,8 @@ const html = `<!DOCTYPE html>
       accelon26 開啟時就會自動列出來；也可以在程式裡用 <code>📁</code> 或拖進視窗。</p>
     <p class="dbMeta">共 ${rows.length} 個可下載資料庫${wip.length ? ` · 另有 ${wip.length} 個施工中（不提供下載）` : ''}${known ? ` · 合計約 ${fmtInt(totalChars)} 字` : ''} · 下載約 ${fmtSize(totalSize)}</p>
   </section>
+
+  ${officialNames.length ? `<p class="dbOfficialNote">★ 置頂：${officialNames.map((n) => `<b>${esc(n)}</b>`).join('、')}為<b>官方委託製作</b>。</p>` : ''}
 
   <table class="dbTable">
     <thead>

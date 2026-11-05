@@ -296,6 +296,16 @@
   .dbTable .db .docLink { display: inline-block; margin-top: 3px; font-size: 12.5px; color: var(--accent); }
   .dbTable .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); }
   .dbTable .dl { text-align: right; white-space: nowrap; }
+  /* 官方委託製作（作者 2026-11-05）：置頂、題名旁一個金色標記、整列淡金底 */
+  .dbTable tr.official { background: rgba(169,114,10,.06); }
+  html[data-theme="dark"] .dbTable tr.official { background: rgba(255,212,121,.07); }
+  .dbTable tr.official td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+  .officialTag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+    background: var(--gold); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .02em;
+    vertical-align: 1px; white-space: nowrap; }
+  html[data-theme="dark"] .officialTag { color: #231a05; }
+  .dbOfficialNote { margin: 20px 0 0; color: var(--muted2); font-size: 14.5px; }
+  .dbOfficialNote b { color: var(--gold); }
   .dbWarn { margin: 16px 0 0; padding: 12px 16px; border-left: 3px solid var(--gold);
     background: var(--panel); color: var(--muted2); font-size: 13.5px; line-height: 1.7; }
   .dbWarn b { color: var(--fg); margin-right: 6px; }
@@ -345,14 +355,37 @@
     <h1>公開數據庫</h1>
     <p>這些 <code>.adb</code> 都可以直接下載：放進 <code>accelon3.exe</code> 同一個資料夾，
       accelon26 開啟時就會自動列出來；也可以在程式裡用 <code>📁</code> 或拖進視窗。</p>
-    <p class="dbMeta">共 10 個可下載資料庫 · 合計約 229,140,777 字 · 下載約 639.9 MB</p>
+    <p class="dbMeta">共 9 個可下載資料庫 · 合計約 228,429,323 字 · 下載約 641.0 MB</p>
   </section>
+
+  <p class="dbOfficialNote">★ 置頂：<b>福嚴講義</b>、<b>印順法師佛學著作集</b>、<b>太虛大師全書</b>為<b>官方委託製作</b>。</p>
 
   <table class="dbTable">
     <thead>
       <tr><th>資料庫</th><th class="num">字數（約）</th><th class="num">建置日期</th><th class="num">檔案大小</th><th class="dl">下載</th></tr>
     </thead>
     <tbody>
+        <tr class="official">
+          <td class="db"><b>福嚴講義</b><span class="officialTag">官方委託製作</span><span class="file">fuyan.adb</span></td>
+          <td class="num">627,565</td>
+          <td class="num">2026-11-02</td>
+          <td class="num">3.7 MB</td>
+          <td class="dl"><a href="fuyan.adb" download>下載</a></td>
+        </tr>
+        <tr class="official">
+          <td class="db"><b>印順法師佛學著作集</b><span class="officialTag">官方委託製作</span><span class="file">ys.adb</span><a class="docLink" href="ys.html">改版說明</a></td>
+          <td class="num">8,206,513</td>
+          <td class="num">2026-11-02</td>
+          <td class="num">31.8 MB</td>
+          <td class="dl"><a href="ys.adb" download>下載</a></td>
+        </tr>
+        <tr class="official">
+          <td class="db"><b>太虛大師全書</b><span class="officialTag">官方委託製作</span><span class="file">tx.adb</span><a class="docLink" href="tx.html">改版說明</a></td>
+          <td class="num">6,279,194</td>
+          <td class="num">2026-10-28</td>
+          <td class="num">20.7 MB</td>
+          <td class="dl"><a href="tx.adb" download>下載</a></td>
+        </tr>
         <tr>
           <td class="db"><b>十三經</b><span class="file">13j.adb</span></td>
           <td class="num">818,554</td>
@@ -368,25 +401,11 @@
           <td class="dl"><a href="swjzz.adb" download>下載</a></td>
         </tr>
         <tr>
-          <td class="db"><b>太虛大師全書</b><span class="file">tx.adb</span><a class="docLink" href="tx.html">改版說明</a></td>
-          <td class="num">6,279,194</td>
-          <td class="num">2026-10-28</td>
-          <td class="num">20.7 MB</td>
-          <td class="dl"><a href="tx.adb" download>下載</a></td>
-        </tr>
-        <tr>
           <td class="db"><b>于淩波居士論著</b><span class="file">yulinpo.adb</span></td>
           <td class="num">4,208,988</td>
           <td class="num">2026-10-28</td>
           <td class="num">11.9 MB</td>
           <td class="dl"><a href="yulinpo.adb" download>下載</a></td>
-        </tr>
-        <tr>
-          <td class="db"><b>印順法師佛學著作集</b><span class="file">ys.adb</span><a class="docLink" href="ys.html">改版說明</a></td>
-          <td class="num">8,288,650</td>
-          <td class="num">2026-11-01</td>
-          <td class="num">27.0 MB</td>
-          <td class="dl"><a href="ys.adb" download>下載</a></td>
         </tr>
         <tr>
           <td class="db"><b>大正新脩大藏經</b><span class="file">taisho.adb</span><a class="docLink" href="taisho.html">改版說明</a></td>
@@ -409,24 +428,10 @@
           <td class="num">2.2 MB</td>
           <td class="dl"><a href="goryeo_taisho.adb" download>下載</a></td>
         </tr>
-        <tr>
-          <td class="db"><b>福嚴講義</b><span class="file">fuyan.adb</span></td>
-          <td class="num">627,565</td>
-          <td class="num">2026-11-02</td>
-          <td class="num">3.7 MB</td>
-          <td class="dl"><a href="fuyan.adb" download>下載</a></td>
-        </tr>
-        <tr>
-          <td class="db"><b>福嚴講義（空之探究）</b><span class="file">yl38.adb</span></td>
-          <td class="num">629,317</td>
-          <td class="num">2026-11-02</td>
-          <td class="num">3.7 MB</td>
-          <td class="dl"><a href="yl38.adb" download>下載</a></td>
-        </tr>
     </tbody>
   </table>
 
-  <p class="dbWarn"><b>《福嚴講義》內測（限福嚴師生）</b>內測中，限福嚴師生。2026-11-01：字元級 j 改用 code point 計（擴充 B 區算 1），1,176 條大正引用重算。32 張圖表以 SVG 內嵌。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。</p><p class="dbWarn"><b>《福嚴講義（空之探究）》內測（限福嚴師生）</b>內測中，限福嚴師生，請勿外傳。正文與腳注釋群分成兩本書（注釋群目錄到節），頁碼為 yl38p1 起；1,176 條引印順著作用的 &lt;聯&gt; 已對到 ys.adb。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。</p>
+  
 
   
 
