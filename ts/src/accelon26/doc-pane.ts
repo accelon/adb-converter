@@ -14,6 +14,7 @@ import { Accelon3Renderer, LEVEL_MAX_SCALE, LEVEL_STEP_PX, renderPageBlocks, tag
 import { ancestorTrail, currentNodeAt, siblingsOf } from './scopes';
 import { tagColorOf } from './tag-style';
 import { kwMarks } from './kw-marks';
+import { highlightWordIn } from './word-hl';
 import { getUserId } from './user-id';
 import { displayConverter, type SimMode } from './lossless';
 import { isDictDb } from './db-kind';
@@ -1934,7 +1935,12 @@ function renderDoc(s: DocSession): void {
   };
   if (s.pinned) {
     // noScroll：不要自己捲到釘選那一行，不然剛還原的捲動位置會被搶走
-    void paintHit(ctx, s.pinned.va, s.pinned.units, { noScroll: !!want }).then(settleView);
+    void paintHit(ctx, s.pinned.va, s.pinned.units, { noScroll: !!want }).then(() => {
+      settleView();
+      // 詞級定位（`#N`／`#詞`）：paintHit 完成後 DOM 才是最終版，這時才加 word-hl。
+      // `s.pinned.token` 保留完整位址（含 `#`），由 word-hl.ts 解析。
+      highlightWordIn(document.getElementById('docText'), s.pinned?.token, s.pinned?.line);
+    });
   } else {
     if (viewDt.lineNumbers.length && !want) document.getElementById('L' + nFirst)?.scrollIntoView({ block: 'start' });
     settleView();
@@ -2007,7 +2013,7 @@ async function paintReverseBar(): Promise<void> {
       host?.insertAdjacentHTML('afterbegin', '<span class="xrefRevInline">' + revButtonsHtml(list) + '</span>');
     }
     if (rest.length) {
-      const html = '<span class="xrefRevInline" title="這一頁的引用（未能定位到某一行）">反鏈：'
+      const html = '<span class="xrefRevInline" title="這一頁的引用（未能定位到某一行）">⇐'
         + revButtonsHtml(rest) + '</span>';
       markers[mi].insertAdjacentHTML('afterend', html);
     }
