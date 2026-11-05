@@ -1,5 +1,5 @@
 {
-  "_comment": "公開資料庫的狀態。status: available（可下載）／wip（施工中，不下載）／revision（整修中）。downloadable:false 的庫只記在 manifest 版本歷史裡，官網與桌面版都不提供下載。source／licenseNote 是給使用者看的出處與授權說明。official:true 是官方委託製作，公開頁會加醒目標記；pin 是置頂順序（1 最前，沒有的照 index.txt 的順序）。",
+  "_comment": "公開資料庫的狀態。status: available（可下載）／wip（施工中，不下載）／revision（整修中）。downloadable:false 的庫只記在 manifest 版本歷史裡，官網與桌面版都不提供下載。source／licenseNote 是給使用者看的出處與授權說明。official:true 是官方委託製作，公開頁會加醒目標記；exclusive:true 是本站獨家，公開頁加另一種醒目標記；pin 是置頂順序（1 最前，沒有的照 index.txt 的順序）。",
   "fuyan.adb": {
     "status": "available",
     "official": true,
@@ -7,7 +7,10 @@
     "label": "可下載",
     "source": "釋厚觀《空之探究講義》（2004）Word 講稿，福嚴佛學院（官方委託製作）",
     "licenseNote": "講義文字、圖表版權屬福嚴佛學院；內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。",
-    "note": "釋厚觀《空之探究講義》全 349 頁、1,254 條註。2026-11-01：字元級 j 改用 code point 計（擴充 B 區算 1），1,176 條大正引用重算；32 張圖表以 SVG 內嵌。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。"
+    "note": "釋厚觀《空之探究講義》全 349 頁、1,254 條註。2026-11-01：字元級 j 改用 code point 計（擴充 B 區算 1），1,176 條大正引用重算；32 張圖表以 SVG 內嵌。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。",
+    "description": "收書（四本）：空之探究講義（349 頁）、空之探究講義腳注（1,269 條）、中觀論頌講記 28 品、中觀論頌講記腳注（2,173 條）。",
+    "sourceUrl": "https://www.fuyan.org.tw/lecture.html",
+    "sourceUrlLabel": "福嚴佛學院講義下載"
   },
   "ys.adb": {
     "status": "available",
@@ -29,6 +32,7 @@
   },
   "goryeo_taisho.adb": {
     "status": "available",
+    "exclusive": true,
     "label": "可下載",
     "source": "對照表由 tripitaka-migrator 產生（posmap／juaninfo）；經文仍在 goryeo.adb 與 taisho.adb",
     "licenseNote": "對照資料由 tripitaka-migrator 產生，見 https://shutonggui.cn/tripitaka-migrator/；本檔只做打包與閱讀器介面。",

@@ -140,19 +140,30 @@ try {
 // 可下載但帶說明的庫（例：限某校師生）
 const wipNotes = allDbs.filter((d) => d.statusNote && d.statusLabel && d.statusLabel !== '可下載' && d.downloadable !== false);
 
-// 官方委託製作＋置頂（作者 2026-11-05）：狀態檔的 official／pin 只影響這一頁的呈現，
-// 不進 manifest（manifest 是給閱讀器比對版本用的）。沒列 pin 的照 index.txt 的順序。
-const pins = new Map<string, { official: boolean; pin: number }>();
+// 官方委託製作＋本站獨家＋置頂（作者 2026-11-05）：狀態檔的 official／exclusive／pin
+// 只影響這一頁的呈現，不進 manifest（manifest 是給閱讀器比對版本用的）。
+// 沒列 pin 的照 index.txt 的順序。
+const pins = new Map<string, { official: boolean; exclusive: boolean; pin: number }>();
+// 資料庫說明行（作者 2026-11-05）：deploy/adb-status.json 的 description／sourceUrl
+const details = new Map<string, { desc?: string; url?: string; label?: string }>();
 try {
-  const st = JSON.parse(readFileSync(resolve(ROOT, 'deploy/adb-status.json'), 'utf8')) as Record<string, { official?: boolean; pin?: number } | string>;
+  const st = JSON.parse(readFileSync(resolve(ROOT, 'deploy/adb-status.json'), 'utf8')) as Record<string, {
+    official?: boolean; exclusive?: boolean; pin?: number;
+    description?: string; sourceUrl?: string; sourceUrlLabel?: string;
+  } | string>;
   for (const [file, v] of Object.entries(st)) {
     if (file.startsWith('_') || typeof v !== 'object' || !v) continue;
-    if (!v.official && !v.pin) continue;
-    pins.set(file.toLowerCase(), { official: !!v.official, pin: v.pin ?? 0 });
+    if (v.official || v.exclusive || v.pin) {
+      pins.set(file.toLowerCase(), { official: !!v.official, exclusive: !!v.exclusive, pin: v.pin ?? Number.MAX_SAFE_INTEGER });
+    }
+    if (v.description || v.sourceUrl) {
+      details.set(file.toLowerCase(), { desc: v.description, url: v.sourceUrl, label: v.sourceUrlLabel });
+    }
   }
 } catch { /* 沒有狀態檔就照 index.txt 的順序、不標記 */ }
 const pinOf = (file: string) => pins.get(file.toLowerCase())?.pin ?? Number.MAX_SAFE_INTEGER;
 const isOfficial = (file: string) => !!pins.get(file.toLowerCase())?.official;
+const isExclusive = (file: string) => !!pins.get(file.toLowerCase())?.exclusive;
 
 // 置頂：pin 小的在前（Array.sort 穩定；同 pin 或沒 pin 的保持 index.txt 的順序）
 rows.sort((a, b) => pinOf(a.fileName) - pinOf(b.fileName));
@@ -162,13 +173,22 @@ const totalChars = rows.reduce((a, r) => a + (r.chars ?? 0), 0);
 const totalSize = rows.reduce((a, r) => a + r.size, 0);
 const known = rows.filter((r) => r.chars !== null).length;
 
-const body = rows.map((r) => `        <tr${isOfficial(r.fileName) ? ' class="official"' : ''}>
-          <td class="db"><b>${esc(r.name)}</b>${isOfficial(r.fileName) ? '<span class="officialTag">官方委託製作</span>' : ''}<span class="file">${esc(r.fileName)}</span>${docOf.has(r.fileName) ? `<a class="docLink" href="${esc(docOf.get(r.fileName)!)}">改版說明</a>` : ''}</td>
+const body = rows.map((r) => {
+  const cls = [isOfficial(r.fileName) ? 'official' : '', isExclusive(r.fileName) ? 'exclusive' : ''].filter(Boolean).join(' ');
+  const tags = (isOfficial(r.fileName) ? '<span class="officialTag">官方委託製作</span>' : '')
+    + (isExclusive(r.fileName) ? '<span class="exclusiveTag">本站獨家</span>' : '');
+  const row = `        <tr${cls ? ` class="${cls}"` : ''}>
+          <td class="db"><b>${esc(r.name)}</b>${tags}<span class="file">${esc(r.fileName)}</span>${docOf.has(r.fileName) ? `<a class="docLink" href="${esc(docOf.get(r.fileName)!)}">改版說明</a>` : ''}</td>
           <td class="num">${r.chars === null ? '—' : fmtInt(r.chars)}</td>
           <td class="num">${fmtDate(r.mtime)}</td>
           <td class="num">${r.size ? fmtSize(r.size) : '—'}</td>
           <td class="dl"><a href="${esc(r.fileName)}" download>下載</a></td>
-        </tr>`).join('\n');
+        </tr>`;
+  const d = details.get(r.fileName.toLowerCase());
+  if (!d) return row;
+  const desc = `        <tr class="dbDesc${cls ? ' ' + cls : ''}"><td colspan="5">${d.desc ? esc(d.desc) : ''}${d.url ? `　<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.label || d.url)}</a>` : ''}</td></tr>`;
+  return `${row}\n${desc}`;
+}).join('\n');
 
 const html = `<!DOCTYPE html>
 <html lang="zh-Hant">
@@ -203,6 +223,17 @@ const html = `<!DOCTYPE html>
     background: var(--gold); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .02em;
     vertical-align: 1px; white-space: nowrap; }
   html[data-theme="dark"] .officialTag { color: #231a05; }
+  /* 本站獨家（作者 2026-11-05）：另一種醒目標記（青色），不置頂 */
+  .dbTable tr.exclusive { background: rgba(14,116,144,.06); }
+  html[data-theme="dark"] .dbTable tr.exclusive { background: rgba(34,211,238,.08); }
+  .dbTable tr.exclusive td:first-child { box-shadow: inset 3px 0 0 #0e7490; }
+  .exclusiveTag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+    background: #0e7490; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .02em;
+    vertical-align: 1px; white-space: nowrap; }
+  html[data-theme="dark"] .exclusiveTag { background: #22d3ee; color: #062a30; }
+  /* 資料庫說明行（作者 2026-11-05）：例如福嚴講義的收書情況與原始講義下載 */
+  .dbTable tr.dbDesc td { padding-top: 0; padding-bottom: 12px; font-size: 13.5px; color: var(--muted2); line-height: 1.75; }
+  .dbTable tr.dbDesc a { font-size: 13.5px; white-space: nowrap; }
   .dbOfficialNote { margin: 20px 0 0; color: var(--muted2); font-size: 14.5px; }
   .dbOfficialNote b { color: var(--gold); }
   .dbWarn { margin: 16px 0 0; padding: 12px 16px; border-left: 3px solid var(--gold);

@@ -304,6 +304,17 @@
     background: var(--gold); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .02em;
     vertical-align: 1px; white-space: nowrap; }
   html[data-theme="dark"] .officialTag { color: #231a05; }
+  /* 本站獨家（作者 2026-11-05）：另一種醒目標記（青色），不置頂 */
+  .dbTable tr.exclusive { background: rgba(14,116,144,.06); }
+  html[data-theme="dark"] .dbTable tr.exclusive { background: rgba(34,211,238,.08); }
+  .dbTable tr.exclusive td:first-child { box-shadow: inset 3px 0 0 #0e7490; }
+  .exclusiveTag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+    background: #0e7490; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .02em;
+    vertical-align: 1px; white-space: nowrap; }
+  html[data-theme="dark"] .exclusiveTag { background: #22d3ee; color: #062a30; }
+  /* 資料庫說明行（作者 2026-11-05）：例如福嚴講義的收書情況與原始講義下載 */
+  .dbTable tr.dbDesc td { padding-top: 0; padding-bottom: 12px; font-size: 13.5px; color: var(--muted2); line-height: 1.75; }
+  .dbTable tr.dbDesc a { font-size: 13.5px; white-space: nowrap; }
   .dbOfficialNote { margin: 20px 0 0; color: var(--muted2); font-size: 14.5px; }
   .dbOfficialNote b { color: var(--gold); }
   .dbWarn { margin: 16px 0 0; padding: 12px 16px; border-left: 3px solid var(--gold);
@@ -355,7 +366,7 @@
     <h1>公開數據庫</h1>
     <p>這些 <code>.adb</code> 都可以直接下載：放進 <code>accelon3.exe</code> 同一個資料夾，
       accelon26 開啟時就會自動列出來；也可以在程式裡用 <code>📁</code> 或拖進視窗。</p>
-    <p class="dbMeta">共 9 個可下載資料庫 · 合計約 229,467,139 字 · 下載約 647.4 MB</p>
+    <p class="dbMeta">共 9 個可下載資料庫 · 合計約 230,023,345 字 · 下載約 650.0 MB</p>
   </section>
 
   <p class="dbOfficialNote">★ 置頂：<b>福嚴講義</b>、<b>印順法師佛學著作集</b>、<b>太虛大師全書</b>為<b>官方委託製作</b>。</p>
@@ -366,12 +377,13 @@
     </thead>
     <tbody>
         <tr class="official">
-          <td class="db"><b>福嚴講義</b><span class="officialTag">官方委託製作</span><span class="file">fuyan.adb</span></td>
-          <td class="num">1,665,381</td>
+          <td class="db"><b>福嚴講義</b><span class="officialTag">官方委託製作</span><span class="file">fuyan.adb</span><a class="docLink" href="fuyan.html">改版說明</a></td>
+          <td class="num">2,221,587</td>
           <td class="num">2026-11-05</td>
-          <td class="num">10.1 MB</td>
+          <td class="num">12.7 MB</td>
           <td class="dl"><a href="fuyan.adb" download>下載</a></td>
         </tr>
+        <tr class="dbDesc official"><td colspan="5">收書（四本）：空之探究講義（349 頁）、空之探究講義腳注（1,269 條）、中觀論頌講記 28 品、中觀論頌講記腳注（2,173 條）。　<a href="https://www.fuyan.org.tw/lecture.html" target="_blank" rel="noopener">福嚴佛學院講義下載</a></td></tr>
         <tr class="official">
           <td class="db"><b>印順法師佛學著作集</b><span class="officialTag">官方委託製作</span><span class="file">ys.adb</span><a class="docLink" href="ys.html">改版說明</a></td>
           <td class="num">8,206,513</td>
@@ -421,8 +433,8 @@
           <td class="num">234.4 MB</td>
           <td class="dl"><a href="wxzj.adb" download>下載</a></td>
         </tr>
-        <tr>
-          <td class="db"><b>高麗⇄大正</b><span class="file">goryeo_taisho.adb</span><a class="docLink" href="goryeo_taisho.html">改版說明</a></td>
+        <tr class="exclusive">
+          <td class="db"><b>高麗⇄大正</b><span class="exclusiveTag">本站獨家</span><span class="file">goryeo_taisho.adb</span><a class="docLink" href="goryeo_taisho.html">改版說明</a></td>
           <td class="num">141</td>
           <td class="num">2026-10-30</td>
           <td class="num">2.2 MB</td>

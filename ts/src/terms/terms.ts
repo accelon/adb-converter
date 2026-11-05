@@ -213,7 +213,7 @@ export function buildGlossaryRows(text: string): GlossaryRow[] {
   const pageRe = /<頁 id="([^"]+)"/g;
   let pm: RegExpExecArray | null;
   while ((pm = pageRe.exec(text))) evs.push({ pos: pm.index, page: pm[1] });
-  const tagRe = /<术 (sk|pi|tb)="([^"]*)">([^<]*)<\/术>/g;
+  const tagRe = /<术 (sk|pi|tb)="([^"]*)"[^>]*>([^<]*)<\/术>/g;
   let tm: RegExpExecArray | null;
   while ((tm = tagRe.exec(text))) evs.push({ pos: tm.index, tag: tm });
   evs.sort((a, b) => a.pos - b.pos);
@@ -234,23 +234,27 @@ export function buildGlossaryRows(text: string): GlossaryRow[] {
     const foreign = m[2].replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
     const han = m[3].replace(/\s+/g, '');
     if (!foreign || !han) continue;
-    const key = `${lang}\u0000${foreign}\u0000${han}`;
-    const hit = map.get(key);
-    if (hit) {
-      hit.count++;
-      continue;
+    // 一個漢詞可能對多個外語（原稿用「、」分隔，例：`<术 sk="A、B">…`）——各成一列，
+    // 這樣「詞彙」分頁查得到每一個外語（作者 2026-11-05）
+    for (const one of foreign.split(/[、／]/).map((s) => s.trim()).filter(Boolean)) {
+      const key = `${lang}\u0000${one}\u0000${han}`;
+      const hit = map.get(key);
+      if (hit) {
+        hit.count++;
+        continue;
+      }
+      const li = lineAt(ev.pos);
+      map.set(key, {
+        lang,
+        foreign: one,
+        han,
+        count: 1,
+        line: li + 1,
+        page,
+        off: since,
+        hanline: hanLen(text.slice(starts[li], ev.pos)),
+      });
     }
-    const li = lineAt(ev.pos);
-    map.set(key, {
-      lang,
-      foreign,
-      han,
-      count: 1,
-      line: li + 1,
-      page,
-      off: since,
-      hanline: hanLen(text.slice(starts[li], ev.pos)),
-    });
   }
   const order: Record<string, number> = { sk: 0, pi: 1, tb: 2 };
   return [...map.values()].sort(

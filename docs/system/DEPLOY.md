@@ -286,9 +286,12 @@ cd ts && bun run tools/deploy.ts --site-only    # 連 www/adb/ 一起上傳，�
   建置日期（檔案時間 —— adb 檔頭沒有日期欄位）、檔案大小。
 * 產出 `www/adb/index.html`（版面直接沿用 `www/index.html` 的 `<style>` 與頁首頁尾，官網改樣式
   時這頁會跟著改）與 `index.txt`（清單存檔）。
-* 「官方委託製作」與置頂（2026-11-05）：看 `deploy/adb-status.json` 的 `official:true` 與
-  `pin`。有 official 的列在題名旁加金色「官方委託製作」標記、整列淡金底；`pin` 小的排最前面
-  （1 最前），其餘照 `index.txt` 的順序。這兩個欄位只影響公開頁，`manifest.json` 不帶。
+* 「官方委託製作」「本站獨家」與置頂（2026-11-05）：看 `deploy/adb-status.json` 的
+  `official:true`、`exclusive:true` 與 `pin`。official 的列加金色「官方委託製作」標記、
+  整列淡金底；exclusive 的列加青色「本站獨家」標記、整列淡青底（都不置頂）；`pin` 小的
+  排最前面（1 最前），其餘照 `index.txt` 的順序。另有 `description`／`sourceUrl`／
+  `sourceUrlLabel`，會在該列下方多一行說明與外部連結（例：福嚴講義的收書情況＋福嚴佛學院
+  講義下載）。這些欄位只影響公開頁，`manifest.json` 不帶。
 
 `deploy.ts --site`／`--site-only` 會把 `www/adb/*.html`、`*.txt`、`*.json` 一起傳上去（不會傳 `.adb`）。
 

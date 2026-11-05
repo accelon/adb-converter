@@ -42,6 +42,10 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
   （容器／屬性／快取）就不要留給閱讀器每次重算；建置多花幾秒、檔案多幾 MB 可忽略，
   不要為了省建置時間／空間讓使用者每次等。詳見
   `docs/system/ACCELON26-HANDOVER.md` §0.3。
+- **官網上自己的更新記錄**（作者 2026-11-05 允許）：各 adb 工作區可以自己更新 `www/adb/<db>.html`
+  與 `deploy/adb-history.json` 裡 `<db>.adb` 那一筆（`buildTime`／`sha256`／`size`／`notes`）；
+  `index.html`、`manifest.json`、別人的頁面仍歸母區。細節見
+  `D:\2026\agent-norms\new-adb-workspace.md` §5.1。
 
 ## 2. 目前的重要狀態（2026-10-29）
 

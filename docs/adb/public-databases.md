@@ -21,17 +21,21 @@ www/adb/*.adb            實際資料庫
 
 ### 1.1 官方委託製作與置頂（2026-11-05）
 
-`deploy/adb-status.json` 的每一筆可以加兩個公開頁專用的欄位：
+`deploy/adb-status.json` 的每一筆可以加幾個公開頁專用的欄位：
 
 ```json
-"fuyan.adb": { "status": "available", "official": true, "pin": 1 }
+"fuyan.adb": { "status": "available", "official": true, "pin": 1 },
+"goryeo_taisho.adb": { "status": "available", "exclusive": true }
 ```
 
 - `official: true`：題名旁加「官方委託製作」金色標記，整列淡金底。
+- `exclusive: true`：題名旁加「本站獨家」青色標記，整列淡青底（目前是 `goryeo_taisho.adb`）。
 - `pin`：置頂順序（1 最前）；沒有的照 `index.txt` 的順序。
-- 這兩個欄位只給 `ts/tools/make-adb-index.ts` 用，**不進** `manifest.json`。
+- `description`：在該列下方加一行說明（目前福嚴講義列「收書（四本）…」）。
+- `sourceUrl`／`sourceUrlLabel`：說明行後面加外部連結（福嚴佛學院講義下載）。
+- 這些欄位只給 `ts/tools/make-adb-index.ts` 用，**不進** `manifest.json`。
 
-目前：`fuyan.adb`（1）、`ys.adb`（2）、`tx.adb`（3）。
+目前：`fuyan.adb`（1）、`ys.adb`（2）、`tx.adb`（3）；`goryeo_taisho.adb` 標「本站獨家」。
 2026-11-05 同一天，`yl38.adb`（福嚴講義（空之探究））下架：已從 `index.txt`／manifest 移除，
 兩站檔案刪除（404），同一份講義以單本書版 `fuyan.adb` 為準。
 
