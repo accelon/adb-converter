@@ -155,10 +155,20 @@ function lowerBound(rows: { label: string }[], text: string): number {
   return lo;
 }
 
+/** 第一個字母不分大小寫；其餘照原樣（作者 2026-11-04）。 */
+function firstCaseVariants(q: string): string[] {
+  if (!q) return [];
+  const a = q[0]!.toLowerCase() + q.slice(1);
+  const b = q[0]!.toUpperCase() + q.slice(1);
+  return a === b ? [q] : [q, a, b];
+}
+
 /**
  * 開頭模式查詢（作者 2026-10 修正版）：只取**這句話本身的前綴**（由長到短）當詞條名，
  * 不再列出「以整句話開頭」的其他詞條 —— 否則點「般若經」會錯誤地帶出「般若經十喻」
  * 「般若經典」。那些更長的詞條改在使用者**點選某個詞條之後**才提供（`relativesOf()`）。
+ *
+ * 2026-11-04：前綴的第一個字母不分大小寫（Pali 詞頭常只有首字母大寫）。
  */
 export async function lookupInIndex(idx: DictIndex, sentence: string, maxPrefix = 16): Promise<DictRow[]> {
   const text = sentence.replace(/\s+/g, '');
@@ -174,21 +184,26 @@ export async function lookupInIndex(idx: DictIndex, sentence: string, maxPrefix 
   // 由長到短：`比丘尼戒` → 比丘尼戒／比丘尼／…／比丘（單字也要，康熙字典的詞條就是單字）
   for (let k = top; k >= 1; k--) {
     const prefix = text.slice(0, k);
-    const at = lowerBound(idx.rows, prefix);
-    if (at < idx.rows.length && idx.rows[at].label === prefix) push(idx.rows[at]);
+    for (const pv of firstCaseVariants(prefix)) {
+      const at = lowerBound(idx.rows, pv);
+      if (at < idx.rows.length && idx.rows[at].label === pv) push(idx.rows[at]);
+    }
   }
   // 完全沒有「剛好是前綴」的詞條時，才退回「以這段話開頭」的詞條：
   //   順世（詞典只有「順世外道」）→ 找得到；般若經（詞典有「般若」）→ 不會多列
   //   「般若經十喻」「般若經典」（作者 2026-10 指定的行為）。
   if (!out.length) {
-    for (let k = top; k >= 2 && !out.length; k--) {
+    for (let k = top; k >= 2; k--) {
       const prefix = text.slice(0, k);
-      let at = lowerBound(idx.rows, prefix);
-      for (let i = 0; i < 30 && at + i < idx.rows.length; i++) {
-        const r = idx.rows[at + i];
-        if (!r.label.startsWith(prefix)) break;
-        push(r);
+      for (const pv of firstCaseVariants(prefix)) {
+        let at = lowerBound(idx.rows, pv);
+        for (let i = 0; i < 30 && at + i < idx.rows.length; i++) {
+          const r = idx.rows[at + i];
+          if (!r.label.startsWith(pv)) break;
+          push(r);
+        }
       }
+      if (out.length) break;
     }
   }
   // 長的先列；同樣長度時「和句首共同前綴較長」的排前面

@@ -30,6 +30,7 @@ import { bz2Decompress } from '../bzip2-wasm';
 import { HAN_RE, isHan, hanChars, hanCount } from './han';
 import { anchorIndex, anchorVa, blockOf, pageHanTextOf, type AnchorIndex } from './page-text';
 import { splitPageCol, type PageCite } from './page-cite';
+import { splitWordKey } from './word-hl';
 
 export { anchorVa } from './page-text';
 const foreignReaders = new Map<string, AdbReader>();
@@ -1492,13 +1493,14 @@ async function handleXref(value: string, fromRight: boolean, newTab: boolean, qu
   (globalThis as any).__xrefClick = { reader: Math.round(h1 - h0), anchorVa: Math.round(h2 - h1), db };
   if (va == null) { setStatus((db === mainName ? '本庫' : db) + ' 找不到頁碼 ' + anchor, 'err'); return; }
   const short = db === 'taisho' ? 'T' : db.slice(0, 4);
+  const anchorBase = splitWordKey(anchor).base;
   if (!fromRight) {
     if (db === mainName) { await linkTo(va, anchor, 1, { newTab, exact: true }); return; }
-    openForeignTab(db, va, short + ' ' + anchor, newTab, anchor, quote, j);
+    openForeignTab(db, va, short + ' ' + anchorBase, newTab, anchor, quote, j);
     return;
   }
   if (db === mainName) { await linkTo(va, anchor, 1, { newTab, exact: true }); return; }
-  openForeignTab(db, va, short + ' ' + anchor, newTab, anchor, quote, j);
+  openForeignTab(db, va, short + ' ' + anchorBase, newTab, anchor, quote, j);
 }
 
 function flashPane(id: string): void {
@@ -1824,7 +1826,9 @@ async function activateDb(db: string): Promise<boolean> {
     switchTo(slot.id);
     return reader?.header.dbname === db;
   }
-  const e = catalog.find((x) => x.name === db || baseNameOf(x.file.name) === db);
+  // 桌面版的 `AdbSource.name` 是**中文庫名**（dbcname），不是檔名；只比 name／檔名會讓
+  // `openPage('vedic')`、`readerFor('cs')` 這類用 dbname 的呼叫找不到庫（2026-11-04）。
+  const e = catalog.find((x) => x.dbname === db || x.name === db || baseNameOf(x.file.name) === db);
   if (!e) return false;
   await openCatalogEntry(e);
   return reader?.header.dbname === db;
@@ -1864,10 +1868,12 @@ export async function openInMain(
       if (text.includes(opts.phrase)) { va = i > 0 ? (m.linesVirtual[i - 1] ?? 0) + 1 : 0; break; }
     }
   }
-  const label = opts.label || opts.anchor || '';
+  const rawAnchor = opts.anchor ?? '';
+  const label = opts.label || splitWordKey(rawAnchor).base || '';
   const o: Record<string, unknown> = { mode: 'node', name: label };
   if (opts.phrase) { o.exact = false; o.phrase = opts.phrase; } else o.noMark = true;
-  await linkTo(va, label, 1, o as never);
+  // token 保留完整 `#`（word-hl 要用）；分頁名／狀態列用 label（已切掉）。
+  await linkTo(va, rawAnchor || label, 1, o as never);
   return true;
 }
 

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -317,6 +318,18 @@ func runSelfTest() int {
 		fmt.Fprintln(os.Stderr, "selftest FAILED: out-of-range read did not return an error")
 		return 1
 	}
+
+	// 桌面版 adb 限制（作者 2026-11-03）：只開與 exe 同一資料夾的 adb。
+	// 這裡故意拿一個不存在的「外面」路徑；Open 應該在檢查存在之前就因資料夾不對而拒絕。
+	outside := filepath.Join(filepath.Dir(adbRootDir()), "accelon26-selftest-outside.adb")
+	if _, err := host.Open(outside); err == nil {
+		fmt.Fprintf(os.Stderr, "selftest FAILED: accepted an adb outside the exe folder: %s\n", outside)
+		return 1
+	} else if !strings.Contains(err.Error(), "同一資料夾") {
+		fmt.Fprintf(os.Stderr, "selftest FAILED: outside adb rejected for the wrong reason: %v\n", err)
+		return 1
+	}
+	fmt.Println("adb 限制 OK：exe 資料夾外的 adb 會被拒絕")
 	fmt.Println("selftest OK")
 	return 0
 }

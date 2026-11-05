@@ -13,6 +13,7 @@ import type { AdbReader } from './adb';
 import type { VaPaMapper } from './vapa';
 import { noteLink } from './engine-stats';
 import { activeSlot, dbShortName, switchTo } from './dbs';
+import { splitWordKey } from './word-hl';
 
 /** the hit the middle pane is currently showing (VA + its element text) */
 let pinnedHit: { va: number; text: string; token: string; units: number; line: number; exact?: boolean; phrase?: string; noMark?: boolean } | null = null;
@@ -104,7 +105,9 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   // 該庫的短名（ys → 印順；fuyan → 福嚴）。
   const docLabel = doc?.name && !/\.xml$/i.test(doc.name) ? doc.name : '';
   const dbLabel = dbShortName(ctx.dbName) || displayName(ctx.dbCName || '');
-  const name = opts.name || token
+  // `#詞` 只給 word-hl 用，不進分頁名／狀態列（`vedic?rv...#puruṣa` → `rv...`）。
+  const tokenBase = splitWordKey(token).base;
+  const name = opts.name || tokenBase
     || (useNode ? node!.name : (el?.element.text || docLabel || dbLabel || ''));
   // 只有「同一個庫的分頁」才能被重用／接手；別庫的分頁不能拿來裝這一庫的內容
   const curAll = docSession();
@@ -173,7 +176,7 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   // 這裡不再自動改字級，預設就是 DOCFS_DEFAULT。
   setDocFontSized(true);
   // label carries the directory node's name (a tag click has no text of its own)
-  const what = s.name || token || el?.element.text || '';
+  const what = s.name || tokenBase || el?.element.text || '';
   const totalRows = boundsOfRealm(ctx, s.realm).total;
   const pageInfo = s.cache
     ? '（共 ' + fmtInt(totalRows) + ' 行，第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(pageBounds(ctx, s.realm, s.page).pages) + ' 頁' + (auto ? '，自動跟隨命中' : '') + '）'
@@ -225,6 +228,23 @@ async function showLine(line: number, va: number, units?: number): Promise<void>
 /** the tree node that the MIDDLE of the document pane currently sits on */
 let cursorNode: TreeNode | null = null;
 
+/**
+ * 目錄樹目前的游標狀態（作者 2026-11-05 回報「一捲動目錄樹 current 就不見了」）。
+ *
+ * `paintTreeActive()` 只切換**已掛載**的列；目錄是虛擬捲動（`virtual-list.ts`），
+ * 往下捲會掛上新的一批列，那批列重新長出來時沒有 current／ancestor 的 class。
+ * 所以把狀態存在這裡，列在 `html()` 產生時就問 `treeRowClasses(va)`。
+ */
+let cursorVa: number | null = null;
+let cursorPath = new Set<number>();
+
+/** 這一列要加的 class（' current'／' ancestor'／''）；虛擬列重掛時也拿得到 */
+export function treeRowClasses(va: number): string {
+  if (cursorVa === null) return '';
+  if (va === cursorVa) return ' current';
+  return cursorPath.has(va) ? ' ancestor' : '';
+}
+
 let cursorPending = false;
 
 /**
@@ -236,9 +256,8 @@ let cursorPending = false;
  */
 function paintTreeActive(): void {
   // 目錄游標只屬於「左欄那一庫」：跨庫分頁的 VA 拿去查只會亮錯節點
-  if (!ownsActiveDb(docSession())) return;
+  if (!ownsActiveDb(docSession())) { cursorVa = null; cursorPath = new Set(); return; }
   const box = $('#dirTree');
-  if (!box) return;
   const d = dirTrees[dirActive];
   const path = new Set<number>();
   if (d && cursorNode) {
@@ -247,9 +266,12 @@ function paintTreeActive(): void {
       if (path.size > 64) break;
     }
   }
+  cursorVa = cursorNode ? cursorNode.va : null;
+  cursorPath = path;
+  if (!box) return;
   box.querySelectorAll<HTMLElement>('.tRow').forEach((el) => {
     const va = Number(el.dataset.va);
-    const isCursor = !!cursorNode && va === cursorNode.va;
+    const isCursor = cursorVa !== null && va === cursorVa;
     el.classList.toggle('current', isCursor);
     el.classList.toggle('ancestor', !isCursor && path.has(va));
   });

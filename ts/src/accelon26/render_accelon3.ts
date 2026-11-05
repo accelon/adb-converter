@@ -315,7 +315,7 @@ export interface RenderBlock {
  */
 export class Accelon3Renderer {
   /** 目前還開著的標題（跨行） */
-  private stack: { tag: string; depth: number }[] = [];
+  private stack: { tag: string; depth: number; color?: string }[] = [];
   /** 被隱藏標籤（樹／隱）包住的次數 */
   private hidden = 0;
   /** 目前還開著的 `<聯>` 錨點數（沒有 n= 的聯不長錨點；收尾時不能多吐 </a>） */
@@ -335,6 +335,8 @@ export class Accelon3Renderer {
   private termCarry: { html: string; shown: boolean; gloss: string } | null = null;
   /** 目前開著的 `<詞 b j>`（有詞譜的詞才長 span；dict 的 <詞> 不長） */
   private wordStack: boolean[] = [];
+  /** 這一行第幾個 `<詞 w>`（1 起；`#N` 用。每行重置，見 lineInfo） */
+  private wordNo = 0;
   /** 這個頁面上的頁碼計數（沒有 n= 時拿它當 id） */
   private pageSeq = 0;
   /** 這一行有沒有可見文字／標題（lineInfo 回報用） */
@@ -448,7 +450,7 @@ export class Accelon3Renderer {
     return out;
   }
 
-  private openSpan(tag: string, depth: number): string {
+  private openSpan(tag: string, depth: number, colorOverride?: string): string {
     // 本文（不在標題堆疊裡）永遠 1em；「往上一層」＋2px，最多 180%（作者 2026-10-18）。
     // 有 depthSteps（renderPageBlocks 依本頁算的相對層級）就用它 —— 這才是使用者看到的
     // 「和本文平緩過渡」；沒有就退回舊的絕對深度算法（直接 new 這支類別的場合）。
@@ -460,7 +462,7 @@ export class Accelon3Renderer {
     const custom = tagStyleOf(tag);
     let size = !this.opts.headScale ? '' : n > 0 ? `font-size:min(calc(1em + ${n * LEVEL_STEP_PX}px), ${LEVEL_MAX_SCALE}em);` : 'font-size:1em;';
     if (this.opts.headScale && custom?.size != null) size = `font-size:${custom.size}%;`;
-    const color = custom?.color || `var(--tag-text-${tagChromaIndex(tag, depth, this.ctx)})`;
+    const color = custom?.color || colorOverride || `var(--tag-text-${tagChromaIndex(tag, depth, this.ctx)})`;
     // 作者 2026-10-22：<經> 沒有自訂字型時預設楷體；自訂字型（含空字串＝本文）優先。
     const fontName = custom ? (custom.font ?? defaultFontOf(tag)) : defaultFontOf(tag);
     const font = (fontName || custom?.font2)
@@ -499,9 +501,12 @@ export class Accelon3Renderer {
     this.sawSegStart = false;
     this.sawSegMid = false;
     this.splitAt = null;
+    this.wordNo = 0;                 // `#N` 是句內序號，每行重新起算
     let html = '';
-    // 跨行的標題：這一行開頭先把還開著的補回來（行尾會全部收掉）
-    for (const s of this.stack) html += this.openSpan(s.tag, s.depth);
+    // 跨行的標題：這一行開頭先把還開著的補回來（行尾會全部收掉）；
+    // 顏色沿用開啟那一行算好的（作者 2026-11-05：天干／地支標題依序換色，
+    // 續行不能重新用層次色，否則同一個標題會前後不同色）。
+    for (const s of this.stack) html += this.openSpan(s.tag, s.depth, s.color);
     // 跨行的 <釋>：同理，每行重新開（不自閉合、而且真的有 n= 的才開）
     for (const note of this.notes) if (!note.line && note.n) html += this.noteSpan(note.n);
     // 跨行的 <引>：這一行開頭先把楷體外框補回來（行尾會收掉）
@@ -768,7 +773,10 @@ export class Accelon3Renderer {
         if (selfClose) continue;
         const b = attrValue(attrs, 'b');
         const j = attrValue(attrs, 'j');
-        const shown = !!(b || j);
+        // `w`（vedic 的 `<詞 w="1">`）是詞級錨，不是詞典條目；也要長 span。
+        // 只有 b／j 的照舊是 cs 的詞譜 span；三者都沒有就只留文字（詞典）。
+        const w = attrValue(attrs, 'w');
+        const shown = !!(b || j || w);
         if (shown) {
           // 詞譜 `b` 只有在「看起來是 IAST 詞件」時才放進 title。
           // 2026-11-03：cs-lex 的 `b` 是 provident-pali 編碼（BIkVKU|sNVGEn 這種大小寫混編、
@@ -777,7 +785,8 @@ export class Accelon3Renderer {
           const bText = /^[a-zāīūṅñṭḍṇṃḷĀĪŪ'\-]+(\|[a-zāīūṅñṭḍṇṃḷĀĪŪ'\-]+)*$/.test(b)
             ? b.replace(/\|/g, ' + ')
             : '';
-          html += `<span class="word" data-b="${esc(b)}" data-j="${esc(j)}"${bText ? ` title="${esc(bText)}"` : ''}>`;
+          const wordAttrs = w ? ` data-w="${esc(w)}" data-wi="${++this.wordNo}"` : '';
+          html += `<span class="word" data-b="${esc(b)}" data-j="${esc(j)}"${wordAttrs}${bText ? ` title="${esc(bText)}"` : ''}>`;
         }
         this.wordStack.push(shown);
         this.sawText = true;
@@ -798,8 +807,14 @@ export class Accelon3Renderer {
           }
         }
       } else if (!selfClose) {
-        this.stack.push({ tag: name, depth });
-        html += this.openSpan(name, depth);
+        // 作者 2026-11-05：內文標題也要跟目錄色點、breadcrumb 同色。ys 的
+        // 「甲一／乙一…」同標籤、同深度但依天干換色，所以用標題開頭的文字
+        // （標籤後面那一段）當 label 丟給 tagChromaIndex；沒有天干／地支就照層次。
+        const upcoming = text.slice(i).replace(/<[^>]*>/g, '');
+        const color = tagStyleOf(name)?.color
+          || `var(--tag-text-${tagChromaIndex(name, depth, this.ctx, upcoming)})`;
+        this.stack.push({ tag: name, depth, color });
+        html += this.openSpan(name, depth, color);
       }
     }
 

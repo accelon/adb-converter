@@ -59,6 +59,31 @@ func syntheticAdb(size int) []byte {
 	return b
 }
 
+// TestOpenRejectsOutsideRoot（作者 2026-11-03）：桌面版只開 exe／adbRootDir 同一資料夾的
+// adb。清單不該列出外面的檔，Open 也要明確拒絕。
+func TestOpenRejectsOutsideRoot(t *testing.T) {
+	host, _, _ := newTestHost(t)
+	defer host.CloseAll()
+
+	outside := t.TempDir()
+	p := filepath.Join(outside, "outside.adb")
+	if err := os.WriteFile(p, syntheticAdb(4096), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host.Open(p); err == nil {
+		t.Fatalf("Open(%s) 應該被拒絕（不在 adbRootDir）", p)
+	}
+	list, err := host.ListAdbs()
+	if err != nil {
+		t.Fatalf("ListAdbs: %v", err)
+	}
+	for _, a := range list {
+		if strings.EqualFold(a.Path, p) {
+			t.Fatalf("ListAdbs 不該列出資料夾外的 %s", p)
+		}
+	}
+}
+
 func TestListAdbsReadsHeader(t *testing.T) {
 	host, dst, real := newTestHost(t)
 	defer host.CloseAll()

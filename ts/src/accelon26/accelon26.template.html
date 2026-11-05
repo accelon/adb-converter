@@ -11,6 +11,11 @@
   :root {
     --bg: #1e1e1e; --panel: #252526; --panel2: #2d2d30; --line: #3c3c3c;
     --fg: #d8d8d8; --dim: #909090; --accent: #5aa9ff; --warn: #e0a54a; --err: #e06c75;
+    /* 強調用的字色（作者 2026-11-05）：目錄樹的 ancestor／current 比起一般列再亮一點。
+       暗色用近白，淺色主題用近黑——都是往「對比更強」的方向走，不是真的變白。 */
+    --fg-strong: #ffffff;
+    /* 目錄樹 ancestor 的底線（作者 2026-11-05）：要比 current 的外框（--accent）淺 */
+    --ancestor-line: #a8d3ff;
   /* 主題色（作者 2026-10-18）：下列變數原本寫死在規則裡，改成變數才能換主題。
      暗色系是預設（:root），亮色系／春綠見下面的 html[data-theme]。 */
   --gold: #ffd479; --gold-2: #fff3c4;
@@ -43,9 +48,9 @@
     --right: 25fr;
     --minSide: 15;            /* percent: below this a side snaps shut */
     /* 目錄樹節點／內文標題的顏色：**主題變數**（作者 2026-10：不要寫死，
-       以後換 theme 只要換這幾個值）。depthColor() 回傳 var(--tag-N)。
-       --tag-N 是 tDot 的深色；--tag-text-N 是標題字色（比 tDot 亮、彩度高一點，
-       在深色底上看得清楚）——標題用字色而不是底色（作者 2026-10）。 */
+       以後換 theme 只要換這幾個值）。depthColor() 回傳 var(--tag-text-N)。
+       --tag-N 是較深的底色（標籤色塊、殘留用途）；--tag-text-N 是標題字色，
+       目錄樹的 tDot 也用這一個（作者 2026-11-05：色點與內文標題同色）。 */
     --tag-0: hsl(0 30% 32%);
     --tag-1: hsl(55 55% 32%);
     --tag-2: hsl(110 55% 32%);
@@ -70,6 +75,8 @@
   html[data-theme="light"] {
     --bg: #ffffff; --panel: #f5f6f8; --panel2: #eceef1; --line: #d6d9de;
     --fg: #1f2328; --dim: #6a7280; --accent: #1f6feb; --warn: #b45309; --err: #c0392b;
+    --fg-strong: #000000;
+    --ancestor-line: #7fa9d9;
     --gold: #8a5a00; --gold-2: #7a4a00;
     --hl-bg: #dbe9ff; --row-hover: #eef1f5;
     --ink-on-accent: #ffffff; --link: #1f6feb;
@@ -94,6 +101,8 @@
   html[data-theme="eye"] {
     --bg: #eaf1e2; --panel: #e2ecd8; --panel2: #d8e5cc; --line: #c3d3b6;
     --fg: #2c3a2a; --dim: #5d6c55; --accent: #3f7d4e; --warn: #8a6d1f; --err: #b0413e;
+    --fg-strong: #131d12;
+    --ancestor-line: #7fa07a;
     --gold: #6d5a12; --gold-2: #5c4a0c;
     --hl-bg: #cfe3c2; --row-hover: #dfe9d5;
     --ink-on-accent: #ffffff; --link: #2f6b3e;
@@ -119,6 +128,8 @@
   html[data-theme="autumn"] {
     --bg: #f6ecd6; --panel: #efe2c6; --panel2: #e7d7b4; --line: #cdb98e;
     --fg: #3a2d1b; --dim: #7d6a47; --accent: #a8691f; --warn: #8a5a12; --err: #a53f2a;
+    --fg-strong: #211708;
+    --ancestor-line: #c49a5e;
     --gold: #7a4f0e; --gold-2: #6a4208;
     --hl-bg: #ecd5a6; --row-hover: #eee0c4;
     --ink-on-accent: #ffffff; --link: #8a5a12;
@@ -959,6 +970,10 @@
   /* cs 的 `<詞 b j>`：單擊開 lex-pane；只加細虛線，不改變閱讀節奏。 */
   .lineText .word { cursor: pointer; border-bottom: 1px dotted color-mix(in srgb, var(--accent) 45%, transparent); }
   .lineText .word:hover { background: var(--hl-bg); border-bottom-color: var(--accent); }
+  /* vedic 的 `<詞 w="1">` 是詞級錨，不是詞典條目：不要看起來像可點 lex 詞。 */
+  .lineText .word[data-w] { cursor: text; border-bottom: 0; }
+  /* 詞級定位（vedic 的 `#N`／`#詞`）：和搜尋的 <mark> 疊加，不互相覆蓋。 */
+  .word-hl { background: var(--hl-bg, rgba(255,209,102,.35)); border-radius: 3px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); }
   /* 本文上方的 breadcrumb（作者 2026-10）：字級同內文、顏色同標題；
      點一個節點下拉同層 siblings，並突顯目前這一個。
      作者 2026-10-18：從 .docBody 搬到 head 區（#docText 的直屬子節點）**固定住**，
@@ -1017,8 +1032,9 @@
   }
   .trailMenu .trailItem:hover { background: var(--panel2); }
   .trailMenu .trailItem.active { background: var(--hl-bg); font-weight: 700; box-shadow: inset 2px 0 0 var(--accent); }
-  /* 內文渲染（render_accelon3.ts）：標題用**字色**（比 tDot 亮、彩度高），不用底色 ——
-     底色在深色主題上不夠明顯（作者 2026-10）。 */
+  /* 內文渲染（render_accelon3.ts）：標題用**字色**，不用底色 ——
+     底色在深色主題上不夠明顯（作者 2026-10）。目錄樹的色點也用同一個
+     `--tag-text-N`（作者 2026-11-05），兩邊顏色才會一致。 */
   .lineText .h {
     color: var(--tagtext, var(--accent));
     background: none; border-radius: 3px; padding: 0 2px; font-weight: 600;
@@ -1595,8 +1611,12 @@
   /* the node whose text the middle pane currently shows, and the node the middle
      of the document pane sits on (with its ancestors lit) */
   .tRow.active { background: var(--hl-bg); }
-  .tRow.ancestor { background: rgba(90,169,255,.10); }
+  /* 作者 2026-11-05：ancestor 不再用藍底，改成**底部一條較淺的線**（比 current 的外框淺），
+     字色比一般列亮——用「線」表示路徑，用「框＋底」表示目前位置。 */
+  .tRow.ancestor { background: none; box-shadow: inset 0 -1px 0 var(--ancestor-line); }
   .tRow.current { background: var(--hl-bg); outline: 1px solid var(--accent); border-radius: 3px; }
+  /* 字色再亮一點（作者 2026-11-05）：ancestor／current 比一般列更醒目，但不改字重、不位移。 */
+  .tRow.ancestor, .tRow.current { color: var(--fg-strong); }
   #dirTree { padding: 0; }
   /* 虛擬目錄（作者 2026-11-02）：只掛視窗附近的列，列高固定才能用 spacer 撐總高。 */
   #dirTree.virtualList .tRow {
@@ -2055,12 +2075,10 @@
   .rdSideMeta { color: var(--dim); font-size: 12px; }
   .rdEmpty { color: var(--dim); font-size: 12px; }
   /* lex 當右欄頁籤（作者 2026-11-03）：不再 fixed、不再浮動 */
-  #lexInTab { flex: 1 1 auto; min-height: 0; overflow: auto; }
-  /* 精讀頁籤只在精讀模式出現（作者 2026-11-03） */
-  #tabsRight .tabBtn[data-tab="lex"] { display: none; }
-  body.reading #tabsRight .tabBtn[data-tab="lex"] { display: inline-block; }
-  .lexPane.inTab { position: static; inset: auto; width: auto; max-width: none; height: auto; border: 0; box-shadow: none; background: transparent; display: flex; flex-direction: column; }
-  .lexPane.inTab .lexPaneClose { display: none; }
+  .tabPane[data-tab="lex"] { flex-direction: column; min-height: 0; }
+  #lexInTab { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+  .lexPane.inTab { position: static; inset: auto; width: auto; max-width: none; height: auto; border: 0; box-shadow: none; background: transparent; display: flex; flex-direction: column; min-height: 0; }
+  .lexPane.inTab .lexPaneBody { flex: 1 1 auto; min-height: 0; }
   .rdSideRow { margin: 6px 0; }
   .rdSideRow b { display: inline-block; min-width: 3.2em; color: var(--dim); font-weight: 400; font-size: 12px; }
   /* CM6：字體跟著內文、行距放大給 ruby */
@@ -2074,6 +2092,8 @@
   /* 精讀：ruby 在字上方、字級 75–80%（作者 2026-11-03） */
   #docText .cm-content { line-height: 2.8; }
   #docText ruby.rdRuby rt { font-size: 76%; color: var(--accent); }
+  #docText ruby.rdRuby { cursor: pointer; }
+  #docText ruby.rdRuby:hover { background: var(--hl-bg); }
   .rdToolbar { display: flex; gap: 10px; align-items: center; padding: 2px 10px; font-size: 12px; color: var(--dim); border-bottom: 1px solid var(--line); }
   .rdToolbar[hidden] { display: none !important; }
   .rdToolbar b { color: var(--fg); }
@@ -2116,9 +2136,9 @@
   <!-- 左：每個 <樹 s="…"> 一頁（目錄／名詞／全文．頻次／原書分頁／西文） -->
   <section class="col" id="colLeft">
     <div class="tabs" id="tabsLeft">
-      <button class="tabBtn active" data-tab="dir">目錄</button>
+      <button class="tabBtn active" data-tab="terms" hidden>名詞</button>
+      <button class="tabBtn" data-tab="dir">目錄</button>
       <button class="tabBtn" data-tab="bookmark">書籤</button>
-      <button class="tabBtn" data-tab="terms" hidden>名詞</button>
       <button class="tabBtn" data-tab="freq" hidden>頻次</button>
       <button class="tabBtn" data-tab="folio" hidden>原書分頁</button>
       <button class="tabBtn" data-tab="map" hidden>對照</button>
@@ -2268,6 +2288,7 @@
       <button class="tabBtn" data-tab="text" hidden>引文</button>
       <button class="tabBtn advOnly" data-tab="heat" hidden>引紋</button>
       <button class="tabBtn" data-tab="dict">詞典</button>
+      <button class="tabBtn" data-tab="lex">詞</button>
       <button class="tabBtn advOnly" data-tab="header" id="tabHeader" hidden>檔頭</button>
       <button class="tabBtn advOnly" data-tab="meta">META</button>
       <button class="tabBtn advOnly" data-tab="capacity">容量</button>
@@ -2321,6 +2342,13 @@
         <div id="dictList" class="dictList"></div>
         <div id="dictBody" class="scrollArea dictBody">
           <div class="note">在中間本文點一個詞（例：比丘尼戒），這裡會列出詞條；點詞條看正文。</div>
+        </div>
+      </div>
+      <!-- 詞卡（lex-pane，2026-11-03）：單擊 cs 的 <詞> 或精讀 ruby 會切到這一頁。
+           內容由 lex-pane.ts 自己掛進來（#lexInTab 只是容器）。 -->
+      <div class="tabPane" data-tab="lex">
+        <div id="lexInTab" class="scrollArea">
+          <div class="lexNote" style="padding:12px">在 cs 正文點一個詞（或精讀模式的 ruby），這裡會顯示詞形、詞譜與詞條。</div>
         </div>
       </div>
       <!-- 檔頭（作者 2026-10）：開頭第一個 source 區塊 —— <集>／<樹>／<英文名> 這些

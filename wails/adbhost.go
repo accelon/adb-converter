@@ -352,7 +352,7 @@ func (h *AdbHost) Open(path string) (*AdbInfo, error) {
 	// adb 和 docx／pdf 不同，彼此會互相聯動（連結、對照、詞典），單獨拿到別處經常不能用；
 	// 與其讓使用者開到一半才發現，入口就直接擋掉。
 	if !inRootDir(path) {
-		return nil, fmt.Errorf("只開 본 exe 同一資料夾的 adb：%s", filepath.Base(path))
+		return nil, fmt.Errorf("只開與 exe 同一資料夾的 adb：%s", filepath.Base(path))
 	}
 	m, err := h.acquire(path)
 	if err != nil {

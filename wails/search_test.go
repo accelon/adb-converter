@@ -18,6 +18,12 @@ func TestSearchQueryOnCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = os.Chdir(cwd) }()
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 2026-11-03：Open 只認 adbRootDir（exe 旁）；測試用環境變數指定同一個資料夾。
+	t.Setenv("ACCELON26_ADB_DIR", root)
 	cases := []struct{ adb, query string }{
 		{"13j.adb", "象曰"},
 		{"13j.adb", "孟子"},

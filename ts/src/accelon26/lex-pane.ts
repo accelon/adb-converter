@@ -1,9 +1,9 @@
 /**
- * lex-pane（2026-11-02）：詞形／詞譜的右側 drawer。
+ * lex-pane（2026-11-02；2026-11-03 改成右欄「詞」分頁）：詞形／詞譜的詞卡。
  *
  * 這一版刻意**不碰 dict-pane**：詞典條目仍由右欄「詞典」分頁負責；lex-pane 只處理
- * cs 的 `<詞 b j>`（詞譜）與 lex.adb 的詞條。先做最小版：
- *   - 單擊本文的 `.word` → 開 drawer，顯示詞形與詞譜 b/j；
+ * cs 的 `<詞 b j>`（詞譜）與 lex.adb 的詞條：
+ *   - 單擊本文的 `.word`（或精讀模式的 ruby）→ 切到右欄「詞」分頁，顯示詞形與詞譜 b/j；
  *   - 若 lex.adb 已在 catalog／桌面清單裡，順便查它的 `塊 w="詞形"`，顯示次數、中文、
  *     詞件、格位、PTS、義項；
  *   - 查不到就明說，不打斷閱讀。
@@ -11,7 +11,7 @@
  * 不改既有手勢：word span 只有 cs 有 b/j 才長；漢語譯本沒有 span。
  *
  * 2026-11-03：漢語譯本**選取文字** → 選取選單「查詞」→ 反向查 `lex.adb` 的「中文」行，
- * 列出對應的巴利詞（`openLexPaneForHan`）。漢語沒有逐詞語法，所以抽屜只給「候選詞」，
+ * 列出對應的巴利詞（`openLexPaneForHan`）。漢語沒有逐詞語法，所以詞卡只給「候選詞」，
  * 點一個候選詞再走一般詞條畫面（格位／詞件／例句都由 cs 的 lex 詞條提供）。
  */
 import { AdbReader, BlobIO, type AdbSource } from './adb';
@@ -22,6 +22,7 @@ import { VaPaMapper } from './vapa';
 import { locatorAtVa } from './page-text';
 import { normalize } from '../tokenize';
 import { revealDocLine } from './doc-pane';
+import { setLexHooks } from './lex-hooks';
 import { hanCandidates, hanIndex, parseLexEntry, type HanCandidate, type LexEntry } from './lex-index';
 
 const readers = new WeakMap<object, Promise<AdbReader | null>>();
@@ -109,18 +110,19 @@ async function readEntry(r: AdbReader, va: number): Promise<LexEntry | null> {
 
 /* ---------------------------------------------- 反向查：漢詞 → 巴利候選（2026-11-03） */
 
-/** 選取漢詞 → 開抽屜列出巴利候選（給選取選單「查詞」用）。 */
+/** 選取漢詞 → 切到右欄「詞」分頁，列出巴利候選（給選取選單「查詞」用）。 */
 export async function openLexPaneForHan(han: string): Promise<void> {
   const text = String(han ?? '').trim();
   if (!text) return;
   const box = ensurePane();
+  if (!box) return;
+  setLexHooks.current?.();
   const body = box.querySelector('.lexPaneBody') as HTMLElement;
   const sub = box.querySelector('.lexPaneSub') as HTMLElement;
   const my = ++seq;
   sub.textContent = '漢詞';
   body.innerHTML = `<div class="lexWord">${escapeHtml(text)}</div>`
     + '<div class="lexNote">查 lex.adb…</div>';
-  box.hidden = false;
 
   const lr = await lexReader();
   if (my !== seq) return;
@@ -152,17 +154,18 @@ export async function openLexPaneForHan(han: string): Promise<void> {
 let pane: HTMLElement | null = null;
 let seq = 0;
 
-function ensurePane(): HTMLElement {
+/** 詞卡固定住在右欄「詞」分頁；找不到容器（舊版 HTML）就安靜地不開。 */
+function ensurePane(): HTMLElement | null {
+  const host = document.getElementById('lexInTab');
+  if (!host) return null;
   if (pane) return pane;
   pane = document.createElement('aside');
   pane.id = 'lexPane';
-  pane.className = 'lexPane';
-  pane.hidden = true;
-  pane.innerHTML = '<div class="lexPaneHead"><b>詞</b><span class="lexPaneSub"></span>'
-    + '<button type="button" class="lexPaneClose" aria-label="關閉">×</button></div>'
+  pane.className = 'lexPane inTab';
+  pane.innerHTML = '<div class="lexPaneHead"><b>詞</b><span class="lexPaneSub"></span></div>'
     + '<div class="lexPaneBody"></div>';
-  document.body.appendChild(pane);
-  pane.querySelector('.lexPaneClose')?.addEventListener('click', closeLexPane);
+  host.innerHTML = '';
+  host.appendChild(pane);
   pane.addEventListener('click', (ev) => {
     const cand = (ev.target as Element | null)?.closest?.('.lexCand') as HTMLElement | null;
     if (cand) {
@@ -194,18 +197,13 @@ function ensurePane(): HTMLElement {
       setTimeout(() => { b.textContent = '複製'; }, 1200);
     }).catch(() => undefined);
   });
-  document.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape' && pane && !pane.hidden) { ev.stopPropagation(); closeLexPane(); }
-  }, true);
   return pane;
-}
-
-export function closeLexPane(): void {
-  if (pane) pane.hidden = true;
 }
 
 export async function openLexPane(word: string, b = '', j = '', line = 0, ordinal = 0): Promise<void> {
   const box = ensurePane();
+  if (!box) return;
+  setLexHooks.current?.();
   const body = box.querySelector('.lexPaneBody') as HTMLElement;
   const sub = box.querySelector('.lexPaneSub') as HTMLElement;
   const my = ++seq;
@@ -228,7 +226,6 @@ export async function openLexPane(word: string, b = '', j = '', line = 0, ordina
   body.innerHTML = `<div class="lexWord">${escapeHtml(word)}</div>` + where
     + (b ? `<div class="lexCodes">詞譜：${escapeHtml(b.replace(/\|/g, ' + '))}${j ? `　j=${escapeHtml(j)}` : ''}</div>` : '')
     + '<div class="lexNote">查 lex.adb…</div>';
-  box.hidden = false;
 
   const lr = await lexReader();
   if (my !== seq) return;
@@ -326,6 +323,9 @@ export function initLexPane(): void {
   document.addEventListener('click', (ev) => {
     const el = (ev.target as Element | null)?.closest?.('.lineText .word') as HTMLElement | null;
     if (!el) return;
+    // `data-w` 是 vedic 的詞級錨（`<詞 w="1">`），不是詞典條目／lex 詞；
+    // 不要讓它開 lex-pane（提示詞 §六）。
+    if (el.dataset.w) return;
     if (el.closest('a')) return;                 // 連結優先
     const sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;         // 拖曳選取不搶
@@ -337,4 +337,10 @@ export function initLexPane(): void {
     const ordinal = words.indexOf(el) + 1;
     void openLexPane(el.textContent ?? '', el.dataset.b ?? '', el.dataset.j ?? '', line, ordinal);
   }, true);
+  // 精讀模式的 ruby（reading-pane 只發事件，不 import 這個檔）。
+  window.addEventListener('accelon26:lexword', (ev) => {
+    const d = (ev as CustomEvent<{ word?: string; line?: number }>).detail;
+    if (!d?.word) return;
+    void openLexPane(d.word, '', '', Number.isFinite(d.line) ? d.line! : 0);
+  });
 }

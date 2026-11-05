@@ -51,7 +51,7 @@
 ```
 
 - 選經**用 accelon26 既有的目錄樹**（作者 2026-11-03 定案），toolbar 不再做第二套選經 UI。
-- 左 70%／右 30%；窄視窗把右欄改成 bottom sheet（與 `lex-pane` 的規則一致）。
+- 左 70%／右 30%；窄視窗把右欄改成 bottom sheet（詞卡現在是右欄「詞」分頁）。
 - **直接做在 accelon26 裡，不另做 MVP**（作者 2026-11-03）：右側欄就是主畫面右欄的
   「精讀」頁籤，同一份渲染與事件，不寫兩套。
 - 行高：ruby 行要比一般正文高（ruby 佔上方空間），行距由 CSS 變數控制，跟主題一致。
@@ -116,7 +116,7 @@
 | 需要什麼 | 用哪一個（不要重寫） |
 |---|---|
 | CM6 與編輯器掛載 | `ts/src/vendor/codemirror/`、`editor.ts: mountPageEditor()` |
-| 詞卡抽屜 | `lex-pane.ts`（`openLexPane`／`openLexPaneForHan`） |
+| 詞卡分頁 | `lex-pane.ts`（`openLexPane`／`openLexPaneForHan`，住 `#lexInTab`） |
 | 詞形／格位／詞件 | `lex.adb`、`lex-index.ts` |
 | 漢詞→外語 | `glossary.ts`、`terms.ts`、`data/terms.tsv` |
 | 段落與版面 | `render_accelon3.ts` 的規則（段首、切塊） |

@@ -17,6 +17,12 @@ func TestSourceCharCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = os.Chdir(wd) }()
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 2026-11-03：Open 只認 adbRootDir（exe 旁）；測試用環境變數指定同一個資料夾。
+	t.Setenv("ACCELON26_ADB_DIR", root)
 	if _, err := os.Stat("13j.adb"); err != nil {
 		t.Skip("沒有 ../13j.adb")
 	}

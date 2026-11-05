@@ -5,7 +5,7 @@
 > **適用**：Windows 10/11 x64 的本機工具、文件閱讀器、資料轉換器；Bun + TypeScript 前端；需要桌面版時用 Wails3 包成**單一 portable exe**。
 >
 > **分工**：
-> * [wails3-pitfalls.md](./wails3-pitfalls.md) — Wails3 專屬的 syso、WebView2、SmartScreen、視窗／DPI、更新 helper 等坑。
+> * [wails3-pitfalls.md](wails3-pitfalls.md) — Wails3 專屬的 syso、WebView2、SmartScreen、視窗／DPI、更新 helper 等坑。
 > * **本文件** — 開發節奏、Windows 非 Wails3 的坑、漢字處理、無損簡體、介面風格、依賴預算。
 > * 各專案的 `README`／`ACCELON26-HANDOVER.md`／`DEPLOY.md` — 只記該專案的檔名、指令、資料與驗收數字；共通原則連回本文件。
 >
@@ -13,7 +13,7 @@
 
 > **Canonical**：[agent-norms](https://github.com/accelon/agent-norms) 的 `yap-software-practice.md`；消費端（如 adb-converter）的副本由 `ts/tools/sync-agent-norms.ts` 同步，不要直接改副本。
 
-**目錄**：0 決策表 · 1 技術選擇 · 2 開發節奏 · 3 單檔 HTML · 4 Windows 環境坑 · 5 漢字處理 · 6 無損簡體 · 7 介面風格 · 8 測試 · 9 文件 · 10 檢查表 · 11 反模式
+**目錄**：0 決策表 · 1 技術選擇 · 2 開發節奏 · 3 單檔 HTML · 4 Windows 環境坑 · 5 漢字處理 · 6 無損簡體 · 7 介面風格 · 8 測試 · 9 文件 · 10 檢查表 · 11 反模式 · 12 背景工作
 
 ---
 
@@ -33,6 +33,7 @@
 | 簡體顯示 | 保持原樣（預設）／無損簡體／強制簡體 | **只影響顯示**，索引與搜尋仍在原文 |
 | 字型 | 系統字型堆疊，無 web font | Windows 以 Microsoft JhengHei／YaHei 為主 |
 | 測試 | 瀏覽器先行；exe 只在發佈前跑 | 改了 UI 不必重建 exe |
+| 瀏覽器基線 | **iOS 16 / Safari 16**（含微信 WKWebView） | 低於此才退出支援，且要給可讀提示；缺的 API 一律附 fallback |
 
 ---
 
@@ -44,6 +45,7 @@
 - 不要假設使用者有管理員權限；預設**按使用者**安裝／ portable，資料寫 `%LocalAppData%` 或 `%AppData%`。
 - 不要假設路徑是 ASCII、沒有空格、少於 260 字元，或檔名大小寫有別。
 - macOS／Linux 是加值，不是第一輪的驗收阻擋；跨平台細節另看 wails3-pitfalls §6。
+- 已安裝Edge。注意PowerShell 坑很多。
 
 ### 1.2 Bun + TypeScript
 
@@ -66,7 +68,7 @@
 - 不做 installer、不做 Electron、不做「先裝 runtime 再裝 app」；WebView2 是 Windows 上常見的獨立元件，但不是每台都有，見 wails3-pitfalls §1.6。
 - UI 不應該知道宿主存在：只有一個 `host.ts` 之類的薄層知道。瀏覽器版與桌面版共用同一份 UI。
 - **平常不要建 exe**；只有要給使用者測試或發佈時才建。UI 文字、顏色、排版改了，只建 HTML。
-- exe 的 SmartScreen／簽章／更新流程是另一門學問，全部看 [wails3-pitfalls.md](./wails3-pitfalls.md) §4–§5；本文件不重複。
+- exe 的 SmartScreen／簽章／更新流程是另一門學問，全部看 [wails3-pitfalls.md](wails3-pitfalls.md) §4–§5；本文件不重複。
 
 ### 1.5 依賴預算
 
@@ -88,6 +90,25 @@
 - 日誌不印檔案內容、不印憑證、不印完整家目錄；需要時遮罩。
 
 ---
+
+### 1.7 瀏覽器基線：iOS 16 不算舊機
+
+- **底線是 iOS 16 / Safari 16**，包含 iOS 微信的 WKWebView（微信在 iOS 上用的就是系統內核）。iPhone 8／X 及之後都可以升到 16.7 以上，這批機器在中文圈仍大量在用，**不能當成「太舊」放生**；真正要退出的只有 iOS 15 及更早（iPhone 6s／7／SE 一代）。
+- **只用 iOS 16 沒有的 API，就必須有 fallback 或 polyfill。**「請換新版 Chrome／Safari」不是答案；更糟的是默默空白。
+- 常見分界（實戰整理）：
+
+  | 特性 | 最早支援 | 沒有時的後果 | 對策 |
+  |---|---|---|---|
+  | `DecompressionStream` | iOS 16.4 | 單檔 gzip 內嵌資料解不開，整頁空白 | 內嵌純 JS inflate（範例：zhu-combined 的 `build/gunzip.js`，約 10KB 純 ES5） |
+  | `overflow: clip` | iOS 16.0 | sticky 標題列失效，頁面仍可讀 | 可接受就退化，否則用 `@supports` 調版面 |
+  | `inset` | iOS 14.1 | 絕對定位位置跑掉 | 補 `top`／`right`／`bottom`／`left` |
+  | `Array.prototype.at`、`structuredClone`、`:has()` | iOS 15.4 | TypeError／樣式失效 | 改用相容寫法 |
+  | `?.`／`??` | iOS 13.1 | 語法錯誤，整支 script 不執行 | 目標 iOS 16 可放心用；要支援 13 就得轉譯 |
+
+- **核心路徑不要押在單一新 API 上**：資料解壓、影音、字型、檔案讀取，預設就要想「這個能力沒有的時候怎麼辦」。
+- **驗收要做「拿掉能力」的測試**：改到能力相關的程式時，在 DevTools 執行
+  `Object.defineProperty(window,'DecompressionStream',{get(){return undefined}})`（或 `delete window.DecompressionStream`）後重新載入，確認 fallback 真的跑起來、畫面正常；有 iOS 真機就用 iPhone 11 + iOS 16 跑一次。
+- 失敗畫面要寫「怎麼繼續」（換哪個瀏覽器、開哪個連結、回報什麼），不要只寫「不支援」。
 
 ## 2. 開發節奏：HTML 先行，exe 後行
 
@@ -143,7 +164,7 @@ bun run tools/serve.ts   # 或任何 20 行的 Bun 靜態伺服器
 - 建置腳本要「先刪生成目錄再建」，讓前端失敗變成明確錯誤，而不是默默嵌入舊檔。
 - 版本時間用 `-ldflags` 注入，不要用檔案 mtime。
 - 發佈前跑一次桌面回歸；平常不要跑，因為開視窗、下載、更新很慢。
-- 詳細的 Wails3 建置與更新坑，看 [wails3-pitfalls.md](./wails3-pitfalls.md) §1、§5。
+- 詳細的 Wails3 建置與更新坑，看 [wails3-pitfalls.md](wails3-pitfalls.md) §1、§5。
 
 ### 2.4 測試層級
 
@@ -197,7 +218,7 @@ bun run tools/serve.ts   # 或任何 20 行的 Bun 靜態伺服器
 
 ## 4. Windows 環境坑（非 Wails3）
 
-> Wails3 專屬的 WebView2、SmartScreen、syso、`0x8007139F`、更新 helper 不在這裡；見 [wails3-pitfalls.md](./wails3-pitfalls.md)。
+> Wails3 專屬的 WebView2、SmartScreen、syso、`0x8007139F`、更新 helper 不在這裡；見 [wails3-pitfalls.md](wails3-pitfalls.md)。
 
 ### 4.0 症狀速查
 
@@ -614,6 +635,8 @@ try {
 
 ### 8.1 瀏覽器先行
 
+- **iOS 16 基線**：iPhone（iOS 16）真機跑一次主要流程；沒機器就用 §1.7 的辦法把新 API 拿掉跑一次，當最壞情況驗收。
+
 - 每次改 UI／流程：`bun run tools/build-viewer.ts`，雙擊 `file://` 測。
 - 需要 module／fetch／secure context：local HTTP 測，但正式版仍要能 `file://` 或 Wails 內嵌。
 - 測試用真實中文語料；不要只用 ASCII 假資料。
@@ -714,11 +737,50 @@ try {
 - ❌ 把「簡體」直接套 OpenCC，沒有處理多對一。
 - ❌ 把無損簡體轉換寫回索引／存檔。
 - ❌ 用 emoji 當功能圖示。
+- ❌ 用 iOS 16 沒有的 API，卻沒有 fallback，只給一句「請換瀏覽器」或直接空白。
 - ❌ 只測暗色主題，亮色／護眼放生。
 - ❌ 把顏色寫死在 CSS 規則裡。
 - ❌ 把 `localStorage` 當 file:// 的可靠設定儲存。
 - ❌ 假設使用者路徑是 ASCII、少於 260 字元、大小寫有別。
 - ❌ 在使用者沒同意的情況下發佈、簽章、上傳或改安全設定。
+- ❌ 只 kill 外層的 shell／job，留下 bun／node／測試瀏覽器／exe 孤兒在背景跑。
+- ❌ 測試或 dev server 用完不關，讓它過夜（作者 2026-11-04：風扇一直吹）。
+
+---
+
+## 12. 背景工作與行程（所有工作區）
+
+> 2026-11-04 作者指示：**不要讓背景工作留著跑**。這條對所有工作區有效，不只前端。
+
+背景工作包括：`bun run tools/dev-serve.ts`、CDP／瀏覽器測試、下載／轉檔長工作、
+`accelon26.exe` 測試、任何 `Bun.spawn` 子行程。
+
+1. **起工作前先想清楚**：能前景跑完就前景跑；真的需要背景才起，並記下 job id／PID。
+2. **一定要有 timeout／停止條件**：不要 `while (true)`、不要無上限重試、不要 sleep 等結果。
+3. **收工前連子行程一起收**：
+   - Windows 上 `Stop-Process -Id <pwsh>` **不會**殺它的子行程；用
+     `taskkill /PID <pid> /T /F`，或逐一找出子行程再殺。
+   - `job_kill` 只保證外層 job；**還是要另外檢查** bun／node／瀏覽器／exe。
+4. **回報前檢查**（PowerShell）：
+
+```powershell
+job_list   # 你自己的背景 job
+Get-CimInstance Win32_Process -Filter "Name='bun.exe'" |
+  Select-Object ProcessId,ParentProcessId,CreationDate,CommandLine
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+  Select-Object ProcessId,ParentProcessId,CreationDate,CommandLine
+Get-Process accelon26 -ErrorAction SilentlyContinue
+```
+
+5. **測試瀏覽器**：CDP 測試用專用 `--user-data-dir=...build/...`，跑完要
+   `proc.kill()`／關掉整個行程樹，並刪掉暫存 profile；不要留下十幾個 headless Chrome。
+6. **dev server**：只有使用者明說要留才留；留著就要在回報裡寫清楚 PID／port／停止指令。
+   不要同時起第二個 server 佔同一個 port。
+7. **「很多 bun」通常不是單一 bug**：先看 command line 是哪個工作區、哪支腳本；
+   再看 parent 是否已死（孤兒）。不要直接殺不明來源的 `node`／瀏覽器——先確認是不是
+   別的 workspace 或使用者的程式。
+
+驗收：回報前 `Get-Process bun,accelon26` 應該沒有殘留；若刻意保留 dev server，要明確說明。
 
 ---
 
@@ -746,7 +808,7 @@ Format-Hex .\file.txt | Select-Object -First 2
 
 ## 附錄 B：相關文件
 
-- [wails3-pitfalls.md](./wails3-pitfalls.md) — Wails3 專屬坑（syso、WebView2、SmartScreen、視窗、更新）。
+- [wails3-pitfalls.md](wails3-pitfalls.md) — Wails3 專屬坑（syso、WebView2、SmartScreen、視窗、更新）。
 - 各專案的 `README`／`MACOS.md`／`DEPLOY.md`／`ACCELON26-HANDOVER.md`／`architecture.md` — 專案專屬的建置、部署、實作與驗收 runbook；不在本 repo。
 
 ---

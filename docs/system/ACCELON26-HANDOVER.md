@@ -235,6 +235,14 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   「fgdict 全文檢索輸入區按 Escape 還是會刪除輸入文字」就是這個）。合成事件的測試**不會**觸發這個
   預設動作，所以回歸測試用 CDP `Input.dispatchKeyEvent` 送真正的（trusted）按鍵來驗。
 
+  **目錄樹的三種列狀態**（作者 2026-11-05）：`current`＝本文游標所在節點（底色 `--hl-bg`
+  ＋`--accent` 外框）；`ancestor`＝游標的祖先（**不用底色**，改成底部一條比 accent 淺的線
+  `--ancestor-line`）；兩者字色都比一般列亮（`--fg-strong`：暗色近白、淺色近黑）。
+  目錄是**虛擬捲動**（只掛視窗附近的列），所以 class 要在 `scopes.ts` 產生列時就寫進去
+  （`link.ts: treeRowClasses(va)` 讀 `cursorVa`／`cursorPath`）。只靠 `paintTreeActive()`
+  事後補 class 的話，往下捲再捲回來、重掛的列就沒有高亮——2026-11-05 作者回報的
+  「一捲動目錄樹 current 就不見了」就是這個。
+
   **狀態列只顯示錯誤與「讀取中」**（作者 2026-10「取消 span.status（用戶不需要此信息）」）：
   `setStatus(msg, 'info')` 不再寫進 DOM（`#status` 設 `hidden`），但訊息仍記在 `lastStatus`，
   `__accelon26.status()`／`state().status` 讀得到，所以測試與診斷不受影響。載入後的
@@ -489,11 +497,15 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
     （第一個後面直接接內文的標題），那一層＝+2px、往上一層再 +2px（`depthSteps`）——
     所以「丁一」只比內文大 2px、「丙一」比「丁一」大 2px；比正文更深的子標題（戊、己、庚…）
     也維持 +2px，不會反過來把上面的祖先撐大。同一個標題在不同頁面大小可以不同。
-    字色＝該層的**亮色**主題變數 `--tag-text-N`（比 tDot 的 `--tag-N` 亮、彩度高）。
+    字色＝該層的主題變數 `--tag-text-N`；目錄樹的色點也用同一個（作者 2026-11-05：
+    **色點與內文標題同色是預設值**，除了使用者自行在「標籤樣式」指定顏色）。
     **N 跟著標籤走，不是深度**（作者 2026-10-18）：`computeTierContext` 會建 `tagChroma`
     （標籤第一次出現的順序），所以同一個庫裡「章」和「節」即使位在同一層（例如攝大乘論講記
     兩者都是 depth 1），也會拿到不同顏色；目錄樹的 `tDot` 與 breadcrumb 共用同一個索引，
     三處顏色一致。沒有 `tagChroma` 時才退回深度。
+    **內文標題也吃天干／地支**（作者 2026-11-05）：`openSpan` 用標籤後面那段文字當 label
+    丟給 `tagChromaIndex`，所以 ys 的「甲一／乙一…」在目錄色點、breadcrumb、內文標題
+    三處同色（續行的顏色沿用開啟那一行算好的，不會前後不同色）。
     標題不用底色（作者 2026-10：底色在深色主題上不明顯）。
   * **字級控制移到各自的欄**（作者 2026-10）：左欄的 `#fsLeftPick` 在左欄分頁列、
     中欄的 `#fsBodyPick` 在本文工具列、右欄的 `#fsRightPick` 在右欄分頁列。
@@ -508,7 +520,7 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   * **「不換行」自動字級已移除**（作者 2026-10：讓讀者自己用按鈕調整）。開啟資料庫也不再
     自動改字級（預設 `DOCFS_DEFAULT`＝16px）；`autoFitFont()` 只留在 `window.__accelon26`
     供診斷／測試。
-  * 內文標題用**字色**（`--tag-text-N`：比 tDot 亮、彩度高，深色底上看得清楚），
+  * 內文標題用**字色**（`--tag-text-N`；目錄色點同一個變數，作者 2026-11-05），
     不用底色（作者 2026-10：底色在深色主題上不明顯）。釘住的那一行只有淡淡一層
     `rgba(255,212,121,.10)`，免得標題看起來像有底色。
 
@@ -692,11 +704,11 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
     `般若經典`、`般若經十喻`、`般若學`…，結尾是 `三般若`、`二般若`…。
     非詞典型 adb（13j／印順）則顯示「沒有詞典型 adb」。
 
-  * **lex-pane（2026-11-02）**：`lex-pane.ts` 是**新的右側 drawer**，和 `dict-pane` 分開。
-    `render_accelon3` 只把 cs 的 `<詞 b j>` 長成 `.word` span（詞典的 `<詞>` 沒有 b/j，不長）；
-    單擊 `.word` 開 drawer，顯示詞形、詞譜 b/j；若 lex.adb 在 catalog／桌面清單，會用
-    `attributes/塊.w` 查詞條（次數／中文／詞件／格位／PTS／義項）。沒有 lex.adb 時只顯示
-    b/j，不會擋閱讀。Esc／× 關閉。
+  * **lex-pane（2026-11-02；2026-11-03 改右欄分頁）**：`lex-pane.ts` 住右欄「詞」分頁，
+    和 `dict-pane` 分開。`render_accelon3` 只把 cs 的 `<詞 b j>` 長成 `.word` span
+    （詞典的 `<詞>` 沒有 b/j，不長）；單擊 `.word`（或精讀 ruby）切到該分頁，顯示詞形、
+    詞譜 b/j；若 lex.adb 在 catalog／桌面清單，會用 `attributes/塊.w` 查詞條
+    （次數／中文／詞件／格位／PTS／義項）。沒有 lex.adb 時只顯示 b/j，不會擋閱讀。
 
 二十三）**後端分界（Go／TS）與共用測試集**（作者 2026-10，目標：UI 改動不必跑 Go 測試）。
 
@@ -2912,7 +2924,8 @@ ys.adb 的註號改成 `n="11.001@38"`：`@` 前是紙本註號、`@` 後是冊�
 
 - `Tokenize` 的入口：`ts/src/tokenize.ts`；`Tokenizer` 現在支援 `my`／`th`／`ja` 三種 ICU 分詞。
 - `SearchSession` 依 `reader.header.dbname === 'kmj'` 決定查詢端是否用日文分詞；索引與查詢必須一致。
-- `lex-pane.ts`：單擊 cs `.word` 開右側抽屜；顯示 b/j、`塊.段:句#詞`（可複製）、lex 詞條、例句（可跳行）、
+- `lex-pane.ts`：右欄「詞」分頁（2026-11-03 起不再是浮動抽屜）；單擊 cs `.word` 或精讀 ruby
+  會切到該分頁，顯示 b/j、`塊.段:句#詞`（可複製）、lex 詞條、例句（可跳行）、
   詞件拆解樹（詞件可點）。**沒有改 `dict-pane`**。
 - `cs` 目前 842,532 個相異 token（CST IAST；`??` 1,820 待 patch；拆詞待 patch）；`sc` 53,202。詳細數字見 sz `docs/cs-token-count.md`。
 
@@ -3014,11 +3027,96 @@ cs 有 1,082 段內空行、影響 432 段）——照行號相減算句，`:句
 - 行為：`body.reading` 打開後，`renderDoc()` 改把正文畫成**唯讀 CodeMirror 6**（`mountReadingDoc()`，
   掛在原本的 `#docText`）；左欄目錄、右欄頁籤不動。ruby 在字上方（`<ruby>`＋`rt`，字級 76%、行高 2.8），
   一次一種語言（漢／英／日，工具列 `.rdToolbar`）。**Esc 不離開**，只有 🙏／F4。
-- 資料：dev 模式從 `/adb/cs-lex.adb` 抓詞庫（`塊.w` 與 `sc-en／yh／kmj` 行）；目前 sz 的
-  `cs-lex.adb` 是 DN 正文（`<詞 b j>`、沒有 `塊.w`），所以 ruby 顯示 0，等四語詞庫。
-- **依賴紀律（重要）**：`reading-pane.ts` 只 import `adb`／`vapa`；**不可以** import
+- 資料：dev 模式從 `/adb/cs-lex.adb` 抓詞庫（`條.w`／`iast` 與 `sc-en／yh／kmj` 行）。
+  2026-11-03 下午 sz 已補 `<條 w="…" iast="…">`，ruby 正常；詳見 §29.6。
+- **依賴紀律（重要）**：`reading-pane.ts` 只 import `cs-lex`（→ `adb`／`vapa`）；**不可以** import
   `doc-pane`／`viewer`／`dbs`／`ui`。`ui → reading-pane → doc-pane → viewer → ui` 的循環會讓
   `boot()` 在讀 adb 時拋 `Index out of bounds`，所有按鈕都沒反應、且沒有例外訊息。
   現在由 `doc-pane` 用 `import './reading-pane'` 載入，並以 `window.__readingMount` 回呼。
 - 開發流程：`ts/tools/dev-serve.ts`（每次重整重新建置、預設自動開 `cs-lex`、沒有 SSE 自動重整，
   改完自己 Ctrl+F5）。改前端後跑 `ts/tools/smoke.ts`；動 import 後跑 `ts/tools/check-cycles.ts`（基準 64）。
+## 29.6 詞庫 ruby 與右欄「詞」分頁（2026-11-03 下午）
+
+- **sz 端**：`sz/src/build-cs-lex.ts` 的詞條改成 `<條 w="lemma" iast="lemma">`；重建後
+  2,479 條全部帶 `iast`（2.70 MiB、22,527 行、1,360 段）。`w` 仍是查詞鍵，`iast` 是顯示形。
+- **閱讀器**：`cs-lex.ts` 專責讀 `<條>`／`<塊>`（舊格式相容）、解析 `sc-en／yh／kmj` 與
+  詞形還原；`reading-pane.ts` 只負責 CM6 ruby，**回復「只依賴低階模組」的紀律**。
+  點 ruby 發 `accelon26:lexword`，不直接 import lex-pane。
+- **lex-pane**：不再浮動 drawer，固定住右欄「詞」分頁（`#lexInTab`）。`ui.ts` 用
+  `setLexHooks` 切分頁；單擊 `.word` 或精讀 ruby 都會切到該分頁。沒有 `lex.adb` 時
+  只顯示詞譜 b/j，不擋閱讀。
+- **桌面版 adb 限制**：`Open` 只接受 exe 同一資料夾；錯誤訊息修掉亂碼「본」。
+  `-selftest` 加驗「資料夾外的 adb 被拒絕」，`go test` 加 `TestOpenRejectsOutsideRoot`。
+  測試環境改用 `ACCELON26_ADB_DIR` 指定 adbRootDir（不再假設 cwd）。
+- **驗證（2026-11-03 13:5x）**：`bun run tools/smoke.ts` 通過；`check-cycles.ts` 64 不變；
+  `bun test test/cs-lex.test.ts` 通過；headless CDP 實測 cs-lex：正常模式 1,006 個 `.word`、
+  精讀 41 個 ruby、點詞／ruby 都切到「詞」分頁；`go test ./...` 通過；sz 資料夾的 exe
+  `-selftest` 列出 18 個 adb 並通過「adb 限制 OK」。
+- **還沒做**：桌面版（非 dev server）還沒有載入 cs-lex 的路徑，所以 exe 的精讀 ruby 目前
+  仍是 0；要接桌面宿主（`ListAdbs`／`ReadBase64`）再補。
+
+## 29.7 跨庫連結的段號區間（2026-11-04）
+
+`ped.adb` 的 `<聯 i="cs?塊.段">` 有一部分段號是**區間**（`a3.157-163`、`s43.379-408`）：
+cs 有 1,290 個 `<段 n="157-163">`，PED 有 52 個出處（278 次引用）落在這種段。
+
+- 原因：`page-text.ts` 的 `LOCATOR_RE` 只接受單一數字段號，`anchorVa('cs?a3.157-163')`
+  直接回 null，UI 顯示「cs 找不到頁碼 a3.157-163」。
+- 修法：`LOCATOR_RE` 允許 `段-段`；`locatorVa()` 先找 `段.n="157-163"` 的完整區間，
+  找不到再退回 `157`。連結一律取**首段**（閱讀器只需要一個 VA）。
+- 驗證：`segment-sentence.test.ts` 加「4-5 取首段」；ped 的 45 個區間位址全部
+  `anchorVa()` 成功；headless 實測 `xrefJump('cs?a3.157-163')`、`s43.379-408` 都開到 cs。
+- 注意：這是**閱讀器**的修正，不必重建 ped.adb；舊 exe 仍會失敗，換新 exe 即可。
+
+## 29.8 ped 的 `$詞` 開頭／中間／結尾（2026-11-04）
+
+作者回報「ped.adb `$詞` 開頭中間結尾沒有作用」。實測（dev server 與 sz 的 exe）三態本身有效：
+
+```text
+Dukkha  開頭 4（Dukkha）／中間 2（Udukkhala）／結尾 3（Atidukkha）
+ka      開頭 408／中間 509／結尾 1,920
+```
+
+真正容易誤會的是**沒有輸入查詢**時：三種模式都只列出全部 16,781 個詞條，按了看起來完全沒變。
+現在 `renderTerms()` 在沒有查詢時把三態按鈕**停用**，tooltip 顯示「先輸入詞條，再切換開頭／
+中間／結尾」；輸入後自動恢復。`#termsMeta` 也補了同樣的提示。
+
+驗證：exe（sz）無查詢時 `disabled=true`；輸入 `Dukkha` 後三態的 count／列出的第一列分別是
+4／2／3，與 dev server 一致。
+
+## 29.9 vedic 的詞級定位（`<詞 w="1">`、`#N`／`#詞`，2026-11-04）
+
+`D:\2026\sz\accelon26\vedic.adb`（sha256 前 12 `b4024b473a50`）的 sa 區每一行是
+`<詞 w="1">…</詞>`。閱讀器現在：
+
+- `render_accelon3.ts` 的 `<詞>` handler：有 `w` 就長 `<span class="word" data-w="…" data-wi="N">`；
+  `N` 是**這一行**第幾個 `w` 詞（`lineInfo()` 每行重置）。只有 `b`／`j` 的 cs 詞譜照舊；
+  詞典 `<詞>` 沒有 `w`／`b`／`j`，仍然只留文字。
+- `page-text.ts:anchorVa()`：先把 `#` 切掉再定位，VA 不變；`#puruṣa`、`#99` 都不會讓
+  `anchorVa` 失敗。
+- `word-hl.ts`：`splitWordKey()`／`foldWord()`＋`highlightWordIn()`。數字取該行第 N 個
+  `.word[data-w]`；字串去變音符號後先 `startsWith`、再 `includes`；加 `.word-hl`、
+  `scrollIntoView({block:'center'})`，找不到就安靜不做。
+- `doc-pane.ts` 在 `paintHit()` 完成後（DOM 最終版）呼叫；`text-pane.ts` 的跨庫分頁
+  在 `body.innerHTML` 後呼叫。
+- `lex-pane.ts` 明確跳過 `.word[data-w]`，不會把 vedic 詞當詞典條目／lex 詞。
+
+驗收（dev server headless，`vedic.adb` 本體）：
+
+| 位址 | 結果 |
+|---|---|
+| `vedic?rv.10.90.3:1#1` | `etāvān` |
+| `vedic?rv.10.90.3:1#puruṣa` | `pūruṣaḥ` |
+| `vedic?bu.2.4.5:1#atman` | `bhavatyātmanastu` |
+| `vedic?mdu.7:1#prajna` | `prajñaṃ` |
+| `vedic?rv.10.90.3:1#99` | 不 crash、無 highlight |
+| `vedic?rv.10.90.3` | 無 highlight，VA 不變 |
+| `fgdict` 的 `<詞>` | `.word` span 0、無回歸 |
+
+另外 `bun test test/word-hl.test.ts test/segment-sentence.test.ts` 7 pass；
+`vedic/src/jump.ts vedic rv.10.90.3:1#puruṣa` 仍回 `#6／6 → pūruṣaḥ`。
+
+桌面版另外修了一個 `openPage('vedic')` 找不到庫的問題：桌面 `AdbSource.name` 是**中文 dbcname**，
+`activateDb()` 原本只比 `name`／檔名，補上 `catalog` 的 `dbname` 比對後，sz 的 exe
+（`D:\2026\sz\accelon26\accelon26.exe`，2026-11-04 10:34）實測 1–4 的 `hl` 全部正確，
+`#99`／無 `#` 都沒有 highlight。

@@ -213,8 +213,12 @@ mockup 的資料是示意（目錄樹、命中數、字型清單都是假的）�
 ## 5. auto style（預設）
 
 * **顏色**：主題的 8 個標籤色相。正式版的 `tagChromaIndex(tag, depth)` 是「這個標籤在樹中第一次
-  出現的順序 mod 8」，所以同一個標籤在目錄、本文、breadcrumb 同色。auto 直接用
-  `--tag-text-N`（標題字色）與 `--tag-N`（目錄色點）。
+  出現的順序 mod 8」，所以同一個標籤在目錄、本文、breadcrumb 同色。auto 一律用
+  `--tag-text-N`（標題字色）——目錄色點也用同一個變數，和本文標題同色（作者 2026-11-05）；
+  使用者自訂顏色仍然優先。
+* **天干／地支**（作者 2026-11-05）：標題（`openSpan`）、breadcrumb、目錄色點都會看節點名
+  的**第一個字**（甲／乙／丙…、子／丑／寅…）換色，所以 ys 的「甲一／乙一」三處同色；
+  沒有天干／地支就退回標籤或層次。
 * **大小**：沿用現在的公式——第 d 層（0 起算）＝ `min(1em + d×2px, 1.8em)`。
   本文 16px 時換算成百分比：第 1 層 100%、第 2 層 112.5%、第 3 層 125%、第 4 層 137.5%……
   上限 180%。設定頁把這個「算出來的值」直接顯示在大小欄（不可改），讀者才知道 auto 現在多大。
@@ -271,7 +275,8 @@ mockup 的資料是示意（目錄樹、命中數、字型清單都是假的）�
 2. **本文標題**：`render_accelon3.ts` 的 `headingStyle()` 先問 `tagStyleOf`；自訂就輸出該顏色／
    `font-size: N%`／`font-family`（第二種接在後面），auto 維持原本的 `--tagtext`＋`min(1em+depth*2px,1.8em)`。
    行內樣式最直接，也不必處理 CSS 優先序。
-3. **目錄色點**：`scopes.ts: depthColor(tag, depth)` 先問 `tagStyleOf(tag)?.color`，沒有才用 `--tag-N`。
+3. **目錄色點**：`scopes.ts: depthColor(tag, depth)` 先問 `tagStyleOf(tag)?.color`，沒有才用
+   `--tag-text-N`（與本文標題同一個變數，作者 2026-11-05）。
 4. **breadcrumb**：`doc-pane.ts` 目前用 `--tag-text-N`；改成先問 `tagStyleOf`，自訂用 hex。
 5. **天干地支**：`tagStyleOf` 對 22 個成員回傳 `rampColor(底色, index)`（色相 +30°），
    大小／字型用群組那一組。

@@ -8,7 +8,7 @@
 import { $, altKey, currentFile, currentSource, displayName, docs, escapeHtml, fmtBytes, fmtInt, jumpToAdbLine, mapper, mods, newTabKey, openFile, opening, reader, session, setStatus, tokens } from './viewer';
 import { advanced, showTab } from './ui';
 import { showToken } from './panes';
-import { paintTreeActive, revealHit } from './link';
+import { paintTreeActive, revealHit, treeRowClasses } from './link';
 import { jumpPageCite, jumpTaishoCite, openCharPosition, parseCharPosition, parseTaishoCite } from './xref';
 import { parsePageCite } from './page-cite';
 import { parseNoteQuery } from './note-label';
@@ -424,10 +424,10 @@ function syncTreeTabs() {
     if (jumpAlone) jumpBtn.title = '依 <頁 id> 跳到某一頁（例：49p15、20p0065a）';
   }
   syncTreePickers(declared);
-  // keep the active tab sane: a dictionary has no 目錄 pane at all
+  // keep the active tab sane: a dictionary opens on 名詞（`$詞`）first, then 目錄
   const active = $('#colLeft .tabBtn.active') as HTMLButtonElement | null;
   if (!active || active.hidden) {
-    const first = ['dir', 'terms', 'freq', 'folio', 'latin', 'map'].find((k) => present.has(k))
+    const first = ['terms', 'dir', 'freq', 'folio', 'latin', 'map'].find((k) => present.has(k))
       ?? (jumpAlone ? 'jump' : undefined);
     if (first) showTab(first, 'left');
   }
@@ -662,7 +662,9 @@ async function renderDirTree(): Promise<void> {
         badge = `<span class="tCount">${fmtInt(n.children.length)}</span>`;
       }
       const edited = editedSet.has(n.va);
-      return `<div class="tRow${edited ? ' edited' : ''}" data-va="${n.va}">
+      // 游標的 current／ancestor 直接長進列裡（作者 2026-11-05）：目錄是虛擬捲動，
+      // 捲動後重掛的列若只靠 paintTreeActive() 事後補 class，捲過去就掉了。
+      return `<div class="tRow${edited ? ' edited' : ''}${treeRowClasses(n.va)}" data-va="${n.va}">
       <span class="tTwisty">${twisty}</span>
       <span class="tDot" style="background:${depthColor(n.depth, n.tag, d.labels.get(n.va) || '')}"></span>
       <span class="tTag">${escapeHtml(n.tag)}</span>
@@ -793,6 +795,10 @@ function collapseDirTree(): void {
  * Depth colour: HSV with the hue rotating over the levels and the value held at
  * ~30%, so depth reads at a glance while every row keeps the same height and
  * indent (no file-manager style growing whitespace).
+ *
+ * 作者 2026-11-05：**色點要和內文標題同色**（預設值）——內文標題用
+ * `--tag-text-N`（render_accelon3 的 openSpan），所以這裡也用 `--tag-text-N`，
+ * 不要再用 `--tag-N` 的深色版；使用者自己在「標籤樣式」設定的顏色仍然優先。
  */
 function depthColor(depth: number, tag?: string, label?: string): string {
   // 作者 2026-10-22：標籤樣式有自訂顏色就用它（目錄色點與本文標題同色）；
@@ -804,7 +810,7 @@ function depthColor(depth: number, tag?: string, label?: string): string {
   // 標籤色；標題以天干／地支開頭時，直接依那個序換色，其餘才看 tagChroma。
   const idx = semantic ?? (tag ? tagChromaIndex(tag, depth, tierContext(), label) : depth);
   const n = (((idx ?? depth) % 8) + 8) % 8;
-  return `var(--tag-${n}, hsl(${((idx ?? depth) * 55) % 360}, 55%, 32%))`;
+  return `var(--tag-text-${n}, hsl(${((idx ?? depth) * 55) % 360}, 55%, 66%))`;
 }
 
 function* iterNodes(ns: TreeNode[]): Generator<TreeNode> {
@@ -1345,10 +1351,35 @@ const MODE_NAMES: Record<string, string> = { any: '任意', start: '開頭', mid
  * The 開頭／中間／結尾 position filter: where does `q` sit inside `name`?
  * `任意` accepts any occurrence.
  */
+/**
+ * 詞條查詢：**第一個字母不分大小寫**，其餘照原樣。
+ *
+ * 作者 2026-11-04：Pali／英文詞頭通常只有首字母大寫（`Dukkha`、`Sukha`），
+ * 使用者打 `D` 時要同時找到 `dukkha`／`Dukkha`；第二個字母以後不做大小寫摺疊。
+ */
+function firstCaseVariants(q: string): string[] {
+  if (!q) return [];
+  const a = q[0]!.toLowerCase() + q.slice(1);
+  const b = q[0]!.toUpperCase() + q.slice(1);
+  return a === b ? [q] : [q, a, b];
+}
+
+function includesCI1(name: string, q: string): boolean {
+  return firstCaseVariants(q).some((v) => name.includes(v));
+}
+
+function startsWithCI1(name: string, q: string): boolean {
+  return firstCaseVariants(q).some((v) => name.startsWith(v));
+}
+
+function endsWithCI1(name: string, q: string): boolean {
+  return firstCaseVariants(q).some((v) => name.endsWith(v));
+}
+
 function modeMatch(name: string, q: string, mode: string): boolean {
-  if (!q || !name.includes(q)) return false;
-  const atStart = name.startsWith(q);
-  const atEnd = name.endsWith(q);
+  if (!q || !includesCI1(name, q)) return false;
+  const atStart = startsWithCI1(name, q);
+  const atEnd = endsWithCI1(name, q);
   if (mode === 'start') return atStart;
   if (mode === 'end') return atEnd;
   if (mode === 'mid') return !atStart && !atEnd;
@@ -1380,9 +1411,16 @@ async function renderTerms(): Promise<void> {
   // 三態 toggle（作者 2026-10）：開頭 → 中間 → 結尾，沒有「任意」
   const modeEl = $('#termsMode') as HTMLButtonElement | null;
   const mode = modeEl?.dataset.mode ?? 'start';
-  if (modeEl) modeEl.disabled = !usable;
   const modeName = MODE_NAMES[mode] ?? '開頭';
   const q = ($('#termsQuery') as HTMLInputElement).value.trim();
+  if (modeEl) {
+    // 沒有查詢時三種模式都只會列出全部詞條，看起來像「沒有作用」；
+    // 直接停用並在 tooltip 說清楚（作者 2026-11-04 回報）。
+    modeEl.disabled = !usable || !q;
+    modeEl.title = q
+      ? `比對位置：${modeName}（按一下切換 開頭 → 中間 → 結尾）`
+      : '先輸入詞條，再切換開頭／中間／結尾';
+  }
   const countEl = $('#termsCount');
   const advancedOn = document.body.classList.contains('advanced');
 
@@ -1479,7 +1517,8 @@ async function renderTerms(): Promise<void> {
   if (!q) {
     items = segs.map((s, i) => ({ from: s.from, to: s.to, idx: i, name: '', count: 0 }));
     setMeta(fmtInt(segs.length),
-      `${fmtInt(segs.length)} 個詞條（<${tag}> 包住的字）：未輸入條件，捲動分批載入全部`);
+      `${fmtInt(segs.length)} 個詞條（<${tag}> 包住的字）：未輸入條件，捲動分批載入全部`
+        + '（開頭／中間／結尾要先輸入詞條）');
   } else if (usable) {
     items = hits;
     setMeta(fmtInt(hits.length),

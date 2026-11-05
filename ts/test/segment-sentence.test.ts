@@ -23,6 +23,8 @@ const LINES = [
   // 段標記單獨一行（只有標記、沒有文字）：第 1 句順延到下一行
   '<段 n="3"/>',
   'epsilon',
+  // cs 的段號可以有區間（`<段 n="157-163">`）；連結取首段。
+  '<段 n="4-5"/>zeta',
 ];
 
 async function open(): Promise<AdbReader> {
@@ -66,5 +68,12 @@ describe('句 = 段內第 j 個有文字的行（空行不算）', () => {
     const eps = await vaOf(r, 'epsilon');
     expect((await locatorAtVa(r, eps))?.sentence).toBe(1);
     expect(await anchorVa(r, 'd1.3:1')).toBe(eps);
+  });
+
+  test('段號是區間（4-5）時取首段', async () => {
+    const r = await open();
+    const va = await anchorVa(r, 'd1.4-5');
+    expect(va).not.toBeNull();
+    expect((await locatorAtVa(r, va!))?.seg).toBe('4-5');
   });
 });

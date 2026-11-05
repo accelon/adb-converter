@@ -118,6 +118,8 @@ func useDB(t *testing.T, h *AdbHost, cache map[string]string, db string) string 
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir %s: %v", dir, err)
 	}
+	// 2026-11-03：Open 只認 adbRootDir（exe 旁）；測試用環境變數指定同一個資料夾。
+	t.Setenv("ACCELON26_ADB_DIR", dir)
 	name := filepath.Base(full)
 	if _, err := h.Open(name); err != nil {
 		t.Fatalf("open %s: %v", full, err)

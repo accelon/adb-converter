@@ -158,7 +158,12 @@ if (!existsSync(resolve(SRC, 'index.html'))) die('找不到 ' + resolve(SRC, 'in
 if (!existsSync(essaysDir)) die('找不到 ' + essaysDir + '（先跑 tools/make-essays.ts）');
 const essayFiles = readdirSync(essaysDir).filter((n) => /\.(html|css)$/.test(n)).sort();
 if (!essayFiles.includes('index.html')) die(essaysDir + ' 沒有 index.html');
-console.log(`來源：${SRC}（index.html ＋ essays/ ${essayFiles.length} 個檔）`);
+// 文章內的圖（essays/img/）：webp/png/jpg/svg，主檔名不動，只上傳不刪。
+const imgDir = resolve(essaysDir, 'img');
+const imgFiles = existsSync(imgDir)
+  ? readdirSync(imgDir).filter((n) => /\.(webp|png|jpe?g|svg)$/i.test(n)).sort()
+  : [];
+console.log(`來源：${SRC}（index.html ＋ essays/ ${essayFiles.length} 個檔${imgFiles.length ? ' ＋ img/ ' + imgFiles.length + ' 張圖' : ''}）`);
 console.log(`遠端：${targets.map((t) => t.docroot).join('、')}`);
 
 const sha = (p: string): string => createHash('sha256').update(readFileSync(p)).digest('hex');
@@ -177,7 +182,14 @@ for (const t of targets) {
       tr.upload(resolve(essaysDir, name), t.docroot + '/essays/' + name + '.tmp');
       tr.remote(`cd '${t.docroot}/essays' && chmod 644 '${name}.tmp' && mv -f '${name}.tmp' '${name}'`, '換上 yap/essays/' + name);
     }
-    console.log(`[${t.label}] yap 已上傳（index.html ＋ ${essayFiles.length} 個檔）`);
+    if (imgFiles.length) {
+      tr.remote(`mkdir -p '${t.docroot}/essays/img'`, '建立 yap/essays/img/');
+      for (const name of imgFiles) {
+        tr.upload(resolve(imgDir, name), t.docroot + '/essays/img/' + name + '.tmp');
+        tr.remote(`cd '${t.docroot}/essays/img' && chmod 644 '${name}.tmp' && mv -f '${name}.tmp' '${name}'`, '換上 yap/essays/img/' + name);
+      }
+    }
+    console.log(`[${t.label}] yap 已上傳（index.html ＋ ${essayFiles.length} 個檔${imgFiles.length ? ' ＋ ' + imgFiles.length + ' 張圖' : ''}）`);
     if (CLEAN) {
       tr.remote(`rm -rf '${DOCROOT}/essays'`, '移除 /accelon26/essays（先前放錯的位置）');
       console.log(`[${t.label}] /accelon26/essays 已移除`);
@@ -195,6 +207,7 @@ for (const t of targets) {
     const want = new Map<string, string>();
     want.set('index.html', sha(resolve(SRC, 'index.html')));
     for (const n of essayFiles) want.set('essays/' + n, sha(resolve(essaysDir, n)));
+    for (const n of imgFiles) want.set('essays/img/' + n, sha(resolve(imgDir, n)));
     for (const [rel, hash] of want) {
       const r = await fetch(t.siteBase + rel, { headers: { 'cache-control': 'no-cache' } });
       if (!r.ok) throw new Error(t.siteBase + rel + ' 讀不到（HTTP ' + r.status + '）');

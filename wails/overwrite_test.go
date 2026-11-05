@@ -26,7 +26,8 @@ func TestOverwriteAdbReplacesMappedFile(t *testing.T) {
 
 	h := &AdbHost{}
 	defer h.CloseAll()
-	t.Chdir(dir) // host 的白名單只認工作目錄裡的 .adb
+	t.Chdir(dir) // host 的白名單只認 adbRootDir 裡的 .adb
+	t.Setenv("ACCELON26_ADB_DIR", dir)
 	if _, err := h.Open(path); err != nil {
 		t.Fatalf("open: %v", err)
 	}

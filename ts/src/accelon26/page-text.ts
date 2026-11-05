@@ -56,13 +56,17 @@ export async function anchorIndex(r: AdbReader): Promise<AnchorIndex | null> {
 
 /** 頁 id → VA（走 accelon3 的 attributes/頁.id → pointer → tags/頁 鏈） */
 export async function anchorVa(r: AdbReader, anchor: string): Promise<number | null> {
+  // `#N`／`#詞` 只是句內詞序（vedic 的 `<詞 w="1">`），不影響 VA；先切掉再定位。
+  // key 由閱讀端（word-hl.ts）另行反白，見 `splitWordKey()`。
+  const hash = anchor.indexOf('#');
+  const base = hash >= 0 ? anchor.slice(0, hash) : anchor;
   const idx = await anchorIndex(r);
   // 沒有 `<頁>` 標籤的庫（sz 系列）：退回 `塊.段` 定位
-  if (!idx) return locatorVa(r, anchor);
-  const i = idx.values.indexOf(anchor);
-  if (i < 0) return locatorVa(r, anchor);
+  if (!idx) return locatorVa(r, base);
+  const i = idx.values.indexOf(base);
+  if (i < 0) return locatorVa(r, base);
   const ptr = idx.pointers[i];
-  if (idx.tags[(ptr >>> 24) & 0xff] !== '頁') return locatorVa(r, anchor);
+  if (idx.tags[(ptr >>> 24) & 0xff] !== '頁') return locatorVa(r, base);
   return idx.vas[(ptr & 0xffffff) - 1] ?? null;
 }
 
@@ -106,7 +110,9 @@ async function attrVas(r: AdbReader, tag: string, attr: string): Promise<Map<str
  * 位址以「最後一個 `.數字`」為段，前面整串（含點）就是塊 id。sz 的 `d1.7`／`dhp-1.1`
  * 只有一層，行為不變。
  */
-const LOCATOR_RE = /^([a-z][a-z0-9_-]*(?:\.[0-9]+)*)\.([0-9]+)(?::([0-9]+))?(?:#([0-9]+))?$/;
+// 段號可以是區間（cs 有 1,290 個 `<段 n="157-163">`）：連結一律取**首段**，
+// 例如 `cs?a3.157-163` → 段 157。見 ped.adb 的 PTS 出處。
+const LOCATOR_RE = /^([a-z][a-z0-9_-]*(?:\.[0-9]+)*)\.([0-9]+)(?:-([0-9]+))?(?::([0-9]+))?(?:#([0-9]+))?$/;
 const lineVasCache = new WeakMap<AdbReader, number[]>();
 const segVasCache = new WeakMap<AdbReader, number[]>();
 const mapperCache = new WeakMap<AdbReader, Promise<VaPaMapper>>();
@@ -167,7 +173,9 @@ async function locatorVa(r: AdbReader, anchor: string): Promise<number | null> {
   const m = LOCATOR_RE.exec(anchor);
   if (!m) return null;
   const chunks = (await attrVas(r, '塊', 'id')).get(m[1]) ?? [];
-  const segs = (await attrVas(r, '段', 'n')).get(m[2]) ?? [];
+  const segMap = await attrVas(r, '段', 'n');
+  // `<段 n="157-163">` 的 n 就是區間字串；先找完整區間，再退回首段。
+  const segs = (m[3] ? segMap.get(`${m[2]}-${m[3]}`) : undefined) ?? segMap.get(m[2]) ?? [];
   if (!chunks.length || !segs.length) return null;
   for (let k = 0; k < chunks.length; k++) {
     const start = chunks[k];
@@ -175,7 +183,7 @@ async function locatorVa(r: AdbReader, anchor: string): Promise<number | null> {
     const at = segs.findIndex((v) => v > start && v < end);
     if (at < 0) continue;
     const hit = segs[at];
-    const j = m[3] ? Number(m[3]) : 1;
+    const j = m[4] ? Number(m[4]) : 1;
     const vas = await lineVas(r);
     const li = lineOf(vas, hit); // 段標記所在的行
     const mp = await mapperOf(r);

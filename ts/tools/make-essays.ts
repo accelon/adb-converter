@@ -115,11 +115,23 @@ function parse(md: string) {
 
 // ---- 版面 -----------------------------------------------------------------------
 const CSS = `/* 由 ts/tools/make-essays.ts 產生；改版面請改那裡。 */
-:root{
+/* 三種底色：亮（白）／暗／護眼（米色紙，預設）。 */
+:root,html[data-mode="eye"]{
   --paper:#F6EFDA; --ink:#2C2822; --soft:#6E6457; --faint:#9A8E7C;
-  --vermi:#A6332B; --line:rgba(60,50,35,.26);
+  --vermi:#A6332B; --vermi-deep:#8A2820; --line:rgba(60,50,35,.26);
+  --panel:#FFFDF5; --topbar:rgba(246,239,218,.95); --vermi-line:rgba(166,51,43,.5);
   --serif:'Noto Serif TC','Noto Serif SC','Songti TC','Songti SC','SimSun',serif;
   --sans:'Noto Sans TC','Noto Sans SC','Microsoft JhengHei','PingFang TC',sans-serif;
+}
+html[data-mode="light"]{
+  --paper:#FFFFFF; --ink:#1F2023; --soft:#565A61; --faint:#8B8F96;
+  --vermi:#A6332B; --vermi-deep:#8A2820; --line:rgba(0,0,0,.14);
+  --panel:#F6F6F4; --topbar:rgba(255,255,255,.94); --vermi-line:rgba(166,51,43,.42);
+}
+html[data-mode="dark"]{
+  --paper:#141519; --ink:#DAD9D2; --soft:#A9A79E; --faint:#7C7A72;
+  --vermi:#E08A7E; --vermi-deep:#EFB0A5; --line:rgba(255,255,255,.16);
+  --panel:#1D1F24; --topbar:rgba(20,21,25,.95); --vermi-line:rgba(224,138,126,.5);
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
@@ -127,19 +139,20 @@ body{
   background:var(--paper); color:var(--ink); font-family:var(--serif);
   font-size:17.5px; line-height:2; letter-spacing:.01em;
   -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  transition:background-color .18s ease, color .18s ease;
 }
 ::selection{background:var(--vermi);color:var(--paper)}
-a{color:var(--vermi);text-decoration:none;border-bottom:1px dotted rgba(166,51,43,.5)}
-a:hover{color:#8A2820;border-color:#8A2820}
+a{color:var(--vermi);text-decoration:none;border-bottom:1px dotted var(--vermi-line)}
+a:hover{color:var(--vermi-deep);border-color:var(--vermi-deep)}
 a:focus-visible{outline:2px solid var(--vermi);outline-offset:2px}
 
 /* 行長 ≤ 34 字（中文閱讀）；頁面區塊與正文同寬 */
 .wrap{width:min(33em,90vw);margin:0 auto}
 
-/* 頂欄：回索引 ＋ 繁簡切換 */
+/* 頂欄：回發表紀錄 ＋ 底色切換 ＋ 繁簡切換 */
 .topbar{
   position:sticky; top:0; z-index:60; padding:9px 0;
-  background:rgba(246,239,218,.95); backdrop-filter:blur(6px);
+  background:var(--topbar); backdrop-filter:blur(6px);
   border-bottom:1px solid var(--line);
 }
 .tb-inner{
@@ -147,12 +160,22 @@ a:focus-visible{outline:2px solid var(--vermi);outline-offset:2px}
   width:min(33em,90vw); margin:0 auto;
   font-family:var(--sans); font-size:.82rem; letter-spacing:.02em;
 }
-.topbar a.back{color:var(--soft);border-bottom:1px dotted rgba(60,50,35,.35)}
+.tb-tools{display:flex;align-items:center;gap:8px}
+.topbar a.back{color:var(--soft);border-bottom:1px dotted var(--line);white-space:nowrap}
 .topbar a.back:hover{color:var(--vermi);border-color:var(--vermi)}
+.modes{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--panel)}
+.modes button{
+  appearance:none;-webkit-appearance:none;border:0;background:transparent;color:var(--soft);
+  height:28px;padding:0 9px;font-family:var(--sans);font-size:.72rem;letter-spacing:.06em;
+  cursor:pointer;line-height:1;
+}
+.modes button:hover{color:var(--ink)}
+.modes button[aria-pressed="true"]{background:var(--vermi);color:var(--paper)}
+.modes button:focus-visible{outline:2px solid var(--vermi);outline-offset:-2px}
 #simToggle{
   display:inline-flex;align-items:center;justify-content:center;
-  min-width:58px;height:30px;padding:0 13px;border:1px solid rgba(166,51,43,.5);
-  border-radius:999px;color:var(--vermi);background:#FFFDF5;
+  min-width:58px;height:30px;padding:0 13px;border:1px solid var(--vermi-line);
+  border-radius:999px;color:var(--vermi);background:var(--panel);
   font-family:var(--sans);font-size:.78rem;letter-spacing:1.5px;
 }
 #simToggle:hover{background:var(--vermi);color:var(--paper);border-color:var(--vermi)}
@@ -200,7 +223,8 @@ footer{margin-top:40px;padding:24px 0 56px;border-top:1px solid var(--line);
   h1{letter-spacing:1px}
   .sub{font-size:.9rem}
   .tb-inner{font-size:.76rem}
-  #simToggle{height:28px;min-width:52px;font-size:.74rem}
+  .modes button{height:26px;padding:0 7px;font-size:.7rem;letter-spacing:0}
+  #simToggle{height:28px;min-width:50px;padding:0 9px;font-size:.72rem;letter-spacing:1px}
   .list .t{font-size:1.1rem}
 }
 `;
@@ -250,6 +274,23 @@ const SCRIPT = (table: string) => `<script>
       : (host === "shutonggui.cn" || host === "www.shutonggui.cn"));
 
   try { apply(sim); } catch (e) {}
+
+  // 底色：亮／暗／護眼（預設護眼）。記在 localStorage，換頁沿用。
+  var MODES = ["light", "dark", "eye"];
+  var mbtns = document.querySelectorAll("#modeSwitch button");
+  function setMode(m) {
+    if (MODES.indexOf(m) < 0) m = "eye";
+    document.documentElement.setAttribute("data-mode", m);
+    for (var i = 0; i < mbtns.length; i++) mbtns[i].setAttribute("aria-pressed", mbtns[i].getAttribute("data-mode") === m ? "true" : "false");
+  }
+  setMode(document.documentElement.getAttribute("data-mode") || "eye");
+  for (var mi = 0; mi < mbtns.length; mi++) mbtns[mi].addEventListener("click", function (e) {
+    e.preventDefault();
+    var m = this.getAttribute("data-mode");
+    setMode(m);
+    try { localStorage.setItem("yap.mode", m); } catch (e2) {}
+  });
+
   document.body.style.visibility = "visible";
 
   var btn = document.getElementById("simToggle");
@@ -269,12 +310,23 @@ function page(o: {
   const { table } = simTable(o.text);
   return `<!DOCTYPE html>
 <!-- 由 docs/essays/ 同步產生（ts/tools/make-essays.ts 執行）；請改源稿再重建，勿直接編輯本檔。 -->
-<html lang="zh-Hant">
+<html lang="zh-Hant" data-mode="eye">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(o.title)}</title>
 <meta name="description" content="${esc(o.desc)}">
+<script>
+/* 底色（亮／暗／護眼）在樣式套用前就先決定，避免閃一下。預設護眼＝米色紙。 */
+(function () {
+  var m = "eye";
+  try {
+    var s = localStorage.getItem("yap.mode");
+    if (s === "light" || s === "dark" || s === "eye") m = s;
+  } catch (e) {}
+  document.documentElement.setAttribute("data-mode", m);
+}());
+</script>
 <link rel="stylesheet" href="essays.css">
 </head>
 <body style="visibility:hidden">
@@ -282,7 +334,14 @@ function page(o: {
 <div class="topbar">
   <div class="tb-inner">
     <a class="back" href="${o.navBack}">${o.navLabel}</a>
-    <a href="#" id="simToggle" aria-label="切換繁體／簡體">简体</a>
+    <div class="tb-tools">
+      <div class="modes" id="modeSwitch" role="group" aria-label="底色">
+        <button type="button" data-mode="light" title="亮底">亮</button>
+        <button type="button" data-mode="dark" title="暗底">暗</button>
+        <button type="button" data-mode="eye" title="護眼底色" aria-pressed="true">護眼</button>
+      </div>
+      <a href="#" id="simToggle" aria-label="切換繁體／簡體">简体</a>
+    </div>
   </div>
 </div>
 
@@ -330,7 +389,7 @@ function renderEssay(e: (typeof ESSAYS)[number]) {
     '  </div>',
   ].filter(Boolean).join('\n');
 
-  const bodyText = [src.title, src.seriesLine, ...src.blocks.flatMap((b) => (b.type === 'ul' ? b.items : [b.text])), SERIES, DATE, '简体'].join('\n');
+  const bodyText = [src.title, src.seriesLine, ...src.blocks.flatMap((b) => (b.type === 'ul' ? b.items : [b.text])), SERIES, DATE, '简体', '亮', '暗', '護眼'].join('\n');
   return page({
     title: `${src.title} · ${SERIES}`,
     desc: `《${SERIES}》· ${src.title} · ${DATE}`,
@@ -353,7 +412,7 @@ function renderIndex() {
     <h1>《${esc(SERIES)}》</h1>
     <p class="byline">${DATE}</p>
   </div>`;
-  const bodyText = [SERIES, DATE, ...ESSAYS.map((e) => parse(readFileSync(resolve(SRC, e.md), 'utf8')).title), '简体'].join('\n');
+  const bodyText = [SERIES, DATE, ...ESSAYS.map((e) => parse(readFileSync(resolve(SRC, e.md), 'utf8')).title), '简体', '亮', '暗', '護眼'].join('\n');
   return page({
     title: `文章 · 《${SERIES}》`,
     desc: `《${SERIES}》文章索引：主文與兩篇附文。`,

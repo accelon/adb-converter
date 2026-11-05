@@ -15,6 +15,7 @@ import { renderPageBlocks } from './render_accelon3';
 import { isDictDb } from './db-kind';
 import { dirActive, dirTrees, findNode } from './scopes';
 import { openExternalUrl } from './plates';
+import { highlightWordIn, splitWordKey } from './word-hl';
 
 export interface TextTab {
   id: number; label: string; realm: { from: number; to: number }; page: number;
@@ -109,8 +110,10 @@ export async function openTextTab(realm: { from: number; to: number }, label: st
  */
 export function openForeignTab(db: string, va: number, label: string, newTab = false, anchor?: string, quote?: string, j?: string): void {
   ensureRightPane();
-  // 大正一律用「大正<頁碼>」，不管呼叫端原本叫它 T 還是什麼
-  const lbl = db === 'taisho' && anchor ? foreignTabLabel(db, anchor) : label;
+  // 大正一律用「大正<頁碼>」，不管呼叫端原本叫它 T 還是什麼。
+  // `#詞` 只給 word-hl 用，分頁標籤只顯示到 `#` 之前。
+  const anchorBase = splitWordKey(anchor).base;
+  const lbl = db === 'taisho' && anchorBase ? foreignTabLabel(db, anchorBase) : label;
   if (!newTab) {
     const at = textTabs.findIndex((t) => t.foreign);
     if (at >= 0) {
@@ -207,6 +210,8 @@ export async function renderTextPane(): Promise<void> {
     const hit = body.querySelector('mark.xrefHit') as HTMLElement | null;
     if (hit) hit.scrollIntoView({ block: 'center' });
     else body.scrollTo(0, 0);
+    // 跨庫分頁的詞級定位（`#N`／`#詞`）：anchor 保留完整 `#`，由 word-hl 解析。
+    highlightWordIn(body, t.foreign.anchor);
     return;
   }
   if (!t || !mapper || !reader) { body.innerHTML = EMPTY; return; }

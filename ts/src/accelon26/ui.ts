@@ -26,6 +26,7 @@ import { parseWildcard } from './wildcard';
 import { allSearchMode, closeSearchAll, initSearchAll, openSearchAll, runSearchAll, searchAllState, setAllSearchMode, stopSearchAll } from './allsearch';
 import { dictLookupAt, dictPaneState, initDictPane } from './dict-pane';
 import { initLexPane } from './lex-pane';
+import { setLexHooks } from './lex-hooks';
 import { listDicts, type DictListEntry } from './dict-lookup';
 import { dictOnlyIsdict, dictOrder, orderByFile, setDictOnlyIsdict, setDictOrder } from './dict-settings';
 import { setDictHooks } from './dict-hooks';
@@ -1213,6 +1214,7 @@ async function openPicked(files: AdbSource[]): Promise<void> {
       const r = await openFile(f);
       dbLog.push('pick ' + f.name + ' -> ' + r);
       if (dbLog.length > 40) dbLog.shift();
+      if (r) { try { localStorage.setItem(LAST_ADB_KEY, f.name); } catch { /* 私密模式 */ } }
       refreshStudyIndexButton();
     }
   } finally {
@@ -1238,7 +1240,7 @@ async function bootDesktop(): Promise<void> {
   void initDesktopBrand((msg, kind) => setStatus(msg, kind ?? 'info'));
   void initDesktopWindowKeys();   // F11 全螢幕／Esc 回視窗（全螢幕時沒有標題列）
   const srcs = await refreshHostDbs();
-  if (!srcs.length) return;
+  if (!srcs.length) { await bootWebAutoload(); return; }
   // 作者 2026-11-01：啟動要把上次開著的 adb 全部開回來，不要每次都只剩一個。
   if (!openDbs.length && await restoreOpenSet(srcs)) {
     // 恢復成功就不再用「挑一個有 logo 的」那條路
@@ -1247,6 +1249,29 @@ async function bootDesktop(): Promise<void> {
   }
   // 作者 2026-11-01：adb 更新只在「開啟 adb」時檢查（viewer.openFile 的 hook），
   // 這裡不再另外檢查、也不輪詢；啟動開庫本身就會觸發。
+}
+
+/** 網頁版：上次開的 adb 檔名（同一個目錄才抓得到） */
+const LAST_ADB_KEY = 'accelon26.lastAdb';
+
+/**
+ * 網頁版記住上次開的 adb（作者 2026-11-05）：
+ * 開檔成功後把檔名寫進 localStorage；下次載入頁面時用 fetch 抓同一個檔自動開回來。
+ * 只有「同一個目錄、http(s)」的情況可行；抓不到就維持原本的歡迎畫面。
+ */
+async function bootWebAutoload(): Promise<void> {
+  if (openDbs.length) return;
+  let name = '';
+  try { name = localStorage.getItem(LAST_ADB_KEY) || ''; } catch { return; }
+  if (!name) return;
+  try {
+    const res = await fetch(name, { cache: 'no-store' });
+    if (!res.ok) return;
+    const buf = await res.arrayBuffer();
+    const file = new File([buf], name, { type: 'application/octet-stream' }) as unknown as AdbSource;
+    await openPicked([file]);
+    if (openDbs.length) setStatus('已自動開啟上次的資料庫：' + name, 'info');
+  } catch { /* 抓不到就算了，維持手動選檔 */ }
 }
 
 /**
@@ -1481,6 +1506,8 @@ function boot() {
   initNoteLinks();
   initParallelSegments();
   setDictHooks.current = () => { setSide('right', true); showTab('dict', 'right'); };
+  // 詞卡（lex-pane）也是右欄分頁，不再用浮動 drawer（作者 2026-11-03）。
+  setLexHooks.current = () => { setSide('right', true); showTab('lex', 'right'); };
   // 操作導覽（🎬）：劇本 → 宏 → 播放器，見 tour.ts 與 ts/tour/*.tour
   initTour(TOUR_APP);
   // 軟件說明（About）：點左上角 accelon26 開啟，順便檢查更新

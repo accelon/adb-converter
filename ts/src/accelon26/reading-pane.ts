@@ -2,16 +2,13 @@
  * 精讀模式（作者 2026-11-03）：🙏 按鈕／F4 切換，**正文區**換成唯讀 CodeMirror（ruby 在字上方），
  * accelon26 的原有布局（左欄目錄、右欄頁籤）不變。
  *
- * 依賴紀律（2026-11-03 教訓）：這個檔**只 import 低階模組**（adb／vapa），
+ * 依賴紀律（2026-11-03 教訓）：這個檔**只 import 低階模組**（cs-lex → adb／vapa），
  * 不 import doc-pane／viewer／dbs／ui——那些會跟 ui 形成循環，boot 會中途死掉。
  * doc-pane 用 `window.__readingMount` 呼叫；其餘狀態走 `window`。
  */
-import { AdbReader, BlobIO } from './adb';
-import { VaPaMapper } from './vapa';
+import { lemmaOf, openCsLex, parseCsLex, type LexEntry } from './cs-lex';
 
 declare const CM: any;
-
-interface LexEntry { lemma: string; iast: string; by: Record<string, string[]> }
 
 let view: any = null;
 let lex: Map<string, LexEntry> | null = null;
@@ -24,64 +21,16 @@ export function readingModeOn(): boolean {
 
 /* ------------------------------------------------------------ 詞庫（cs-lex） */
 
-async function openLex(): Promise<AdbReader | null> {
-  if (location.protocol !== 'http:' && location.protocol !== 'https:') return null;
-  const r = await fetch('/adb/cs-lex.adb');
-  if (!r.ok) return null;
-  return AdbReader.open(new BlobIO(new Blob([await r.arrayBuffer()])));
-}
-
-async function parseLex(r: AdbReader): Promise<Map<string, LexEntry>> {
-  const m = new VaPaMapper(r);
-  await m.init();
-  const out = new Map<string, LexEntry>();
-  let cur: LexEntry | null = null;
-  for (let i = 0; i < m.lineCount; i++) {
-    const raw = (await m.lineText(i)).trim();
-    if (!raw) continue;
-    const b = /^<塊(?=[\s>])[^>]*\bw="([^"]*)"/.exec(raw);
-    if (b) {
-      const lemma = b[1].trim();
-      const iast = /\biast="([^"]*)"/.exec(raw)?.[1] ?? '';
-      cur = { lemma, iast, by: {} };
-      if (lemma) out.set(lemma.toLowerCase(), cur);
-      continue;
-    }
-    if (!cur) continue;
-    const kv = /^([a-z-]+)：(.+)$/.exec(raw);
-    if (!kv) continue;
-    cur.by[kv[1]] = kv[2].split(/[、,]/).map((s) => s.trim()).filter(Boolean);
-  }
-  return out;
-}
-
 function loadLexicon(): Promise<void> {
   if (lexLoading) return lexLoading;
   lexLoading = (async () => {
     try {
-      const r = await openLex();
+      const r = await openCsLex();
       if (!r) return;
-      lex = await parseLex(r);
+      lex = await parseCsLex(r);
     } catch { /* 沒有詞庫就沒有 ruby */ }
   })();
   return lexLoading;
-}
-
-/* ------------------------------------------------------------ 詞形 → lemma */
-
-const ENDINGS = ['ānaṃ', 'assa', 'āya', 'esu', 'āni', 'ena', 'ehi', 'ebhi', 'smiṃ', 'smā', 'mhā',
-  'anti', 'enti', 'onti', 'eyya', 'uṃ', 'aṃ', 'ā', 'ī', 'ū', 'e', 'o', 'a', 'i', 'u', 'ṃ', 's'];
-
-function lemmaOf(word: string): string {
-  const w = word.toLowerCase();
-  if (lex?.has(w)) return w;
-  for (const end of ENDINGS) {
-    if (w.length > end.length + 2 && w.endsWith(end)) {
-      const base = w.slice(0, -end.length);
-      if (lex?.has(base)) return base;
-    }
-  }
-  return '';
 }
 
 /* ------------------------------------------------------------ 渲染 */
@@ -91,21 +40,26 @@ function stripTags(s: string): string {
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
 }
 
-interface Hit { from: number; to: number; word: string; ruby: string; lemma: string }
+interface Hit { from: number; to: number; word: string; ruby: string; lemma: string; line: number }
 
 function hitsFor(text: string): Hit[] {
   if (!rubyOn || !lex) return [];
   const out: Hit[] = [];
   const re = /[A-Za-z\u00C0-\u024F\u1E00-\u1EFF][A-Za-z\u00C0-\u024F\u1E00-\u1EFF'’]*/g;
   let m: RegExpExecArray | null;
+  // 正則是由左往右掃，所以只要累計上一個命中之後的換行數就是行號（不必每詞切整份字串）。
+  let line = 0;
+  let last = 0;
   while ((m = re.exec(text))) {
+    for (let i = last; i < m.index; i++) if (text.charCodeAt(i) === 10) line++;
+    last = m.index;
     const word = m[0];
-    const lemma = lemmaOf(word);
+    const lemma = lemmaOf(lex, word);
     if (!lemma) continue;
     const entry = lex.get(lemma);
     if (!entry) continue;
     // 作者 2026-11-03：ruby 顯示 **IAST 轉寫**（lemma 本身就是 IAST），不顯示譯詞
-    out.push({ from: m.index, to: m.index + word.length, word, ruby: entry.iast || entry.lemma, lemma });
+    out.push({ from: m.index, to: m.index + word.length, word, ruby: entry.iast || entry.lemma, lemma, line });
   }
   return out;
 }
@@ -117,10 +71,17 @@ function rubyDecorations(hits: Hit[]): any {
       const el = document.createElement('ruby');
       el.className = 'rdRuby';
       el.dataset.word = this.hit.word;
+      el.title = this.hit.ruby;
       el.appendChild(document.createTextNode(this.hit.word));
       const rt = document.createElement('rt');
       rt.textContent = this.hit.ruby;
       el.appendChild(rt);
+      // 點 ruby → 右欄「詞」分頁（lex-pane 自己接；這裡不 import，避免循環）。
+      el.addEventListener('click', () => {
+        window.dispatchEvent(new CustomEvent('accelon26:lexword', {
+          detail: { word: this.hit.word, lemma: this.hit.lemma, line: this.hit.line },
+        }));
+      });
       return el;
     }
   };
