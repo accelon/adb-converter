@@ -1633,6 +1633,28 @@ function insideTag(text: string, i: number): boolean {
   return gt >= 0 && gt > i;
 }
 
+/**
+ * 找一個「字元之間可以夾標籤」的詞組（2026-11-06）。
+ *
+ * 索引把 skip 標籤（`术`、`頁`、`註`…）算 0 VA，所以 `<术>一切法空</术>故` 在 VA 上是
+ * 連續的「一切法空故」；但原文有 `</术>` 夾在中間，`indexOfOutsideTags` 找不到。
+ * 這裡用 `一(?:<…>)*切…` 的樣式找，並跳過落在標籤屬性裡的位置（`<聯 n="仁">`）。
+ */
+function findPhraseAllowingTags(text: string, phrase: string, from = 0): { start: number; end: number; text: string } | null {
+  if (!phrase) return null;
+  const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp([...phrase].map(esc).join('(?:<[^>]*>)*'), 'g');
+  re.lastIndex = Math.max(0, from);
+  for (let guard = 0; guard < 200; guard++) {
+    const m = re.exec(text);
+    if (!m) return null;
+    if (!insideTag(text, m.index)) return { start: m.index, end: m.index + m[0].length, text: m[0] };
+    const gt = text.indexOf('>', m.index);
+    re.lastIndex = gt >= 0 ? gt + 1 : text.length;
+  }
+  return null;
+}
+
 /** Move a window's edges out of tags so neither end slices a tag in half. */
 function snapOutsideTags(text: string, from: number, to: number): { from: number; to: number } {
   let a = from;
@@ -1674,41 +1696,78 @@ export async function searchSummary(
       const hint = el && el.element.line === line
         ? Math.max(0, (el.element.pa - mapper.lineStartOf(line)) >> 1)
         : -1;
-      const near = (needle: string, from: number): number => {
-        const p = indexOfOutsideTags(needle, opts.phrase!, Math.max(0, from - 2));
-        return p >= 0 && Math.abs(p - from) <= 4 ? p : -1;
+      // 1) 原文就連續的詞組（最常見）：卡片保留原本的標籤樣式。
+      //    有 hint 時先用 hint 找「那一次」；hint 找不到才退回第一個，而且要先試接起來的
+      //    下一行（詞組可能跨硬換行，像「向」在行尾、「於捨」在下一行）。
+      const nearAt = (text: string): number => {
+        if (hint < 0) return -1;
+        const p = indexOfOutsideTags(text, opts.phrase!, Math.max(0, hint - 2));
+        return p >= 0 && Math.abs(p - hint) <= 4 ? p : -1;
       };
       let text = firstText;
-      let at = hint >= 0 ? near(firstText, hint) : -1;
-      // 詞組跨硬換行（2026-11-05）：換行不佔 VA，所以「向」在行尾、「於捨」在下一行
-      // 仍是一個詞組；只在單行裡找會找不到（或抓到前面那一次）。把後面幾行接起來，
-      // 從命中的位置再找一次。
-      if (at < 0 && hint >= 0) {
-        let joined = firstText;
-        for (let k = 1; k <= 3 && line + k < mapper.lineCount; k++) {
-          joined += await mapper.lineText(line + k);
-          const p = near(joined, hint);
-          if (p >= 0) { text = joined; at = p; break; }
+      let at = -1;
+      if (hint >= 0) {
+        at = nearAt(firstText);
+        for (let k = 1; at < 0 && k <= 3 && line + k < mapper.lineCount; k++) {
+          text += await mapper.lineText(line + k);
+          at = nearAt(text);
         }
-      }
-      // Walk 在這一行漂了（ndd／fgdict）：提示對不上就不要它，退回「這一行的第一個出現」。
-      // 寧可挑到同一行裡另一段（少見），也不要塗在錯的字上（2026-11-05 作者回報 ndd）。
-      if (at < 0) {
+        if (at < 0) { text = firstText; at = indexOfOutsideTags(firstText, opts.phrase); }
+      } else {
         at = indexOfOutsideTags(firstText, opts.phrase);
-        text = firstText;
-        if (at < 0) {
-          let joined = firstText;
-          for (let k = 1; k <= 3 && line + k < mapper.lineCount; k++) {
-            joined += await mapper.lineText(line + k);
-            const p = indexOfOutsideTags(joined, opts.phrase);
-            if (p >= 0) { text = joined; at = p; break; }
-          }
+        for (let k = 1; at < 0 && k <= 3 && line + k < mapper.lineCount; k++) {
+          text += await mapper.lineText(line + k);
+          at = indexOfOutsideTags(text, opts.phrase);
         }
       }
       if (at >= 0) {
         const pad = 30;
         const win = snapOutsideTags(text, Math.max(0, at - pad), Math.min(text.length, at + opts.phrase.length + pad));
         return { text: text.slice(win.from, win.to), start: at - win.from, end: at - win.from + opts.phrase.length, line };
+      }
+      // 2) 詞組被 skip 標籤切開（`<术>一切法空</术>故`，2026-11-06）：索引層是連續的，
+      //    摘要卻在原文裡找不到。允許字元之間夾標籤再找；找到後把那幾個標籤收緊，
+      //    讓 `mid = text.slice(start,end)` 就是可見的詞組（卡片才圈得到）。
+      let raw = firstText;
+      for (let k = 0; ; k++) {
+        if (k > 0) {
+          if (k > 3 || line + k >= mapper.lineCount) break;
+          raw += await mapper.lineText(line + k);
+        }
+        const m = findPhraseAllowingTags(raw, opts.phrase, hint >= 0 ? Math.max(0, hint - 2) : 0)
+          ?? findPhraseAllowingTags(raw, opts.phrase, 0);
+        if (!m) continue;
+        const tight = m.text.replace(/<[^>]*>/g, '');
+        if (!tight) continue;
+        const pad = 30;
+        // 左邊界若落在很長的 `<术 sk="…" a="1">` 裡，snap 會退到標籤的 `<`；再往左補一次，
+        // 卡片才不會只剩命中右邊的上下文。
+        let from = Math.max(0, m.start - pad);
+        const to = Math.min(raw.length, m.end + pad);
+        for (let i = 0; i < 5; i++) {
+          const w = snapOutsideTags(raw, from, to);
+          if (w.from === from) break;
+          from = Math.max(0, w.from - pad);
+        }
+        const win = snapOutsideTags(raw, from, to);
+        let before = raw.slice(win.from, m.start);
+        let after = raw.slice(m.end, win.to);
+        // 收緊時把配對的另一半也拿掉，免得卡片留下未閉合的 <术>（樣式外漏到整張卡）
+        for (const t of m.text.match(/<[^>]*>/g) ?? []) {
+          if (t.startsWith('</')) {
+            const name = t.slice(2, -1).split(/[\s>]/)[0];
+            const open = before.lastIndexOf('<' + name);
+            if (open >= 0 && before[open + 1 + name.length] in { '>': 1, ' ': 1, '\t': 1 }) {
+              const gt = before.indexOf('>', open);
+              if (gt >= 0) before = before.slice(0, open) + before.slice(gt + 1);
+            }
+          } else if (!t.endsWith('/>')) {
+            const name = t.slice(1).split(/[\s>]/)[0];
+            const close = after.indexOf('</' + name);
+            if (close >= 0) after = after.slice(0, close) + after.slice(close + name.length + 3);
+          }
+        }
+        return { text: before + tight + after, start: before.length, end: before.length + tight.length, line };
       }
     }
   }

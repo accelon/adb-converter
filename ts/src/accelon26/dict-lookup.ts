@@ -16,7 +16,7 @@
 import { AdbReader, BlobIO, type AdbSource } from './adb';
 import { VaPaMapper } from './vapa';
 import { catalog } from './dbs';
-import { renderPageBlocks } from './render_accelon3';
+import { renderPageBlocks, tableHtml } from './render_accelon3';
 import { dictOnlyIsdict, dictOrder, orderByFile } from './dict-settings';
 import { detectIsdict } from './db-kind';
 
@@ -351,6 +351,11 @@ export async function renderEntry(row: DictRow): Promise<string> {
   if (!dt || !dt.lines.length) return '<div class="note">（這個詞條沒有正文）</div>';
   const blocks = renderPageBlocks(dt.lines, dt.lineNumbers, { hardBreaks: true, pageMarks: false });
   return blocks.map((b) => {
+    if (b.kind === 'table' && b.table) return tableHtml(b.table);
+    if (b.kind === 'pre') {
+      return '<div class="figText">' + b.lines.map((l) =>
+        '<div class="docLine"><div class="lineText">' + l.html + '</div></div>').join('') + '</div>';
+    }
     if (b.kind === 'line') return '<div class="docLine"><div class="lineText">' + b.lines[0].html + '</div></div>';
     const tag = b.kind === 'heading' ? 'div' : 'p';
     const cls = b.kind === 'heading' ? 'docPara docParaHeading' : 'docPara';

@@ -14,8 +14,9 @@
     /* 強調用的字色（作者 2026-11-05）：目錄樹的 ancestor／current 比起一般列再亮一點。
        暗色用近白，淺色主題用近黑——都是往「對比更強」的方向走，不是真的變白。 */
     --fg-strong: #ffffff;
-    /* 目錄樹 ancestor 的底線（作者 2026-11-05）：要比 current 的外框（--accent）淺 */
-    --ancestor-line: #a8d3ff;
+    /* 一般列的字色（作者 2026-11-06）：比 --fg 稍稍灰一點，ancestor／current 再用
+       --fg-strong 拉亮；ancestor 不再畫底線。 */
+    --fg-muted: #bfbfbf;
   /* 主題色（作者 2026-10-18）：下列變數原本寫死在規則裡，改成變數才能換主題。
      暗色系是預設（:root），亮色系／春綠見下面的 html[data-theme]。 */
   --gold: #ffd479; --gold-2: #fff3c4;
@@ -76,7 +77,7 @@
     --bg: #ffffff; --panel: #f5f6f8; --panel2: #eceef1; --line: #d6d9de;
     --fg: #1f2328; --dim: #6a7280; --accent: #1f6feb; --warn: #b45309; --err: #c0392b;
     --fg-strong: #000000;
-    --ancestor-line: #7fa9d9;
+    --fg-muted: #3c444d;
     --gold: #8a5a00; --gold-2: #7a4a00;
     --hl-bg: #dbe9ff; --row-hover: #eef1f5;
     --ink-on-accent: #ffffff; --link: #1f6feb;
@@ -102,7 +103,7 @@
     --bg: #eaf1e2; --panel: #e2ecd8; --panel2: #d8e5cc; --line: #c3d3b6;
     --fg: #2c3a2a; --dim: #5d6c55; --accent: #3f7d4e; --warn: #8a6d1f; --err: #b0413e;
     --fg-strong: #131d12;
-    --ancestor-line: #7fa07a;
+    --fg-muted: #45523f;
     --gold: #6d5a12; --gold-2: #5c4a0c;
     --hl-bg: #cfe3c2; --row-hover: #dfe9d5;
     --ink-on-accent: #ffffff; --link: #2f6b3e;
@@ -129,7 +130,7 @@
     --bg: #f6ecd6; --panel: #efe2c6; --panel2: #e7d7b4; --line: #cdb98e;
     --fg: #3a2d1b; --dim: #7d6a47; --accent: #a8691f; --warn: #8a5a12; --err: #a53f2a;
     --fg-strong: #211708;
-    --ancestor-line: #c49a5e;
+    --fg-muted: #57482f;
     --gold: #7a4f0e; --gold-2: #6a4208;
     --hl-bg: #ecd5a6; --row-hover: #eee0c4;
     --ink-on-accent: #ffffff; --link: #8a5a12;
@@ -976,6 +977,46 @@
 ::highlight(accelonCharBand) { background-color: rgba(255, 209, 102, .42); color: inherit; }
   /* 作者 2026-11-03：閱讀一律軟換行，不要水平捲（原書硬換行保留，但不裁切長行） */
   .lineText { white-space: pre-wrap; overflow-wrap: anywhere; flex: 1 1 auto; min-width: 0; }
+
+  /* ---- 表格（作者 2026-11-06）--------------------------------------------------
+     `<表>` 的管線表與 `<圖文字>` 的框線表都收成同一個 .docTable。每列仍是 .docLine
+     （id=L{n}、data-src），每格是 .lineText —— 塗紅、錨點、捲動都照原來的方式走；
+     <tr>/<td> 只是讓欄寬交給瀏覽器排。 */
+  .docTable { margin: 10px 0 12px; overflow-x: auto; border-radius: 6px; }
+  /* .docLine 平常是 flex；在表格裡一定要交還給 table layout，否則每列各排各的 */
+  .docTable tr.docLine { display: table-row; }
+  .docTable table { border-collapse: collapse; width: 100%; font-size: .96em; line-height: 1.6;
+    /* 欄數多時不要硬塞進視窗寬度（科判表 11 欄會一字一行）；讓它溢出、由容器橫向捲動 */
+    min-width: calc(var(--cols, 2) * 6em); }
+  .docTable caption.tCap { caption-side: top; text-align: left; color: var(--dim); font-size: .9em; padding: 0 2px 6px; }
+  .docTable th, .docTable td { border: 1px solid var(--line); padding: 5px 10px; text-align: left; vertical-align: top; min-width: 4.2em; }
+  .docTable thead th { background: color-mix(in srgb, var(--panel2) 70%, transparent); font-weight: 600; white-space: nowrap; }
+  .docTable tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--panel2) 32%, transparent); }
+  /* 空白格就是空白（作者 2026-11-06）：不放符號，但保留列底色 */
+  .docTable tr.tPage td { border-left: 0; border-right: 0; background: transparent; padding: 1px 10px;
+    text-align: right; color: var(--dim); font-size: .82em; font-variant-numeric: tabular-nums; }
+  /* 列高亮：tr 是 table-row，背景照樣畫得出來 */
+  .docTable tr.hitLine td { background: rgba(255, 212, 121, .10); }
+  .docTable tr.jumpHit td { background: rgba(255, 209, 102, .16); }
+  .docTable tr.jumpHit td:first-child { box-shadow: inset 3px 0 0 rgba(255, 209, 102, .55); }
+  /* 連排模式（.docBody.reflow）不能把表格的列改成 inline */
+  .docBody.reflow .docTable tr.docLine { display: table-row; }
+  .docBody.reflow .docTable .lineText { white-space: normal; overflow-wrap: anywhere; }
+  /* 解析不了框線表時的等寬顯示：框線圖至少要對得齊 */
+  .figText { margin: 8px 0 10px; padding: 8px 12px; border-radius: 6px; overflow-x: auto;
+    background: color-mix(in srgb, var(--panel2) 45%, transparent); }
+  .figText .docLine { padding: 0; }
+  .figText .lineText { white-space: pre; overflow-wrap: normal;
+    font-family: "Cascadia Mono", Consolas, "MS Gothic", ui-monospace, monospace; font-size: .92em; line-height: 1.35; }
+  /* `<表>說明</表>` 這種單行圖說：置中、小一號 */
+  .docLine.tableCaption { justify-content: center; text-align: center; color: var(--dim); font-size: .92em; padding: 6px 0 2px; }
+  /* 掃描原圖收在表格下面（作者 2026-11-06）：文字表優先，校對時再展開 */
+  .docTable .tblSrc { margin: 8px 2px 0; font-size: .85em; color: var(--dim); }
+  .docTable .tblSrc > summary { display: inline-block; cursor: pointer; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; }
+  .docTable .tblSrc > summary:hover { border-color: var(--accent); color: var(--fg); }
+  .docTable .tblSrcImg { margin: 8px 0 0; overflow-x: auto; }
+  /* 原圖不受 .lineText 的 2.2em 限制：這裡就是要看整張掃描 */
+  .docTable .tblSrcImg img, .docTable .tblSrcImg svg { display: block; max-width: 100%; height: auto; }
   /* cs 的 `<詞 b j>`：單擊開 lex-pane；只加細虛線，不改變閱讀節奏。 */
   .lineText .word { cursor: pointer; border-bottom: 1px dotted color-mix(in srgb, var(--accent) 45%, transparent); }
   .lineText .word:hover { background: var(--hl-bg); border-bottom-color: var(--accent); }
@@ -1593,10 +1634,16 @@
   .tRow {
     display: flex; align-items: center; gap: 4px; padding: 1px 4px; border-radius: 3px;
     cursor: pointer; font-size: 1em; line-height: 1.5; white-space: nowrap;
+    color: var(--fg-muted);
   }
   .tRow:hover { background: var(--row-hover); }
   .tTwisty { width: 12px; text-align: center; color: var(--dim); flex: 0 0 auto; font-size: .846em; }
-  .tDot { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
+  /* 打開的節點（▾）比收合的（▸）亮，不然兩個箭頭很難分（作者 2026-11-06） */
+  .tTwisty.open { color: var(--fg-strong); }
+  .tDot { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; opacity: .5; }
+  /* 未打開的節點色點調暗（作者 2026-11-06）：打開／ancestor／current／active 才全亮，
+     這樣「已經展開的枝」在整棵樹裡才跳得出來。 */
+  .tRow.open .tDot, .tRow.ancestor .tDot, .tRow.current .tDot, .tRow.active .tDot { opacity: 1; }
   .tTag { color: var(--dim); font-size: .846em; flex: 0 0 auto; }
   /* the tag name (書/章/節…) is not shown in the directory: the colour block
      already carries the depth, and the name would only repeat it */
@@ -1619,13 +1666,12 @@
   .tCount.hit.big { font-size: 1.12em; }
   /* the node whose text the middle pane currently shows, and the node the middle
      of the document pane sits on (with its ancestors lit) */
-  .tRow.active { background: var(--hl-bg); }
-  /* 作者 2026-11-05：ancestor 不再用藍底，改成**底部一條較淺的線**（比 current 的外框淺），
-     字色比一般列亮——用「線」表示路徑，用「框＋底」表示目前位置。 */
-  .tRow.ancestor { background: none; box-shadow: inset 0 -1px 0 var(--ancestor-line); }
-  .tRow.current { background: var(--hl-bg); outline: 1px solid var(--accent); border-radius: 3px; }
-  /* 字色再亮一點（作者 2026-11-05）：ancestor／current 比一般列更醒目，但不改字重、不位移。 */
-  .tRow.ancestor, .tRow.current { color: var(--fg-strong); }
+  .tRow.active { background: var(--hl-bg); color: var(--fg-strong); }
+  /* 作者 2026-11-06：ancestor 不再畫底線（不好看），改用字色區分——
+     一般列稍灰（--fg-muted）、ancestor／current 拉亮（--fg-strong）；
+     目前位置仍用「框＋底」，路徑只靠字色。 */
+  .tRow.ancestor { background: none; color: var(--fg-strong); }
+  .tRow.current { background: var(--hl-bg); outline: 1px solid var(--accent); border-radius: 3px; color: var(--fg-strong); }
   #dirTree { padding: 0; }
   /* 虛擬目錄（作者 2026-11-02）：只掛視窗附近的列，列高固定才能用 spacer 撐總高。 */
   #dirTree.virtualList .tRow {

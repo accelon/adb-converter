@@ -19,6 +19,7 @@ import { decodeXmlEntities } from '../xml-entities';
 import { siddhamSequence } from './siddham-seq';
 import { puaSequence } from './pua-seq';
 import { noteLabel } from './note-label';
+import { parseTableBlock } from './table-block';
 
 export interface RenderContext {
   /** 標籤 → 它在樹裡的深度（0＝最上層） */
@@ -301,12 +302,38 @@ export interface RenderedLine {
    * 正文那一塊保留原本的 `L{no}`（塗紅、捲動都以有文字的那一塊為準）。
    */
   idSuffix?: string;
+  /** 額外的列 class（`figLine`：圖文字被當成等寬區塊的那些行） */
+  cls?: string;
 }
 
-/** 一個版面塊：段落（多行連排）或標題（單行） */
+/** 表格的一列（`page` 有值時是原書頁碼，整列合併） */
+export interface RenderTableRow {
+  no: number;
+  /** 原始行（`data-src`，塗紅靠它對回原文） */
+  raw: string;
+  /** 每格已渲染的 HTML（每格自己是一個 `.lineText`） */
+  cells: string[];
+  page?: string;
+}
+
+export interface RenderTable {
+  cols: number;
+  caption?: string;
+  head: RenderTableRow | null;
+  rows: RenderTableRow[];
+  /**
+   * 表格前面那張掃描原圖（作者 2026-11-06）：文字表優先顯示，原圖收進
+   * 「看原圖」的 `<details>` 裡；找不到圖檔時不長這個（不要留一個 ▢）。
+   */
+  source?: { no: number; raw: string; html: string };
+}
+
+/** 一個版面塊：段落（多行連排）、標題（單行）、表格，或等寬的圖文字 */
 export interface RenderBlock {
-  kind: 'line' | 'heading' | 'para';
+  kind: 'line' | 'heading' | 'para' | 'table' | 'pre';
   lines: RenderedLine[];
+  /** kind === 'table' 才有 */
+  table?: RenderTable;
 }
 
 /**
@@ -370,8 +397,11 @@ export class Accelon3Renderer {
       imageUrl: opts.imageUrl ?? null,
       svgText: opts.svgText ?? null,
     };
+    // 'hover' 也要收（2026-11-06）：漏了它會悄悄退回 'orig'，auto 的 <术>（a="1"）就
+    // 完全不畫虛線、也沒有 title —— fuyan 全部術語都是自動標的，看起來就像壞掉。
+    const tm = opts.termMode;
     this.termMode =
-      opts.termMode === 'inline' || opts.termMode === 'off' || opts.termMode === 'orig' ? opts.termMode : 'orig';
+      tm === 'inline' || tm === 'off' || tm === 'orig' || tm === 'hover' ? tm : 'orig';
   }
 
   /** 顯示用轉換（無損簡體等）；沒有就原樣 */
@@ -656,7 +686,8 @@ export class Accelon3Renderer {
       // 常常嵌在句子中間，整行消失會讓句子讀不通。
       if (IMAGE_TAGS.has(name)) {
         if (!closing) {
-          const src = attrValue(attrs, 'n') || attrValue(attrs, 'id');
+          // `f=` 是 Delphi 的 FILE 屬性（`basetype.pas`），taixu 的表格掃描就是用 f
+          const src = attrValue(attrs, 'n') || attrValue(attrs, 'id') || attrValue(attrs, 'f');
           const figure = attrValue(attrs, 't') === '圖版';
           // SVG 優先 inline：跟著字色走、可用 CSS 縮放（作者 2026-10-28）
           const svg = src ? this.opts.svgText?.(src) ?? null : null;
@@ -862,6 +893,171 @@ export class Accelon3Renderer {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * 表格區塊（`<表>` 與 `<圖文字>`）
+ * ------------------------------------------------------------------ */
+
+/** 會被當成「區塊」的標籤：新語法的 `<表>`，以及舊資料放框線表的 `<圖文字>` */
+const BLOCK_TAG_RE = /^<(_?)(表|圖文字)(?=[\s>])[^>]*>/;
+const BLOCK_TAGS = new Set(['表', '圖文字']);
+
+interface BlockRegion {
+  i: number;
+  j: number;
+  tag: string;
+  /** 開標籤之後、收標籤之前的行（`inner.length === j - i + 1`） */
+  inner: string[];
+}
+
+/** 這一行是不是區塊的開始（開標籤必須在行首；前後不能夾正文） */
+function blockRegionAt(lines: string[], i: number): BlockRegion | null {
+  const raw = lines[i];
+  const lead = raw.length - raw.trimStart().length;
+  const head = raw.slice(lead);
+  const m = BLOCK_TAG_RE.exec(head);
+  if (!m || !BLOCK_TAGS.has(m[2])) return null;
+  const tag = m[2];
+  const openEnd = lead + m[0].length;
+  let j = -1;
+  let col = -1;
+  for (let k = i; k < lines.length; k++) {
+    const from = k === i ? openEnd : 0;
+    const at = lines[k].indexOf('</' + tag + '>', from);
+    if (at >= 0) { j = k; col = at; break; }
+  }
+  if (j < 0) return null;
+  // 收標籤後面還有正文 → 不當區塊（避免吃掉後面的句子）
+  if (lines[j].slice(col + tag.length + 3).trim()) return null;
+  const inner: string[] = [];
+  if (i === j) inner.push(lines[i].slice(openEnd, col));
+  else {
+    inner.push(lines[i].slice(openEnd));
+    for (let k = i + 1; k < j; k++) inner.push(lines[k]);
+    inner.push(lines[j].slice(0, col));
+  }
+  return { i, j, tag, inner };
+}
+
+/**
+ * 表格 → HTML。每列仍是 `.docLine`（`id=L{n}`、`data-src`），每格是 `.lineText`
+ * —— 塗紅、錨點、捲動都不必改；`<tr>` 只是讓欄寬由瀏覽器排。
+ */
+export function tableHtml(t: RenderTable, rowCls?: (no: number) => string): string {
+  const cls = (base: string, no: number) => {
+    const extra = rowCls ? rowCls(no).trim() : '';
+    return base + (extra ? ' ' + extra : '');
+  };
+  const cap = t.caption ? `<caption class="tCap">${esc(t.caption)}</caption>` : '';
+  const head = t.head
+    ? `<thead><tr class="${cls('docLine tHead', t.head.no)}" id="L${t.head.no}" data-src="${esc(t.head.raw)}">`
+      + t.head.cells.map((c) => `<th><span class="lineText">${c}</span></th>`).join('')
+      + '</tr></thead>'
+    : '';
+  const body = t.rows.map((r) => (r.page
+    ? `<tr class="${cls('docLine tPage', r.no)}" id="L${r.no}" data-src="${esc(r.raw)}">`
+      + `<td colspan="${t.cols}"><span class="lineText">原書頁 ${esc(r.page)}</span></td></tr>`
+    : `<tr class="${cls('docLine', r.no)}" id="L${r.no}" data-src="${esc(r.raw)}">`
+      + r.cells.map((c) => `<td><span class="lineText">${c}</span></td>`).join('')
+      + '</tr>')).join('');
+  // 掃描原圖收在表格下面（作者 2026-11-06：文字表優先，校對時再展開）
+  const src = t.source
+    ? `<details class="tblSrc" id="L${t.source.no}" data-src="${esc(t.source.raw)}">`
+      + '<summary>看原圖</summary><div class="tblSrcImg">' + t.source.html + '</div></details>'
+    : '';
+  return `<div class="docTable" style="--cols:${t.cols}"><table>${cap}${head}<tbody>${body}</tbody></table>${src}</div>`;
+}
+
+/** 一個區塊 → 版面塊；不是可解析的表格就回 null（呼叫端照舊逐行渲染） */
+function blockAt(
+  lines: string[], lineNumbers: number[], i: number,
+  opts: RenderOptions, ctx: RenderContext, depthSteps: Map<number, number>,
+): { last: number; block: RenderBlock } | null {
+  const reg = blockRegionAt(lines, i);
+  if (!reg) return null;
+  const noAt = (at: number) => lineNumbers[i + at] ?? i + at;
+  const data = parseTableBlock(reg.inner);
+  if (data) {
+    const r = new Accelon3Renderer(ctx, { ...opts, depthSteps });
+    const cellsOf = (cells: string[]) => cells.map((c) => r.lineInfo(c, 0).html);
+    const rowOf = (row: { cells: string[]; page?: string; at: number }): RenderTableRow => ({
+      no: noAt(row.at), raw: lines[i + row.at] ?? '', cells: row.cells.length ? cellsOf(row.cells) : [], page: row.page,
+    });
+    const table: RenderTable = {
+      cols: data.cols,
+      caption: data.caption?.text,
+      head: data.header ? rowOf({ cells: data.header.cells, at: data.header.at }) : null,
+      rows: data.rows.map(rowOf),
+    };
+    // 摘要／純文字用途：列的文字（不含框線）
+    const flat = (row: RenderTableRow) => row.page ? `〔頁 ${row.page}〕` : row.cells.map((c) => c.replace(/<[^>]*>/g, '')).join('　');
+    const lines2: RenderedLine[] = [];
+    if (table.head) lines2.push({ no: table.head.no, html: flat(table.head), raw: table.head.raw, visible: true, heading: false });
+    for (const row of table.rows) lines2.push({ no: row.no, html: flat(row), raw: row.raw, visible: true, heading: false });
+    return { last: reg.j, block: { kind: 'table', lines: lines2, table } };
+  }
+  // 解析不了：`<圖文字>` 用等寬顯示（框線圖才對得齊），`<表>` 只當普通文字
+  if (reg.tag === '圖文字' && reg.j > reg.i) {
+    const r = new Accelon3Renderer(ctx, { ...opts, depthSteps });
+    const rows: RenderedLine[] = [];
+    for (let at = 0; at < reg.inner.length; at++) {
+      const text = reg.inner[at];
+      // 開／收標籤自己那一行（前後的空段）不要長出空列
+      if (!text.trim() && (at === 0 || at === reg.inner.length - 1)) continue;
+      const info = r.lineInfo(text, noAt(at));
+      // `data-src` 一定要放整行原文（塗紅的位移是算在整行上的）
+      rows.push({ ...info, raw: lines[i + at] ?? text, cls: 'figLine' });
+    }
+    return { last: reg.j, block: { kind: 'pre', lines: rows } };
+  }
+  // `<表>說明</表>`（同一行）：當圖說，不要讓它變成普通段落
+  if (reg.tag === '表' && reg.j === reg.i) {
+    const text = reg.inner[0].trim();
+    if (!text) return null;
+    const r = new Accelon3Renderer(ctx, { ...opts, depthSteps });
+    const info = r.lineInfo(text, noAt(0));
+    if (!info.visible) return null;
+    return {
+      last: reg.j,
+      block: { kind: 'line', lines: [{ ...info, raw: lines[i], cls: 'tableCaption' }] },
+    };
+  }
+  return null;
+}
+
+const IMG_ONLY_RE = /^<(圖|嵌圖|圖片)(?=[\s/>])[^>]*\/>$/;
+
+/**
+ * 表格前面「只有一張圖」的列：那是同一個表格的圖檔版本（作者 2026-11-06）。
+ * 文字表都解析出來了，再把圖放在上面只是重複；純圖列才丟，夾著文字的一律不動。
+ */
+function hoistImagesBeforeTables(blocks: RenderBlock[]): void {
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    if (block.kind !== 'table' || !block.table) continue;
+    let j = i - 1;
+    while (j >= 0) {
+      const b = blocks[j];
+      // `line`＝保留硬換行時的一列；`para`＝連排時的一段（圖可能和多行文字黏在一起）
+      if (b.kind !== 'line' && b.kind !== 'para') break;
+      let taken: RenderedLine | null = null;
+      while (b.lines.length) {
+        const last = b.lines[b.lines.length - 1];
+        const raw = (last.raw ?? '').trim();
+        const text = last.html.replace(/<[^>]*>/g, '').trim();
+        if (!raw && !text) { b.lines.pop(); continue; }                          // 空行
+        if (IMG_ONLY_RE.test(raw) && (!text || text === '▢')) { taken = b.lines.pop()!; continue; }
+        break;
+      }
+      if (!b.lines.length) { blocks.splice(j, 1); i--; }                          // 整個塊只剩圖
+      // 找得到圖檔才收成「看原圖」；只有 ▢ 佔位符就直接丟掉，不要長一個沒用的按鈕
+      if (taken && /<(img|svg)\b/i.test(taken.html)) {
+        block.table.source = { no: taken.no, raw: taken.raw, html: taken.html };
+      }
+      break;
+    }
+  }
+}
+
 /**
  * 一頁 → 版面塊。
  *
@@ -943,7 +1139,23 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
     prev.lines[prev.lines.length - 1].html += html;
     return true;
   };
+  // 先把 `<表>`／`<圖文字>` 區塊找出來（一次掃描；找到就整段跳過）
+  const special = new Map<number, { last: number; block: RenderBlock }>();
   for (let i = 0; i < lines.length; i++) {
+    const b = blockAt(lines, lineNumbers, i, opts, ctx, depthSteps);
+    if (b) { special.set(i, b); i = b.last; }
+  }
+  for (let i = 0; i < lines.length; i++) {
+    // 表格／圖文字區塊：整段收成一個 block，逐行狀態（標題堆疊、頁碼接續）全部讓開
+    const sp = special.get(i);
+    if (sp) {
+      flushBlanks();
+      if (pageOnly) { if (!appendToPrev(pageOnly)) out.push({ kind: 'line', lines: [{ no: 0, html: pageOnly, raw: '', visible: true, heading: false }] }); pageOnly = ''; }
+      out.push(sp.block);
+      cur = null; sawBlank = false; lastPage = false; softBreak = false;
+      i = sp.last;
+      continue;
+    }
     let info = r.lineInfo(lines[i], lineNumbers[i] ?? i);
     // 「標題＋段」同一行（`<段>` ≡ `<p>`，作者 2026-11-03）：段碼之前是標題，先推出去
     // 當自己的 heading 塊；剩下的（段碼＋本文）照一般流程走，續行才會接在同一段。
@@ -1057,6 +1269,9 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
     blanks = [];
   }
   if (hard) flushBlanks();
+  // 表格已經把圖裡的文字轉出來了，緊接在前的「只有一張圖」那一列就是多餘的
+  // （taixu：<表>圖說</表> → <圖/> → <圖文字>框線表）。只丟純圖列，不動別的。
+  hoistImagesBeforeTables(out);
   return out;
 }
 

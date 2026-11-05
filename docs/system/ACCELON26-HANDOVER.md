@@ -222,10 +222,16 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
 
 ## 2. 目錄區／本文區行為規格（本輪實作）
 
-一）**聯動行為**：點 `tTwisty`／`tDot`／`tName` 任何一處 →
-  可以打開就打開，**並且聯動本文**；已經開著就只收合（也聯動本文到該節點）；
-  葉節點直接聯動。點 `tCount`（命中數）→ 右欄「摘要」切成**該節點範圍內的命中**，
-  本文只移動到該節點開頭（不改變摘要以外的狀態）。
+一）**聯動行為**（2026-11-06 作者改）：
+  - 點 `tTwisty`／`tDot`／`tName`：**本文已經停在這個節點**（分頁 realm 的起點＝節點的
+    `va`）時只做開合（已展開就收整枝），**不跳**；從別的節點點過來才聯動本文，而且不動
+    它的子孫。比對只用 realm 的**起點**，不比 `to`：有些節點（fuyan 的「空之探究講義腳注」）
+    第一個子節點和書共用同一個 va，跳過去的 realm 會是子節點的範圍，`to` 對不上，
+    按第二次就只會再跳一次。
+  - 收合一律要點節點自己的 `tTwisty`（展開時點它）；只有「已在該節點」時點名稱也等於開合。
+  - 葉節點（沒有子節點）點名稱＝聯動本文。
+  - 點 `tCount`（命中數）→ 右欄「摘要」切成**該節點範圍內的命中**，
+    本文只移動到該節點開頭（不改變摘要以外的狀態）。
   **輸入區更新時不聯動本文**，只更新摘要（一次顯示最前 30 筆）；要看命中就點節點的 tCount。
   **輸入區按 Escape 不清空**（作者 2026-10）：文字與結果都留著，只是離開欄位；
   要清空用輸入框的 ✕（`#queryClear`／`#termsClear`／`#freqClear`／`#latinClear`／`#folioClear`），Enter 則立即重搜。
@@ -235,9 +241,12 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
   「fgdict 全文檢索輸入區按 Escape 還是會刪除輸入文字」就是這個）。合成事件的測試**不會**觸發這個
   預設動作，所以回歸測試用 CDP `Input.dispatchKeyEvent` 送真正的（trusted）按鍵來驗。
 
-  **目錄樹的三種列狀態**（作者 2026-11-05）：`current`＝本文游標所在節點（底色 `--hl-bg`
-  ＋`--accent` 外框）；`ancestor`＝游標的祖先（**不用底色**，改成底部一條比 accent 淺的線
-  `--ancestor-line`）；兩者字色都比一般列亮（`--fg-strong`：暗色近白、淺色近黑）。
+  **目錄樹的三種列狀態**（作者 2026-11-05，2026-11-06 改字色）：`current`＝本文游標所在節點
+  （底色 `--hl-bg`＋`--accent` 外框）；`ancestor`＝游標的祖先（**不用底色、也不用底線**）；
+  一般列用 `--fg-muted`（比 `--fg` 稍灰），`ancestor`／`current`／`active` 用 `--fg-strong`
+  （暗色近白、淺色近黑）。打開的節點箭頭 `▾` 也給 `--fg-strong`（`.tTwisty.open`），
+  才不會和收合的 `▸`（`--dim`）混在一起；未打開的節點色點 `.tDot` 用 `opacity:.5`，
+  `open`／`ancestor`／`current`／`active` 的列才全亮（2026-11-06 作者：要讓展開的枝跳出來）。
   目錄是**虛擬捲動**（只掛視窗附近的列），所以 class 要在 `scopes.ts` 產生列時就寫進去
   （`link.ts: treeRowClasses(va)` 讀 `cursorVa`／`cursorPath`）。只靠 `paintTreeActive()`
   事後補 class 的話，往下捲再捲回來、重掛的列就沒有高亮——2026-11-05 作者回報的

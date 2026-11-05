@@ -54,6 +54,22 @@ export async function anchorIndex(r: AdbReader): Promise<AnchorIndex | null> {
   return idx;
 }
 
+/** 頁 id 可以省略 `p` 之後的前導 0：`9p94a` → `9p0094a`（作者 2026-11-06：讓 <聯> 短一點） */
+export function padPageId(id: string): string {
+  const m = /^(\d+)[pP](\d+)([a-z]?)$/.exec(id);
+  if (!m) return id;
+  const p = m[2].padStart(4, '0');
+  return p === m[2] ? id : `${m[1]}p${p}${m[3]}`;
+}
+
+/** 去掉 `p` 之後多餘的前導 0：`9p0094a` → `9p94a`（ys.adb 2026-11-06 起也用短碼） */
+export function shortPageId(id: string): string {
+  const m = /^(\d+)[pP]0*(\d+)([a-z]?)$/.exec(id);
+  if (!m) return id;
+  const short = `${m[1]}p${parseInt(m[2], 10)}${m[3]}`;
+  return short === id ? id : short;
+}
+
 /** 頁 id → VA（走 accelon3 的 attributes/頁.id → pointer → tags/頁 鏈） */
 export async function anchorVa(r: AdbReader, anchor: string): Promise<number | null> {
   // `#N`／`#詞` 只是句內詞序（vedic 的 `<詞 w="1">`），不影響 VA；先切掉再定位。
@@ -63,7 +79,12 @@ export async function anchorVa(r: AdbReader, anchor: string): Promise<number | n
   const idx = await anchorIndex(r);
   // 沒有 `<頁>` 標籤的庫（sz 系列）：退回 `塊.段` 定位
   if (!idx) return locatorVa(r, base);
-  const i = idx.values.indexOf(base);
+  // 前導 0 可有可無：`9p94a`／`9p0094a` 都能命中（ys 新舊版頁 id 並存時也一樣）
+  let i = idx.values.indexOf(base);
+  for (const cand of [padPageId(base), shortPageId(base)]) {
+    if (i >= 0) break;
+    if (cand !== base) i = idx.values.indexOf(cand);
+  }
   if (i < 0) return locatorVa(r, base);
   const ptr = idx.pointers[i];
   if (idx.tags[(ptr >>> 24) & 0xff] !== '頁') return locatorVa(r, base);

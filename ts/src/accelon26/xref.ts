@@ -28,7 +28,7 @@ import { openAdbStore } from './adb-store';
 import { hostState } from './host';
 import { bz2Decompress } from '../bzip2-wasm';
 import { HAN_RE, isHan, hanChars, hanCount } from './han';
-import { anchorIndex, anchorVa, blockOf, pageHanTextOf, type AnchorIndex } from './page-text';
+import { anchorIndex, anchorVa, blockOf, pageHanTextOf, shortPageId, type AnchorIndex } from './page-text';
 import { splitPageCol, type PageCite } from './page-cite';
 import { splitWordKey } from './word-hl';
 
@@ -451,12 +451,12 @@ async function addReverseFrom(
       if (qm) entry.quote = qm[1].replace(/<[^>]*>/g, '').trim();
     } catch { /* 取不到就算了 */ }
     outAll.push(entry);
-    const key = db + '?' + anchor;
+    const key = db + '?' + shortPageId(anchor);
     const arr = outIndex.get(key);
     if (arr) arr.push(entry); else outIndex.set(key, [entry]);
     // 大正藏一頁有三欄（a/b/c）：讀者在 a 欄時，連到 b、c 欄的引文也該看得到，
     // 所以另外用「頁」為鍵收一份（作者 2026-10-28）。
-    const pageKey = db + '?' + anchor.replace(/[a-z]$/, '');
+    const pageKey = db + '?' + shortPageId(anchor.replace(/[a-z]$/, ''));
     if (pageKey !== key) {
       const parr = outIndex.get(pageKey);
       if (parr) parr.push(entry); else outIndex.set(pageKey, [entry]);
@@ -519,10 +519,10 @@ async function addReverseFromXrev(
       targetPage: String(targetPage),
     };
     outAll.push(entry);
-    const key = db + '?' + entry.targetPage;
+    const key = db + '?' + shortPageId(entry.targetPage);
     const arr = outIndex.get(key);
     if (arr) arr.push(entry); else outIndex.set(key, [entry]);
-    const pageKey = db + '?' + entry.targetPage.replace(/[a-z]$/, '');
+    const pageKey = db + '?' + shortPageId(entry.targetPage.replace(/[a-z]$/, ''));
     if (pageKey !== key) {
       const parr = outIndex.get(pageKey);
       if (parr) parr.push(entry); else outIndex.set(pageKey, [entry]);
@@ -1015,8 +1015,8 @@ export function sortRevItems(items: RevItem[], mode: RevSort): RevItem[] {
 export async function reverseItemsForPage(db: string, pageId: string, mode: RevSort = 'freq'): Promise<RevItem[]> {
   if (!revIndex.size || !pageId) return [];
   // 先看這一欄；整頁（a/b/c 三欄）如果還有別的欄被引用，就一併列出（作者 2026-10-28）
-  const colEntries = revIndex.get(db + '?' + pageId) ?? [];
-  const pageEntries = revIndex.get(db + '?' + pageId.replace(/[a-z]$/, '')) ?? [];
+  const colEntries = revIndex.get(db + '?' + shortPageId(pageId)) ?? [];
+  const pageEntries = revIndex.get(db + '?' + shortPageId(pageId.replace(/[a-z]$/, ''))) ?? [];
   const entries = pageEntries.length > colEntries.length ? pageEntries : colEntries;
   if (!entries.length) return [];
   const uniq = new Map<string, RevEntry>();

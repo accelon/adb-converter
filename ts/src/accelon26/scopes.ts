@@ -654,6 +654,8 @@ async function renderDirTree(): Promise<void> {
       const n = r.node;
       const open = d.open.has(n.va);
       const twisty = r.hasChildren ? (open ? '▾' : '▸') : '·';
+      // 打開的節點（▾）用亮字色，才不會和收合的 ▸ 混在一起（作者 2026-11-06）
+      const twistyCls = r.hasChildren && open ? 'tTwisty open' : 'tTwisty';
       const hits = searching ? (exact ? cachedRealmCount(n.va, n.vaEnd) : realmHits(n.va, n.vaEnd)) : 0;
       let badge = '';
       if (searching) {
@@ -664,8 +666,8 @@ async function renderDirTree(): Promise<void> {
       const edited = editedSet.has(n.va);
       // 游標的 current／ancestor 直接長進列裡（作者 2026-11-05）：目錄是虛擬捲動，
       // 捲動後重掛的列若只靠 paintTreeActive() 事後補 class，捲過去就掉了。
-      return `<div class="tRow${edited ? ' edited' : ''}${treeRowClasses(n.va)}" data-va="${n.va}">
-      <span class="tTwisty">${twisty}</span>
+      return `<div class="tRow${edited ? ' edited' : ''}${open ? ' open' : ''}${treeRowClasses(n.va)}" data-va="${n.va}">
+      <span class="${twistyCls}">${twisty}</span>
       <span class="tDot" style="background:${depthColor(n.depth, n.tag, d.labels.get(n.va) || '')}"></span>
       <span class="tTag">${escapeHtml(n.tag)}</span>
       <span class="tName">${escapeHtml(d.labels.get(n.va) || '#' + n.index)}</span>
@@ -744,12 +746,29 @@ async function renderDirTree(): Promise<void> {
         // 2026-10-31 修正：Alt 展開全書後每個節點都是「已展開」，點名稱就只會收合、
         // 不能跳（作者回報「展開了但節點都不能點」）。改成只有點箭頭才收合；
         // 點名稱／色塊在已展開時仍然跳到本文。
+        //
+        // 2026-11-06（作者）：本文**已經停在這個節點**時，點名稱不必再跳——改成開合
+        // （已展開就收合整枝），這樣目錄檢視可以快速收起來；從別的節點點過來才跳，
+        // 而且不動它的子孫。
         const link = () => void jumpToFirstHit();
         const open = d.open.has(va);
+        // 「本文已經停在這個節點」看的是**這個分頁的 realm 起點**：
+        // 點一個節點後 realm 就從它的 va 開始；同一本書再點一次＝開合（不用再跳）。
+        // 不能比 realm.to === vaEnd：有些節點（例如腳注那一本）的第一個子節點和書共用
+        // 同一個 va，跳過去時 realm 會是「子節點的範圍」，to 對不上，按第二次就只會再跳。
+        const readingHere = (): boolean => {
+          const st = (window as unknown as { __accelon26?: { state?: () => { docRealm?: { from: number; to: number } | null } } })
+            .__accelon26?.state?.();
+          return st?.docRealm?.from === va;
+        };
 
         if (altKey(ev) && hasKids && !open) {
           openAll();
           link();
+          return;
+        }
+        if (onNode && readingHere() && hasKids) {
+          setOpen(!open);
           return;
         }
         if (open && onTwisty) {

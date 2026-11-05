@@ -10,7 +10,7 @@ import { activeDocDbId, isActiveDocCtx, resolveDocCtx, type DocCtx } from './doc
 import { PAGE, openImageView } from './panes';
 import { cursorPending, hasRealmNeighbor, nodeContaining, paintTreeActive, pinnedHit, revealHit, setCursorPending, setPinnedHit, stepRealm, syncCursorFromScroll } from './link';
 import { paintHit } from './paint';
-import { Accelon3Renderer, LEVEL_MAX_SCALE, LEVEL_STEP_PX, renderPageBlocks, tagChromaIndex, tierContext, type RenderBlock } from './render_accelon3';
+import { Accelon3Renderer, LEVEL_MAX_SCALE, LEVEL_STEP_PX, renderPageBlocks, tableHtml, tagChromaIndex, tierContext, type RenderBlock } from './render_accelon3';
 import { ancestorTrail, currentNodeAt, siblingsOf } from './scopes';
 import { tagColorOf } from './tag-style';
 import { kwMarks } from './kw-marks';
@@ -97,7 +97,8 @@ async function resolvePageImages(ctx: DocCtx | null, lines: readonly string[]): 
   const set = pageImagesOf(rd);
   const names = new Set<string>();
   for (const line of lines) {
-    for (const m of line.matchAll(/<圖[^>]*?\bn\s*=\s*"([^"]*)"/g)) names.add(decodeXmlEntities(m[1]));
+    // `n=`／`id=`／`f=` 都是圖檔名（f= 是 Delphi 的 FILE 屬性，taixu 的表格掃描用它）
+    for (const m of line.matchAll(/<圖[^>]*?\b(?:n|id|f)\s*=\s*"([^"]*)"/g)) names.add(decodeXmlEntities(m[1]));
   }
   if (names.size) {
     if (!set.index) {
@@ -183,7 +184,9 @@ export function termModeOf(): TermMode {
 }
 
 export function setTermMode(m: TermMode): void {
-  termMode = m === 'inline' || m === 'off' || m === 'orig' ? m : 'orig';
+  // 'hover' 也要留住（2026-11-06）：以前這裡漏了它，設定頁選 hover 會被存成 orig，
+  // auto 的 <术>（a="1"）就不畫虛線、也沒有外語提示。
+  termMode = m === 'inline' || m === 'off' || m === 'orig' || m === 'hover' ? m : 'orig';
   try { localStorage.setItem(TERM_KEY, termMode); } catch { /* 私密模式 */ }
 }
 export function pageMarksOn(): boolean {
@@ -889,6 +892,30 @@ async function pageEndAtParagraph(ctx: DocCtx, last: number, realmLast: number):
   return end;
 }
 
+/**
+ * 頁尾不要切在 `<表>`／`<圖文字>` 中間（作者 2026-11-06）：最後 40 行裡有沒收尾的
+ * 表格區塊時，往下補到收標籤（最多 80 行）。太長（超過 80 行）就放棄，照原樣切。
+ */
+const BLOCK_OPEN_RE = /<(表|圖文字)(?=[\s>])/g;
+const BLOCK_CLOSE_RE = /<\/(表|圖文字)>/g;
+async function pageEndAtBlock(ctx: DocCtx, first: number, last: number, realmLast: number): Promise<number> {
+  const mp = ctx.mapper;
+  if (!mp) return last;
+  let open = 0;
+  for (let i = Math.max(first, last - 40); i <= last; i++) {
+    const t = await mp.lineText(i);
+    open += (t.match(BLOCK_OPEN_RE) ?? []).length - (t.match(BLOCK_CLOSE_RE) ?? []).length;
+  }
+  if (open <= 0) return last;
+  const cap = Math.min(realmLast, last + 80);
+  for (let end = last + 1; end <= cap; end++) {
+    const t = await mp.lineText(end);
+    open += (t.match(BLOCK_OPEN_RE) ?? []).length - (t.match(BLOCK_CLOSE_RE) ?? []).length;
+    if (open <= 0) return end;
+  }
+  return last;
+}
+
 /** 「連續閱讀」要切到哪一種 realm：'doc'＝整本、'node'＝回到節點、null＝這庫不用切 */
 function realmToggleTarget(ctx: DocCtx | null, realm: { from: number; to: number }, continuous = false): 'doc' | 'node' | null {
   if (!ctx?.mapper) return null;
@@ -959,9 +986,12 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
   // 連續閱讀（或整本視窗）的頁尾補到段落結束（作者 2026-11-05）：不然第 200 行可能斷在
   // 半句話，跨小條目複製就會少一截。只在整本視窗做，節點視窗的邊界是節點本身。
   const whole = s.continuous || isWholeDocRealm(ctx, s.realm);
-  const last = whole
-    ? await pageEndAtParagraph(ctx, b.last, boundsOfRealm(ctx, s.realm).last)
+  const realmLast = boundsOfRealm(ctx, s.realm).last;
+  const lastPara = whole
+    ? await pageEndAtParagraph(ctx, b.last, realmLast)
     : b.last;
+  // 表格區塊整塊留在同一頁（作者 2026-11-06）
+  const last = await pageEndAtBlock(ctx, b.first, lastPara, realmLast);
   // page (or tab/db) changed: keep what the user typed, then leave edit mode;
   // the target page auto-enters edit mode below if it already has a revision.
   if (activeEditor && (activeEditor.s !== s || activeEditor.first !== b.first || activeEditor.last !== last)) {
@@ -1157,14 +1187,27 @@ function renderAncestorTrail(s: DocSession, anchorVa?: number): string {
 function renderBlocks(blocks: RenderBlock[], s: DocSession): string {
 
   return blocks.map((block) => {
+    if (block.kind === 'table' && block.table) {
+      return tableHtml(block.table, (no) => [
+        s.pinned && no === s.pinned.line ? 'hitLine' : '',
+        inJumpRange(no) ? 'jumpHit' : '',
+      ].filter(Boolean).join(' '));
+    }
+    if (block.kind === 'pre') {
+      return '<div class="figText">' + block.lines.map((l) => {
+        const cls = 'docLine' + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
+        return '<div class="' + cls + '" id="L' + l.no + (l.idSuffix ?? '') + '" data-src="' + escapeHtml(l.raw) + '">'
+          + '<div class="lineText">' + l.html + '</div></div>';
+      }).join('') + '</div>';
+    }
     if (block.kind === 'line') {
       const l = block.lines[0];
-      const cls = 'docLine' + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
+      const cls = 'docLine' + (l.cls ? ' ' + l.cls : '') + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
       return '<div class="' + cls + '" id="L' + l.no + (l.idSuffix ?? '') + '" data-src="' + escapeHtml(l.raw) + '">'
         + '<div class="lineText">' + l.html + '</div></div>';
     }
     const inner = block.lines.map((l, i) => {
-      const cls = 'docLine' + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
+      const cls = 'docLine' + (l.cls ? ' ' + l.cls : '') + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
       // 英文行接起來要留一個空白，中文不用（作者 2026-10：把硬換行去掉）
       const prev = i > 0 ? block.lines[i - 1].raw : '';
       const join = i > 0 && /[A-Za-z0-9]$/.test(prev) && /^[A-Za-z0-9]/.test(l.raw) ? ' ' : '';

@@ -44,6 +44,7 @@
 | 文件 | 內容 |
 |---|---|
 | [adb/terms.md](./adb/terms.md) | `<术 sk\|pi\|tb>` 標記、常用詞表、`terms.ts` 三種指令 |
+| [adb/table.md](./adb/table.md) | **表格**：`<表>` 語法（管線列）、框線字藝術自動轉換、`docx` 表格轉換、塗紅契約與限制 |
 | [glossary.md](./glossary.md) | `glossary` 容器格式、詞彙分頁行為、跳位置與效能 |
 | [adb/xref-j-lessons.md](./adb/xref-j-lessons.md) | `<聯 j>` 字元級反鏈的座標系、七個坑、修復順序 |
 | [adb/backlink-skill.md](./adb/backlink-skill.md) | 反鏈（誰引用這一頁）的流程 |

@@ -98,10 +98,10 @@ function markPhraseInLine(line: number | undefined, phrase: string | undefined, 
   const conv = simConverter();
   const needle = conv ? conv(phrase) : phrase;
   // 「標題＋段」同行的來源行會切成兩列（`L{n}-h` 標題、`L{n}` 正文，見 render_accelon3），
-  // 查詢可能落在任何一半，所以兩塊都試。
+  // 查詢可能落在任何一半，所以兩塊都試。表格的一列有多個 `.lineText`（每格一個），
+  // 逐一試 —— 命中在哪一格就塗哪一格（2026-11-06）。
   const boxes = [`L${line}`, `L${line}-h`]
-    .map((id) => document.getElementById(id)?.querySelector<HTMLElement>('.lineText'))
-    .filter((x): x is HTMLElement => !!x);
+    .flatMap((id) => [...(document.getElementById(id)?.querySelectorAll<HTMLElement>('.lineText') ?? [])]);
   for (const box of boxes) {
     const marked = markInBox(box, needle, va, hue, all);
     if (marked) {
@@ -307,8 +307,9 @@ async function paintHit(ctx: DocCtx | null, va: number, units?: number, opts: { 
   let firstMark: HTMLElement | null = null;
   for (const sp of spans) {
     const row = document.getElementById('L' + sp.line);
-    const box = row?.querySelector<HTMLElement>('.lineText');
-    if (!box) continue;
+    // 一列可能有多個 `.lineText`（表格的每一格）；位移路徑只對「單一區塊」可靠
+    const boxes = [...(row?.querySelectorAll<HTMLElement>('.lineText') ?? [])];
+    if (!boxes.length) continue;
     // 索引的位移是算在「原始行」上的；渲染後 DOM 的文字少了標籤、頁碼被跳過，
     // 位移不一定對得起來 → 先用 data-src 取出那幾個字，再用「找字」的方式塗。
     const src = row?.dataset.src;
@@ -321,13 +322,14 @@ async function paintHit(ctx: DocCtx | null, va: number, units?: number, opts: { 
       // 本文卻只塗第一個）。指定那一個已經在裡面，重包時只會補 class。
       if (phrase) mark = markPhraseInLine(sp.line, phrase, va, hue, true, noScroll);
     }
-    if (!mark) {
-      const nodes = textNodesOf(box);
+    // 找不到片語時只在「這一列只有一格」的情況退回位移；表格有多格時寧可不塗，
+    // 也不要塗到錯的格（2026-11-06）。
+    if (!mark && boxes.length === 1) {
+      const nodes = textNodesOf(boxes[0]);
       const text = lineTextOf(nodes);
       const start = Math.max(0, Math.min(text.length, sp.start));
       const end = Math.max(start, Math.min(text.length, sp.end));
-      if (end <= start) continue;
-      mark = markRange(nodes, start, end, va, hue);
+      if (end > start) mark = markRange(nodes, start, end, va, hue);
     }
     if (!mark) continue;
     if (!firstMark) firstMark = mark;

@@ -11,7 +11,7 @@
  */
 import { $, displayName, escapeHtml, fmtInt, mapper, reader, setStatus } from './viewer';
 import { PAGE_LINES, activeDocCtx, boundsOfRealm, closeDocTab, docTabs, hardBreaksOn, pageBounds, pageMarksOn, renderRawOn } from './doc-pane';
-import { renderPageBlocks } from './render_accelon3';
+import { renderPageBlocks, tableHtml } from './render_accelon3';
 import { isDictDb } from './db-kind';
 import { dirActive, dirTrees, findNode } from './scopes';
 import { openExternalUrl } from './plates';
@@ -244,6 +244,11 @@ export async function renderTextPane(): Promise<void> {
     ? dt.lines.map((line, i) => ({ kind: 'line' as const, lines: [{ no: nums[i] ?? 0, html: escapeHtml(line), raw: line, visible: true, heading: false }] }))
     : renderPageBlocks(dt.lines, nums, { hardBreaks: hardBreaksOn(), pageMarks: pageMarksOn() });
   const rows = blocks.map((block) => {
+    if (block.kind === 'table' && block.table) return tableHtml(block.table);
+    if (block.kind === 'pre') {
+      return '<div class="figText">' + block.lines.map((l) =>
+        '<div class="docLine"><div class="lineText">' + l.html + '</div></div>').join('') + '</div>';
+    }
     if (block.kind === 'line') {
       return '<div class="docLine"><div class="lineText">' + block.lines[0].html + '</div></div>';
     }
