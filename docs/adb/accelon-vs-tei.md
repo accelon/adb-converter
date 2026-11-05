@@ -258,6 +258,8 @@ Accelon 這側的推導規則（實作見 [search.ts](../../ts/src/accelon26/sea
    實測 fgdict：內文有 **6,959 個 `<_頁 n="N"/>`、0 個 `<頁>`**，而 `tags` 容器裡的名字是 `頁`、
    命中數 6,959 → `_` 在索引時就被剝掉，且不佔 VA。
    另有硬編碼的預設 skip 標籤：`亮 頁 粗 註 聯 連 維` 與 `HL PN BOLD RM LINK SLINK NOTE`（[tokenize.pas:94](../../sourcecode/tokenize.pas#L94)）。
+   **2026-11-06 起 `术` 也是 skip**（作者指示）：行內術語標籤不佔 VA，否則「一切法空</术>故」這種
+   詞組會被切開、搜不到；含 `术` 的庫（fuyan／yl5／yl38*／ys）要一起重建。
 5. **`cached`**：宣告為 cached 的標籤，內文會**去標籤、截斷、trim** 後存進 `caches/標籤名`，
    讓「取節點名」不必回讀原文（fgdict 的 `caches/詞` 就是 22,648 個詞頭；`MAXCACHELINE=256`）。
 6. **`s=` 檢索 scope**：把搜尋視圖寫進文件本身——

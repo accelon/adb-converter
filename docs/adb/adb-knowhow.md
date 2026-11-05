@@ -59,7 +59,7 @@
 |---|---|
 | 一行 | 一個 `<lb>`／一個 adb 行；`MAXLINELEN` = 4,000 字（8,192 bytes），超過要在 pack 前切開（不切進標籤、不切開代理對） |
 | 頁 | `<頁 id="NpMc"/>`（例 `51p185b`）；頁 id 是跨庫連結的錨，**不要改格式** |
-| VA 單位 | 一個字元＝1；`&…;` strong pair＝1；IDS `⿰…`＝1；標籤＝4（skip 標籤 0） |
+| VA 單位 | 一個字元＝1；`&…;` strong pair＝1；IDS `⿰…`＝1；標籤＝4（skip 標籤 0：`頁 註 聯 粗 亮 連 維 术`，2026-11-06 起含 `术`） |
 | 代理對 | **一個 supplementary 字元＝1 個 VA**（2026-11-01）；不要在 tokenizer 把它拆成兩半 |
 | 漢字判定 | `\p{Script=Han}`（一定要 `u` flag），一次只測一個 code point |
 | 位置 | `j`／`off`／`hanline` 是**漢字序號**（0 起）；換成 DOM `Range` 的 offset 才是 UTF-16 code unit |
