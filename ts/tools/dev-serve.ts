@@ -3,7 +3,7 @@
  * 開發用伺服器：**每次重新整理都重新建置 HTML**，並自動開上次讀的 adb。
  *
  *   cd ts && bun run tools/dev-serve.ts
- *   cd ts && bun run tools/dev-serve.ts --port 8790 --roots "D:\accelon3;D:\2026\sz\accelon26"
+ *   cd ts && bun run tools/dev-serve.ts --port 8790 --roots "D:\accelon3;D:\2026\sz\accelon26;D:\2026\ndd"
  *
  * 為什麼要這支（作者 2026-11-03）：
  *   - 改 HTML／CSS／TS 之後不想每次 `build-viewer` 再手動重新整理、再手動選 adb。
@@ -26,7 +26,7 @@ const args = process.argv.slice(2);
 const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
 const PORT = Number(opt('port', '8790'));
 const HOST = opt('host', '127.0.0.1');
-const ROOTS = opt('roots', 'D:\\accelon3;D:\\2026\\sz\\accelon26')
+const ROOTS = opt('roots', 'D:\\accelon3;D:\\2026\\sz\\accelon26;D:\\2026\\ndd')
   .split(';').map((s) => s.trim()).filter(Boolean).map((s) => resolve(s));
 
 const SRC = resolve(import.meta.dir, '../src');
@@ -36,8 +36,14 @@ const DEV_SCRIPT = `
 <script>
 (() => {
   const DB_KEY = 'accelon26.dev.db';
+  const FILE_KEY = 'accelon26.dev.file';
   const VA_KEY = 'accelon26.dev.va';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const showStatus = (m) => {
+    const el = document.getElementById('status');
+    if (el) el.textContent = m;
+    console.warn('[dev] ' + m);
+  };
   const saveNow = () => {
     try {
       const st = window.__accelon26?.state?.() ?? {};
@@ -64,11 +70,22 @@ const DEV_SCRIPT = `
       await sleep(100);
     }
     if (!window.__accelon26) return;
+    // 使用者自己選檔時，把「檔名」也記下來：dbname 和檔名不一定相同（例如 13j.adb 的
+    // dbname 是 13j，但有的庫不是），重新整理時兩個都試（2026-11-05）。
+    const input = document.querySelector('#file');
+    input?.addEventListener('change', () => {
+      const f = input.files?.[0];
+      if (f) { try { localStorage.setItem(FILE_KEY, f.name.replace(/\\.adb$/i, '')); } catch { /* ignore */ } }
+    });
     const q = new URLSearchParams(location.search);
-    const want = q.get('db') || localStorage.getItem(DB_KEY) || '';   
-    if (want && !window.__accelon26.state().db) {
-      await openFromServer(want);
-      for (let i = 0; i < 200; i++) {
+    const tries = [...new Set([q.get('db'), localStorage.getItem(DB_KEY), localStorage.getItem(FILE_KEY)]
+      .filter((x) => !!x))];
+    let opened = false;
+    if (!window.__accelon26.state().db) {
+      for (const name of tries) {
+        if (await openFromServer(name)) { opened = true; break; }
+      }
+      for (let i = 0; i < 200 && opened; i++) {
         if (window.__accelon26.state().db) break;
         await sleep(100);
       }
@@ -77,6 +94,12 @@ const DEV_SCRIPT = `
       if (db === window.__accelon26.state().db && va) {
         try { window.__accelon26.revealHit(Number(va), ''); } catch { /* ignore */ }
       }
+    }
+    // 記得的庫不在 dev server 的 --roots 裡：直接說清楚，不要讓畫面空白像壞掉
+    if (tries.length && !window.__accelon26.state().db && !opened) {
+      const list = await fetch('/__adbs').then((r) => r.json()).catch(() => []);
+      showStatus('dev server 找不到「' + tries[0] + '.adb」；請把它的資料夾加進 --roots'
+        + '（目前可用的：' + list.map((x) => x.name).slice(0, 20).join('、') + (list.length > 20 ? '…' : '') + '）');
     }
     setInterval(saveNow, 1000);
     window.addEventListener('beforeunload', saveNow);

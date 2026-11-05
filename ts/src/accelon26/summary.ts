@@ -48,8 +48,6 @@ let activeGroup = -1;
 const SNIPPET_LIMIT = 30;
 
 let snippetShown = SNIPPET_LIMIT;
-/** 上一張點過的摘要卡（va/units/query）：同一張重複點時沿用分頁，不疊新分頁。 */
-let lastSnippet: { va: number; units: number; query: string } | null = null;
 
 /** when a node's 命中數 was clicked, the 摘要 pane is scoped to that node */
 let snippetScope: { realm: { from: number; to: number }; label: string } | null = null;
@@ -337,7 +335,9 @@ async function renderSnippets(seq: number) {
   const cards: string[] = [];
   // 同一段（同一行）有多個命中時，摘要只列一張卡（作者 2026-10-27）：卡片文字
   // 一樣、著色也一樣，重複只會佔掉 30 張的額度。多詞組不動（每個詞組要自己的 cur）。
-  const seenLines = new Set<number>();
+  // 2026-11-05：跨折行的命中（起點在上一行、結尾在下一行）不跟同起點的其他命中合併，
+  // 否則「向於捨」這種 2 筆只會列 1 筆；key 用「起點行:終點行」。
+  const seenLines = new Set<string>();
   let merged = 0;
   for (const hit of show) {
     const book = bookNameOf(res.groups, hit.va);
@@ -370,8 +370,13 @@ async function renderSnippets(seq: number) {
     const s = await searchSummary(mapper, hit.va, hit.units, { phrase: res.query });
     if (superseded()) return;        // superseded while building snippets
     if (!s) { cards.push(`<div class="snippet"><div class="snippetHead">VA ${fmtInt(hit.va)}：無法定位</div></div>`); continue; }
-    if (seenLines.has(s.line)) { merged++; continue; }
-    seenLines.add(s.line);
+    // 用 edgeLine 而不是 lineOfVa：命中落在某行最後一個字時，lineOfVa 會跳到下一行，
+    // 兩個不同的命中就會撞在同一個 key（2026-11-05）。跨折行的命中 key 是「起:訖」。
+    const startLine = mapper.edgeLine(hit.va);
+    const endLine = hit.units > 1 ? mapper.edgeLine(hit.va + hit.units - 1) : startLine;
+    const lineKey = startLine + ':' + endLine;
+    if (seenLines.has(lineKey)) { merged++; continue; }
+    seenLines.add(lineKey);
     const mid = s.text.slice(s.start, s.end);
     const body = snippetHtml(s.text, [{ text: mid, hue: 0 }], mid);
     cards.push(`<div class="snippet" data-va="${hit.va}" data-units="${hit.units}">
@@ -393,17 +398,13 @@ async function renderSnippets(seq: number) {
         ? (m.clauses[Number(el.dataset.clause ?? 0)]?.text ?? cur?.query ?? '')
         : (cur?.tokens.map((t) => t.token).join('') ?? '');
       /**
-       * 作者 2026-11-01：點摘要**預設開新分頁**，不要蓋掉從目錄打開的閱讀頁。
-       * 例外：同一張卡重複點（沒有 Ctrl）沿用剛剛那個分頁，避免疊一堆重複。
+       * 作者 2026-11-05：點摘要**預設沿用目前的分頁**（不要每點一張就疊一個新分頁），
+       * 只有按住 Ctrl/Cmd 才開新分頁。搜尋的關鍵字與塗色都不變。
        */
       const va = Number(el.dataset.va);
       const units = Number(el.dataset.units);
-      const query = cur?.query ?? '';
       const ctrl = ev.ctrlKey || ev.metaKey;
-      const same = !ctrl && lastSnippet?.va === va && lastSnippet.units === units
-        && lastSnippet.query === query;
-      lastSnippet = { va, units, query };
-      void revealHit(va, token, units, { newTab: !same });
+      void revealHit(va, token, units, { newTab: ctrl });
     };
   });
   const more = $('#searchMore');

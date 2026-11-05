@@ -132,6 +132,42 @@ function markInBox(box: HTMLElement, needle: string, va: number, hue: number, al
 }
 
 /**
+ * 片語被硬換行切開時（`…廣く波` ＋ `羅提木叉…`）：在相鄰兩行的可見文字裡找，
+ * 前一行塗尾巴、後一行塗頭。VA walk 會漂的庫（ndd、fgdict）只有這條路可靠。
+ */
+function markPhraseAcrossLines(line: number | undefined, phrase: string | undefined, va: number, hue = 0, noScroll = false): boolean {
+  if (line === undefined || !phrase) return false;
+  const conv = simConverter();
+  const needle = conv ? conv(phrase) : phrase;
+  const rows = [...document.querySelectorAll<HTMLElement>('#docText .docLine')];
+  const idx = rows.findIndex((r) => Number((r.id || '').replace(/^L/, '')) === line);
+  if (idx < 0) return false;
+  for (const at of [idx - 1, idx]) {
+    const a = rows[at], b = rows[at + 1];
+    if (!a || !b) continue;
+    const boxA = a.querySelector<HTMLElement>('.lineText');
+    const boxB = b.querySelector<HTMLElement>('.lineText');
+    if (!boxA || !boxB) continue;
+    const ta = lineTextOf(textNodesOf(boxA));
+    const tb = lineTextOf(textNodesOf(boxB));
+    const p = (ta + tb).indexOf(needle);
+    if (p < 0 || p >= ta.length) continue;      // 不在這個交界
+    const tail = ta.slice(p);
+    const head = needle.slice(tail.length);
+    if (!tail || !head) continue;
+    const offA = ta.lastIndexOf(tail);
+    const offB = tb.indexOf(head);
+    if (offA < 0 || offB < 0) continue;
+    const markB = markRange(textNodesOf(boxA), offA, offA + tail.length, va, hue);
+    const markA = markRange(textNodesOf(boxB), offB, offB + head.length, va, hue);
+    const mark = markB ?? markA;
+    if (mark && !noScroll) mark.scrollIntoView({ block: 'center' });
+    return true;
+  }
+  return false;
+}
+
+/**
  * Paint `phrase` in the rendered page, starting at `fromLine` and wrapping once.
  *
  * `markPhraseInLine` only looks at the one line the link computed, and on a database
@@ -234,10 +270,18 @@ async function paintHit(ctx: DocCtx | null, va: number, units?: number, opts: { 
   if (s.pinned?.exact) {
     const phrase = s.pinned.phrase ?? s.pinned.token;
     const done = !!markPhraseInLine(s.pinned.line, phrase, va, hue, true, noScroll)
+      || markPhraseAcrossLines(s.pinned.line, phrase, va, hue, noScroll)
       || markPhraseOnPage(phrase, va, s.pinned.line, hue, noScroll);
     // 多詞組查詢：其他關鍵字在同一頁也要有顏色（自己的那個已經畫好了）
     paintKeywordMarks();
     if (done) return;
+  }
+  // 搜尋命中：token 就是查詢字串，先用「文字」找（VA walk 會漂的庫——ndd、fgdict——
+  // 用 span 會把 mark 畫到隔壁字）；片語跨硬換行時由 markPhraseAcrossLines 補。
+  if (!s.pinned?.exact && s.pinned?.token) {
+    const done = !!markPhraseInLine(s.pinned.line, s.pinned.token, va, hue, true, noScroll)
+      || markPhraseAcrossLines(s.pinned.line, s.pinned.token, va, hue, noScroll);
+    if (done) { paintKeywordMarks(); return; }
   }
   let spans = units && units > 1 ? await mp.phraseSpans(va, units) : await mp.lineSpans(va);
   if (!spans.length) {

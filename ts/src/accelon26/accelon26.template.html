@@ -941,6 +941,15 @@
   .docPager .mini:hover .pgLabel { display: inline; }
   .docPager .mini[aria-disabled="true"]:hover { border-color: var(--line); }
   .pagerInfo { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 讀窗到底的訊息（2026-11-05）：2 秒後自動載入更多，點一下立刻載入 */
+  .docEnd {
+    margin: 18px auto 26px; padding: 10px 14px; max-width: 460px;
+    border-top: 1px dashed var(--line); text-align: center; color: var(--dim);
+    font-size: 13px; line-height: 1.7; cursor: pointer; user-select: none;
+  }
+  .docEnd:hover { color: var(--fg); }
+  .docEnd span { display: block; }
+  .docEnd .docEndHint { font-size: 12px; opacity: .8; }
   /* 右欄「文字內容」分頁（純參考的另一段本文）＋ 本文區空白時由 adb 內取出的 logo */
   .textTabs { display: flex; align-items: stretch; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; flex: 0 0 auto; }
   .docLogoArea { display: flex; align-items: center; justify-content: center; padding: 26px 10px; }
@@ -2276,6 +2285,7 @@
         <button class="mini" id="pagePrev" title="上一頁（Alt+←；網頁分頁，不是原書的葉）"><span class="pgArrow">◀</span><span class="pgLabel">上一頁</span></button>
         <span class="pagerInfo" id="pageInfo"></span>
         <button class="mini" id="pageNext" title="下一頁（Alt+→；網頁分頁，不是原書的葉）"><span class="pgLabel">下一頁</span><span class="pgArrow">▶</span></button>
+        <button class="mini" id="pageMore" hidden title="整本連續閱讀：每頁 200 行，頁尾補到段落結束，方便跨小條目選取／複製">連續閱讀</button>
       </div>
     </div>
   </section>

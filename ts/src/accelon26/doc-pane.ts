@@ -8,7 +8,7 @@
 import { $, currentFile, currentSource, displayName, docs, escapeHtml, fmtInt, mapper, reader, session, setStatus } from './viewer';
 import { activeDocDbId, isActiveDocCtx, resolveDocCtx, type DocCtx } from './doc-ctx';
 import { PAGE, openImageView } from './panes';
-import { cursorPending, hasRealmNeighbor, paintTreeActive, pinnedHit, revealHit, setCursorPending, setPinnedHit, stepRealm, syncCursorFromScroll } from './link';
+import { cursorPending, hasRealmNeighbor, nodeContaining, paintTreeActive, pinnedHit, revealHit, setCursorPending, setPinnedHit, stepRealm, syncCursorFromScroll } from './link';
 import { paintHit } from './paint';
 import { Accelon3Renderer, LEVEL_MAX_SCALE, LEVEL_STEP_PX, renderPageBlocks, tagChromaIndex, tierContext, type RenderBlock } from './render_accelon3';
 import { ancestorTrail, currentNodeAt, siblingsOf } from './scopes';
@@ -268,7 +268,16 @@ interface DocSession {
     noMark?: boolean;
   } | null;
   /** last rendered page (per session, so switching tabs does not re-read) */
-  cache: { page: number; dt: Awaited<ReturnType<VaPaMapper['docText']>>; key: string } | null;
+  cache: { page: number; dt: Awaited<ReturnType<VaPaMapper['docText']>>; key: string; bounds?: { first: number; last: number; total: number; pages: number } } | null;
+  /**
+   * 「連續閱讀」之前的節點 realm（2026-11-05）：按鈕切換到整本視窗後，再按一次回到
+   * 這個範圍。不進快照（還原時用 `nodeContaining` 重算）。
+   */
+  nodeRealm?: { from: number; to: number };
+  /** 連續閱讀是從哪一行開始的（按「回到本節」要回到那一行，不是視窗頂端） */
+  nodeLine?: number;
+  /** 這個分頁是不是「連續閱讀」中（整本往後讀，頁尾補到段落結束） */
+  continuous?: boolean;
   /** 這一頁正在編輯（CodeMirror） */
   editing?: boolean;
   /** 回到這一頁時自動進編輯態（使用者按「完成」後暫時關掉） */
@@ -845,6 +854,50 @@ function pageOfLine(ctx: DocCtx | null, realm: { from: number; to: number }, lin
 }
 
 /**
+ * 這個 realm 是不是整本（`<檔>`）？連續閱讀與搜尋結果分頁都是整本；
+ * 只有整本視窗才把頁尾補到段落結束（節點視窗的邊界是節點本身，不能越界）。
+ */
+function isWholeDocRealm(ctx: DocCtx | null, realm: { from: number; to: number }): boolean {
+  if (!ctx) return false;
+  const doc = docOfVa(ctx, realm.from);
+  return !!doc && doc.vaEnd > doc.vaStart && realm.from <= doc.vaStart && realm.to >= doc.vaEnd;
+}
+
+/** 行末是不是段落結束：句號／括號／問號，或這一行自己帶 `<段/>`（換段） */
+const PARA_END_RE = /[。．.!?！？…」』】〕〉》）\]]$/;
+function lineEndsParagraph(raw: string): boolean {
+  if (!raw) return true;
+  if (raw.includes('<段/>') || raw.includes('<段>')) return true;
+  const text = raw.replace(/<[^>]*>/g, '').trimEnd();
+  if (!text) return true;
+  return PARA_END_RE.test(text);
+}
+
+/**
+ * 連續閱讀的頁尾（作者 2026-11-05）：第 200 行的行末不是句號／括號／問號時，往下多讀
+ * 幾行，直到這一段結束（最多 40 行）——跨小條目複製才不會斷在半句話。
+ */
+async function pageEndAtParagraph(ctx: DocCtx, last: number, realmLast: number): Promise<number> {
+  const mp = ctx.mapper;
+  if (!mp) return last;
+  const cap = Math.min(realmLast, last + 40);
+  let end = last;
+  while (end < cap) {
+    if (lineEndsParagraph(await mp.lineText(end))) break;
+    end++;
+  }
+  return end;
+}
+
+/** 「連續閱讀」要切到哪一種 realm：'doc'＝整本、'node'＝回到節點、null＝這庫不用切 */
+function realmToggleTarget(ctx: DocCtx | null, realm: { from: number; to: number }, continuous = false): 'doc' | 'node' | null {
+  if (!ctx?.mapper) return null;
+  const doc = docOfVa(ctx, realm.from);
+  if (!doc || doc.vaEnd <= doc.vaStart) return null;
+  return continuous || isWholeDocRealm(ctx, realm) ? 'node' : 'doc';
+}
+
+/**
  * the session showing exactly this realm — **of the same database**.
  * 不同庫可能有完全相同的 realm，所以要比 dbId。
  */
@@ -903,18 +956,24 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
   }
   const b = pageBounds(ctx, s.realm, s.page);
   s.page = Math.max(0, Math.min(s.page, b.pages - 1));
+  // 連續閱讀（或整本視窗）的頁尾補到段落結束（作者 2026-11-05）：不然第 200 行可能斷在
+  // 半句話，跨小條目複製就會少一截。只在整本視窗做，節點視窗的邊界是節點本身。
+  const whole = s.continuous || isWholeDocRealm(ctx, s.realm);
+  const last = whole
+    ? await pageEndAtParagraph(ctx, b.last, boundsOfRealm(ctx, s.realm).last)
+    : b.last;
   // page (or tab/db) changed: keep what the user typed, then leave edit mode;
   // the target page auto-enters edit mode below if it already has a revision.
-  if (activeEditor && (activeEditor.s !== s || activeEditor.first !== b.first || activeEditor.last !== b.last)) {
+  if (activeEditor && (activeEditor.s !== s || activeEditor.first !== b.first || activeEditor.last !== last)) {
     stageActiveEditor();
     s.editing = false;
     s.autoEdit = true;
   }
-  const key = s.doc.i + ':' + b.first + '-' + b.last;
+  const key = s.doc.i + ':' + b.first + '-' + last;
   const t0 = performance.now();
   if (!s.cache || s.cache.key !== key) {
-    const dt = await fetchPage(ctx, b.first, b.last);
-    s.cache = { page: s.page, dt, key };
+    const dt = await fetchPage(ctx, b.first, last);
+    s.cache = { page: s.page, dt, key, bounds: { ...b, last } };
   }
   // Following a hit: the mapper's line numbers and the rendered page can disagree
   // by a line at a document boundary (fgdict), so snap the pinned line ONTO the
@@ -1886,7 +1945,8 @@ function renderDoc(s: DocSession): void {
       termMode: termModeOf(),
     });
   const rows = renderBlocks(blocks, s);
-  const b = pageBounds(ctx, s.realm, s.page);
+  // 連續閱讀的頁尾可能補到段落結束（見 ensurePage），pager 的「行 a–b」要用實際那一頁。
+  const b = s.cache?.bounds ?? pageBounds(ctx, s.realm, s.page);
   const nFirst = viewDt.lineNumbers[0] ?? 0;
   const nLast = viewDt.lineNumbers[viewDt.lineNumbers.length - 1] ?? 0;
   // 麵包屑跟著「這一頁」：釘選的那一行在這一頁就用它（點節點進來時才是那個節點），
@@ -1910,6 +1970,7 @@ function renderDoc(s: DocSession): void {
   renderPager(s, b);
   wireTrail();
   wireDocMetaTips();
+  setupEndFooter(s);
   const body = document.querySelector<HTMLElement>('#docText .docBody');
   if (body) {
     if (wantScrollTop != null) body.scrollTop = wantScrollTop;
@@ -2172,6 +2233,136 @@ function closeDocTab(i: number): void {
 }
 
 /** the page (網頁分頁) controls at the bottom of the pane */
+/**
+ * 「連續閱讀」開關（作者 2026-11-05）：小節點只有十幾行，跨條目選取／複製很不方便。
+ * 開啟＝從目前這一行往上留 20 行，之後連續讀到整本結束（200 行一頁、頁尾補到段落結束）；
+ * 再按一次＝回到剛才那個節點、那一行。
+ */
+async function enterContinuous(s: DocSession, line: number, anchorLine?: number): Promise<void> {
+  const ctx = ctxOf(s);
+  if (!ctx?.mapper) return;
+  const doc = docOfVa(ctx, s.realm.from);
+  if (!doc || doc.vaEnd <= doc.vaStart) return;
+  const fromLine = Math.max(0, line - 20);   // 上面留一點上下文，往下才是主要閱讀區
+  const fromVa = fromLine > 0 ? (ctx.mapper.linesVirtual[fromLine - 1] + 1) : doc.vaStart;
+  s.nodeRealm = s.realm;
+  s.nodeLine = line;
+  s.realm = { from: Math.max(doc.vaStart, fromVa), to: doc.vaEnd };
+  s.continuous = true;
+  s.cache = null;
+  await ensurePage(s, line);
+  // 從讀窗底部「自動載入更多」時，把原本置頂的那一行留在原位（畫面不要跳）
+  if (anchorLine != null) document.getElementById('L' + anchorLine)?.scrollIntoView({ block: 'start' });
+}
+
+async function toggleReadingRealm(s: DocSession): Promise<void> {
+  const ctx = ctxOf(s);
+  if (!ctx?.mapper) return;
+  const target = realmToggleTarget(ctx, s.realm, s.continuous);
+  if (!target) return;
+  const cur = s.cache?.dt?.lineNumbers[0] ?? s.pinned?.line ?? 0;
+  if (target === 'doc') {
+    await enterContinuous(s, cur);
+    return;
+  }
+  const line = s.nodeLine ?? cur;
+  const va = ctx.mapper.linesVirtual[line] ?? s.realm.from;
+  // 別庫的分頁（跨庫並存）沒有左欄目錄可查；只有自己存過的 nodeRealm 能用
+  const node = s.nodeRealm ?? (ownsActiveDb(s) ? nodeContaining(va)?.realm : null);
+  if (!node || node.to <= node.from) return;
+  s.realm = node;
+  s.continuous = false;
+  s.cache = null;
+  await ensurePage(s, s.nodeLine ?? cur);
+}
+
+/* ---- 讀窗到底：訊息 → 2 秒後自動載入更多／點一下立刻載入（作者 2026-11-05） ---- */
+
+let endFooterTimer: number | null = null;
+let endFooterCheck: (() => void) | null = null;
+let endFooterBody: HTMLElement | null = null;
+
+function clearEndTimer(): void {
+  if (endFooterTimer != null) { window.clearTimeout(endFooterTimer); endFooterTimer = null; }
+}
+
+function clearEndFooter(): void {
+  clearEndTimer();
+  if (endFooterCheck && endFooterBody) endFooterBody.removeEventListener('scroll', endFooterCheck);
+  if (endFooterCheck) window.removeEventListener('resize', endFooterCheck);
+  endFooterCheck = null;
+  endFooterBody = null;
+  document.getElementById('docEnd')?.remove();
+}
+
+/** 目前畫面最上面那一行（自動載入後要留在原位） */
+function topVisibleLine(body: HTMLElement): number | null {
+  const top = body.getBoundingClientRect().top;
+  for (const el of body.querySelectorAll<HTMLElement>('[id^="L"]')) {
+    if (el.getBoundingClientRect().bottom > top + 1) {
+      const n = Number(el.id.slice(1));
+      return Number.isFinite(n) ? n : null;
+    }
+  }
+  return null;
+}
+
+async function loadMoreFromEnd(s: DocSession): Promise<void> {
+  const body = document.querySelector<HTMLElement>('#docText .docBody');
+  const anchor = body ? topVisibleLine(body) : null;
+  const line = s.cache?.dt?.lineNumbers[0] ?? s.pinned?.line ?? 0;
+  await enterContinuous(s, line, anchor ?? undefined);
+}
+
+function startEndTimer(s: DocSession): void {
+  clearEndTimer();
+  endFooterTimer = window.setTimeout(() => {
+    endFooterTimer = null;
+    // 正在本文裡選取／複製就不要動畫面（載入會重畫 DOM，選取會消失）
+    const sel = window.getSelection();
+    const inDoc = !!(sel && sel.rangeCount && $('#docText')?.contains(sel.getRangeAt(0).commonAncestorContainer));
+    if (inDoc && (sel?.toString() ?? '').trim()) { startEndTimer(s); return; }
+    clearEndFooter();
+    void loadMoreFromEnd(s);
+  }, 2000);
+}
+
+/**
+ * 讀窗到底的訊息：只在「這一頁是 realm 的最後一頁、而且整本後面還有文字」時出現。
+ * 訊息真的進入畫面才開始 2 秒計時；離開畫面就取消。點一下立刻載入。
+ */
+function setupEndFooter(s: DocSession): void {
+  clearEndFooter();
+  const ctx = ctxOf(s);
+  const body = document.querySelector<HTMLElement>('#docText .docBody');
+  if (!ctx || !body) return;
+  const b = pageBounds(ctx, s.realm, s.page);
+  if (s.page < b.pages - 1) return;                       // 還有下一頁：pager 會處理
+  const inner = boundsOfRealm(ctx, s.realm);
+  const doc = docOfVa(ctx, s.realm.from);
+  if (!doc || doc.vaEnd <= doc.vaStart) return;
+  const docBounds = boundsOfRealm(ctx, { from: doc.vaStart, to: doc.vaEnd });
+  if (inner.last >= docBounds.last) return;               // 已經到整本結尾
+  const el = document.createElement('div');
+  el.className = 'docEnd';
+  el.id = 'docEnd';
+  el.innerHTML = '<span>本讀窗到底了</span><span class="docEndHint">2 秒後自動載入更多；點一下立刻載入</span>';
+  el.onclick = () => { clearEndFooter(); void loadMoreFromEnd(s); };
+  body.appendChild(el);
+  // 訊息真的在可視範圍才計時；捲動時重算（停在訊息上 2 秒才自動載入，一離開就取消）
+  const inside = (): boolean => {
+    const eb = el.getBoundingClientRect();
+    const bb = body.getBoundingClientRect();
+    return eb.top < bb.bottom && eb.bottom > bb.top;
+  };
+  const check = (): void => { if (inside()) startEndTimer(s); else clearEndTimer(); };
+  endFooterCheck = check;
+  endFooterBody = body;
+  body.addEventListener('scroll', check, { passive: true });
+  window.addEventListener('resize', check);
+  requestAnimationFrame(check);
+}
+
 function renderPager(s: DocSession, b: { first: number; last: number; total: number; pages: number }): void {
   const bar = $('#docPager');
   if (!bar) return;
@@ -2182,7 +2373,19 @@ function renderPager(s: DocSession, b: { first: number; last: number; total: num
   const sameDb = ownsActiveDb(s);
   const neighborPrev = sameDb && hasRealmNeighbor(ctx, -1);
   const neighborNext = sameDb && hasRealmNeighbor(ctx, 1);
-  bar.hidden = b.pages < 2 && !neighborPrev && !neighborNext;
+  const toggle = realmToggleTarget(ctx, s.realm, s.continuous);
+  bar.hidden = b.pages < 2 && !neighborPrev && !neighborNext && !toggle;
+  const more = $('#pageMore') as HTMLButtonElement | null;
+  if (more) {
+    more.hidden = !toggle;
+    if (toggle) {
+      more.textContent = toggle === 'node' ? '回到本節' : '連續閱讀';
+      more.title = toggle === 'node'
+        ? '回到目前位置所在的條目（離開整本連續閱讀）'
+        : '整本連續閱讀：每頁 200 行，頁尾補到段落結束，方便跨小條目選取／複製';
+      more.onclick = () => { void toggleReadingRealm(s); };
+    }
+  }
   const prev = $('#pagePrev') as HTMLButtonElement | null;
   const next = $('#pageNext') as HTMLButtonElement | null;
   // Resolve the session AT CLICK TIME: an async render of an older tab must not be

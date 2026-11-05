@@ -134,6 +134,10 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   // 從歷史版本分頁點目錄／TOC／任何連結：這個分頁回到正常內文（退出歷史）
   if (s.history) { s.history = undefined; s.cache = null; }
   s.ctx = ctx;                    // 這個分頁畫哪一庫的文字（作者 2026-11-01）
+  // 新的連結＝新的閱讀範圍：退出「連續閱讀」，恢復節點視窗（2026-11-05）
+  s.continuous = false;
+  s.nodeRealm = undefined;
+  s.nodeLine = undefined;
   s.doc = doc;
   // A reused tab is renamed to what was just clicked: the pane now shows THAT node/
   // segment/page, and the label must say so (it used to keep the first link's name).

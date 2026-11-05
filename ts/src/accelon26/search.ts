@@ -1661,13 +1661,55 @@ export async function searchSummary(
   // anchored on the mapper's walk, which drifts on some databases (fgdict by >1000
   // VA) — searching 法喜 then displayed and marked 帖見 instead.
   if (opts.phrase) {
-    const line = await mapper.lineOfVa(va);
-    const lineText = await mapper.lineText(line);
-    const at = lineText ? indexOfOutsideTags(lineText, opts.phrase) : -1;
-    if (at >= 0) {
-      const pad = 30;
-      const win = snapOutsideTags(lineText, Math.max(0, at - pad), Math.min(lineText.length, at + opts.phrase.length + pad));
-      return { text: lineText.slice(win.from, win.to), start: at - win.from, end: at - win.from + opts.phrase.length, line };
+    // 用 edgeLine（第一條「結尾 ≥ va」的行），不是 lineOfVa：後者遇到「VA 等於行尾」
+    // 會跳到下一行，命中正好落在某行最後一個字時（例：`…依滅，向` 的「向」）摘要就會
+    // 從下一行開始找，永遠找不到詞組（2026-11-05 作者回報「向於捨」第 2 筆）。
+    const line = mapper.edgeLine(va);
+    const firstText = await mapper.lineText(line);
+    if (firstText) {
+      // 同一行可能出現同一個詞組好幾次（fuyan 這一行就有兩次「向於捨」）：要用命中
+      // 自己的位置挑那一次，不能每次都拿第一個。Walk 的 PA 在少數庫會漂（fgdict），
+      // 所以只當提示；對不上就退回「這一行第一次出現」。
+      const el = await mapper.elementAt(va);
+      const hint = el && el.element.line === line
+        ? Math.max(0, (el.element.pa - mapper.lineStartOf(line)) >> 1)
+        : -1;
+      const near = (needle: string, from: number): number => {
+        const p = indexOfOutsideTags(needle, opts.phrase!, Math.max(0, from - 2));
+        return p >= 0 && Math.abs(p - from) <= 4 ? p : -1;
+      };
+      let text = firstText;
+      let at = hint >= 0 ? near(firstText, hint) : -1;
+      // 詞組跨硬換行（2026-11-05）：換行不佔 VA，所以「向」在行尾、「於捨」在下一行
+      // 仍是一個詞組；只在單行裡找會找不到（或抓到前面那一次）。把後面幾行接起來，
+      // 從命中的位置再找一次。
+      if (at < 0 && hint >= 0) {
+        let joined = firstText;
+        for (let k = 1; k <= 3 && line + k < mapper.lineCount; k++) {
+          joined += await mapper.lineText(line + k);
+          const p = near(joined, hint);
+          if (p >= 0) { text = joined; at = p; break; }
+        }
+      }
+      // Walk 在這一行漂了（ndd／fgdict）：提示對不上就不要它，退回「這一行的第一個出現」。
+      // 寧可挑到同一行裡另一段（少見），也不要塗在錯的字上（2026-11-05 作者回報 ndd）。
+      if (at < 0) {
+        at = indexOfOutsideTags(firstText, opts.phrase);
+        text = firstText;
+        if (at < 0) {
+          let joined = firstText;
+          for (let k = 1; k <= 3 && line + k < mapper.lineCount; k++) {
+            joined += await mapper.lineText(line + k);
+            const p = indexOfOutsideTags(joined, opts.phrase);
+            if (p >= 0) { text = joined; at = p; break; }
+          }
+        }
+      }
+      if (at >= 0) {
+        const pad = 30;
+        const win = snapOutsideTags(text, Math.max(0, at - pad), Math.min(text.length, at + opts.phrase.length + pad));
+        return { text: text.slice(win.from, win.to), start: at - win.from, end: at - win.from + opts.phrase.length, line };
+      }
     }
   }
   const el = await mapper.elementAt(va);
