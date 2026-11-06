@@ -7,7 +7,7 @@
  */
 import { $, currentFile, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, session, setJumpLineHook, setStatus, tokens, statusText } from './viewer';
 import { type AdbSource } from './adb';
-import { DOCFS_DEFAULT, EDIT_SIZE_LIMIT, applySideFonts, autoFitFont, boundsOfRealm, ctxOf, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, lineTipEnabled, pageBounds, pagerLog, readDocFont, readSideFont, openHistoryPage, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, saveLastReadNow, setDocFont, setHardBreaks, setLineTip, setPageMarks, setRenderRaw, setSideFont, setSimMode, setSharedDocTabs, staleRenderCount, tabDbIds, trailAnchorVa, setTermMode, setTrailMax, sharedDocTabsOn, simModeOf, stepFontSize, syncFontButtons, termModeOf, trailMaxOf } from './doc-pane';
+import { DOCFS_DEFAULT, EDIT_SIZE_LIMIT, applySideFonts, autoFitFont, boundsOfRealm, ctxOf, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, glyphsEnabled, setGlyphsEnabled, hardBreaksOn, lastDocLines, lastFit, lastLink, lineTipEnabled, pageBounds, pagerLog, readDocFont, readSideFont, openHistoryPage, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, saveLastReadNow, setDocFont, setHardBreaks, setLineTip, setPageMarks, setRenderRaw, setSideFont, setSimMode, setSharedDocTabs, staleRenderCount, tabDbIds, trailAnchorVa, setTermMode, setTrailMax, sharedDocTabsOn, simModeOf, stepFontSize, syncFontButtons, termModeOf, trailMaxOf } from './doc-pane';
 import { renderTextPane } from './text-pane';
 import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
 import { formatAddress, parseAddress, type PosMap } from './posmap';
@@ -342,6 +342,8 @@ function updateSettingsUi(): void {
   if (pm) pm.checked = pageMarksOn();
   const si = $('#setSvgInvert') as HTMLInputElement | null;
   if (si) si.checked = svgInvertOn();
+  const gl = $('#setGlyphs') as HTMLInputElement | null;
+  if (gl) gl.checked = glyphsEnabled();
   const tm = $('#setTrailMax') as HTMLSelectElement | null;
   if (tm) tm.value = String(trailMaxOf());
   const tmode = $('#setTermMode') as HTMLSelectElement | null;
@@ -458,6 +460,13 @@ function initSettings(): void {
     const on = (ev.target as HTMLInputElement).checked;
     setSvgInvert(on);
     setStatus(on ? '圖表自適應背景色：開（暗色模式）' : '圖表自適應背景色：關', 'info');
+  });
+  // 罕用字改用字形庫（作者 2026-11-06）：關掉就重畫本文（.gw 會消失、回到原字）
+  ($('#setGlyphs') as HTMLInputElement | null)?.addEventListener('change', (ev) => {
+    const on = (ev.target as HTMLInputElement).checked;
+    setGlyphsEnabled(on);
+    setStatus(on ? '罕用字改用字形庫：開' : '罕用字改用字形庫：關（顯示原字）', 'info');
+    rerenderDoc();
   });
   // 路徑每層字數（作者 2026-10-31；fuyan 的節點名很長）
   ($('#setTrailMax') as HTMLSelectElement | null)?.addEventListener('change', (ev) => {

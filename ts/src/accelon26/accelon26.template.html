@@ -1455,6 +1455,20 @@
     cursor: zoom-in;
   }
   .lineText svg.inlineSvg:hover { height: 2.4em; outline: 1px solid var(--accent); border-radius: 2px; }
+  /* 字形庫的動態字形（作者 2026-11-06）：**原字留在 `.gwT`（透明、可選取、算進漢字序號）**，
+     SVG 絕對定位疊上去。寬高都跟著字級走（1em），所以標題放大、字級設定、瀏覽器縮放都自動跟上。
+     ⚠ 這裡刻意不用 `display:none`／`visibility:hidden` 藏原字 —— 那會讓選取與複製抓不到字。 */
+  .lineText .gw {
+    display: inline-block; position: relative;
+    width: 1em; height: 1em; line-height: 1;
+    vertical-align: -0.22em;
+  }
+  .lineText .gwT { color: transparent; -webkit-text-fill-color: transparent; }
+  .lineText .gwG {
+    position: absolute; left: 0; top: 0; width: 1em; height: 1em; display: block;
+    fill: currentColor; pointer-events: none;
+  }
+  .lineText .gw:hover { outline: 1px solid var(--accent); border-radius: 2px; }
   /* 圖版（整張插圖，`<圖 t="圖版">`）：照原圖實寸（inline style 的 width）顯示，
      不是 1.5em 的字形；窄視窗靠 max-width 收窄，長圖靠 max-height 不超出畫面。 */
   .lineText svg.figureSvg {
@@ -2637,6 +2651,11 @@
           <input type="checkbox" id="setSvgInvert" checked>
           <span>圖表自適應背景色</span>
           <span class="setHint">暗色模式時把黑線的 SVG／PNG 圖表反轉成亮線（fuyan、ys 等有插圖的庫），不再鋪白底；亮色主題不作用</span>
+        </label>
+        <label class="setRow" for="setGlyphs">
+          <input type="checkbox" id="setGlyphs" checked>
+          <span>罕用字改用字形庫</span>
+          <span class="setHint">Unicode 擴充區（Ext A–I、相容區）的字改用字形庫畫成 SVG，大小與旁邊的字一致；客戶端有沒有那個字型都不影響。桌面版才有字庫（網頁版會自動停用）。</span>
         </label>
       </section>
       <!-- 更新鏡像（作者 2026-10-29）：程式更新與資料庫更新共用這一個選擇 -->

@@ -11,6 +11,7 @@ import { PAGE, openImageView } from './panes';
 import { cursorPending, hasRealmNeighbor, nodeContaining, paintTreeActive, pinnedHit, revealHit, setCursorPending, setPinnedHit, stepRealm, syncCursorFromScroll } from './link';
 import { paintHit } from './paint';
 import { Accelon3Renderer, LEVEL_MAX_SCALE, LEVEL_STEP_PX, renderPageBlocks, tableHtml, tagChromaIndex, tierContext, type RenderBlock } from './render_accelon3';
+import { upgradeDocGlyphs } from './glyph';
 import { ancestorTrail, currentNodeAt, siblingsOf } from './scopes';
 import { tagColorOf } from './tag-style';
 import { kwMarks } from './kw-marks';
@@ -196,6 +197,24 @@ export function pageMarksOn(): boolean {
 export function setPageMarks(on: boolean): void {
   pageMarks = !!on;
   try { localStorage.setItem(PAGE_MARKS_KEY, on ? '1' : '0'); } catch { /* 私密模式 */ }
+}
+
+// ------------------------------------------ 罕用字改用字形庫（作者 2026-11-06）
+//
+// 開（預設）＝ 本文的 Unicode Extension 漢字疊上字形庫的 SVG（`.gw`，原字留著，
+// 所以選取／複製／塗紅／`#N` 都不變）。字庫載不到（網頁版）就什麼都不做。
+// 實作在 `glyph.ts`；這裡只保存開關，重畫時決定要不要叫它。
+const GLYPH_KEY = 'accelon26.glyphs';
+
+let glyphsOn = (() => { try { return localStorage.getItem(GLYPH_KEY) !== '0'; } catch { return true; } })();
+
+export function glyphsEnabled(): boolean {
+  return glyphsOn;
+}
+
+export function setGlyphsEnabled(on: boolean): void {
+  glyphsOn = !!on;
+  try { localStorage.setItem(GLYPH_KEY, on ? '1' : '0'); } catch { /* 私密模式 */ }
 }
 
 /**
@@ -2116,6 +2135,9 @@ function renderDoc(s: DocSession): void {
   wireTrail();
   wireDocMetaTips();
   setupEndFooter(s);
+  // 字形庫（作者 2026-11-06）：本文的 Ext 漢字疊上 SVG。**非阻塞**：字庫要 async 載入，
+  // 第一次載完會回頭把已經畫好的這一頁補上（`upgradeDocGlyphs`）。
+  if (glyphsOn) void upgradeDocGlyphs();
   const body = document.querySelector<HTMLElement>('#docText .docBody');
   if (body) {
     if (wantScrollTop != null) body.scrollTop = wantScrollTop;

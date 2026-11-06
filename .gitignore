@@ -38,6 +38,15 @@ ts/src/vendor/*
 !ts/src/vendor/codemirror/**
 !ts/src/vendor/bzip2-wasm/
 !ts/src/vendor/bzip2-wasm/**
+# 拼形描繪器 ＋ 字庫解碼器：**生成物，要進版控**（建置／CI 不必有 pinxing 或 glyphwiki）。
+# 來源與改寫規則見 ts/tools/vendor-pinxing.ts。
+!ts/src/vendor/pinxing/
+!ts/src/vendor/pinxing/**
+
+# 字形庫（exe 的 asset）**不進版控**（作者 2026-11-06 指示）：
+# 建置前先 `cd ts && bun run tools/vendor-pinxing.ts` 從 pinxing 複製過來；
+# 沒有它也能建置，字形功能會自動關閉（`fetch` 失敗 → `glyph.ts` 回 null）。
+wails/assets/pinxing.bin.gz
 
 # 匯出／測試產物
 *_small/
