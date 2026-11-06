@@ -37,7 +37,7 @@
 | **work** | 書名身份，例如《易》＝`yijing`、《說文解字注》＝`shuowen`。引用用 work，不用 adb。 |
 | **edition** | 某個 work 的版本／載體，例如 `13j` 的 `周易`、`swjz`、`swjzz`。 |
 | **adb** | 目前裝載 work 的檔案，例如 `13j.adb`、`swjz.adb`。adb 可改名／拆併。 |
-| **anchor** | work 內的位置，例如 `page:1`、`char:w0010010`、`entry:一毛不拔`。 |
+| **anchor** | work 內的位置，例如 `seg:乾`、`char:w0010010`、`entry:一毛不拔`。 |
 | **a-b** | anchor 內的漢字序範圍（code point），不是 byte offset。 |
 | **xout** | 引用庫自己的 outgoing links，按 work 分裝。 |
 | **LinkBus** | runtime 把已開啟引用庫的 xout 注入原文的機制。 |
@@ -104,13 +104,13 @@ workId?anchor#a-b
 例：
 
 ```text
-yijing?page:1#0-4
-shuowen?char:w0010010#0-1
+yijing?seg:乾#a-b
+shuowen?char:w0010010#a-b
 cyd?entry:一毛不拔#0-3
 ```
 
 - `workId` 優先由 catalog 的 `works` 解析。
-- 舊資料可以暫時用 adb id：`13j?page:1`、`swjz?char:w0010010`；新引用一律用 work。
+- 舊資料可以暫時用 adb id：`13j?seg:乾`、`swjz?char:w0010010`；新引用一律用 work。
 - `anchor` 只在該 work 內唯一；不需要全 adb 唯一。
 - `a-b` 可省略；省略表示整個 anchor。
 
@@ -118,18 +118,19 @@ cyd?entry:一毛不拔#0-3
 
 | 類型 | 寫法 | 適用 |
 |---|---|---|
-| 頁 | `page:<pageId>` | 有明確頁碼的書；book 由 work edition 決定 |
+| 語意段落 | `seg:<path>` | **13j 專用**；書→章→節→項，完整路徑 |
 | 字 | `char:<charId>` | 說文這種以字條為單位的書 |
 | 條目 | `entry:<headword>` | 詞典 |
-| 章節 | `chapter:<id>` | 沒有頁／字 id 的書；最後手段 |
+| 頁 | `page:<pageId>` | 有真正穩定頁碼的書；**13j 不用** |
 | 行 | `line:<n>` | 舊資料 fallback，不用於新連結 |
 
 ### 3.3 重要限制
 
 - work 必須能映射到 edition（adb＋adb 內 book）。
 - 同一個 work 的多個 edition 可以共用 anchor；例如 swjz／swjzz 的 `char:w0010010`。
-- 同一個 adb 內不同書的 `page:1` 不衝突，因為 work 已確定是哪一本書。
-- 若沒有 work，`13j?page:1` 會歧義；不要這樣寫新連結。
+- **13j 不能用 page**：`<頁 n="1">` 在十三本書重複，且頁不是引用單位；用語意段落。
+- 13j 的 `seg:` 必須是完整祖先路徑，不能只用最深層標題（左傳的「經元年」會重複）。
+- swjz／swjzz 用 `char:`，不用頁或行。
 
 ---
 
@@ -152,7 +153,7 @@ Header：
 Record：
 
 ```json
-["entry:一毛不拔", 12345, 0, 3, "page:1", 0, 4, "天行健，君子以自強不息", "quote", 92]
+["entry:一毛不拔", 12345, 0, 3, "seg:乾", 0, 4, "天行健，君子以自強不息", "quote", 92]
 ```
 
 欄位：
@@ -192,6 +193,8 @@ quote, kind, confidence
 <書 id="尚書">尚書</書>
 <頁 n="1"/>
 尚書
+<章>虞書</章>
+<節>堯典</節>
 …
 ```
 
@@ -200,53 +203,81 @@ quote, kind, confidence
 - 42,173 行
 - 13 個 `<書 id>`：周易、尚書、毛詩、周禮、儀禮、禮記、左傳、公羊傳、穀梁傳、
   論語、孝經、爾雅、孟子
+- 259 個 `<章>`、1,448 個 `<節>`、300 個 `<項>`
 - 950 個 `<頁>`，只有 285 個不同的 `n`；`n="1"` 在十三本書重複
 - 沒有 `<字 id>`
 
+各 work 的語意層級不同：
+
+| work | 章 | 節 | 項 | 例子 |
+|---|---:|---:|---:|---|
+| 周易 | 69 | 0 | 0 | `章/乾` |
+| 尚書 | 4 | 60 | 0 | `章/虞書` → `節/堯典` |
+| 毛詩 | 6 | 34 | 300 | `章/國風` → `節/周南` → `項/關雎` |
+| 周禮 | 6 | 369 | 0 | `章/天官冢宰` → `節/大宰` |
+| 左傳 | 12 | 499 | 0 | `章/隱公` → `節/經元年` |
+| 論語 | 20 | 0 | 0 | `章/學而` |
+| 孟子 | 14 | 0 | 0 | `章/梁惠王上` |
+
 ### 5.2 問題
 
-`13j?page:1` 無法知道是《易》還是《尚書》。目前資料的 `<頁 n="1">` 不能單獨當
-xref 目標。
+`13j?page:1` 無法知道是《易》還是《尚書》。而且 **page 不是引用單位**：
+引用《尚書》會說「堯典」，引用《詩經》會說「周南·關雎」，引用《左傳》會說
+「隱公·經元年」，不會說「第 1 頁」。
 
-### 5.3 建議方向（請 agent 驗證）
+只用最深層標題也不夠：左傳的「經元年」在每個公之下都可能重複，必須保留祖先路徑。
 
-work-scoped：
+### 5.3 建議方向：semantic segment
+
+不要用 page；給語意節點加穩定 `id`，anchor 用完整路徑：
+
+```xml
+<書 id="周易">
+  <章 id="乾">乾</章>
+  …
+<書 id="尚書">
+  <章 id="虞書">虞書</章>
+  <節 id="堯典">堯典</節>
+  …
+<書 id="毛詩">
+  <章 id="國風">國風</章>
+  <節 id="周南">周南</節>
+  <項 id="關雎">關雎</項>
+```
 
 ```text
-yijing?page:1#0-4
-shangshu?page:1#0-3
+yijing?seg:乾#a-b
+shangshu?seg:虞書/堯典#a-b
+shijing?seg:國風/周南/關雎#a-b
 ```
 
-catalog：
-
-```json
-{
-  "id": "yijing",
-  "title": "易",
-  "aliases": ["易", "周易", "易經"],
-  "editions": [{ "adb": "13j", "book": "周易" }]
-}
-```
-
-- 目標 anchor 仍是 `page:1`，但由 work 決定 book。
-- 不必把 950 個 `<頁 n>` 全部改成全域唯一；work 已消除歧義。
-- 若 agent 認為要加 `id`，請提出 migration，不要只改 `n`（`n` 是顯示頁碼）。
-- 需要的驗收：13 個 work 的 `page:1` 都能各自定位；`yijing?page:1` 與
-  `shangshu?page:1` 不互撞。
+- `id` 只在該 work 內唯一；顯示文字可以照舊，不必等於 id。
+- 祖先路徑用 `/` 串起；`seg:` 必須是完整路徑。
+- `<頁>`／`<頁元>` 不再是 xref target；只作閱讀顯示。
+- catalog 的 edition 只指 adb／book，不指 page。
 
 ### 5.4 引用例
 
 ```xml
-<聯 i="yijing?page:1#0-4" q="天行健，君子以自強不息">天行健</聯>
+<聯 i="yijing?seg:乾#0-4" q="天行健，君子以自強不息">天行健</聯>
 ```
 
 xout：
 
 ```json
-["entry:一毛不拔", 12345, 0, 3, "page:1", 0, 4, "天行健，君子以自強不息", "quote", 92]
+["entry:一毛不拔", 12345, 0, 3, "seg:乾", 0, 4, "天行健，君子以自強不息", "quote", 92]
 ```
 
 container：`xout_yijing`。
+
+### 5.5 要 agent 回答
+
+- 13j 的 `<章>`／`<節>`／`<項>` 應如何加 `id`？用原文標題、slug，還是建置序號？
+- 完整路徑的 escaping／分隔符規則（`/` 是否會出現在標題？）。
+- 沒有最深層節點的 work（例如只有 `<章>`）如何定義 segment？
+- 同一個標題在不同祖先下重複（左傳「經元年」）如何驗證唯一？
+- 引用只到 work 層（沒有章節）時，anchor 用什麼？
+- 需不需要保留 `page` 作 fallback？作者已定：**13j 不用書頁**，所以不要以 page 作 primary。
 
 ---
 
@@ -352,26 +383,28 @@ Prebuild 可以離線跑，但**不能接受模糊定位**。只有通過以下 
 或由建置工具輸出）：
 
 ```text
-anchorId, kind, parentBook, physicalVa/page, textHash
+anchorId, kind, parentBook, ancestorPath, physicalVa, textHash
 ```
 
 例：
 
 ```text
-yijing  page:1   書=周易  page=1  textHash=...
-shuowen char:w0010010  book=—  va=...  textHash=...
+yijing   seg:乾             書=周易   path=乾
+shangshu seg:虞書/堯典      書=尚書   path=虞書/堯典
+shuowen  char:w0010010      book=—   va=...
 ```
 
 - `anchorId` 在 work 內唯一；manifest 有重複就直接 fail。
 - `a-b` 是相對 anchor 文字的漢字序，不是 adb 全頁 offset。
 - 原文改版後 anchorId 不變；變的是 `textHash`。
+- 13j 的 anchor 是語意路徑，不是 page；`<頁>`／`<頁元>` 不進 manifest。
 
 ### 7.2 xout 記錄要帶穩定資訊
 
 ```json
 ["XOUT1","yijing",2,"targetManifestHash","targetEdition"]
 ...
-["entry:一毛不拔",12345,0,3,"page:1",0,4,"天行健...","quote",92,"targetTextHash"]
+["entry:一毛不拔",12345,0,3,"seg:乾",0,4,"天行健...","quote",92,"targetTextHash"]
 ```
 
 最低要求：
@@ -383,20 +416,22 @@ shuowen char:w0010010  book=—  va=...  textHash=...
 
 ### 7.3 Prebuild 驗收
 
-- [ ] `yijing?page:1` 與 `shangshu?page:1` 各自存在且唯一。
-- [ ] 13j 的 `<頁元>` 不當成 `page:` anchor（它是書標記，不是內頁）。
-- [ ] 每個 13j work 的 page id 在該 work 內唯一。
+- [ ] `yijing?seg:乾` 與 `shangshu?seg:虞書/堯典` 都存在且唯一。
+- [ ] 13j 的 `<頁元>`／`<頁>` 不當成 `seg:` anchor（它們不是引用單位）。
+- [ ] 13j 每個 work 的 segment path 在該 work 內唯一；祖先路徑完整。
 - [ ] swjz／swjzz／swjzzp 的 10,706 個 `char:` id 全部存在，交集 10,706。
 - [ ] 每個 accepted link 的 quote 能在 target anchor 內精確或容許異體地對上。
 - [ ] dead／ambiguous 不寫入 xout，只進 report；超過門檻 fail。
 - [ ] 沒有 manifest 的 target（未建置／版本不符）不得 prebuild 成正式 xout。
 
-### 7.4 為什麼不直接用 page/VA
+### 7.4 為什麼 13j 不直接用 page
 
-- 13j 的 `<頁 n="1">` 在十三本書重複；`13j?page:1` 有歧義。
+- `<頁 n="1">` 在十三本書重複；`13j?page:1` 有歧義。
+- 頁不是引用單位；引用是「尚書·堯典」「左傳·隱公·經元年」這種語意段落。
+- 頁碼會因版本／排版變動；semantic path 才是穩定身份。
 - swjz／swjzz 沒有 `<頁>`；只能用 `<字 id>`。
 - VA 會隨版本／切分變動，不能當永久 anchor。
-- 所以 target 必須是 `work + anchorId`；page／char 只是 anchor 的種類。
+- 所以 target 必須是 `work + anchorId`；`seg:`／`char:` 才是 anchor 的種類。
 
 ---
 
@@ -443,11 +478,13 @@ shuowen char:w0010010  book=—  va=...  textHash=...
 
 ### 9.1 13j
 
-- work-scoped `page:<n>` 是否足夠？還是要在 `<頁>` 加穩定 `id`？
-- 如果加 `id`，建議格式是什麼（例：`周易-1`／`yijing:1`）？如何不影響 `n` 顯示？
+- 13j 的 semantic segment 應如何加 `id`？（原文標題、slug、建置序號？）
+- 完整祖先路徑要包含哪些層？只用最深層標題為何不夠（左傳例子）？
 - 13 個 `<書 id>` 如何對應 work catalog？列出完整 mapping。
-- 如何驗證 950 個頁 marker 與 13 個 work 的組合沒有互撞？
+- 如何驗證 259 章、1,448 節、300 項的路徑在各自 work 內唯一？
+- 哪些引用只需要到「書」層？沒有章節的 work 如何定義 root segment？
 - migration 要改哪些標記？是否要重建 `13j.adb`？成本？
+- 作者已定：**13j 不用書頁**；不要再提 page 作 primary。
 
 ### 9.2 swjz／swjzz／swjzzp
 
@@ -460,7 +497,7 @@ shuowen char:w0010010  book=—  va=...  textHash=...
 
 ### 9.3 通用
 
-- 提出最終 anchor grammar（work、page、char、entry、chapter）與 URL 例子。
+- 提出最終 anchor grammar（work、seg、char、entry）與 URL 例子。
 - 提出 xout record 的最終欄位（是否需要 edition、targetHash、work id）。
 - 提出 build 流程：catalog 更新、xout 產生、link validation、死鏈報表。
 - 提出向後相容：舊 `13j?1`、舊 `swjz` 無 work 的連結怎麼 fallback。
@@ -470,7 +507,7 @@ shuowen char:w0010010  book=—  va=...  textHash=...
 
 ```text
 1. 建議 anchor grammar
-2. 13j mapping 表（work → book → page 規則）
+2. 13j mapping 表（work → book → semantic path 規則）
 3. swjz/swjzz/swjzzp mapping 表（work → edition → char）
 4. 需要改的標記 diff 範例（少量）
 5. 遷移步驟與風險
@@ -482,8 +519,9 @@ shuowen char:w0010010  book=—  va=...  textHash=...
 
 ## 11. 驗收清單
 
-- [ ] `yijing?page:1` 與 `shangshu?page:1` 各自定位到正確的書。
-- [ ] `13j` 的 950 個 `<頁>` 都有可解析的 work 所屬。
+- [ ] `yijing?seg:乾` 與 `shangshu?seg:虞書/堯典` 各自定位到正確的書與段落。
+- [ ] 13j 的 13 個 work、259 章、1,448 節、300 項都有可解析的祖先路徑。
+- [ ] `13j` 的 `<頁>`／`<頁元>` 不當 xref primary；只作閱讀顯示。
 - [ ] `shuowen?char:w0010010` 在 swjz／swjzz／swjzzp 都能定位。
 - [ ] 10,706 個字 id 無重複、跨版本交集 10,706。
 - [ ] xout 只用 `xout_<workId>`，沒有 `xin`、沒有中央 xref。

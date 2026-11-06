@@ -142,23 +142,48 @@ workId?anchor#a-b
 - `a-b` 是漢字序（code point），不是 byte offset。
 - 不要用 VA 當 xref 目標；VA 只可作本庫 fallback。
 
-頁 id 在 `<書>` 內重複是允許的，因為 work 已確定 book；例如：
+**13j 不用 page，必須用 semantic segment（作者 2026-11-06 定案）。**
+十三經的 `<頁 n>` 在十三本書重複，且頁碼不是引用單位；引用單位是「書 → 章 → 節 → 項」
+的語意段落。例：
 
 ```xml
-<書 id="周易">周易</書>
-<頁 n="1"/>
-...
-<書 id="尚書">尚書</書>
-<頁 n="1"/>
+<書 id="尚書">
+  <章 id="虞書">虞書</章>
+  <節 id="堯典">堯典</節>
+  ...
+<書 id="毛詩">
+  <章 id="國風">國風</章>
+  <節 id="周南">周南</節>
+  <項 id="關雎">關雎</項>
 ```
 
-work `yijing` 的 `page:1` 和 work `shangshu` 的 `page:1` 是不同位置，不衝突。
+anchor 用完整語意路徑：
 
-### 4.2 work 內的 book id
+```text
+shangshu?seg:虞書/堯典#a-b
+shijing?seg:國風/周南/關雎#a-b
+yijing?seg:乾#a-b
+```
+
+- 路徑中的每一層都要有穩定 `id`；`<章>`／`<節>`／`<項>` 的顯示文字不是 id。
+- 只用最深層標題不夠：左傳的「經元年」會在不同公之下重複，必須保留祖先路徑。
+- 13j 的 `<頁>`／`<頁元>` 不再是 xref target；只作閱讀顯示。
+
+swjz／swjzz 用 `<字 id="w…">`：
+
+```text
+shuowen?char:w0010010#a-b
+```
+
+`<字>` 是該 work 的引用單位，10,706 個 id 在 swjz／swjzz／swjzzp 完全相同；
+不要用頁或行。
+
+### 4.2 work 內的 book／segment id
 
 - `<書 id="...">` 是 adb 內的穩定 id；不要用顯示標題當 id。
-- 單書 adb 可以省略 `book`，work edition 直接指向 adb。
-- 多書 adb（十三經、史書合集）必須提供 `book`。
+- 13j 的 `<章>`／`<節>`／`<項>` 要加穩定 `id`；`id` 只在所屬 work 內唯一。
+- 祖先路徑用 `/` 串起；`seg:` anchor 必須是完整路徑，不是單一標題。
+- 單書 adb 可以省略 `book`；多書 adb 必須提供 `book`。
 
 ### 4.3 版本
 
@@ -180,7 +205,7 @@ anchorId, kind, parentBook, va/page, textHash
 - `a-b` 相對 anchor 文字，不是 adb 全域 offset。
 - xout record 要帶 targetTextHash；header 帶 targetEdition／manifestHash。
 - 沒有 target manifest、版本不符、hash 不符：不要寫正式 xout；進 unresolved／stale。
-- 13j 的 `<頁元>` 不是內頁 anchor；`page:` 只指 `<頁>`。
+- 13j 的 `<頁元>`／`<頁>` 不是 anchor；13j 用 `seg:` semantic segment。
 - swjz／swjzz／swjzzp 的 `char:w…` 以三者共有的 10,706 個 id 為準。
 
 ---
