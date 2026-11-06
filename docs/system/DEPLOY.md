@@ -112,7 +112,9 @@ CI 會建 arm64／x86_64 兩個 zip 並附到 Release，之後
   manifest，也不要上傳。
 - 本區跑 `deploy.ts --site` 時會一起重生 `manifest`、公開數據庫頁，並上傳這一輪
   有更新的 adb（大檔依既有 `--allow-large` 規則）。
-- 若只是程式 RC、這輪 adb 沒變，才用 `deploy.ts --site --no-adb`。
+- 若只是程式 RC、這輪 adb 沒變，才用 `deploy.ts --site --no-adb`；**發 RC 前先比對
+  `D:\accelon3` 與線上 `adb/manifest.json` 的 sha256，有差異就不可以加 `--no-adb`**，
+  要把 adb 一起發。
 - 好處：程式與 adb 不會一邊新一邊舊，也避免各工作區各自上傳占滿頻寬。
 
 壓縮檔內容固定三樣：`accelon26.exe`、`README.txt`（簡體）、`README-tc.txt`（繁體）。
