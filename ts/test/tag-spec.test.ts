@@ -12,6 +12,9 @@ const get = (attrs: Record<string, string>) => (n: string) => attrs[n] ?? '';
 const head = parseWordSpec('詞', get({ id: '1' }), true);
 ok('詞：詞典模式是 dictHead', !!head && head.dictHead && !head.wordSpan && !head.zeroVa, JSON.stringify(head));
 
+const homo = parseWordSpec('詞', get({ a: '2' }), true);
+ok('詞 a：保留同形詞編號', !!homo && homo.homograph === '2', JSON.stringify(homo));
+
 const inline = parseWordSpec('_詞', get({}), true);
 ok('_詞：零 VA，不是詞頭', !!inline && inline.zeroVa && !inline.dictHead && !inline.wordSpan, JSON.stringify(inline));
 
@@ -32,6 +35,9 @@ ok('_名：entry／另開分頁', !!alias && alias.kind === 'entry' && alias.new
 
 const entry = parseLinkSpec('聯', get({ n: '一毛不拔' }));
 ok('聯 n：entry／同頁', !!entry && entry.kind === 'entry' && !entry.newTab && entry.target === '一毛不拔', JSON.stringify(entry));
+
+const entryHomo = parseLinkSpec('聯', get({ n: '阿房', a: '2' }));
+ok('聯 n a：entry 同形詞目標', !!entryHomo && entryHomo.kind === 'entry' && entryHomo.homograph === '2', JSON.stringify(entryHomo));
 
 const entryNew = parseLinkSpec('聯', get({ n: '一毛不拔', newtab: '1' }));
 ok('聯 n newtab：另開分頁', !!entryNew && entryNew.kind === 'entry' && entryNew.newTab, JSON.stringify(entryNew));

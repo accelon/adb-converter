@@ -456,9 +456,9 @@ export function resetLink(): void {
  * 所以跨庫分頁的 `<聯>` 用的是它自己那一庫的詞頭表（作者 2026-11-01）。
  */
 let entryIndexSource: unknown = null;
-let entryIndex: { names: string[]; vas: number[] } | null = null;
+let entryIndex: { names: string[]; vas: number[]; homographs: string[] } | null = null;
 
-async function buildEntryIndex(rd: AdbReader): Promise<{ names: string[]; vas: number[] } | null> {
+async function buildEntryIndex(rd: AdbReader): Promise<{ names: string[]; vas: number[]; homographs: string[] } | null> {
   const tags = rd.containers.get('tags');
   if (!tags) return null;
   for (const tag of ['詞', '字', '詞目', '字頭', 'term', 'entry']) {
@@ -469,7 +469,9 @@ async function buildEntryIndex(rd: AdbReader): Promise<{ names: string[]; vas: n
       if (!names.length) continue;
       const vas = await rd.decodeBlockList('tags', ti);
       if (vas.length !== names.length) continue;
-      return { names, vas };
+      const av = await rd.attributeValues(tag + '.a').catch(() => null);
+      const homographs = names.map((_, i) => String(av?.values?.[i] ?? ''));
+      return { names, vas, homographs };
     } catch {
       /* 這個標籤沒有名稱表，換下一個 */
     }
@@ -481,7 +483,7 @@ async function buildEntryIndex(rd: AdbReader): Promise<{ names: string[]; vas: n
  * 把一個詞頭解析成 VA 並聯動本文（`<聯 n=…>` 的點擊入口）。
  * `ctxIn` 省略時用「本文目前顯示的那個分頁」那一庫（跨庫分頁才不會查錯庫）。
  */
-export async function linkToEntry(word: string, ctxIn?: DocCtx | null, newTab = false): Promise<boolean> {
+export async function linkToEntry(word: string, ctxIn?: DocCtx | null, newTab = false, homograph = ''): Promise<boolean> {
   const ctx = ctxIn ?? ctxOf(docSession()) ?? activeDocCtx();
   const rd = ctx?.reader ?? null;
   if (!ctx || !rd || !word) return false;
@@ -490,9 +492,15 @@ export async function linkToEntry(word: string, ctxIn?: DocCtx | null, newTab = 
     entryIndex = await buildEntryIndex(rd);
   }
   if (!entryIndex) return false;
-  const at = entryIndex.names.indexOf(word);
+  let at = -1;
+  for (let i = 0; i < entryIndex.names.length; i++) {
+    if (entryIndex.names[i] !== word) continue;
+    if (homograph && entryIndex.homographs[i] !== homograph) continue;
+    at = i;
+    break;
+  }
   if (at < 0) {
-    setStatus(`「${word}」不在本庫的詞頭表`, 'warn');
+    setStatus(`「${word}」${homograph ? `（${homograph}）` : ''}不在本庫的詞頭表`, 'warn');
     return false;
   }
   await linkTo(entryIndex.vas[at], word, 1, { mode: 'node', exact: true, ctx, newTab });
@@ -517,7 +525,7 @@ export function initEntryLinks(): void {
       const newTab = a.dataset.newtab === '1' || a.hasAttribute('data-entry-newtab')
         || ev.ctrlKey || ev.metaKey;
       const target = a.dataset.entry || (a.textContent ?? '').trim();
-      void linkToEntry(target, ctxOf(docSession()), newTab);
+      void linkToEntry(target, ctxOf(docSession()), newTab, a.dataset.homograph || '');
     },
     true,
   );

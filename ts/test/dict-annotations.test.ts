@@ -27,6 +27,10 @@ ok('zy 放的是拼音時不要標成注音', pinyinInZy.html.includes('pronPy')
 
 const head = new Accelon3Renderer(ctx, { dictEntries: true }).lineInfo('<詞 id="1">一毛不拔</詞>', 1);
 ok('詞頭預設用 dictHead（比正文大）', head.html.includes('class="dictHead"'), head.html);
+const homograph = new Accelon3Renderer(ctx, { dictEntries: true }).lineInfo('<詞 a="2">阿房</詞>', 1);
+ok('詞 a：詞頭顯示上標，內容仍是乾淨值', homograph.html.includes('阿<sup class="homograph">2</sup>房') && homograph.html.includes('房'), homograph.html);
+const homographLink = new Accelon3Renderer(ctx, { dictEntries: true }).lineInfo('<聯 n="阿房" a="2">阿房</聯>', 1);
+ok('聯 a：目標帶同形詞，連結文字不加 suptag', homographLink.html.includes('data-homograph="2"') && !homographLink.html.includes('<sup'), homographLink.html);
 const notHead = new Accelon3Renderer(ctx, { dictEntries: true }).lineInfo('<詞 b="x">word</詞>', 1);
 ok('cs 的詞譜 <詞 b> 不當詞頭', !notHead.html.includes('dictHead') && notHead.html.includes('class="word"'), notHead.html);
 const ci = new Accelon3Renderer(ctx, { dictEntries: true }).lineInfo('<辭 b="x" j="0">word</辭>', 1);

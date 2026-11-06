@@ -16,6 +16,8 @@ export interface EntryLinkSpec {
   /** 空字串＝用連結文字當目標（`_名`） */
   target: string;
   newTab: boolean;
+  /** 同形詞編號（`<聯 n="阿房" a="2">`）；只影響目標，不進連結文字。 */
+  homograph?: string;
 }
 
 export interface XrefLinkSpec {
@@ -37,7 +39,7 @@ export function parseLinkSpec(name: string, get: (name: string) => string): Link
 
   if (tag === '名') {
     // `_名` 的目標預設是內文；若建置端給了 n，以 n 為準。
-    return { kind: 'entry', target: get('n'), newTab: true };
+    return { kind: 'entry', target: get('n'), newTab: true, homograph: get('a').trim() || undefined };
   }
 
   if (tag !== '聯') return null;
@@ -58,5 +60,6 @@ export function parseLinkSpec(name: string, get: (name: string) => string): Link
     kind: 'entry',
     target,
     newTab: get('newtab') === '1' || get('newtab') === 'true',
+    homograph: get('a').trim() || undefined,
   };
 }

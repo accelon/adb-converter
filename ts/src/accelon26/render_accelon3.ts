@@ -464,6 +464,8 @@ export class Accelon3Renderer {
   private termCarry: { html: string; shown: boolean; gloss: string } | null = null;
   /** 目前開著的詞 span／詞頭；關閉時要補的注音也一起記 */
   private wordStack: { shown: boolean; pron: string }[] = [];
+  /** 下一個文字 chunk 的第一個字後要插入的同形詞編號 */
+  private homographPending = '';
   /** 還開著的 `<彈>`（提示標記，零 VA）；跨行時行尾收、下一行重開 */
   private tanTips: string[] = [];
   private tanCarry: string[] = [];
@@ -576,6 +578,17 @@ export class Accelon3Renderer {
   /** 一般文字（含關鍵字著色） */
   private emitChunk(decoded: string): string {
     if (!decoded) return '';
+    // 同形詞編號：`<詞 a="2">阿房</詞>` 要在「阿」之後顯示上標，但正文／快取
+    // 仍只存乾淨的「阿房」。只插入一次，插在第一個字之後。
+    if (this.homographPending) {
+      const cp = decoded.codePointAt(0)!;
+      const len = cp > 0xffff ? 2 : 1;
+      const first = decoded.slice(0, len);
+      const rest = decoded.slice(len);
+      const sup = `<sup class="homograph">${esc(this.homographPending)}</sup>`;
+      this.homographPending = '';
+      return esc(this.conv(first)) + sup + this.emitChunk(rest);
+    }
     if (!this.opts.marks.length) return esc(this.conv(decoded));
     let out = '';
     let i = 0;
@@ -646,6 +659,7 @@ export class Accelon3Renderer {
     this.sawHeading = false;
     this.lineCls = '';
     this.lineStyle = '';
+    this.homographPending = '';
     this.sawSegStart = false;
     this.sawSegMid = false;
     this.splitAt = null;
@@ -800,6 +814,7 @@ export class Accelon3Renderer {
           let a = `<a class="${cls}" href="#" data-link="${spec.kind}"`;
           if (spec.kind === 'entry') {
             if (spec.target) a += ` data-entry="${esc(spec.target)}"`;
+            if (spec.homograph) a += ` data-homograph="${esc(spec.homograph)}"`;
             if (spec.newTab) a += ' data-newtab="1"';
             a += ` title="${spec.target ? esc(spec.target) : '開新分頁'}"`;
           } else {
@@ -970,6 +985,7 @@ export class Accelon3Renderer {
           const frame = this.wordStack.pop();
           if (frame?.shown) html += '</span>';
           if (frame?.pron) html += frame.pron;
+          this.homographPending = '';
           continue;
         }
         if (selfClose) continue;
@@ -982,6 +998,7 @@ export class Accelon3Renderer {
         }
         if (word.dictHead) {
           html += '<span class="dictHead">';
+          if (word.homograph) this.homographPending = word.homograph;
         } else if (word.wordSpan) {
           // 詞譜 `b` 只有在「看起來是 IAST 詞件」時才放進 title。
           // 2026-11-03：cs-lex 的 `b` 是 provident-pali 編碼（BIkVKU|sNVGEn 這種大小寫混編、

@@ -32,6 +32,8 @@ export interface WordSpec {
   b: string;
   j: string;
   w: string;
+  /** 同形詞編號（`<詞 a="2">`）；顯示在詞頭第一個字之後。 */
+  homograph: string;
   /** 注音／拼音（可選） */
   pron: WordPron | null;
 }
@@ -53,6 +55,7 @@ export function parseWordSpec(
   const b = get('b');
   const j = get('j');
   const w = get('w');
+  const homograph = get('a').trim();
   const wordSpan = !!(b || j || w);
   const dictHead = !zeroVa && tag === '詞' && dictEntries && !wordSpan;
 
@@ -63,5 +66,5 @@ export function parseWordSpec(
   const pyText = py || (zy ? bpmf2pinyin(zy) : zyRaw);
   const pron = zy || pyText ? { zy, py: pyText } : null;
 
-  return { tag, zeroVa, dictHead, wordSpan, b, j, w, pron };
+  return { tag, zeroVa, dictHead, wordSpan, b, j, w, homograph, pron };
 }
