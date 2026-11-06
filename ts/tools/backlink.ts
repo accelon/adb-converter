@@ -555,6 +555,20 @@ function wrapLine(line: string, list: Span[]): string {
 }
 const outLines = lines.slice();
 for (const [li, list] of byLine) outLines[li] = wrapLine(lines[li], list);
+
+// 引用格式（作者 2026-11-06）：檔頭 <引> 的「(太虛大師全書 $*頁;)」改成「($URL;)」，
+// 複製引用才會變成 (tx?19p226#12-34)，而不是 (太虛大師全書 19p226)。
+// 只改 <檔> 檔頭那一行的 <引>，<摘要頭> 不動。
+if ((DBNAME ?? '') === 'tx') {
+  const FROM = '(太虛大師全書 $*頁;)';
+  const TO = '($URL;)';
+  for (let i = 0; i < outLines.length; i++) {
+    if (!outLines[i].includes('<引>') || !outLines[i].includes(FROM)) continue;
+    outLines[i] = outLines[i].replace(FROM, TO);
+    console.log('檔頭 <引> → ($URL;)');
+    break;
+  }
+}
 writeFileSync(resolve(ROOT, `build/${SLUG}-linked.txt`), outLines.join('\n') + '\n');
 const anchors = outLines.reduce((n, l) => n + ((l.match(/<聯 i="taisho\?/g) ?? []).length), 0);
 console.log(`套用 ${wrapped} 筆（略過 ${skipped}、重疊 ${dropped}）→ ${anchors} 個錨點`);

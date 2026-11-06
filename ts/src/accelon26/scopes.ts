@@ -9,7 +9,7 @@ import { $, altKey, currentFile, currentSource, displayName, docs, escapeHtml, f
 import { advanced, showTab } from './ui';
 import { showToken } from './panes';
 import { paintTreeActive, revealHit, treeRowClasses } from './link';
-import { jumpPageCite, jumpTaishoCite, openCharPosition, parseCharPosition, parseTaishoCite } from './xref';
+import { findCharPosition, jumpPageCite, jumpTaishoCite, openCharPosition, parseCharPosition, parseTaishoCite } from './xref';
 import { parsePageCite } from './page-cite';
 import { parseNoteQuery } from './note-label';
 import { jumpToNote } from './notes';
@@ -1592,7 +1592,7 @@ async function renderTerms(): Promise<void> {
         return nameSegs(slice, tag);
       }
     },
-    html: (h) => `<div class="snippet" data-va="${h.from}">
+    html: (h) => `<div class="snippet" data-va="${h.from}" data-to="${h.to}">
         ${h.count > 0 ? `<div class="snippetHead">${fmtInt(h.count)} 筆</div>` : ''}
         <div><b>${markName(displayName(h.name), markNeedle)}</b></div></div>`,
     bind: (el, h) => {
@@ -1987,8 +1987,8 @@ export async function renderJump(enter = false): Promise<void> {
     }
     return;
   }
-  // 字元級位置（2026-10-30）：選取選單「複製字元級位置」的字串
-  //   taisho?5p2c j=12-34 ／ jingang?8p749a j=56-59 ／ foo?L123 j=5-12
+  // 字元級位置（2026-10-30；2026-11-06 改成 `#`）：
+  //   taisho?5p2c#12-34 ／ yl38p4#12-34 ／ foo?L123#5-12
   // 直接跳到那一段，並只把這幾個字塗色帶。
   const pos = parseCharPosition(q);
   if (pos) {
@@ -2014,6 +2014,20 @@ export async function renderJump(enter = false): Promise<void> {
     meta.textContent = `大正 ${cite.vol} 冊 ${cite.page}${cite.col}${cite.line}${tail}：按 Enter 跳到這一段`;
     list.innerHTML = '';
     if (enter) await jumpTaishoCite(cite);
+    return;
+  }
+  // 引用複製的整段字串（尾端有 `#a-b` token）：大正引用先處理，這個放其後，
+  // 才不會影響 `T02, no. 99, p. 1a7-9` 的既有路徑（作者 2026-11-06）。
+  const embeddedPos = findCharPosition(q);
+  if (embeddedPos) {
+    const db = embeddedPos.db || reader.header.dbname;
+    const span = embeddedPos.b > embeddedPos.a ? `${embeddedPos.a}-${embeddedPos.b}` : `${embeddedPos.a}`;
+    meta.textContent = `引用字串含位置 ${db} ${embeddedPos.anchor}#${span}：按 Enter 跳到這一段並高亮`;
+    list.innerHTML = '';
+    if (enter) {
+      const hit = await openCharPosition(embeddedPos);
+      if (hit) setStatus(`已跳到 ${hit.anchor} 第 ${hit.fromHan}–${hit.toHan} 個字`, 'info');
+    }
     return;
   }
   const entries = await jumpEntries();
@@ -2075,7 +2089,7 @@ export async function renderJump(enter = false): Promise<void> {
  * 搜尋找不到時，把查詢當「跳至」語法再試一次（作者 2026-11-01：跳至分頁併入目錄樹）。
  *
  * 可接受的寫法：
- *   - 字元級位置：`taisho?5p2c j=12-34`（選取選單「複製字元級位置」）
+ *   - 字元級位置：`taisho?5p2c#12-34`（選取選單「複製字元級位置」；舊 `j=` 仍相容）
  *   - 大正藏引用：`大正2，206a15-b13`／`T02, no. 99, p. 1a7-9`
  *   - 頁 id：`49p15`、`8p52a`（英文字母後的 0 可以省略）、含頁 id 的整段引用
  *
@@ -2097,8 +2111,15 @@ export async function jumpByQuery(q: string): Promise<boolean> {
     if (hit) setStatus(`已跳到 ${hit.anchor} 第 ${hit.fromHan}–${hit.toHan} 個字`, 'info');
     return !!hit;
   }
+  // 引用複製字串尾端的 `#a-b`（大正引用先走，既有路徑不變）
   const cite = parseTaishoCite(text);
   if (cite) { await jumpTaishoCite(cite); return true; }
+  const embeddedPos = findCharPosition(text);
+  if (embeddedPos) {
+    const hit = await openCharPosition(embeddedPos);
+    if (hit) setStatus(`已跳到 ${hit.anchor} 第 ${hit.fromHan}–${hit.toHan} 個字`, 'info');
+    return !!hit;
+  }
   // 先看整串是不是這個庫現成的頁 id（`yl38p24` 是 yl38 的頁 id，庫名本身就帶數字），
   // 是的話交給下面的頁 id 清單，不要被頁行引用搶走。
   const asPageId = await anchorVa(reader, text);

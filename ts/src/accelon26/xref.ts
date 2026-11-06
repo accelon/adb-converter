@@ -1790,25 +1790,22 @@ export async function jumpPageCite(c: PageCite): Promise<boolean> {
 
 /* ------------------------------------------------------------------ 字元級位置
  *
- * 選取選單「複製字元級位置」產生的字串：
+ * 使用者看到的寫法（2026-11-06 定案）：
  *
- *   taisho?5p2c j=12-34      頁 id ＋ 這一頁第 12–34 個漢字（0 起，end 不含）
- *   jingang?8p749a j=56-59
- *   foo?L123 j=5-12          沒有 <頁> 的庫：行號 ＋ 這一行的第 5–12 個漢字
+ *   taisho?5p2c#12-34        頁 id ＋ 這一頁第 12–34 個漢字（起訖都算）
+ *   taisho?5p2c#12           只標第 12 個字
+ *   fuyan?yl38p4#12-34       頁 id 不必是 `<數字>p<數字>` 形式
+ *   foo?L123#5-12            沒有 <頁> 的庫：行號 ＋ 這一行的第 5–12 個漢字
  *
- * 「跳至」貼上這串 → 切到那個庫、跳到那一頁，並把這幾個字塗成色帶。
+ * 舊的 `j=` 寫法仍可解析（相容），但**不再產生**：
+ *
+ *   taisho?5p2c j=12-34      舊格式：end 不含 → 內部換成 12-33（含）
+ *
+ * 解析器抽到 `char-position.ts`（不碰 DOM，方便單元測試）；這裡保留同樣的匯出。
  */
-export interface CharPosition { db: string; anchor: string; a: number; b: number }
+export { findCharPosition, formatCharPosition, parseCharPosition, type CharPosition } from './char-position';
+import type { CharPosition } from './char-position';
 
-const CHAR_POS_RE = /^\s*(?:([A-Za-z0-9_.-]+)\?)?\s*([0-9]{1,3}p[0-9]{1,4}[a-g]|L[0-9]+)\s*j\s*=\s*([0-9]+)\s*(?:[-–—]\s*([0-9]+))?\s*$/i;
-
-export function parseCharPosition(s: string): CharPosition | null {
-  const m = CHAR_POS_RE.exec(s ?? '');
-  if (!m) return null;
-  const a = Number(m[3]);
-  const b = m[4] !== undefined ? Number(m[4]) : a;
-  return { db: m[1] ?? '', anchor: m[2], a: Math.min(a, b), b: Math.max(a, b) };
-}
 
 export interface CharBandHit {
   db: string; anchor: string; va: number;
@@ -1877,22 +1874,36 @@ export async function openInMain(
   return true;
 }
 
+/** 頁 id 的等價寫法（fuyan 舊資料 `yl38p107` ↔ 新寫法 `38p107`）。 */
+function pageIdCandidates(r: AdbReader, pageId: string): string[] {
+  const out = [pageId];
+  if (r.header.dbname === 'fuyan' && /^[0-9]+p/i.test(pageId)) out.push('yl' + pageId);
+  return out;
+}
+
 /** 頁標記所在的行；標記在行尾時 `lineOfVa` 會指到下一行，所以要回頭找。 */
 async function pageMarkerLine(r: AdbReader, pageId: string, va: number): Promise<number> {  const m = mapper;
   if (!m) return -1;
   const ml = m.lineOfVa(va);
-  const has = async (i: number): Promise<boolean> => i >= 0
-    && (await r.physicalText(m.lineStartOf(i), m.lineStartOf(i + 1))).includes(`<頁 id="${pageId}"`);
-  if (await has(ml)) return ml;
-  if (await has(ml - 1)) return ml - 1;
+  const ids = pageIdCandidates(r, pageId);
+  const has = async (i: number): Promise<boolean> => {
+    if (i < 0) return false;
+    const text = await r.physicalText(m.lineStartOf(i), m.lineStartOf(i + 1));
+    return ids.some((id) => text.includes(`<頁 id="${id}"`));
+  };
+  // 頁標記可能寫在上一行行尾（ys 的 `<頁 id="38p74a"/>` 就是），lineOfVa 可能
+  // 指到下一行；再往前後各找一兩行，免得合法的頁 id 被說「找不到頁標記」。
+  for (const i of [ml, ml - 1, ml + 1, ml - 2, ml + 2]) {
+    if (await has(i)) return i;
+  }
   return -1;
 }
 
 /**
  * 字元級位置 → 頁 VA ＋「哪一行、行內第幾個字」。
  *
- * `j` 是「這一頁第幾個漢字」，切法要跟 `pageHanText` 一致：頁標記那一行只算
- * 標記後面的字，遇到下一個 `<頁>` 就結束。
+ * `a`／`b` 是「這一頁第幾個漢字」，0 起、**起訖都算**；切法跟 `pageHanText` 一致：
+ * 頁標記那一行只算標記後面的字，遇到下一個 `<頁>` 就結束。
  */
 export async function resolveCharPosition(pos: CharPosition): Promise<CharBandHit | null> {
   if (!(await activateDb(pos.db))) {
@@ -1916,6 +1927,7 @@ export async function resolveCharPosition(pos: CharPosition): Promise<CharBandHi
   if (va == null) { setStatus(db + ' 找不到頁碼 ' + pos.anchor, 'err'); return null; }
   const ml = await pageMarkerLine(r, pos.anchor, va);
   if (ml < 0) { setStatus('找不到 ' + pos.anchor + ' 的頁標記', 'err'); return null; }
+  const pageIds = pageIdCandidates(r, pos.anchor);
 
   let acc = 0;
   let fromLine = -1, fromHan = 0, toLine = -1, toHan = 0;
@@ -1924,7 +1936,7 @@ export async function resolveCharPosition(pos: CharPosition): Promise<CharBandHi
     const t = await r.physicalText(m.lineStartOf(i), m.lineStartOf(i + 1));
     let han: number;
     if (i === ml) {
-      const at = t.indexOf(`<頁 id="${pos.anchor}"`);
+      const at = pageIds.map((id) => t.indexOf(`<頁 id="${id}"`)).find((k) => k >= 0) ?? -1;
       const close = at >= 0 ? t.indexOf('>', at) : -1;
       han = hanCount(close >= 0 ? t.slice(close + 1) : '');
     } else {
@@ -1932,14 +1944,15 @@ export async function resolveCharPosition(pos: CharPosition): Promise<CharBandHi
       han = hanCount(next >= 0 ? t.slice(0, next) : t);
     }
     if (fromLine < 0 && pos.a < acc + han) { fromLine = i; fromHan = pos.a - acc; }
-    if (toLine < 0 && pos.b <= acc + han) { toLine = i; toHan = pos.b - acc; }
+    // `b` 是含在內的最後一個漢字（`#12-34` 是 12..34）；`<` 才不會多塗下一個字。
+    if (toLine < 0 && pos.b < acc + han) { toLine = i; toHan = pos.b - acc; }
     acc += han;
     lastLine = i; lastHan = han;
     if (fromLine >= 0 && toLine >= 0) break;
     if (i > ml && /<頁 /.test(t)) break;
   }
-  if (fromLine < 0) { fromLine = lastLine; fromHan = lastHan; }
-  if (toLine < 0) { toLine = lastLine; toHan = lastHan; }
+  if (fromLine < 0) { fromLine = lastLine; fromHan = Math.max(0, lastHan - 1); }
+  if (toLine < 0) { toLine = lastLine; toHan = Math.max(0, lastHan - 1); }
   return { db, anchor: pos.anchor, va, fromLine, fromHan, toLine, toHan };
 }
 
@@ -1951,7 +1964,10 @@ export async function openCharPosition(pos: CharPosition): Promise<CharBandHit |
   const hit = await resolveCharPosition(pos);
   if (!hit) return null;
   setJumpRange(null);
-  await revealHit(hit.va, hit.anchor, 1, { mode: 'node', noMark: true });
+  // 用 `fromLine` 的 VA 開頁，不要用頁標記的 VA：頁標記常常落在頁界前一兩行，
+  // `lineOfVa` 會先畫到上一頁，然後才靠讀窗底部自動載入補頁（實測多等 2 秒）。
+  const lineVa = mapper?.linesVirtual?.[hit.fromLine] ?? hit.va;
+  await revealHit(lineVa, hit.anchor, 1, { mode: 'node', noMark: true });
   for (let i = 0; i < 40 && !document.getElementById('L' + hit.fromLine); i++) {
     await new Promise((r) => setTimeout(r, 50));
   }

@@ -224,7 +224,7 @@ export async function openLexPane(word: string, b = '', j = '', line = 0, ordina
     : line ? `<div class="lexWhere">行 ${line}${ordinal ? ` · 第 ${ordinal} 詞` : ''}</div>` : '';
   sub.textContent = b ? b.replace(/\|/g, ' + ') : '';
   body.innerHTML = `<div class="lexWord">${escapeHtml(word)}</div>` + where
-    + (b ? `<div class="lexCodes">詞譜：${escapeHtml(b.replace(/\|/g, ' + '))}${j ? `　j=${escapeHtml(j)}` : ''}</div>` : '')
+    + (b ? `<div class="lexCodes">詞譜：${escapeHtml(b.replace(/\|/g, ' + '))}${j ? `　j：${escapeHtml(j)}` : ''}</div>` : '')
     + '<div class="lexNote">查 lex.adb…</div>';
 
   const lr = await lexReader();
@@ -251,7 +251,7 @@ export async function openLexPane(word: string, b = '', j = '', line = 0, ordina
   const row = (label: string, value?: string): string =>
     value ? `<div class="lexRow"><span class="lexLabel">${label}</span><span>${escapeHtml(value)}</span></div>` : '';
   body.innerHTML = `<div class="lexWord">${escapeHtml(entry.word || word)}</div>` + where
-    + (b ? `<div class="lexCodes">詞譜：${escapeHtml(b.replace(/\|/g, ' + '))}${j ? `　j=${escapeHtml(j)}` : ''}</div>` : '')
+    + (b ? `<div class="lexCodes">詞譜：${escapeHtml(b.replace(/\|/g, ' + '))}${j ? `　j：${escapeHtml(j)}` : ''}</div>` : '')
     + row('次數', entry.count ? entry.count + ' 次' : '')
     + row('中文', entry.gloss)
     + row('例', examples.length ? '' : example)

@@ -246,6 +246,11 @@ export interface RenderOptions {
    */
   termMode?: 'orig' | 'hover' | 'inline' | 'off';
   /**
+   * 詞典型 adb（`$詞`／`$字`）：連排模式下 `<詞>`／`<字>` 等詞條標籤要另起一段
+   * （作者 2026-11-06）。只在詞典型開啟，避免 cs 的 `<詞>` 每個詞都斷行。
+   */
+  dictEntries?: boolean;
+  /**
    * 「深度 → 本文上方幾級」（作者 2026-10-18）。`renderPageBlocks` 會依**這一頁**出現的
    * 標題深度算好：最深的那一層＝+1 級，往上一層再 +1 …… 所以同一個標題（例如「甲」）
    * 在不同頁面可以有不同大小，和本文之間是平緩的階梯，不會突然變成大字。
@@ -264,6 +269,12 @@ export interface RenderOptions {
    * 回 null 就退回 `imageUrl` 的 blob URL。
    */
   svgText?: ((name: string) => string | null) | null;
+  /**
+   * 舊資料（tx／taixu）把整張圖版寫成 `<圖 f="images/…png"/>`，沒有 `t="圖版"`；
+   * true 時這種沒有 `t`、不是 SVG 的 `f=` 點陣圖照圖版（原寸）顯示。
+   * 其他庫的 `f=` 行內插圖（例如 yinshun 的 `images/y01-18.png`）不受影響。
+   */
+  untaggedFigures?: boolean;
 }
 
 /** 一行的渲染結果（給分塊用） */
@@ -382,6 +393,7 @@ export class Accelon3Renderer {
     depthSteps: Map<number, number> | null;
     imageUrl: ((name: string) => string | null) | null;
     svgText: ((name: string) => string | null) | null;
+    untaggedFigures: boolean;
   };
 
   constructor(private ctx: RenderContext = current, opts: RenderOptions = {}) {
@@ -396,6 +408,7 @@ export class Accelon3Renderer {
       primary: opts.primary ?? '',
       imageUrl: opts.imageUrl ?? null,
       svgText: opts.svgText ?? null,
+      untaggedFigures: opts.untaggedFigures === true,
     };
     // 'hover' 也要收（2026-11-06）：漏了它會悄悄退回 'orig'，auto 的 <术>（a="1"）就
     // 完全不畫虛線、也沒有 title —— fuyan 全部術語都是自動標的，看起來就像壞掉。
@@ -688,10 +701,16 @@ export class Accelon3Renderer {
         if (!closing) {
           // `f=` 是 Delphi 的 FILE 屬性（`basetype.pas`），taixu 的表格掃描就是用 f
           const src = attrValue(attrs, 'n') || attrValue(attrs, 'id') || attrValue(attrs, 'f');
-          const figure = attrValue(attrs, 't') === '圖版';
           // SVG 優先 inline：跟著字色走、可用 CSS 縮放（作者 2026-10-28）
           const svg = src ? this.opts.svgText?.(src) ?? null : null;
           const url = src && !svg ? this.opts.imageUrl?.(src) ?? null : null;
+          // 圖版判定：`t="圖版"` 是正規寫法；舊資料（tx／taixu）把整張掃描圖／表格
+          // 原圖寫在 Delphi 的 `f=` 上、沒有 t，由 `untaggedFigures` 開啟相容判定。
+          // SVG 仍只認 t=，免得把句中的小篆字形當圖版；`n=` 的點陣圖（Obsidian
+          // 行內圖、yinshun 的 images/y…）也不受影響。
+          const t = attrValue(attrs, 't');
+          const figure = t === '圖版'
+            || (this.opts.untaggedFigures && !svg && !t && !!attrValue(attrs, 'f'));
           if (svg) html += inlineSvgHtml(svg, src, figure);
           else if (url) html += `<img class="inlineImg${figure ? ' figureImg' : ''}" src="${esc(url)}" alt="${esc(src)}" title="${esc(src)}">`;
           else html += `<span class="inlineImgMissing" title="${esc(src || '圖')}">▢</span>`;
@@ -1246,7 +1265,10 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
     }
     // 作者 2026-11-01：標題無論如何都要行首——連排模式下不能和上一段或頁碼黏在一起。
     // `info.heading` 依賴 depthOf（真正的 adb 才有），這裡再用原始標籤補一道保險。
-    const rawHeading = /^\s*<(章|節|項|目|小目|細目|釋)[\s>]/.test(lines[i]);
+    // 2026-11-06：詞典型的 `<字>`／`<詞>` 也是條目標題，連排時要另起一段
+    // （hanyudazidian 的「乙」原本會黏在「一」的姓釋文後面）。
+    const rawHeading = /^\s*<(章|節|項|目|小目|細目|釋)[\s>]/.test(lines[i])
+      || (opts.dictEntries === true && /^\s*<(詞|字|詞條|字頭)[\s>]/.test(lines[i]));
     // 作者 2026-11-03：`<段 n>` 是段首，**即使前後沒有空行**也要另起一段（日文的段與段
     // 之間常常沒有空行）。兩種位置：行首（`segStart`）與「標題之後」（`segMid`）。
     // `segMid` 的行要當**正文段落的第一行**：標題字級在 `.h` span 上，方塊種類不影響字級；

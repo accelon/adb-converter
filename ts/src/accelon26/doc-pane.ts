@@ -352,27 +352,45 @@ const ctxOf = (s: DocSession | null | undefined): DocCtx | null => s?.ctx ?? act
 export const ownsActiveDb = (s: DocSession | null | undefined): boolean =>
   isActiveDocCtx(ctxOf(s));
 
-/* ---------------------------------------------- inline SVG：點一下放大（作者 2026-10-29）
+/* ---------------------------------------------- inline 圖：點一下放大（作者 2026-10-29／2026-11-06）
  *
- * 正文的 `<圖>`（小篆字形、圖版）都是 inline `<svg>`；點一下交給右欄「圖片」用的
- * 同一個 #imgView（滾輪縮放、拖曳、0/1、存檔）。檔名由 `aria-label` 帶。
+ * 正文的 `<圖>` 有兩種：inline `<svg>`（小篆字形、SVG 圖版）與 `<img class="inlineImg">`
+ * （點陣圖版，例如 tx 的掃描圖）。點一下都交給右欄「圖片」用的同一個 #imgView
+ * （滾輪縮放、拖曳、0/1、存檔）。
+ * SVG 的檔名由 `aria-label` 帶；img 用 `alt`／`title`（renderer 寫的是資源名）。
  * hover 顯示檔名是 renderer 寫的 `title`。
  */
-let inlineSvgBound = false;
-function bindInlineSvgZoom(): void {
-  if (inlineSvgBound) return;
-  inlineSvgBound = true;
+let inlineImgBound = false;
+function bindInlineImageZoom(): void {
+  if (inlineImgBound) return;
+  inlineImgBound = true;
   document.addEventListener('click', (ev) => {
-    const svg = (ev.target as Element | null)?.closest?.('#docText svg.inlineSvg') as SVGSVGElement | null;
-    if (!svg) return;
-    // 不要讓點圖同時觸發文字的「選取／查字典」手勢
+    const el = ev.target as Element | null;
+    const svg = el?.closest?.('#docText svg.inlineSvg') as SVGSVGElement | null;
+    if (svg) {
+      // 不要讓點圖同時觸發文字的「選取／查字典」手勢
+      ev.preventDefault();
+      ev.stopPropagation();
+      const name = svg.getAttribute('aria-label') || 'inline.svg';
+      const text = new XMLSerializer().serializeToString(svg);
+      const bytes = new TextEncoder().encode(text);
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'image/svg+xml' }));
+      openImageView(name, url, bytes);
+      return;
+    }
+    const img = el?.closest?.('#docText img.inlineImg') as HTMLImageElement | null;
+    if (!img) return;
     ev.preventDefault();
     ev.stopPropagation();
-    const name = svg.getAttribute('aria-label') || 'inline.svg';
-    const text = new XMLSerializer().serializeToString(svg);
-    const bytes = new TextEncoder().encode(text);
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'image/svg+xml' }));
-    openImageView(name, url, bytes);
+    const name = img.getAttribute('alt') || img.getAttribute('title') || 'inline.png';
+    const src = img.currentSrc || img.src;
+    if (!src) return;
+    // blob URL 與頁面同源，file:// 下也 fetch 得到；抓不到 bytes 仍可看圖（存檔走 URL）
+    void fetch(src)
+      .then((r) => r.arrayBuffer())
+      .then((b) => new Uint8Array(b))
+      .catch(() => new Uint8Array())
+      .then((bytes) => openImageView(name, src, bytes));
   }, true);
 }
 
@@ -1310,6 +1328,8 @@ let activeEditor: {
   s: DocSession;
   key: string;
   docName: string;
+  /** 大型 adb：只看原始文件，不能暫存 */
+  readOnly: boolean;
 } | null = null;
 
 let stageTimer = 0;
@@ -1487,6 +1507,16 @@ function editAllowed(): boolean {
   return document.body.classList.contains('advanced') && !!getUserId();
 }
 
+/** 大型 adb 的編輯上限（作者 2026-11-06：超過就只看原始文件，唯讀、不存檔） */
+export const EDIT_SIZE_LIMIT = 50 * 1024 * 1024;
+
+/** 這個分頁那一庫是不是「唯讀檢視」的大小 */
+function isReadOnlyEdit(s: DocSession | null | undefined): boolean {
+  if (!s) return false;
+  const rd = ctxOf(s)?.reader;
+  return !!rd && rd.header.size > EDIT_SIZE_LIMIT;
+}
+
 /**
  * 這個分頁所屬檔案的編輯工作階段。
  *
@@ -1514,10 +1544,15 @@ function setEditControls(s: DocSession | null): void {
   if (btn) {
     btn.hidden = history;
     const on = !!s?.editing;
+    const readOnly = isReadOnlyEdit(s);
     btn.classList.toggle('on', on);
-    btn.title = !getUserId()
-      ? '請先在「關於」設定修訂者 ID'
-      : (on ? '完成編輯（內容已自動暫存）' : '編輯這一頁（修錯字；離開會自動暫存）');
+    btn.classList.toggle('readonly', readOnly);
+    btn.title = readOnly
+      ? (on ? '關閉唯讀的原始文件' : '唯讀檢視原始文件（adb 超過 50 MB，不能存檔）')
+      : !getUserId()
+        ? '請先在「關於」設定修訂者 ID'
+        : (on ? '完成編輯（內容已自動暫存）' : '編輯這一頁（修錯字；離開會自動暫存）');
+    btn.setAttribute('aria-label', readOnly ? '唯讀檢視原始文件' : (on ? '完成編輯' : '編輯這一頁'));
   }
   const toggle = document.getElementById('diffToggle') as HTMLElement | null;
   const box = document.getElementById('showDiff') as HTMLInputElement | null;
@@ -1544,7 +1579,7 @@ function noticeEditor(msg: string): void {
 /** Read the editor text into the session WITHOUT destroying the editor. */
 function saveActiveEditorText(): void {
   const a = activeEditor;
-  if (!a) return;
+  if (!a || a.readOnly) return;
   const es = editSessionOf(ctxOf(a.s));
   if (!es) return;
   try {
@@ -1650,18 +1685,14 @@ export function enterEdit(s: DocSession, fromSelection = false): void {
     setStatus('請先開啟進階模式才能編輯', 'err');
     return;
   }
-  if (!getUserId()) {
+  if (!s || !s.cache?.dt) return;
+  // 超過 50 MB：仍然進編輯模式看原始文件，但只讀、不能暫存／存檔（作者 2026-11-06）
+  const readOnly = isReadOnlyEdit(s);
+  if (!readOnly && !getUserId()) {
     setStatus('請先在「關於」設定修訂者 ID，才能編輯', 'err');
     return;
   }
-  if (!s || !s.cache?.dt) return;
-  // 編輯上限看的是「這個分頁那一庫」的大小
-  const rd = ctxOf(s)?.reader;
-  if (rd && rd.header.size > 50 * 1024 * 1024) {
-    setStatus('這個 adb 超過 50 MB，網頁版暫不支援編輯（桌面版或 Go 版再處理）', 'err');
-    return;
-  }
-  if (s.cache.dt.lines.some((l) => l.includes('\n') || l.includes('\r'))) {
+  if (!readOnly && s.cache.dt.lines.some((l) => l.includes('\n') || l.includes('\r'))) {
     setStatus('這一頁的行內含換行字元，CodeMirror 會改變行界，暫不開放編輯', 'err');
     return;
   }
@@ -1672,6 +1703,7 @@ export function enterEdit(s: DocSession, fromSelection = false): void {
   }
   s.editing = true;
   s.autoEdit = true;
+  if (readOnly) setStatus('這個 adb 超過 50 MB：唯讀檢視原始文件，不能存檔', 'info');
   renderDoc(s);
 }
 
@@ -1703,6 +1735,7 @@ function scheduleStage(): void {
 /** The editor view for one page (header + toolbar + CodeMirror). */
 function renderEditPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docText']>>): void {
   const ctx = ctxOf(s);
+  const readOnly = isReadOnlyEdit(s);
   const b = pageBounds(ctx, s.realm, s.page);
   const r = pageRangeOf(dt);
   const key = pageKey(r.first, r.last);
@@ -1724,13 +1757,17 @@ function renderEditPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
       ? ''
       : '<div class="docHead docHeadEditing">' + escapeHtml(displayName(s.name))
         + '<span class="dim">第 ' + fmtInt(s.page + 1) + ' / ' + fmtInt(b.pages) + ' 頁 · 行 '
-        + fmtInt(nFirst) + '–' + fmtInt(nLast) + ' · <b style="color:var(--gold)">編輯中</b></span></div>')
+        + fmtInt(nFirst) + '–' + fmtInt(nLast) + ' · <b style="color:var(--gold)">'
+        + (readOnly ? '唯讀原始文件（adb 超過 50 MB）' : '編輯中') + '</b></span></div>')
     + renderAncestorTrail(s)
     + '</div>'
     + '<div id="docEditor">'
     + '<div class="editBar">'
-    + '<button type="button" class="mini" id="editDone" title="完成這一頁（自動暫存）">完成</button>'
-    + '<button type="button" class="mini" id="editCancel" title="丟掉這一頁的修改">取消本頁</button>'
+    + '<button type="button" class="mini" id="editDone" title="'
+    + (readOnly ? '關閉原始文件檢視' : '完成這一頁（自動暫存）') + '">'
+    + (readOnly ? '關閉' : '完成') + '</button>'
+    + (readOnly ? '' : '<button type="button" class="mini" id="editCancel" title="丟掉這一頁的修改">取消本頁</button>')
+    + (readOnly ? '<span class="editReadOnly">唯讀 · adb 超過 50 MB，不能存檔</span>' : '')
     + '<span class="editNotice" id="editNotice"></span></div>'
     + '<div class="cmHost" id="cmHost"></div>'
     + '</div>';
@@ -1740,8 +1777,8 @@ function renderEditPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
   setEditControls(s);
   const host = document.getElementById('cmHost');
   if (!host) return;
-  const ed = mountPageEditor(host, lines.slice(), { onChange: scheduleStage, onNotice: noticeEditor });
-  activeEditor = { ed, first: r.first, last: r.last, oldLines: dt.lines.slice(), s, key, docName: docNameOf(s) };
+  const ed = mountPageEditor(host, lines.slice(), { readOnly, onChange: scheduleStage, onNotice: noticeEditor });
+  activeEditor = { ed, first: r.first, last: r.last, oldLines: dt.lines.slice(), s, key, docName: docNameOf(s), readOnly };
   if (pendingSelectionUse) {
     const sel = pendingDocSelection;
     pendingSelectionUse = false;
@@ -1757,6 +1794,7 @@ function renderEditPage(s: DocSession, dt: Awaited<ReturnType<VaPaMapper['docTex
     if (ev.key === 'Escape') { ev.preventDefault(); exitEdit(s); }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 's') {
       ev.preventDefault();
+      if (readOnly) { noticeEditor('唯讀，不能存檔'); return; }
       saveActiveEditorText();
       noticeEditor('已暫存');
     }
@@ -1950,9 +1988,9 @@ function renderDoc(s: DocSession): void {
   pendingView = null;
   const wantScrollTop = typeof want?.scrollTop === 'number' ? want.scrollTop : null;
   clearCharBand();          // 重畫就沒有那條字元色帶了（Range 指向舊節點）
-  bindInlineSvgZoom();
+  bindInlineImageZoom();
   bindLineTip();
-  if (s.editing && !editAllowed()) s.editing = false;
+  if (s.editing && !isReadOnlyEdit(s) && !editAllowed()) s.editing = false;
   setEditControls(s);
   if (s.editing) { renderEditPage(s, dt); return; }
   if (s.history) { renderHistoryPage(s, dt); return; }
@@ -1985,6 +2023,10 @@ function renderDoc(s: DocSession): void {
       hardBreaks, marks: hardBreaks ? [] : kwMarks(), convert: simConverter(), pageMarks: pageMarksOn(),
       imageUrl: imageUrlOf,
       svgText: svgTextOf,
+      // tx／taixu 的舊資料：整張圖版用 `<圖 f>`、沒有 t="圖版"（見 render_accelon3）
+      untaggedFigures: /^(tx|taixu)$/.test(ctx?.reader.header.dbname ?? ''),
+      // 詞典型：`<字>`／`<詞>` 在連排模式要另起一段（作者 2026-11-06）
+      dictEntries: isDictDb(ctx?.mapper ?? null),
       termMode: termModeOf(),
     });
   const rows = renderBlocks(blocks, s);
@@ -2281,12 +2323,15 @@ function closeDocTab(i: number): void {
  * 開啟＝從目前這一行往上留 20 行，之後連續讀到整本結束（200 行一頁、頁尾補到段落結束）；
  * 再按一次＝回到剛才那個節點、那一行。
  */
-async function enterContinuous(s: DocSession, line: number, anchorLine?: number): Promise<void> {
+async function enterContinuous(s: DocSession, line: number, anchor?: ScrollAnchor, flashFrom?: number): Promise<void> {
   const ctx = ctxOf(s);
   if (!ctx?.mapper) return;
   const doc = docOfVa(ctx, s.realm.from);
   if (!doc || doc.vaEnd <= doc.vaStart) return;
-  const fromLine = Math.max(0, line - 20);   // 上面留一點上下文，往下才是主要閱讀區
+  // 上面留 20 行上下文，但不要越過目前閱讀單位的開頭：短條目（例如 hanyudazidian
+  // 的「目」）若借了上一條的尾巴，讀者捲到頂就看不到自己的開頭（作者 2026-11-06）。
+  const realmStart = ctx.mapper.lineOfVa(s.realm.from);
+  const fromLine = Math.max(0, Math.min(line, Math.max(realmStart, line - 20)));
   const fromVa = fromLine > 0 ? (ctx.mapper.linesVirtual[fromLine - 1] + 1) : doc.vaStart;
   s.nodeRealm = s.realm;
   s.nodeLine = line;
@@ -2294,8 +2339,11 @@ async function enterContinuous(s: DocSession, line: number, anchorLine?: number)
   s.continuous = true;
   s.cache = null;
   await ensurePage(s, line);
-  // 從讀窗底部「自動載入更多」時，把原本置頂的那一行留在原位（畫面不要跳）
-  if (anchorLine != null) document.getElementById('L' + anchorLine)?.scrollIntoView({ block: 'start' });
+  // 從讀窗底部「自動載入更多」時，把原本置頂的那一行留在原位；用 offset 還原，
+  // 不是 scrollIntoView(block:'start')，否則畫面會往上跳一大段（作者 2026-11-06）。
+  if (anchor) restoreScrollAnchor(anchor);
+  // 新塞進來一大段時，閃一下第一行，告訴讀者從哪裡開始讀（作者 2026-11-06）
+  if (flashFrom != null) flashNewText(flashFrom);
 }
 
 async function toggleReadingRealm(s: DocSession): Promise<void> {
@@ -2338,23 +2386,79 @@ function clearEndFooter(): void {
   document.getElementById('docEnd')?.remove();
 }
 
-/** 目前畫面最上面那一行（自動載入後要留在原位） */
-function topVisibleLine(body: HTMLElement): number | null {
+/** 自動載入前記住「畫面上最上面那一行」與它距讀窗頂端的偏移，載入後原樣還原 */
+interface ScrollAnchor { line: number; offset: number }
+
+function topVisibleAnchor(body: HTMLElement): ScrollAnchor | null {
   const top = body.getBoundingClientRect().top;
   for (const el of body.querySelectorAll<HTMLElement>('[id^="L"]')) {
-    if (el.getBoundingClientRect().bottom > top + 1) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom > top + 1) {
       const n = Number(el.id.slice(1));
-      return Number.isFinite(n) ? n : null;
+      return Number.isFinite(n) ? { line: n, offset: r.top - top } : null;
     }
   }
   return null;
 }
 
+/** 還原同一行在原來的垂直位置（不是 align-to-top，才不會為了載入更多把畫面往上跳） */
+function restoreScrollAnchor(anchor: ScrollAnchor): void {
+  const body = document.querySelector<HTMLElement>('#docText .docBody');
+  const el = document.getElementById('L' + anchor.line);
+  if (!body || !el) return;
+  const offset = el.getBoundingClientRect().top - body.getBoundingClientRect().top;
+  body.scrollTop += offset - anchor.offset;
+}
+
+/** 新載入文字的頭一行閃 2 秒（作者 2026-11-06）：一大段突然塞進來，讀者要知道從哪讀起 */
+let newTextFlashTimer = 0;
+function flashNewText(from: number): void {
+  if (newTextFlashTimer) { window.clearTimeout(newTextFlashTimer); newTextFlashTimer = 0; }
+  for (const el of document.querySelectorAll<HTMLElement>('#docText .docLine.newTextFlash')) {
+    el.classList.remove('newTextFlash');
+  }
+  // 亮一整句／一小段，而不是只有一行：從新文字的第一行往後收，遇到句末或空行就停。
+  // 新載入的常常是條目標題（`<字>`），下一行才是釋文，所以至少會亮到第一句。
+  const els: HTMLElement[] = [];
+  for (let n = from; n < from + 12; n++) {
+    const hit = document.getElementById('L' + n);
+    const el = hit ? (hit.classList.contains('docLine') ? hit : hit.closest<HTMLElement>('.docLine') ?? hit) : null;
+    if (!el) break;
+    const text = el.textContent?.trim() ?? '';
+    if (!text) break;
+    els.push(el);
+    if (/[。！？!?…」』”’]$/.test(text)) break;
+  }
+  if (!els.length) return;
+  const body = els[0].closest<HTMLElement>('.docBody');
+  const fr = els[0].getBoundingClientRect();
+  const lr = els[els.length - 1].getBoundingClientRect();
+  if (body) {
+    const br = body.getBoundingClientRect();
+    // 只把新段落推到「看得到、下面留一點」的位置（不是整頁置中），減少畫面移動
+    const topPad = 60, bottomPad = 100;
+    if (lr.bottom > br.bottom - bottomPad) {
+      body.scrollTo({ top: body.scrollTop + lr.bottom - (br.bottom - bottomPad), behavior: 'smooth' });
+    } else if (fr.top < br.top + topPad) {
+      body.scrollTo({ top: body.scrollTop + fr.top - (br.top + topPad), behavior: 'smooth' });
+    }
+  }
+  // 下一個 frame 再加 class，動畫才會從頭播
+  requestAnimationFrame(() => {
+    for (const el of els) el.classList.add('newTextFlash');
+    newTextFlashTimer = window.setTimeout(() => {
+      for (const el of els) el.classList.remove('newTextFlash');
+      newTextFlashTimer = 0;
+    }, 2000);
+  });
+}
+
 async function loadMoreFromEnd(s: DocSession): Promise<void> {
   const body = document.querySelector<HTMLElement>('#docText .docBody');
-  const anchor = body ? topVisibleLine(body) : null;
+  const anchor = body ? topVisibleAnchor(body) : null;
   const line = s.cache?.dt?.lineNumbers[0] ?? s.pinned?.line ?? 0;
-  await enterContinuous(s, line, anchor ?? undefined);
+  const lastLine = s.cache?.dt?.lineNumbers.at(-1);
+  await enterContinuous(s, line, anchor ?? undefined, lastLine == null ? undefined : lastLine + 1);
 }
 
 function startEndTimer(s: DocSession): void {

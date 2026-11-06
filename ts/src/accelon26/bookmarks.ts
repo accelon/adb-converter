@@ -8,6 +8,8 @@
  */
 import { mapper, reader, setStatus } from './viewer';
 import { lookupBook, openTaishoAt, pageHanText, pageIdAtVa, type BookHit } from './xref';
+import { formatCharPosition } from './char-position';
+import { HAN_RE } from './han';
 import { cursorNode, focusTreeNode, revealCursorInTree, revealHit } from './link';
 import { openDictLookup } from './dict-pane';
 import { openLexPaneForHan } from './lex-pane';
@@ -64,7 +66,6 @@ let plateUrls: PlateLinks = {};
 
 const $id = <T extends HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const HAN_RE = /[\u3400-\u9fff\uf900-\ufaff]/;
 
 function loadAll(): Record<string, Bookmark[]> {
   try {
@@ -188,19 +189,26 @@ async function selectionInfo(): Promise<SelInfo | null> {
 async function hanRange(info: SelInfo): Promise<[number, number]> {
   const db = reader?.header.dbname ?? '';
   const page = await pageHanText(db, info.pageId);
-  const needle = Array.from(info.raw).filter((c) => /[\u3400-\u9fff\uf900-\ufaff]/.test(c)).join('');
-  if (!needle) return [0, 0];
-  let at = page.indexOf(needle);
+  // 座標是「這一頁第幾個漢字」（code point），不是 UTF-16 位移：擴充 B 區的字
+  // 是代理對，用 string index 會少算（han.ts 的同一套規則）。
+  const pageChars = [...page];
+  const needleChars = [...info.raw].filter((c) => HAN_RE.test(c));
+  if (!needleChars.length) return [0, 0];
+  const needle = needleChars.join('');
+  const cpAt = (unitAt: number): number => [...page.slice(0, unitAt)].length;
+  let atUnit = page.indexOf(needle);
+  let at = atUnit >= 0 ? cpAt(atUnit) : -1;
   if (at < 0) {
     // 區段跨頁時整段不在這一頁：用開頭的一段去對（越長越準），
-    // 才不會退成 j=0-N 指到頁首。
-    for (let n = Math.min(needle.length, 24); n >= 4; n--) {
-      at = page.indexOf(needle.slice(0, n));
-      if (at >= 0) break;
+    // 才不會退成 0-N 指到頁首。
+    for (let n = Math.min(needleChars.length, 24); n >= 4; n--) {
+      atUnit = page.indexOf(needleChars.slice(0, n).join(''));
+      if (atUnit >= 0) { at = cpAt(atUnit); break; }
     }
   }
-  if (at < 0) return [0, Math.min(page.length, needle.length)];
-  return [at, Math.min(page.length, at + needle.length)];
+  if (at < 0) return [0, Math.min(pageChars.length, needleChars.length)];
+  // end 不含；跨頁時會夾到起點頁最後一個字。
+  return [at, Math.min(pageChars.length, at + needleChars.length)];
 }
 
 const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -473,7 +481,12 @@ async function copyText(text: string, message: string): Promise<void> {
   setStatus(ok ? message : '複製失敗（瀏覽器阻擋）', ok ? 'info' : 'err');
 }
 
-/** 依檔頭的 <引> 展開引用文字；找不到就退回一個含頁 id 的保守格式。 */
+/** 引用／跳至 URL 的頁 id：fuyan 的 `yl38p107` 與 ys 同步後寫成 `38p107`。 */
+function urlPageId(db: string, pageId: string): string {
+  return db === 'fuyan' ? pageId.replace(/^yl(?=\d)/i, '') : pageId;
+}
+
+/** 依檔頭的 <引> 展開引用文字；`$URL;` ＝ db?頁#起-止。找不到 <引> 用預設樣板。 */
 export async function citationFor(info: SelInfo): Promise<string> {
   const r = reader;
   if (!r) return info.text;
@@ -483,22 +496,33 @@ export async function citationFor(info: SelInfo): Promise<string> {
   const tail = raw.indexOf('</檔>');
   const header = tail >= 0 ? raw.slice(0, tail + 5) : raw;
   const m = /<引(?:\s[^>]*)?>([\s\S]*?)<\/引>/.exec(header);
-  const tpl = m?.[1] ?? '《$書;》：「$_;」( $*頁; )';
+  const tpl = m?.[1] ?? '《$書;》：「$_;」($URL;)';
+  const hasUrl = /\$URL;/i.test(tpl);
   const tags = [...tpl.matchAll(/\$(\*?)([^;]+);/g)].map((x) => x[2]);
   const values = new Map<string, string>();
   for (const tag of tags) {
-    if (tag === '_') continue;
+    if (tag === '_' || tag === 'URL') continue;
     if (tag === '頁') { values.set(tag, info.pageId); continue; }
     values.set(tag, await labelAt(info.va, tag));
   }
+  // `$URL;` 是 db name＋頁碼＋字元（例如 fuyan?38p107#106-110）。
+  const url = await charPosition(info);
   let out = tpl.replace(/\$(\*?)([^;]+);/g, (_all, _star, tag: string) => {
+    if (tag === 'URL') return url;
     if (tag === '_') return info.text;
     if (tag === '頁') return info.pageId;
     return values.get(tag) ?? '';
   });
   out = normalize(out);
-  // 模板若沒有頁 id，補一個括號；這樣「跳至」一定找得到。
-  if (info.pageId && !out.includes(info.pageId)) out += ' (' + info.pageId + ')';
+  // 舊樣板（ys／tx 的 `$*頁;`）沒有 $URL：把含頁 id 的括號換成 URL 括號，
+  // 不要留下 `( yl38p107 ) yl38p107#...` 這種重複頁 id。
+  if (!hasUrl) {
+    if (info.pageId) {
+      const page = info.pageId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      out = normalize(out.replace(new RegExp(`\\s*[（(]\\s*(?:Y\\s*)?[^（）()]{0,48}?${page}[^（）()]{0,48}?\\s*[）)]`, 'i'), ''));
+    }
+    if (url) out += '(' + url + ')';
+  }
   return out;
 }
 
@@ -578,19 +602,21 @@ function fillSearch(m: HTMLElement): void {
 }
 
 /**
- * 字元級位置：`db?頁 j=起-止`（頁＋這一頁第幾個漢字；沒有頁 id 就用行號）。
- * 沒有頁的庫，`j` 是「這一行的第幾個漢字」。
+ * 字元級位置：`db?頁#起-止`（頁＋這一頁第幾個漢字；起訖都算）。
+ * 沒有頁 id 就用 `db?L行號#起-止`，`j=` 只留給解析舊字串。
  */
 async function charPosition(info: SelInfo): Promise<string> {
   const db = reader?.header.dbname || 'db';
   if (!info.pageId) {
     const a = info.hanPrefix;
     const total = Array.from(info.raw).filter((c) => HAN_RE.test(c)).length;
-    const b = info.endLine === info.startLine ? info.hanPrefixEnd : a + total;
-    return `${db}?L${info.startLine} j=${a}-${b}`;
+    const endExclusive = info.endLine === info.startLine ? info.hanPrefixEnd : a + total;
+    const b = Math.max(a, endExclusive - 1);
+    return `${db}?${formatCharPosition({ anchor: `L${info.startLine}`, a, b })}`;
   }
-  const [a, b] = await hanRange(info);
-  return `${db}?${info.pageId} j=${a}-${b}`;
+  const [a, endExclusive] = await hanRange(info);
+  const b = Math.max(a, endExclusive - 1);
+  return `${db}?${formatCharPosition({ anchor: urlPageId(db, info.pageId), a, b })}`;
 }
 
 let addrRange = '';
@@ -701,7 +727,7 @@ async function runAction(action: string): Promise<void> {
     (window as unknown as { __lastSnippet?: string }).__lastSnippet = s;
     await copyText(s, '已複製 <嵌> 模板；把 q 改成要標記的經文，貼到段落後');
   } else if (action === 'pos') {
-    await copyText(await charPosition(info), '已複製字元級位置（頁＋漢字範圍）');
+    await copyText(await charPosition(info), '已複製位置（頁＋字元範圍）');
   } else if (action === 'addr' && addrRange) {
     await copyText(addrRange, '已複製高麗⇄大正位址範圍');
   } else if (action === 'dict') await openDictLookup(info.text);

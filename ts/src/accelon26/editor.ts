@@ -28,6 +28,8 @@ export interface EditorHooks {
   onChange?: () => void;
   /** status line for blocked/wrapped operations */
   onNotice?: (msg: string) => void;
+  /** 唯讀（大型 adb 只看原始文件；不能改、不能暫存） */
+  readOnly?: boolean;
 }
 
 function scanTags(text: string): Tag[] {
@@ -209,6 +211,7 @@ export function mountPageEditor(parent: HTMLElement, lines: string[], hooks: Edi
   const state = EditorState.create({
     doc: lines.join('\n'),
     extensions: [
+      ...(hooks.readOnly ? [EditorState.readOnly.of(true)] : []),
       lineNumbers(),
       highlightActiveLine(),
       highlightActiveLineGutter(),

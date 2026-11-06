@@ -689,7 +689,8 @@
   cursor: pointer; font-size: 13px; padding: 1px 7px; line-height: 1.5; }
   /* 沒有資料庫時：＋ 右邊閃爍「按＋開啟資料庫」（body 還沒有 .loaded 就顯示）。
      有庫時整段消失（chips 佔那個位置），關掉最後一個庫又會回來。 */
-  #dbHint { display: none; font-size: 13px; white-space: nowrap; color: var(--gold); }
+  #dbHint { display: none; font-size: 13px; white-space: nowrap; color: var(--gold);
+    background: none; border: 0; padding: 0; font-family: inherit; }
   body:not(.loaded) #dbHint {
     display: inline-block; animation: dbHintFlash 1.4s ease-in-out infinite;
   }
@@ -971,9 +972,16 @@
   .docLine:hover { background: var(--row-hover); }
   /* 目前釘住的那一行：淡淡一層就好，免得標題（現在是彩色字）看起來像有底色 */
   .docLine.hitLine { background: rgba(255, 212, 121, .10); }
+  /* 載入更多：新塞進來的第一行閃 2 秒，告訴讀者從哪開始讀（作者 2026-11-06） */
+  .docLine.newTextFlash { animation: newTextFlash 2s ease-out both; }
+  @keyframes newTextFlash {
+    0% { background: rgba(255, 209, 102, .55); box-shadow: inset 4px 0 0 rgba(255, 209, 102, .95); }
+    35% { background: rgba(255, 209, 102, .30); }
+    100% { background: transparent; box-shadow: inset 4px 0 0 transparent; }
+  }
 /* 跳至：大正藏引用「2，206a15-b13」指到的整段（作者 2026-10） */
 .docLine.jumpHit { background: rgba(255, 209, 102, .16); box-shadow: inset 3px 0 0 rgba(255, 209, 102, .55); }
-/* 跳至：字元級位置（`db?頁 j=a-b`）只塗那幾個字（CSS Custom Highlight，2026-10-30） */
+/* 跳至：字元級位置（`db?頁#a-b`）只塗那幾個字（CSS Custom Highlight，2026-10-30） */
 ::highlight(accelonCharBand) { background-color: rgba(255, 209, 102, .42); color: inherit; }
   /* 作者 2026-11-03：閱讀一律軟換行，不要水平捲（原書硬換行保留，但不裁切長行） */
   .lineText { white-space: pre-wrap; overflow-wrap: anywhere; flex: 1 1 auto; min-width: 0; }
@@ -1419,6 +1427,8 @@
     margin: 0 1px; border-radius: 2px;
     /* 字形圖是透明背景＋黑墨，深色主題會看不見：一律鋪白紙底（像貼上的字卡） */
     background: #fff; padding: 1px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .10);
+    /* 點一下開 #imgView 看原圖（滾輪縮放、拖曳）；圖版也在這條路徑上 */
+    cursor: zoom-in;
   }
   .lineText img.inlineImg:hover { outline: 1px solid var(--accent); height: 2.2em; }
   /* 內嵌 SVG（小篆字形）：跟著字色／主題走，不必鋪白底、也不必裝字型（作者 2026-10-28）。
@@ -1903,6 +1913,7 @@
   .docHeadEditing .dim { display: none !important; }
   .editBar .mini { font-size: 12px; }
   .editNotice { color: var(--gold); }
+  .editReadOnly { color: var(--gold); font-weight: 600; }
   /* 有未產生修訂的分頁：只把字塗紅（和目錄節點一樣），不換背景 */
   .docTab.dirty { color: var(--hit-2); font-weight: 600; }
   .docTab.dirty:hover { color: var(--hit-2); }
@@ -2179,7 +2190,7 @@
   <input type="file" id="vaultZip" accept=".zip,application/zip" hidden>
   <button class="dbAdd dbAll" id="searchAllBtn" title="搜尋所有 adb（Alt+S）：輪流查每一個庫的命中數，再決定要不要打開">🔍</button>
   <button class="dbAdd" id="studyIndexBtn" hidden title="注疏索引：經文 → 注疏名稱 → 大正頁">注疏</button>
-  <span class="dbHint" id="dbHint">← 按 📁 下載或開啟資料庫</span>
+  <button type="button" class="dbHint" id="dbHint">← 按 📁 下載或開啟資料庫</button>
   <span class="dbTabs" id="dbTabs"></span>
   <span class="status" id="status"></span>
   <!-- 設置（齒輪）在最右邊：作者 2026-10 把它移到原本資料夾按鈕的位置。
@@ -2227,7 +2238,7 @@
       <!-- 名詞：s="$詞"（tag 包裹）。詞條＝<詞> 的實例，字典式查詢。 -->
       <div class="tabPane" data-tab="terms">
         <div class="searchBar">
-          <input type="search" id="termsQuery" placeholder="輸入詞條（比對 &lt;詞&gt; 包住的字；. ＝ 任一個字）" autocomplete="off" spellcheck="false">
+          <input type="search" id="termsQuery" placeholder="輸入詞條（比對 &lt;詞&gt; 包住的字；. ＝ 任一個字）" title="只有一筆時直接開新分頁；按 Enter 開清單第一條" autocomplete="off" spellcheck="false">
           <!-- 三態 toggle（作者 2026-10）：按一下換下一個模式，不用下拉。
                作者 2026-10-18：符合的詞條數直接放進這顆按鈕裡（只放數字）。 -->
           <button type="button" id="termsMode" class="modeBtn" data-mode="start" title="比對位置：按一下切換 開頭 → 中間 → 結尾"><span id="termsModeName">開頭</span><span id="termsCount" class="modeCount"></span></button>
@@ -2267,7 +2278,7 @@
            輸入頁 id 的一部份（例：49p15、0065a）就列出符合的頁；按 Enter 直接跳到最接近的一頁。 -->
       <div class="tabPane" data-tab="jump">
         <div class="searchBar">
-          <input type="search" id="jumpQuery" placeholder="輸入頁 id（49p15）或字元級位置（taisho?5p2c j=12-34）後按 Enter" title="依 <頁 id> 跳到那一頁；貼上選取選單「複製字元級位置」的字串，會跳到那一段並高亮。Enter 直接跳。" autocomplete="off" spellcheck="false">
+          <input type="search" id="jumpQuery" placeholder="輸入頁 id（49p15）或字元級位置（yl38p4#12-34）後按 Enter" title="依 <頁 id> 跳到那一頁；貼上選取選單「引用複製」的字串，會跳到那一段並高亮。Enter 直接跳。" autocomplete="off" spellcheck="false">
           <button id="jumpClear" title="清除">✕</button>
         </div>
         <div id="jumpMeta" class="note"></div>
@@ -2736,7 +2747,7 @@
       <button type="button" data-sel="copy">複製文字</button>
       <button type="button" data-sel="rong">融入引用</button>
       <button type="button" data-sel="qian">嵌入引用</button>
-      <button type="button" data-sel="pos" title="頁 id ＋ 漢字範圍，例：taisho?5p2c j=12-34">複製字元級位置</button>
+      <button type="button" data-sel="pos" title="頁 id ＋ 字元範圍，例：yl38p4#12-34">複製字元級位置</button>
       <button type="button" data-sel="addr" hidden title="高麗藏／大正藏位址範圍（需要對照表）">複製高麗⇄大正位址</button>
     </div>
   </div>
@@ -2957,7 +2968,7 @@
   <div id="ccPageRow"><b>頁 id</b>　<code id="ccPage">8p848c</code><span id="ccPageHint">、<code>49p15</code>（英文字母後的 0 可以省略）</span></div>
   <div id="ccCiteRow"><b>大正引用</b>　<code>大正2，206a15-b13</code>、<code>T02, no. 99, p. 1a7-9</code></div>
   <div id="ccPageLineRow"><b>頁行</b>　<code id="ccPageLine">y38p7a8</code><span id="ccPageLineHint">（書號＋<code>p</code>頁＋欄行；少了 <code>a8</code> 是頁首、少了 <code>p7</code> 是書首；沒有分欄一律 a 欄；庫名帶數字就寫全名，如 <code>yl38p24</code>）</span></div>
-  <div><b>字元級位置</b>　<code id="ccPos">taisho?5p2c j=12-34</code></div>
+  <div><b>字元級位置</b>　<code id="ccPos">taisho?5p2c#12-34</code></div>
   <div><b>目錄路徑</b>　<code>1.2.3</code>　第一書第二章第三節（序＝0）</div>
   <div><b>節點序號</b>　<code>1-3-4</code>　0 起算（<code>.</code> 與 <code>-</code> 可混用）</div>
   <div><b>行號</b>　<code id="ccLine">#L123@taisho</code></div>

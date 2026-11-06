@@ -558,7 +558,7 @@ async function applyBand(band?: LineBand): Promise<void> {
 const MAP_HELP = '<div class="mapHelp">'
   + '<p>輸入文字找經名；輸入數字找經號（大正、高麗一起找）。</p>'
   + '<p>前綴 <code>T</code>／<code>K</code> 只找那一藏；<code>T1.2</code> = 大正第 1 經第 2 卷。</p>'
-  + '<p>也可以貼上位置（<code>T05p0002c0405</code>），或選取選單複製的字元級位置（<code>taisho?5p2c j=2-8</code>）。</p>'
+  + '<p>也可以貼上位置（<code>T05p0002c0405</code>），或選取選單複製的字元級位置（<code>taisho?5p2c#2-8</code>）。</p>'
   + '<p>位置也可以給範圍：<code>T05p0002c0405-0507</code>（同頁同欄到第 5 行第 7 字）或 <code>-0003a</code>（到那一欄尾）；跳過去會把那幾行塗色帶。</p>'
   + '<p>按經名就去圈字那一藏；按右邊的藏名，就去那一藏（對照）。滑過一筆可看位置。</p>'
   + '</div>';

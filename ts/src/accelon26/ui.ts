@@ -7,7 +7,7 @@
  */
 import { $, currentFile, docs, fmtInt, lastOpen, mapper, openFile, opening, reader, session, setJumpLineHook, setStatus, tokens, statusText } from './viewer';
 import { type AdbSource } from './adb';
-import { DOCFS_DEFAULT, applySideFonts, autoFitFont, boundsOfRealm, ctxOf, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, lineTipEnabled, pageBounds, pagerLog, readDocFont, readSideFont, openHistoryPage, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, saveLastReadNow, setDocFont, setHardBreaks, setLineTip, setPageMarks, setRenderRaw, setSideFont, setSimMode, setSharedDocTabs, staleRenderCount, tabDbIds, trailAnchorVa, setTermMode, setTrailMax, sharedDocTabsOn, simModeOf, stepFontSize, syncFontButtons, termModeOf, trailMaxOf } from './doc-pane';
+import { DOCFS_DEFAULT, EDIT_SIZE_LIMIT, applySideFonts, autoFitFont, boundsOfRealm, ctxOf, docActive, docSession, docTabs, ensurePage, enterEdit, exitEdit, fitDebugInfo, flushEdit, hardBreaksOn, lastDocLines, lastFit, lastLink, lineTipEnabled, pageBounds, pagerLog, readDocFont, readSideFont, openHistoryPage, pageMarksOn, rememberDocSelection, renderDoc, renderDocTabs, renderRawOn, rerenderDoc, saveLastReadNow, setDocFont, setHardBreaks, setLineTip, setPageMarks, setRenderRaw, setSideFont, setSimMode, setSharedDocTabs, staleRenderCount, tabDbIds, trailAnchorVa, setTermMode, setTrailMax, sharedDocTabsOn, simModeOf, stepFontSize, syncFontButtons, termModeOf, trailMaxOf } from './doc-pane';
 import { renderTextPane } from './text-pane';
 import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealCursorInTree, revealHit, showLine } from './link';
 import { formatAddress, parseAddress, type PosMap } from './posmap';
@@ -1240,15 +1240,68 @@ async function bootDesktop(): Promise<void> {
   void initDesktopBrand((msg, kind) => setStatus(msg, kind ?? 'info'));
   void initDesktopWindowKeys();   // F11 全螢幕／Esc 回視窗（全螢幕時沒有標題列）
   const srcs = await refreshHostDbs();
-  if (!srcs.length) { await bootWebAutoload(); return; }
+  // 沒有書的時候，標題列的提示改成「說明手冊」：點它就打開內建手冊（作者 2026-11-06）。
+  if (hostState().available) {
+    const hint = document.getElementById('dbHint');
+    if (hint) {
+      hint.textContent = '說明手冊';
+      hint.title = '開啟內建說明手冊';
+      hint.style.cursor = 'pointer';
+      hint.onclick = () => { void openBundledManual(true); };
+    }
+  }
+  if (!srcs.length) {
+    await bootWebAutoload();
+    // 桌面版沒有任何書：打開內建說明手冊（作者 2026-11-06），打開失敗才退回引導卡。
+    if (!await openBundledManual()) showWelcome();
+    return;
+  }
   // 作者 2026-11-01：啟動要把上次開著的 adb 全部開回來，不要每次都只剩一個。
   if (!openDbs.length && await restoreOpenSet(srcs)) {
     // 恢復成功就不再用「挑一個有 logo 的」那條路
   } else if (!openDbs.length) {
     await openPicked([await pickStartupDb(srcs)]);
   }
+  if (!openDbs.length && !await openBundledManual()) showWelcome();
   // 作者 2026-11-01：adb 更新只在「開啟 adb」時檢查（viewer.openFile 的 hook），
   // 這裡不再另外檢查、也不輪詢；啟動開庫本身就會觸發。
+}
+
+/**
+ * 內建說明手冊（作者 2026-11-06）：`wails/assets/manual.adb` 打包進 exe，
+ * 桌面版第一次開啟（資料夾裡還沒有書）時直接打開它，取代「按 📁 下載或開啟」的引導卡。
+ * 網頁版沒有這個檔案（單檔 HTML 不帶 .adb），fetch 失敗就維持原本的引導。
+ */
+let manualTried = false;
+let manualLoading = false;
+async function openBundledManual(force = false): Promise<boolean> {
+  if (openDbs.length || manualLoading) return false;
+  if (manualTried && !force) return false;
+  manualTried = true;
+  manualLoading = true;
+  // 不檢查宿主：桌面版有這個檔案，網頁版沒有（fetch 失敗就退回引導卡）。
+  // 這樣 `http://…/index.html` 旁邊放 manual.adb 也能手動試。
+  try {
+    const res = await fetch('manual.adb', { cache: 'no-store' });
+    if (!res.ok) {
+      if (force) setStatus('找不到內建說明手冊（manual.adb）', 'err');
+      return false;
+    }
+    const buf = await res.arrayBuffer();
+    const file = new File([buf], 'manual.adb', { type: 'application/octet-stream' }) as unknown as AdbSource;
+    await openPicked([file]);
+    if (openDbs.length) {
+      // 開庫不會自動開文件，中間會停在引導卡 → 直接把第一頁打開
+      void revealHit(0, '說明手冊', 1, { mode: 'node', noMark: true });
+      setStatus('已開啟內建說明手冊（📁 可切換到自己的資料庫）', 'info');
+    }
+    return openDbs.length > 0;
+  } catch {
+    if (force) setStatus('開啟內建說明手冊失敗', 'err');
+    return false;
+  } finally {
+    manualLoading = false;
+  }
 }
 
 /** 網頁版：上次開的 adb 檔名（同一個目錄才抓得到） */
@@ -1386,7 +1439,7 @@ function queryModeOf(s: string): string {
   // 詞典庫的「#lex/daḍḍhāni」：先於 #行號，否則會被當成跳行。
   if (/^#?[\w.-]+\/.+/.test(q)) return '詞形';
   if (q.startsWith('#')) return '行號';
-  if (/\sj=\d+-\d+$/.test(q)) return '字元位置';
+  if (/\sj=\d+-\d+$/.test(q) || /#[0-9]+(?:[-–—][0-9]+)?$/.test(q)) return '字元位置';
   if (parseTaishoCite(q)) return '大正引用';
   if (parseNoteQuery(q)) return '註／釋';
   if (parsePageCite(q, dbNameCandidates())) return '頁行';
@@ -1427,7 +1480,7 @@ function wireJumpCheat(input: HTMLInputElement | null): void {
     filledFor = db;
     const isTaisho = /^taisho/i.test(db) || /大正/.test(r?.header.dbcname ?? '');
     if (citeRow) citeRow.hidden = !isTaisho;
-    if (posEl) posEl.textContent = isTaisho ? 'taisho?5p2c j=12-34' : `${db}?<頁 id> j=12-34`;
+    if (posEl) posEl.textContent = isTaisho ? 'taisho?5p2c#12-34' : `${db}?<頁 id>#12-34`;
     if (lineEl) lineEl.textContent = `#L123@${db}`;
     // 頁行引用（作者 2026-11-01）：例子依庫換（ys 有 46 部書、fuyan 只有 1 部）
     const pageLineEl = card.querySelector<HTMLElement>('#ccPageLine');
@@ -1649,6 +1702,10 @@ function boot() {
   const requestRebuild = (): void => {
     const slot = activeSlot();
     if (!reader || !slot) { setStatus('請先開啟 adb 再重建', 'err'); return; }
+    if (reader.header.size > EDIT_SIZE_LIMIT) {
+      setStatus('這個 adb 超過 50 MB：唯讀，不能存檔', 'err');
+      return;
+    }
     const modal = document.getElementById('editModal');
     if (modal && !modal.hidden) return;   // 已經在重建／回滾流程
     flushEdit();
@@ -1897,9 +1954,18 @@ function boot() {
     const m = queryModeOf(query.value);
     return m === '目錄路徑' || m === '節點序號';
   };
-  query.oninput = () => {
+  query.oninput = (ev) => {
     window.clearTimeout(timer);
     syncQueryMode();
+    // 貼上引用複製／字元位置（`ys?38p74a#229-231`、`( … )`）：直接跳，
+    // 不要再當全文搜尋而顯示「沒有結果」（作者 2026-11-06）。
+    if ((ev as InputEvent).inputType === 'insertFromPaste') {
+      const text = query.value.trim();
+      if (text && (parseCharPosition(text) || findCharPosition(text))) {
+        void jumpByQuery(text);
+        return;
+      }
+    }
     // 目錄路徑／節點序號（作者 2026-11-01）：不跑全文搜尋、不要摘要；等 Enter 再跳
     if (isPathMode()) {
       if (lastQuery || lastResult) void runSearch('');   // 清掉上一輪摘要與塗色
@@ -1950,16 +2016,32 @@ function boot() {
 
   // 頻次 and 西文 have their OWN inputs (the two panes are independent searches);
   // both re-render on input, with the same small debounce as the 目錄 box.
-  const wireOwnSearch = (inputSel: string, clearSel: string, run: () => void) => {
+  const wireOwnSearch = (inputSel: string, clearSel: string,
+    run: () => void | Promise<unknown>, after?: { input?: () => void; enter?: () => void }) => {
     const input = $(inputSel) as HTMLInputElement | null;
     if (!input) return;
     let t: number | undefined;
+    let seq = 0;
     input.oninput = () => {
       window.clearTimeout(t);
-      t = window.setTimeout(run, 120);
+      const my = ++seq;
+      t = window.setTimeout(() => {
+        const done = run();
+        const cb = after?.input;
+        if (cb) {
+          // 使用者又打了字（或按 Enter）就不要用這一輪的舊清單自動開
+          void Promise.resolve(done).then(() => { if (my === seq) cb(); });
+        }
+      }, 120);
     };
     input.onkeydown = (ev) => {
-      if (ev.key === 'Enter') { window.clearTimeout(t); run(); }
+      if (ev.key === 'Enter') {
+        window.clearTimeout(t);
+        seq++;
+        const done = run();
+        // 等這一輪清單畫好再跳（詞組分頁 Enter 直接開第一條，作者 2026-11-06）
+        if (after?.enter) void Promise.resolve(done).then(after.enter);
+      }
       // Escape must NOT clear the box (author, 2026-10) — use the ✕. Without
       // preventDefault the `type="search"` field clears itself (Chromium default).
       if (ev.key === 'Escape') ev.preventDefault();
@@ -1972,7 +2054,44 @@ function boot() {
   wireOwnSearch('#glossaryQuery', '#glossaryClear', () => void renderGlossary());
   document.getElementById('glossaryMode')?.addEventListener('change', () => void renderGlossary());
   document.getElementById('glossaryMatch')?.addEventListener('change', () => void renderGlossary());
-  wireOwnSearch('#termsQuery', '#termsClear', () => void renderTerms());
+  /** 詞組分頁：清單第一條＝最接近的詞條 */
+  const termRows = (): HTMLElement[] =>
+    [...document.querySelectorAll<HTMLElement>('#termsList .snippet[data-va]')];
+  const activeShowsTerm = (row: HTMLElement): boolean => {
+    const s = docSession();
+    if (!s) return false;
+    const from = Number(row.dataset.va);
+    // 以條目起點認分頁：連續閱讀的 realm 起點是整本，不算「這一條的分頁」
+    return Number.isFinite(from) && s.realm.from === from;
+  };
+  /** 開一條詞條；`newTab` 給 true 時保留目前分頁 */
+  const openTermRow = (row: HTMLElement, newTab: boolean): void => {
+    const from = Number(row.dataset.va);
+    const to = Number(row.dataset.to);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) { row.click(); return; }
+    const name = row.querySelector('b')?.textContent?.trim() ?? '';
+    void revealHit(from, name, 1, { newTab, exact: true, realm: { from, to } });
+  };
+  /**
+   * 字頭搜尋只有一筆時直接開它（作者 2026-11-06）。
+   * 目前分頁已經就是這一條 → 不自動開；否則開一個新分頁，保留讀到一半的詞條。
+   */
+  const autoOpenSingleTerm = (): void => {
+    if (!($('#termsQuery') as HTMLInputElement | null)?.value.trim()) return;
+    const rows = termRows();
+    if (rows.length !== 1 || activeShowsTerm(rows[0])) return;
+    openTermRow(rows[0], true);
+  };
+  /** Enter：單筆一律另開新分頁（目前分頁已是它時，作者要能再開一個）；多筆開第一條 */
+  const enterTerm = (): void => {
+    if (!($('#termsQuery') as HTMLInputElement | null)?.value.trim()) return;
+    const rows = termRows();
+    if (!rows.length) return;
+    if (rows.length === 1) { openTermRow(rows[0], true); return; }
+    rows[0].click();
+  };
+  wireOwnSearch('#termsQuery', '#termsClear', () => renderTerms(),
+    { input: autoOpenSingleTerm, enter: enterTerm });
   wireOwnSearch('#folioQuery', '#folioClear', () => void renderFolio());
   // 跳至（作者 2026-10）：邊打邊列符合的頁 id，Enter 直接跳到最接近的一頁。
   {
@@ -1981,7 +2100,15 @@ function boot() {
       wireJumpCheat(input);
       let t = 0;
       const run = (enter: boolean) => void renderJump(enter);
-      input.oninput = () => { window.clearTimeout(t); t = window.setTimeout(() => run(false), 120); };
+      input.oninput = (ev) => {
+        window.clearTimeout(t);
+        // 貼上引用複製／字元位置：直接跳，不要再等 120 ms 或只更新清單。
+        if ((ev as InputEvent).inputType === 'insertFromPaste') {
+          const text = input.value.trim();
+          if (text && (parseCharPosition(text) || findCharPosition(text))) { run(true); return; }
+        }
+        t = window.setTimeout(() => run(false), 120);
+      };
       input.onkeydown = (ev) => {
         if (ev.key === 'Enter') { window.clearTimeout(t); ev.preventDefault(); run(true); }
         if (ev.key === 'Escape') ev.preventDefault();
@@ -2060,7 +2187,7 @@ function boot() {
   setEnsureRight(() => setSide('right', true));
   setOpenInMain((db, opts) => openInMain(db, opts));   // 右欄跨庫分頁 Ctrl+點 → 中間開啟
   renderDbPick();   // 下拉第一項是「加入 adb」（file:// 版）
-  void bootDesktop();   // desktop build: catalogue + open the adbs next to the exe
+  void bootDesktop().catch(() => showWelcome());   // desktop build: catalogue + open the adbs next to the exe
   setStatus('請開啟或下載資料庫（📁，或中間的按鈕）', 'info');
   showWelcomeWhenEmpty();
   // 引導卡的兩個按鈕（本文區委派；只有引導卡在的時候才會有 data-welcome）
@@ -2436,7 +2563,7 @@ import { editCount, findSession, sourceKey } from './edit-session';
 import { extraRevisions } from './revisions-store';
 import { rebuildAndDownload, rollbackAndDownload, runRebuild } from './rebuild-ui';
 import { initTextPane, renderTextPane, resetTextPane, setEnsureRight, setOpenInMain, textState } from './text-pane';
-import { initXref, lookupBook, openInMain, parseTaishoCite, readerFor, previewForeign, refreshReverse, resolvePageCite, xrefDebug, xrefJump, xrefProbe } from './xref';
+import { findCharPosition, initXref, lookupBook, openInMain, parseCharPosition, parseTaishoCite, readerFor, previewForeign, refreshReverse, resolvePageCite, xrefDebug, xrefJump, xrefProbe } from './xref';
 import { initEmbed } from './embed';
 import { initHeatTab, renderHeatTab, syncHeatTab } from './heat-tab';
 import { initRevList } from './rev-list';
@@ -2512,7 +2639,10 @@ function showWelcome(): void {
 
 /** 開機時若還沒開庫，就把引導放進本文區。 */
 function showWelcomeWhenEmpty(): void {
-  if (!reader) showWelcome();
+  if (reader) return;
+  // 桌面版先不要畫引導卡：bootDesktop 會先試內建說明手冊，真的開不起來才呼叫 showWelcome。
+  if (hostState().available) return;
+  showWelcome();
 }
 
 /** no database left: empty every pane so nothing of the closed file is shown */

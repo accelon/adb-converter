@@ -81,7 +81,10 @@ export async function anchorVa(r: AdbReader, anchor: string): Promise<number | n
   if (!idx) return locatorVa(r, base);
   // 前導 0 可有可無：`9p94a`／`9p0094a` 都能命中（ys 新舊版頁 id 並存時也一樣）
   let i = idx.values.indexOf(base);
-  for (const cand of [padPageId(base), shortPageId(base)]) {
+  const candidates = [padPageId(base), shortPageId(base)];
+  // fuyan 的舊頁 id 是 `yl38p107`，新寫法（與 ys 同步）是 `38p107`；兩種都接受。
+  if (r.header.dbname === 'fuyan' && /^[0-9]+p/i.test(base)) candidates.push('yl' + base);
+  for (const cand of candidates) {
     if (i >= 0) break;
     if (cand !== base) i = idx.values.indexOf(cand);
   }

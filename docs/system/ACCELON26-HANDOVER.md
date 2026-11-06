@@ -3150,3 +3150,133 @@ ka      開頭 408／中間 509／結尾 1,920
 `activateDb()` 原本只比 `name`／檔名，補上 `catalog` 的 `dbname` 比對後，sz 的 exe
 （`D:\2026\sz\accelon26\accelon26.exe`，2026-11-04 10:34）實測 1–4 的 `hl` 全部正確，
 `#99`／無 `#` 都沒有 highlight。
+
+## 29.10 tx 的點陣圖版：`<圖 f>` 沒有 `t="圖版"`（2026-11-06）
+
+`tx.adb` 19p226 的 `<圖 f="images/11-0226.png"/>` 只帶 Delphi 的 `f=`，沒有 `t=`；
+renderer 舊規則是 `t === '圖版'` 才算圖版，所以被當成 1.5em 的句中字形圖，
+`bindInlineSvgZoom` 又只綁 `svg.inlineSvg`，PNG 點不動。
+
+- `render_accelon3.ts`：新增 `untaggedFigures` 選項，只有 tx／taixu 開啟；符合
+  「沒有 `t`、不是 SVG、有 `f=`」時當 `figureImg` 照原寸顯示。`n=` 的點陣圖
+  （Obsidian 行內圖）與沒有 `t` 的 SVG 不受影響；yinshun 的 `images/y…`／`mc…`
+  行內插圖也維持 1.5em（2026-11-06 掃過 456 個 `f=`，不能一起放大）。
+- `doc-pane.ts`：`bindInlineSvgZoom` 改名 `bindInlineImageZoom`，click 監聽涵蓋
+  `svg.inlineSvg` 與 `img.inlineImg`；img 用 `alt`／`title` 當檔名，
+  `fetch(blob:)` 取 bytes 後開同一個 `#imgView`。
+- CSS：`img.inlineImg` 加 `cursor: zoom-in`；`img.figureImg` 的 hover 仍維持原寸。
+- 資料端（tx 建置）之後仍建議把 `<圖 f>` 補上 `t="圖版"`；閱讀器現在已能正確顯示。
+- 驗收：`D:\accelon3\accelon26.html` ＋ `tx.adb` 19p226，圖 240×311、點擊開
+  `#imgView`、滾輪 100%→115%；`ys.adb` 8p52a 的 inline SVG 照舊開圖；
+  `yinshun.adb` 1pa8 的 `images/y01-A8.png` 仍是 1.5em 行內圖。
+  `render.test.ts` 42 pass／4 fail（4 個是 §29.4 的既有 drift）。
+
+## 29.11 詞組分頁單筆自動開；讀窗自動載入不丟條目開頭（2026-11-06）
+
+`hanyudazidian.adb`（漢語大字典，`<樹 s="$字">` 字頭）的兩件事：
+
+- **字頭只有一筆**：目前 doc 分頁不是該條目時，自動**另開新分頁**顯示，保留正在讀的
+  那一條；目前分頁已經就是它時不自動開，按 Enter 才再開一個。多筆時 Enter 仍開清單
+  第一條（沿用目前分頁）。輸入重畫有序號保護，舊查詢回來不會誤開。
+  （`ui.ts` 的 `wireOwnSearch`＋`autoOpenSingleTerm`／`enterTerm`；名詞列多帶 `data-to`。）
+- **讀窗底部自動載入更多**：進連續閱讀時保留的 20 行上下文不越過目前閱讀單位的
+  開頭（`enterContinuous` 用 `lineOfVa(s.realm.from)` 夾住）。短條目（例：`目`）
+  載入前後頁首都是 `<字>目</字>`，不會被推到上一條的尾巴後面；長篇／整本仍保留
+  20 行上下文。自動載入後，**新加入文字從第一行亮到句末或空行**（通常是一個條目標題
+  ＋第一句釋文；`.newTextFlash`，`flashNewText()`），亮 2 秒；若新行在摺線下，
+  平滑推到看得到、下面留一點的位置。載入前會記住最上面那一行與它的 offset，
+  載入後原樣還原，不再用 `scrollIntoView(block:'start')` 把畫面往上跳。
+- **詞條標題另起一段**：詞典型 adb（`$字`／`$詞`）在連排模式把 `<字>`／`<詞>`／
+  `<詞條>`／`<字頭>` 當標題（`docParaHeading`），不會黏在上一條的釋文後面。
+  只在詞典型開啟（`dictEntries`），cs 的 `<詞>` 不受影響。
+- 驗收：`hanyudazidian.adb` 先查「一」再查「目」→ 2 個分頁（一、目）；同一個「目」
+  再輸入一次不重開，按 Enter → 第 3 個分頁。「目」捲到底等 2 秒自動載入 → 行
+  4,128–4,327，`scrollTop=0` 第一行是「目」（不是上一條「皮」的尾巴）；新加入的
+  標題＋第一句（`乙`＋《說文》…）出現 `newTextFlash`，約 2 秒後消失；連排模式下
+  `<字>乙</字>` 另起 `docParaHeading`，不再黏在「一」的姓釋文後面。
+  `hanyu.adb` 查「目」仍是 175 筆，Enter 開第一條。
+
+## 29.12 超過 50 MB 的 adb：編輯模式唯讀看原始文件（2026-11-06）
+
+以前 `enterEdit` 直接擋掉 >50 MB 的庫；現在仍可進編輯模式看原始文件，但只讀、不能存檔。
+
+- `doc-pane.ts` 的 `EDIT_SIZE_LIMIT`（50 MB）＋`isReadOnlyEdit()`：`enterEdit` 對大型庫
+  不再要求修訂者 ID、不再擋行內換行，直接進唯讀編輯器；`renderDoc` 也不會因為
+  `editAllowed()` 不到而把 `s.editing` 關掉。
+- 編輯器（`editor.ts`）在唯讀時加 `EditorState.readOnly.of(true)`；`saveActiveEditorText`
+  對 `activeEditor.readOnly` 直接 return，所以換頁／換分頁也不會暫存。
+- UI：標題顯示「唯讀原始文件（adb 超過 50 MB）」、工具列「關閉」＋「唯讀 · … 不能存檔」、
+  沒有「取消本頁」；Ctrl+S 只提示「唯讀，不能存檔」。詞典型 adb 沒有 docHead 時，
+  工具列的唯讀字樣仍看得到。
+- 存檔端：`requestRebuild`（db 分頁的「n 頁修訂」與 F2）先擋 >50 MB 並顯示
+  「這個 adb 超過 50 MB：唯讀，不能存檔」；`runRebuild`／`rollbackLatest` 原有的
+  50 MB 檢查照舊。
+- 驗收：`hanyu.adb`（151 MB、未設修訂者 ID）進編輯模式 → CM `readOnly=true`、
+  按鍵輸入不改字、沒有「n 頁修訂」、F2 顯示唯讀訊息；`hanyudazidian.adb`（11 MB）
+  設 ID 後仍可正常改字、出現「n 頁修訂」，取消本頁就消失。
+
+## 29.13 引用複製的字元級定位改用 `#`（2026-11-06）
+
+作者定案：引用字串尾端要能定位到選取的字，且使用者看到的寫法用 `#`，不用 `j=`：
+
+```text
+fuyan?38p107#106-110    跨庫引用 URL：adb?頁#起-止（起訖都算）
+ys?38p106a#23-46
+tx?19p226#12-34
+L123#5-12               沒有 <頁> 的庫：行號
+```
+
+**單位**：該頁「純漢字序列」的漢字索引（0 起，起訖都含），不是 VA、不是原始字串的
+UTF-16 offset。`<頁 id="…">` 到下一個 `<頁>` 之間，去掉標籤後只留
+`\p{Script=Han}`（逐 code point）；標點、空白、拉丁字母都不算。`L123#5-12` 則是
+那一行的漢字索引。舊 `j=` 的 end 不含，解析時已換算成含。
+
+- `char-position.ts`（`xref.ts` 轉出）：`CharPosition.a/b` 改成**起訖都含**；
+  `parseCharPosition()` 同時吃 `#` 與舊 ` j=`（舊 `j=` 的 end 不含，解析時換成 `b-1`）。
+  新增 `findCharPosition()`，可從整段引用字串抓最後一個 `#` token（`#` 前允許 `db?`；
+  頁 id 不必是 `<數字>p<數字>`，`yl38p4` 也可以）。`formatCharPosition()` 只吐 `#`。
+- `bookmarks.ts`：
+  - `citationFor()` 支援 `<引>` 樣板的新變數 **`$URL;`**，展開為 `db?頁#a-b`
+    （fuyan 的頁 id 去掉 `yl`，與 ys 同步）。預設樣板改成
+    `《$書;》：「$_;」($URL;)`，所以 fuyan 直接得到 `(fuyan?38p107#106-110)`。
+    舊樣板（ys／tx 的 `$*頁;`）會把含頁 id 的括號換成 `($URL)`，不再留下
+    `( yl38p107 ) yl38p107#…` 這種重複頁 id。`hanRange()` 的 end 不含轉成含；
+    跨頁時夾到起點頁最後一個字。
+  - `charPosition()`：輸出改成 `db?頁#a-b`（單字 `#a`）／`db?L行#a-b`；狀態訊息
+    「已複製位置（頁＋字元範圍）」，不含 `j=`。
+- `<引>` 必須放在 **`<集>` 所在的檔頭 `<檔>`**（例如 `fuyan.xml` 的 header），
+  不要混入 `yl38.xml` 等內容文本；`citationFor()` 只讀第一個 `</檔>` 之前。
+- `scopes.ts`：純位置（`#`／舊 `j=`）先走 `openCharPosition()`；大正引用之後、
+  `embeddedPage()` 與頁 id 清單之前，新增「整段引用字串裡找 `#` token」的分支
+  （`findCharPosition`；db 沒寫用目前庫）。`jumpByQuery()` 同步支援。
+- `xref.ts`：`openCharPosition()` 改用 **`hit.fromLine` 的 VA** 開頁，不再用頁標記 VA：
+  頁標記常落在頁界前一兩行，`lineOfVa` 會先畫到上一頁，再等讀窗底部自動載入補頁
+  （`yl38p101#88-98` 實測 2.1 秒）；改完第一次 52 ms、第二次 52 ms，`wait=0`。
+  `pageMarkerLine()` 往前後各找兩行，修 ys 頁標記寫在行尾（如 `38p74a`）卻說
+  「找不到頁標記」的問題。
+- `ui.ts`：貼上引用／`db?頁#a-b` 到全文搜尋框或「跳至」輸入框時，若
+  `parseCharPosition`／`findCharPosition` 認得，直接 `jumpByQuery`／`renderJump(true)`，
+  不必再按 Enter，也不會顯示「沒有結果」。
+- 頁 id 說明：fuyan 早期資料用 `yl38p101`（`yl38`＝《空之探究講義》在 ys 的書號）；
+  依作者 2026-11-06 定案，`yl` 前綴不再必要，**與 ys 同步寫 `38p107`**。閱讀器目前
+  兩種都接受（`anchorVa`／`pageMarkerLine` 對 fuyan 會試 `yl` + 頁碼），
+  引用／跳至 URL 一律輸出 `38p…`。等 fuyan 重建把頁 id 改成 `38p…` 後，alias 自然失效。
+- UI／文件：`jumpQuery` placeholder／title、選單按鈕提示、跳至語法卡、map-pane
+  說明、README、`docs/software/accelon26.md`、`docs/adb/goryeo-taisho-about.md`
+  都改成 `#`；`j=` 只留在解析端與內部標記（`<融>`／`<嵌>`），連 lex 詞譜的
+  UI 也改成 `j：`。
+- 測試：`bun run test/char-position.test.ts` 12 pass（`#`、`L` 行錨點、舊 `j=` 換算、
+  引用字串 token、純引用／大正引用不誤判、`formatCharPosition` 不含 `j=`）。
+- 驗收（fuyan）：
+  - 選整行 → 引用複製：
+    `…」(fuyan?38p106#127-142)`，不含 `yl38p`、不含 `j=`；貼回跳至 →
+    `__lastCharBand` 文字 19 字，正是選取的那一段。
+  - 直接輸入 `fuyan?38p107#106-110`：53 ms 跳到並高亮，字串中的 `38p107`
+    會 alias 到現有 `yl38p107`。
+  - ys：`…」(ys?38p106a#23-46)`；tx 舊樣板同樣換成 `(tx?19p226#…)`。
+  - 選一個「一」→ `(fuyan?38p4#4)`；貼上只亮「一」。
+  - 舊字串 `fuyan?yl38p4 j=12-34` 仍可跳＋高亮（解析後 a=12、b=33）。
+  - 純引用（無 token）→ 只跳頁、`__lastCharBand` 為 null（與舊版相同）。
+  - `charPosition()` 選單輸出 `fuyan?38p4#4-22`。
+  - 效能：`fuyan?38p101#88-98` 兩次都 52 ms（修正前 2.1 s），`wait=0`；
+    高亮文字「慧──般若；修行如實觀慧而能」。

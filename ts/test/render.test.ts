@@ -191,6 +191,17 @@ ok('不保留硬換行：內文連成一段、標題獨立、空行分段',
   && blocksSoft[2].kind === 'para' && blocksSoft[2].lines.length === 1,
   JSON.stringify(blocksSoft.map((b) => b.kind + ':' + b.lines.length)));
 
+// 詞典型：連排模式下 `<字>`／`<詞>` 是條目標題，要另起一段（hanyudazidian 2026-11-06）
+const dictLines = ['<段/>上一條釋文', '<字>乙</字>', '<形>乙的釋文。</形>', '', '<字>丙</字>'];
+const dictBlocks = renderPageBlocks(dictLines, [1, 2, 3, 4, 5], { hardBreaks: false, dictEntries: true }, ctx);
+ok('詞典型：<字> 在連排模式另起 heading 塊',
+  dictBlocks.some((b) => b.kind === 'heading' && b.lines.some((l) => l.raw.includes('<字>乙'))),
+  JSON.stringify(dictBlocks.map((b) => b.kind + ':' + b.lines.map((l) => l.raw).join('|'))));
+const plainDict = renderPageBlocks(dictLines, [1, 2, 3, 4, 5], { hardBreaks: false }, ctx);
+ok('沒有 dictEntries：<字> 不當標題（cs 的 <詞> 不受影響）',
+  plainDict.every((b) => b.kind !== 'heading'),
+  JSON.stringify(plainDict.map((b) => b.kind)));
+
 // 渲染前塗紅（作者 2026-10：不保留硬換行時關鍵字可能跨行，事後在 DOM 找字容易錯）
 const marked = new Accelon3Renderer(ctx, { hardBreaks: false, marks: [{ text: '第一行', hue: 0 }, { text: '第二行', hue: 120 }] });
 const markedHtml = marked.line('第一行第二行', 1);
@@ -261,6 +272,25 @@ ok('inline SVG 的 id 每張圖各自加前綴（clipPath 不會互相蓋掉）'
   && fig1.includes(`url(#${id1})`) && fig2.includes(`url(#${id2})`)
   && !fig1.includes('id="clip_1"') && !fig2.includes('id="clip_1"'),
   JSON.stringify({ id1, id2 }));
+
+// 舊資料的點陣圖版：tx 的 `<圖 f="images/…png"/>` 沒有 t="圖版"（作者 2026-11-06）
+const rasterR = new Accelon3Renderer(ctx, { imageUrl: (n) => 'blob:' + n, untaggedFigures: true });
+const legacyFig = rasterR.line('<圖 f="images/11-0226.png"/>', 1);
+ok('tx 相容：沒有 t= 的 <圖 f=…png> 當圖版（不被 1.5em 壓成字形圖）',
+  legacyFig.includes('class="inlineImg figureImg"') && legacyFig.includes('alt="images/11-0226.png"'), legacyFig);
+
+const inlineRaster = rasterR.line('<圖 n="glyph.png"/>', 2);
+ok('n= 的點陣圖沒有 t=：維持 inlineImg（句中的小圖）',
+  inlineRaster.includes('class="inlineImg"') && !inlineRaster.includes('figureImg'), inlineRaster);
+
+const glyphSvg = new Accelon3Renderer(ctx, { svgText: () => figSvg }).line('<圖 n="a.svg"/>', 3);
+ok('沒有 t= 的 SVG 仍是字形圖（不變）',
+  glyphSvg.includes('inlineSvg') && !glyphSvg.includes('figureSvg'), glyphSvg);
+
+const yinshunR = new Accelon3Renderer(ctx, { imageUrl: (n) => 'blob:' + n });
+const yinshunFig = yinshunR.line('<圖 f="images/y01-18.png"/>', 4);
+ok('yinshun 的 f= 行內插圖（沒有開啟相容）：維持 inlineImg',
+  yinshunFig.includes('class="inlineImg"') && !yinshunFig.includes('figureImg'), yinshunFig);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
