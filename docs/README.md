@@ -48,6 +48,7 @@
 | [glossary.md](./glossary.md) | `glossary` 容器格式、詞彙分頁行為、跳位置與效能 |
 | [adb/xref-j-lessons.md](./adb/xref-j-lessons.md) | `<聯 j>` 字元級反鏈的座標系、七個坑、修復順序 |
 | [adb/ancient-book-xref-spec.md](./adb/ancient-book-xref-spec.md) | **canonical**：50–100 本古書、catalog、分散式 `xout`、LinkBus、缺書下載引導 |
+| [adb/interlink-markup-handoff.md](./adb/interlink-markup-handoff.md) | 給雙向鏈結 agent 的語法整合與 13j／swjz／swjzz 定址實例、推導任務 |
 | [adb/backlink-skill.md](./adb/backlink-skill.md) | 反鏈（誰引用這一頁）的舊中央流程（legacy） |
 | [adb/cbeta-adb-skill.md](./adb/cbeta-adb-skill.md) | CBETA TEI → adb 的六步流程與檢查表 |
 | [adb/off-to-accelon.md](./adb/off-to-accelon.md) | **`.off` → Accelon XML** 的規格：對照表（區／書／塊／段）、一行一句、註文分檔、`塊.段` 定位、驗收清單 |
