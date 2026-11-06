@@ -20,6 +20,8 @@ import { siddhamSequence } from './siddham-seq';
 import { puaSequence } from './pua-seq';
 import { noteLabel } from './note-label';
 import { parseTableBlock } from './table-block';
+import { parseWordSpec } from './word-spec';
+import { isLinkTag, parseLinkSpec, type LinkKind } from './link-spec';
 
 export interface RenderContext {
   /** 標籤 → 它在樹裡的深度（0＝最上層） */
@@ -42,6 +44,90 @@ export const PAGE_TAGS = new Set(['頁', '_頁', '頁元']);
 
 /** 段落標記 */
 export const PARA_TAGS = new Set(['段']);
+
+/** `<例 t="…"/>`：詞書的體例分區標記（cyd 等）。 */
+export const EXAMPLE_TAGS = new Set(['例', '_例']);
+
+/** 找下一個 tag 的 `>`，但跳過屬性引號內的 `>`（`<彈 t="…<x>…">` 才不會被切斷）。 */
+function findTagEnd(text: string, from: number): number {
+  let quote = '';
+  for (let i = from; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === quote) quote = '';
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === '>') {
+      return i;
+    }
+  }
+  return -1;
+}
+
+interface LiScheme {
+  /** `集.scheme`：`例.t` 的完整清單／順序（顏色依這個順序配 HSV） */
+  labels: string[];
+  h: number;
+  s: number;
+  v: number;
+  step: number;
+}
+
+const LI_DEFAULT: LiScheme = { labels: [], h: 205, s: 0.55, v: 0.78, step: 37 };let liSchemeText = '';
+const liHueByLabel = new Map<string, number>();
+let liHueNext = 0;
+
+/** viewer 開庫時把 `<集 scheme="…">` 的值設進來；多庫切換時跟著換。 */
+export function setExampleScheme(raw: string): void {
+  liSchemeText = raw ?? '';
+  liHueByLabel.clear();
+  liHueNext = 0;
+}
+
+/** 從檔頭找 `<集 … scheme="…">`（給 viewer 開庫時呼叫）。 */
+export async function readExampleScheme(r: { sourceText(i: number): Promise<string> }): Promise<string> {
+  try {
+    const raw = await r.sourceText(0);
+    const tail = raw.indexOf('</檔>');
+    const head = tail >= 0 ? raw.slice(0, tail + 5) : raw;
+    const m = /<集(?:\s[^>]*)?\bscheme\s*=\s*"([^"]*)"/i.exec(head);
+    return m?.[1] ?? '';
+  } catch { return ''; }
+}
+
+/** `<集 scheme="注音,漢語拼音,釋義,…">`：例.t 的清單，不是 HSV 數字。 */
+function parseLiScheme(raw: string): LiScheme {
+  const labels: string[] = [];
+  for (const part of String(raw ?? '').split(/[|,、;\s]+/)) {
+    const s = part.trim();
+    if (s && !labels.includes(s)) labels.push(s);
+  }
+  return { ...LI_DEFAULT, labels };
+}
+
+function hsvRgb(h: number, s: number, v: number): [number, number, number] {
+  const hh = ((h % 360) + 360) % 360 / 60;
+  const c = v * s;
+  const x = c * (1 - Math.abs((hh % 2) - 1));
+  const m = v - c;
+  let r = 0, g = 0, b = 0;
+  if (hh < 1) [r, g, b] = [c, x, 0];
+  else if (hh < 2) [r, g, b] = [x, c, 0];
+  else if (hh < 3) [r, g, b] = [0, c, x];
+  else if (hh < 4) [r, g, b] = [0, x, c];
+  else if (hh < 5) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+function liVars(hue: number, scheme: LiScheme): { color: string; bg: string; vars: string } {
+  const [r, g, b] = hsvRgb(hue, scheme.s, scheme.v);
+  return {
+    color: `rgb(${r} ${g} ${b})`,
+    bg: `rgb(${r} ${g} ${b} / .075)`,
+    vars: `--li-color:rgb(${r} ${g} ${b});--li-bg:rgb(${r} ${g} ${b} / .075)`,
+  };
+}
 
 /** 正文插圖（Accelon3：`圖` 是單張圖，`嵌圖`／`圖片` 是其他寫法的別名） */
 export const IMAGE_TAGS = new Set(['圖', '嵌圖', '圖片']);
@@ -275,6 +361,11 @@ export interface RenderOptions {
    * 其他庫的 `f=` 行內插圖（例如 yinshun 的 `images/y01-18.png`）不受影響。
    */
   untaggedFigures?: boolean;
+  /**
+   * `<集 scheme="…">`：詞書 `<例 t="…"/>` 體例分區的 HSV 配色。
+   * 沒給時用模組預設（由 viewer 開庫時 `setExampleScheme()` 設定）。
+   */
+  exampleScheme?: string;
 }
 
 /** 一行的渲染結果（給分塊用） */
@@ -315,6 +406,8 @@ export interface RenderedLine {
   idSuffix?: string;
   /** 額外的列 class（`figLine`：圖文字被當成等寬區塊的那些行） */
   cls?: string;
+  /** 額外的列 style（詞書 `<例>` 的 --li-color／--li-bg） */
+  style?: string;
 }
 
 /** 表格的一列（`page` 有值時是原書頁碼，整列合併） */
@@ -356,10 +449,8 @@ export class Accelon3Renderer {
   private stack: { tag: string; depth: number; color?: string }[] = [];
   /** 被隱藏標籤（樹／隱）包住的次數 */
   private hidden = 0;
-  /** 目前還開著的 `<聯>` 錨點數（沒有 n= 的聯不長錨點；收尾時不能多吐 </a>） */
-  private entryLinks = 0;
-  /** 跨庫／跨頁錨點（<聯 i=…>）目前開著的數量 */
-  private xrefLinks = 0;
+  /** 目前還開著的連結錨點（`_名`／`聯`）；收尾時依這個 stack 關 </a> */
+  private linkStack: { tag: string; kind: LinkKind }[] = [];
   /** 目前還開著的 `<釋>`（跨行；`line:true` 表示自閉合、只包到本行尾） */
   private notes: { n: string; line: boolean }[] = [];
   /** 跨行的 `<引>`（引文）：邏輯深度；行尾收掉、下一行重開（2026-10-30） */
@@ -371,8 +462,11 @@ export class Accelon3Renderer {
   /** 目前開著的術語（跨行時要記得關掉、下一行再開） */
   private termStack: { html: string; shown: boolean; gloss: string }[] = [];
   private termCarry: { html: string; shown: boolean; gloss: string } | null = null;
-  /** 目前開著的 `<詞 b j>`（有詞譜的詞才長 span；dict 的 <詞> 不長） */
-  private wordStack: boolean[] = [];
+  /** 目前開著的詞 span／詞頭；關閉時要補的注音也一起記 */
+  private wordStack: { shown: boolean; pron: string }[] = [];
+  /** 還開著的 `<彈>`（提示標記，零 VA）；跨行時行尾收、下一行重開 */
+  private tanTips: string[] = [];
+  private tanCarry: string[] = [];
   /** 這一行第幾個 `<詞 w>`（1 起；`#N` 用。每行重置，見 lineInfo） */
   private wordNo = 0;
   /** 這個頁面上的頁碼計數（沒有 n= 時拿它當 id） */
@@ -380,6 +474,10 @@ export class Accelon3Renderer {
   /** 這一行有沒有可見文字／標題（lineInfo 回報用） */
   private sawText = false;
   private sawHeading = false;
+  /** 這一行要加的 class／style（`<例>` 的 liHeadLine） */
+  private lineCls = '';
+  private lineStyle = '';
+  private readonly liPalette: LiScheme;
   /** 這一行是不是從 `<段 n>` 開始（段首）；連排模式據此另起一段 */
   private sawSegStart = false;
   /** 這一行是不是「標題之後」才出現 `<段 n>`（要當成段落的第一行） */
@@ -394,6 +492,8 @@ export class Accelon3Renderer {
     imageUrl: ((name: string) => string | null) | null;
     svgText: ((name: string) => string | null) | null;
     untaggedFigures: boolean;
+    exampleScheme: string;
+    dictEntries: boolean;
   };
 
   constructor(private ctx: RenderContext = current, opts: RenderOptions = {}) {
@@ -409,7 +509,10 @@ export class Accelon3Renderer {
       imageUrl: opts.imageUrl ?? null,
       svgText: opts.svgText ?? null,
       untaggedFigures: opts.untaggedFigures === true,
+      exampleScheme: opts.exampleScheme ?? liSchemeText,
+      dictEntries: opts.dictEntries === true,
     };
+    this.liPalette = parseLiScheme(this.opts.exampleScheme);
     // 'hover' 也要收（2026-11-06）：漏了它會悄悄退回 'orig'，auto 的 <术>（a="1"）就
     // 完全不畫虛線、也沒有 title —— fuyan 全部術語都是自動標的，看起來就像壞掉。
     const tm = opts.termMode;
@@ -541,11 +644,18 @@ export class Accelon3Renderer {
   lineInfo(text: string, lineNo = 0): RenderedLine {
     this.sawText = false;
     this.sawHeading = false;
+    this.lineCls = '';
+    this.lineStyle = '';
     this.sawSegStart = false;
     this.sawSegMid = false;
     this.splitAt = null;
     this.wordNo = 0;                 // `#N` 是句內序號，每行重新起算
     let html = '';
+    if (this.tanCarry.length) {
+      for (const tip of this.tanCarry) html += `<span class="tan" data-tip="${esc(tip)}">`;
+      this.tanTips = [...this.tanCarry];
+      this.tanCarry = [];
+    }
     // 跨行的標題：這一行開頭先把還開著的補回來（行尾會全部收掉）；
     // 顏色沿用開啟那一行算好的（作者 2026-11-05：天干／地支標題依序換色，
     // 續行不能重新用層次色，否則同一個標題會前後不同色）。
@@ -579,7 +689,7 @@ export class Accelon3Renderer {
         html += this.emit(run);
         if (run.trim()) this.sawText = true;
       }
-      const gt = text.indexOf('>', lt + 1);
+      const gt = findTagEnd(text, lt + 1);
       if (gt < 0) { if (!this.hidden) html += this.emit(text.slice(lt)); break; }
       const rawTag = text.slice(lt, gt + 1);
       i = gt + 1;
@@ -600,6 +710,41 @@ export class Accelon3Renderer {
       if (PAGE_TAGS.has(name)) {
         // 作者 2026-10：「顯示原書頁碼」關閉時，頁標籤整個不渲染（不留空行、不留頁碼）
         if (!closing && this.opts.pageMarks) { html += this.pageMark(attrs); this.sawText = true; }
+        continue;
+      }
+      // `<彈 t="…">文字</彈>`：零 VA 的提示標記；文字留在正文，t 只放 data-tip，
+      // 不進正文／token。未來 t 內若有標籤，仍是整段字串，不在這裡拆。
+      if (name === '彈' || name === '_彈') {
+        if (closing) {
+          if (this.tanTips.length) { this.tanTips.pop(); html += '</span>'; }
+          continue;
+        }
+        const tip = attrValue(attrs, 't');
+        html += `<span class="tan" data-tip="${esc(tip)}">`;
+        this.sawText = true;
+        if (selfClose) html += '?</span>';
+        else this.tanTips.push(tip);
+        continue;
+      }
+      // `<例 t="注音"/>`：詞書的體例分區（cyd）。正常 VA、t 不進全文索引；
+      // 畫面是帶框線的一區，色相依 `<集 scheme="…">` 的 HSV 設定輪流變化。
+      if (EXAMPLE_TAGS.has(name)) {
+        if (closing) continue;
+        const label = attrValue(attrs, 't') || '體例';
+        const pal = this.liPalette;
+        const at = pal.labels.indexOf(label);
+        let hue = at >= 0 ? pal.h + at * pal.step : liHueByLabel.get(label);
+        if (hue == null) {
+          hue = pal.h + (pal.labels.length + liHueNext) * pal.step;
+          liHueByLabel.set(label, hue);
+          liHueNext++;
+        }
+        const v = liVars(hue, pal);
+        this.lineCls = 'liHeadLine';
+        this.lineStyle = v.vars;
+        html += `<span class="liHead">${esc(label)}</span>`;
+        this.sawText = true;
+        this.sawHeading = true;
         continue;
       }
       // `<融 i="db?page" j="0-N">經文…</融>`：透明容器，內容就是正文；
@@ -643,6 +788,32 @@ export class Accelon3Renderer {
         }
         continue;
       }
+      // Link model：`_名` / `聯` 都在這裡長同一個 `<a data-link="…">`。
+      // 目標怎麼解析留給 link.ts（entry）／xref.ts（xref），renderer 不查庫。
+      if (isLinkTag(name)) {
+        const spec = parseLinkSpec(name, (attr) => attrValue(attrs, attr));
+        if (closing) {
+          const top = this.linkStack[this.linkStack.length - 1];
+          if (top?.tag === name) { html += '</a>'; this.linkStack.pop(); }
+        } else if (!selfClose && spec) {
+          const cls = spec.kind === 'xref' ? 'entryLink xrefLink' : 'entryLink';
+          let a = `<a class="${cls}" href="#" data-link="${spec.kind}"`;
+          if (spec.kind === 'entry') {
+            if (spec.target) a += ` data-entry="${esc(spec.target)}"`;
+            if (spec.newTab) a += ' data-newtab="1"';
+            a += ` title="${spec.target ? esc(spec.target) : '開新分頁'}"`;
+          } else {
+            a += ` data-xref="${esc(spec.target)}"`;
+            if (spec.quote) a += ` data-q="${esc(spec.quote)}"`;
+            if (spec.range) a += ` data-j="${esc(spec.range)}"`;
+            a += ` title="${esc(spec.target)}"`;
+          }
+          html += a + '>';
+          this.linkStack.push({ tag: name, kind: spec.kind });
+          this.sawText = true;
+        }
+        continue;
+      }
       // `<聯 n="詞條">`：Accelon 的條目連結（LINK，pair，SKIP）。本文只負責長出
       // 可點的錨點；目標怎麼解析成 VA 由 link.ts 的 linkToEntry 做。
       // `<聯 i="taisho?51p185b">`：跨庫／跨頁錨點（作者 2026-10），點擊由 xref.ts 處理。
@@ -672,26 +843,6 @@ export class Accelon3Renderer {
         html += `<button type="button" class="segChip" data-seg="${esc(segN)}"`
           + ` title="第 ${esc(segN)} 段：點一下對讀同結構的庫">¶${esc(segN)}</button>`;
         this.sawText = true;
-        continue;
-      }
-      if (name === '聯' || name === '_聯') {
-        const target = attrValue(attrs, 'n');
-        const xref = attrValue(attrs, 'i');
-        const xq = attrValue(attrs, 'q');
-        const xj = attrValue(attrs, 'j');
-        if (closing) {
-          if (this.xrefLinks > 0) { html += '</a>'; this.xrefLinks--; }
-          else if (this.entryLinks > 0) { html += '</a>'; this.entryLinks--; }
-        } else if (xref && !selfClose) {
-          html += `<a class="entryLink xrefLink" href="#" data-xref="${esc(xref)}"`
-            + (xq ? ` data-q="${esc(xq)}"` : '')
-            + (xj ? ` data-j="${esc(xj)}"` : '')
-            + ` title="${esc(xref)}">`;
-          this.xrefLinks++;
-        } else if (target && !selfClose) {
-          html += `<a class="entryLink" href="#" data-entry="${esc(target)}" title="${esc(target)}">`;
-          this.entryLinks++;
-        }
         continue;
       }
       // `<圖 n="x.png"/>`：正文裡的插圖（字形、圖版）。圖檔在 `resources` 容器，
@@ -812,33 +963,37 @@ export class Accelon3Renderer {
         this.sawText = true;
         continue;
       }
-      // `<詞 b="…" j="…">`（cs 的詞譜）：長一個可點的 word span，給 lex-pane 用。
-      // 詞典的 `<詞>` 沒有 b/j，照舊只留文字，不影響 dict-pane。
-      if (name === '詞' || name === '_詞') {
+      // Word model：`詞`／`_詞`／`辭`／`_辭` 的差異只在 VA、詞頭與詞譜 span。
+      const word = parseWordSpec(name, (attr) => attrValue(attrs, attr), this.opts.dictEntries);
+      if (word) {
         if (closing) {
-          const shown = this.wordStack.pop();
-          if (shown) html += '</span>';
+          const frame = this.wordStack.pop();
+          if (frame?.shown) html += '</span>';
+          if (frame?.pron) html += frame.pron;
           continue;
         }
         if (selfClose) continue;
-        const b = attrValue(attrs, 'b');
-        const j = attrValue(attrs, 'j');
-        // `w`（vedic 的 `<詞 w="1">`）是詞級錨，不是詞典條目；也要長 span。
-        // 只有 b／j 的照舊是 cs 的詞譜 span；三者都沒有就只留文字（詞典）。
-        const w = attrValue(attrs, 'w');
-        const shown = !!(b || j || w);
-        if (shown) {
+        let pron = '';
+        if (word.pron) {
+          const parts: string[] = [];
+          if (word.pron.zy) parts.push(`<span class="pronZy">${esc(word.pron.zy)}</span>`);
+          if (word.pron.py) parts.push(`<span class="pronPy">${esc(word.pron.py)}</span>`);
+          pron = `<span class="dictPron">${parts.join('')}</span>`;
+        }
+        if (word.dictHead) {
+          html += '<span class="dictHead">';
+        } else if (word.wordSpan) {
           // 詞譜 `b` 只有在「看起來是 IAST 詞件」時才放進 title。
           // 2026-11-03：cs-lex 的 `b` 是 provident-pali 編碼（BIkVKU|sNVGEn 這種大小寫混編、
           // 沒有變音符號），直接當提示只會讓讀者一頭霧水，所以濾掉；真正要顯示 IAST
           // 得由建置端給（`iast` 屬性）或提供 provident-pali → IAST 對照表。
-          const bText = /^[a-zāīūṅñṭḍṇṃḷĀĪŪ'\-]+(\|[a-zāīūṅñṭḍṇṃḷĀĪŪ'\-]+)*$/.test(b)
-            ? b.replace(/\|/g, ' + ')
+          const bText = /^[a-zāīūṅñṭḍṇṃḷĀĪŪ'\-]+(\|[a-zāīūṅñṭḍṇṃḷĀĪŪ'\-]+)*$/.test(word.b)
+            ? word.b.replace(/\|/g, ' + ')
             : '';
-          const wordAttrs = w ? ` data-w="${esc(w)}" data-wi="${++this.wordNo}"` : '';
-          html += `<span class="word" data-b="${esc(b)}" data-j="${esc(j)}"${wordAttrs}${bText ? ` title="${esc(bText)}"` : ''}>`;
+          const wordAttrs = word.w ? ` data-w="${esc(word.w)}" data-wi="${++this.wordNo}"` : '';
+          html += `<span class="word" data-b="${esc(word.b)}" data-j="${esc(word.j)}"${wordAttrs}${bText ? ` title="${esc(bText)}"` : ''}>`;
         }
-        this.wordStack.push(shown);
+        this.wordStack.push({ shown: word.dictHead || word.wordSpan, pron });
         this.sawText = true;
         continue;
       }
@@ -870,9 +1025,14 @@ export class Accelon3Renderer {
 
     // 行尾把行內開著的東西收掉（下一行會重新開；HTML 才是平衡的）：
     // 錨點 → 只到本行的釋 → 跨行的釋 → 標題（由內而外）。
-    // `<聯>` 錨點同樣在行尾收掉；跨行的聯不重新開（條目連結都是行內）
-    if (this.xrefLinks) { html += '</a>'.repeat(this.xrefLinks); this.xrefLinks = 0; }
-    if (this.entryLinks) { html += '</a>'.repeat(this.entryLinks); this.entryLinks = 0; }
+    // `<彈>` 也是跨行時收掉、下一行重開。
+    if (this.tanTips.length) {
+      this.tanCarry = [...this.tanTips];
+      html += '</span>'.repeat(this.tanTips.length);
+      this.tanTips = [];
+    }
+    // `<聯>`／`_名` 錨點同樣在行尾收掉；跨行的聯不重新開（條目連結都是行內）
+    if (this.linkStack.length) { html += '</a>'.repeat(this.linkStack.length); this.linkStack = []; }
     // 跨行的引文：這一行收掉外框，下一行開頭再開（HTML 每行都要平衡）
     if (this.quoteOpen) { html += '</span>'; this.quoteOpen = false; }
     while (this.notes.length && this.notes[this.notes.length - 1].line) {
@@ -887,7 +1047,7 @@ export class Accelon3Renderer {
       this.termCarry = carry;
     }
     // 詞譜 span 不跨行；行尾若有沒收的（來源壞掉）先收掉。
-    while (this.wordStack.length) if (this.wordStack.pop()) html += '</span>';
+    while (this.wordStack.length) if (this.wordStack.pop()?.shown) html += '</span>';
     html += '</span>'.repeat(this.notes.filter((x) => x.n).length);
     html += '</span>'.repeat(this.stack.length);
     // 段碼之前是標題：把那一段切出去當獨立的 heading 塊（`RenderedLine.split`）。
@@ -903,6 +1063,8 @@ export class Accelon3Renderer {
     return {
       no: lineNo, html, raw: text, visible: this.sawText, heading: this.sawHeading,
       segStart: this.sawSegStart, segMid: this.sawSegMid, split,
+      cls: this.lineCls || undefined,
+      style: this.lineStyle || undefined,
     };
   }
 

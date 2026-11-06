@@ -1421,6 +1421,16 @@
   .bmTools { flex: 0 0 auto; display: flex; gap: 4px; }
   .bmTool { background: transparent; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; font: inherit; font-size: 11.5px; cursor: pointer; }
   .bmTool:hover { color: var(--fg); border-color: var(--gold, #c9a227); }
+  /* 詞書 <例 t="…"/>：只有標題是帶框線的小標籤；內文列不加框，避免整頁都是框 */
+  .docLine.liHeadLine { display: block; background: transparent; border: 0; padding: 0; margin-top: 9px; }
+  .liHead { display: inline-block; color: var(--li-color); border: 1px solid var(--li-color); border-radius: 6px; background: var(--li-bg); padding: 1px 8px; font-size: 12.5px; font-weight: 600; letter-spacing: .02em; }
+  /* <詞 py="…" zy="…">：詞頭旁的注音／拼音；不參與選取，避免引用帶到注釋 */
+  .dictHead { font-size: 1.3em; font-weight: 600; }
+  .dictPron { margin-left: .55em; color: var(--dim); font-size: .78em; white-space: nowrap; user-select: none; }
+  .dictPron .pronZy { margin-right: .45em; }
+  /* <彈 t="…">：hover 1 秒才顯示提示；t 不是正文的一部分 */
+  .tan { border-bottom: 1px dotted var(--dim); cursor: help; }
+  .tanTip { position: fixed; z-index: 96; pointer-events: none; max-width: min(460px, 80vw); background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; line-height: 1.45; white-space: pre-wrap; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
   .lineText .pageBreak::before { content: none; }
   .lineText .pageBreak .pageId { font-variant-numeric: tabular-nums; border-bottom: 1px dotted var(--line); }
   /* <段/> → <br class="para"> ＋ 兩個全形空格 */
@@ -1855,6 +1865,7 @@
   .editBtn:hover { border-color: var(--accent); }
   /* hidden 屬性要贏過 body.advanced .advOnly 的 display（歷史版本要真的看不到鉛筆） */
   #editBtn[hidden] { display: none !important; }
+  #readingBtn[hidden] { display: none !important; }
   /* 精讀中：🙏 要看得出來（作者 2026-11-03） */`n  body.reading #readingBtn { border-color: var(--accent); background: var(--hl-bg); box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }`n  .editBtn.on { border-color: var(--accent); background: var(--hl-bg); box-shadow: inset 0 0 0 1px var(--accent); }
   #docEditor { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
   #docEditor .cmHost { flex: 1 1 auto; min-height: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--bg); }
@@ -2333,7 +2344,7 @@
         <div class="docTabStrip" id="docTabStrip"></div>
         <button class="mini" id="docTabAdd" title="新分頁（Ctrl+點任何聯動處也可以）">＋</button>
         <span class="docTabTools">
-          <button type="button" class="mini editBtn" id="readingBtn" title="精讀模式（ruby 注音；F4）" aria-label="精讀模式">🙏</button>
+          <button type="button" class="mini editBtn" id="readingBtn" hidden title="精讀模式（ruby 注音；F4）" aria-label="精讀模式">🙏</button>
           <button type="button" class="mini editBtn advOnly" id="editBtn" title="編輯這一頁（修錯字；離開會自動暫存）" aria-label="編輯這一頁">✎</button>
           <label class="fsPick diffToggle" id="diffToggle" hidden title="顯示這一頁的修訂：新增綠、刪除紅；不回讀搜尋關鍵字"><input type="checkbox" id="showDiff"> 顯示修訂</label>
           <button type="button" class="fsPick iconOnly fsStep" id="fsBodyPick" data-fs="body" title="正文字級（中間的本文）">

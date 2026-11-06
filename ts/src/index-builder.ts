@@ -253,7 +253,11 @@ export function buildIndex(files: string[][], opts: BuildIndexOptions): BuiltInd
         // index.pas:1006 - a `t=` attribute lists tags that become cached from
         // this point on (CreateChildTag(value, ' cached')); `l=` only declares
         // them as valid tags. `s=` does the same with a `*`/`$` prefixed list.
-        if (attr.name === 't' || attr.name === 'l' || attr.name === 's') {
+        // `例.t`（體例名稱）與 `彈.t`（提示內容）不是 cache 宣告，只是資料屬性；
+        // 不要把它們的 t 當成「從這裡開始 cache 這些標籤」。
+        const semanticT = tag.shortName === '例' || tag.shortName === '彈'
+          || tag.shortName === '_例' || tag.shortName === '_彈';
+        if (!semanticT && (attr.name === 't' || attr.name === 'l' || attr.name === 's')) {
           const lead = attr.value.slice(0, 1);
           const list =
             attr.name === 's'

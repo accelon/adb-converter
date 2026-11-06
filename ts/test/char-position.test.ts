@@ -27,6 +27,13 @@ ok('舊 j= end 不含 → 換成含（12..33）', same(legacy, { db: 'fuyan', an
 const one = parseCharPosition('foo?L123#5');
 ok('L 行錨點', same(one, { db: 'foo', anchor: 'L123', a: 5, b: 5 }), JSON.stringify(one));
 
+const tag = parseCharPosition('cyd?詞1#0-3');
+ok('舊詞書錨點相容（詞1）', same(tag, { db: 'cyd', anchor: '詞1', a: 0, b: 3 }), JSON.stringify(tag));
+const name = parseCharPosition('cyd?一毛不拔#0-3');
+ok('詞書名稱錨點（一毛不拔）', same(name, { db: 'cyd', anchor: '一毛不拔', a: 0, b: 3 }), JSON.stringify(name));
+const tagCite = findCharPosition('《成語典》：「一毛不拔」(cyd?一毛不拔#0-3)');
+ok('引用字串抓詞書名稱錨點', same(tagCite, { db: 'cyd', anchor: '一毛不拔', a: 0, b: 3 }), JSON.stringify(tagCite));
+
 const cite = '《空之探究講義》：「一」( yl38p4 ) yl38p4#4-22';
 ok('引用字串抓尾端 token', same(findCharPosition(cite), { db: '', anchor: 'yl38p4', a: 4, b: 22 }), JSON.stringify(findCharPosition(cite)));
 ok('純引用沒有 token → null', findCharPosition('《空之探究講義》：「一」( yl38p4 )') === null);

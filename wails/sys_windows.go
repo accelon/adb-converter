@@ -67,15 +67,30 @@ func mmapFile(path string, size int64) ([]byte, mmapHandle, error) {
 	if size <= 0 {
 		return nil, 0, fmt.Errorf("cannot mmap %s: size %d", path, size)
 	}
-	f, err := os.Open(path)
+	// 一般閱讀不要鎖住 adb：Go 的 os.Open 在 Windows 只 share read/write，
+	// 少了 FILE_SHARE_DELETE，別的 agent 就無法 rename／替換正在看的 adb。
+	// 這裡自己開，明確 share delete；只有編輯／覆寫時才由 OverwriteAdb 處理。
+	pathp, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer f.Close() // 映射物件會持有檔案參考，這裡可以立即關閉控制代碼
+	f, err := syscall.CreateFile(
+		pathp,
+		syscall.GENERIC_READ,
+		syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|syscall.FILE_SHARE_DELETE,
+		nil,
+		syscall.OPEN_EXISTING,
+		syscall.FILE_ATTRIBUTE_NORMAL,
+		0,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer syscall.CloseHandle(f) // 映射物件會持有檔案參考，這裡可以立即關閉控制代碼
 
 	// flProtect 只能是 PAGE_READONLY；FILE_MAP_READ 是 MapViewOfFile 的參數。
 	h, _, errno := procCreateFileMappingW.Call(
-		f.Fd(), 0,
+		uintptr(f), 0,
 		pageReadonly,
 		uintptr(uint64(size)>>32), uintptr(uint64(size)&0xffffffff),
 		0,

@@ -29,6 +29,7 @@ import { hostState } from './host';
 import { bz2Decompress } from '../bzip2-wasm';
 import { HAN_RE, isHan, hanChars, hanCount } from './han';
 import { anchorIndex, anchorVa, blockOf, pageHanTextOf, shortPageId, type AnchorIndex } from './page-text';
+import { citationEntryTag, entryById, entryByName, entryLineOfHan } from './entry-anchor';
 import { splitPageCol, type PageCite } from './page-cite';
 import { splitWordKey } from './word-hl';
 
@@ -1843,7 +1844,7 @@ export async function openInMain(
   opts: { va?: number; anchor?: string; label?: string; phrase?: string } = {},
 ): Promise<boolean> {
   if (!(await activateDb(db))) {
-    setStatus('請先開啟 ' + db + '.adb', 'warn');
+    guideMissingDb(db);
     return false;
   }
   const r = reader;
@@ -1921,6 +1922,25 @@ export async function resolveCharPosition(pos: CharPosition): Promise<CharBandHi
     const va = m.linesVirtual[line];
     if (va == null) { setStatus(`第 ${line} 行不存在`, 'err'); return null; }
     return { db, anchor: pos.anchor, va, fromLine: line, fromHan: pos.a, toLine: line, toHan: pos.b };
+  }
+
+  // 詞書類 adb：`一毛不拔#a-b`（詞條名稱）或舊 `詞1#a-b`（tag＋id）當錨點，
+  // `a/b` 是這一條內第幾個漢字（不是全庫頁碼）。
+  const entryTag = await citationEntryTag(r);
+  if (entryTag) {
+    let entry = null;
+    if (pos.anchor.startsWith(entryTag + ':')) {
+      entry = await entryByName(r, m, entryTag, pos.anchor.slice(entryTag.length + 1));
+    } else if (pos.anchor.startsWith(entryTag) && pos.anchor.length > entryTag.length) {
+      entry = await entryById(r, m, entryTag, pos.anchor.slice(entryTag.length));
+    }
+    if (!entry) entry = await entryByName(r, m, entryTag, pos.anchor);
+    if (entry) {
+      const from = await entryLineOfHan(m, entry, pos.a);
+      const to = await entryLineOfHan(m, entry, pos.b);
+      const va = m.linesVirtual[from.line] ?? entry.startVa;
+      return { db, anchor: pos.anchor, va, fromLine: from.line, fromHan: from.han, toLine: to.line, toHan: to.han };
+    }
   }
 
   const va = await anchorVa(r, pos.anchor);
@@ -2317,7 +2337,7 @@ export function initXref(): void {
       openForeignTab(db, va, rev.dataset.rrevLabel ?? db, ev.ctrlKey || ev.metaKey, rev.dataset.rpage || undefined, rev.dataset.rcite || rev.dataset.rquote || undefined);
       return;
     }
-    const a = (ev.target as Element | null)?.closest?.('a[data-xref]') as HTMLElement | null;
+    const a = (ev.target as Element | null)?.closest?.('a[data-link="xref"],a[data-xref]') as HTMLElement | null;
     if (!a) return;
     ev.preventDefault();
     ev.stopPropagation();

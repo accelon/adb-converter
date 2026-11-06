@@ -27,6 +27,8 @@ import { DOCFS_DEFAULT, DOCFS_KEY, autoFitFont, boundsCache, boundsOfRealm, docA
 import { paintHit } from './paint';
 import { resetEngineStats } from './engine-stats';
 import { setActiveDb } from './tag-style';
+import { readExampleScheme, setExampleScheme } from './render_accelon3';
+import { readingGroupInHeader, setReadingAvailable } from './reading-pane';
 
 export const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
@@ -191,6 +193,8 @@ export async function openFile(file: AdbSource): Promise<'opened' | 'existing' |
     setStatus(`讀取 ${file.name} …`, 'busy');
     const t0 = performance.now();
     reader = await AdbReader.open(io);
+    setExampleScheme(await readExampleScheme(reader));
+    setReadingAvailable(readingGroupInHeader(await reader.sourceText(0)));
     const openMs = performance.now() - t0;
 
     const h = reader.header;

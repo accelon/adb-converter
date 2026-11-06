@@ -65,6 +65,8 @@ interface DirTree {
   /** child VA -> parent VA, for lighting the ancestors of the scroll cursor */
   parentOf: Map<number, number>;
   loaded: boolean;
+  /** 這棵樹是哪一個庫建的（dbname）；換庫後絕不能拿上一庫的樹來畫（2026-11-06） */
+  db: string;
 }
 
 let dirTrees: DirTree[] = [];
@@ -80,6 +82,13 @@ let dirActive = 0;
 let dirError = '';
 
 let dirLoading = false;
+
+/**
+ * 目錄樹的「世代」（2026-11-06）：換庫時 +1，還在跑的那一輪看到世代變了就把結果丟掉。
+ * 沒有這個的話，A 庫的樹建到一半、B 庫被打開，A 的結果會 push 進 B 的 dirTrees，
+ * 左欄就會停在 A 的目錄，直到切換資料庫才恢復。
+ */
+let scopesGen = 0;
 
 // ------------------------------------------------------------------ directory tree
 /**
@@ -185,6 +194,7 @@ async function loadDirectoryTrees() {
   if (!reader) return;
   if (dirLoading) return;
   dirLoading = true;
+  const gen = scopesGen;
   const tTree0 = performance.now();
   const phase: Record<string, number> = { trees: 0, load: 0, build: 0, instances: 0 };
   treePhases = phase;
@@ -236,6 +246,7 @@ async function loadDirectoryTrees() {
     });
     phase.load += performance.now() - tLoad;
     phase.instances += instances.length;
+    if (gen !== scopesGen) { dirLoading = false; return; }   // 建到一半換庫了：丟掉
     if (!instances.length) continue;
     const tBuild = performance.now();
     const roots = buildTree(instances);
@@ -273,12 +284,14 @@ async function loadDirectoryTrees() {
     const parentOf = new Map<number, number>();
     for (const n of iterNodes(roots)) for (const c of n.children) parentOf.set(c.va, n.va);
     phase.build += performance.now() - tBuild;
+    if (gen !== scopesGen) { dirLoading = false; return; }   // 換庫了：這一棵也不要了
     dirTrees.push({
       tree: t, roots, nodes: countNodes(roots),
       labels: new Map<number, string>(), open: new Set<number>(), loaded: false,
-      parentOf,
+      parentOf, db: reader?.header.dbname ?? '',
     });
   }
+  if (gen !== scopesGen) { dirLoading = false; return; }
   // Every entry built above IS a full-text (`s="*"`) tree: 頻次 and 西文 have their own
   // panes driven by their own scopes and never look at dirTrees.
   dirActive = dirTrees.length ? 0 : -1;
@@ -607,6 +620,12 @@ export function dirPaneShown(): boolean {
 
 async function renderDirTree(): Promise<void> {
   const box = $('#dirTree');
+  // 換庫的保險（2026-11-06）：手上的樹若是上一庫建的，絕不能拿來畫——
+  // 清掉重建，免得左欄停在上一本的目錄（切換資料庫才會恢復）。
+  if (reader && dirTrees.length && dirTrees[0].db !== reader.header.dbname) {
+    resetScopes();
+    void loadDirectoryTrees();
+  }
   // 沒有 s="*" 就沒有目錄樹：面板本來就藏著，連列都不必掛進 DOM。
   // 清空是為了不讓上一個資料庫的列留在裡面（萬一之後有誰把它揭露出來）。
   if (!dirPaneShown()) {
@@ -2168,6 +2187,8 @@ export const setDirError = (s: string): void => { dirError = s; };
 
 /** a fresh database drops every built tree and its caches */
 export function resetScopes(): void {
+  scopesGen++;          // 作廢還在跑的那一輪建樹（它的結果不能再進新庫）
+  dirLoading = false;   // 新庫要能立刻開始建，不必等舊的那一輪收尾
   dirTrees = [];
   dirOrder = [];
   dirError = '';

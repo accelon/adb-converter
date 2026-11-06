@@ -10,6 +10,7 @@ import { mapper, reader, setStatus } from './viewer';
 import { lookupBook, openTaishoAt, pageHanText, pageIdAtVa, type BookHit } from './xref';
 import { formatCharPosition } from './char-position';
 import { HAN_RE } from './han';
+import { citationEntryTag, entryAt, entryHanOffset } from './entry-anchor';
 import { cursorNode, focusTreeNode, revealCursorInTree, revealHit } from './link';
 import { openDictLookup } from './dict-pane';
 import { openLexPaneForHan } from './lex-pane';
@@ -503,7 +504,8 @@ export async function citationFor(info: SelInfo): Promise<string> {
   for (const tag of tags) {
     if (tag === '_' || tag === 'URL') continue;
     if (tag === '頁') { values.set(tag, info.pageId); continue; }
-    values.set(tag, await labelAt(info.va, tag));
+    const v = await labelAt(info.va, tag);
+    values.set(tag, v || (tag === '書' ? (r.header.dbcname || r.header.dbname) : ''));
   }
   // `$URL;` 是 db name＋頁碼＋字元（例如 fuyan?38p107#106-110）。
   const url = await charPosition(info);
@@ -603,11 +605,22 @@ function fillSearch(m: HTMLElement): void {
 
 /**
  * 字元級位置：`db?頁#起-止`（頁＋這一頁第幾個漢字；起訖都算）。
- * 沒有頁 id 就用 `db?L行號#起-止`，`j=` 只留給解析舊字串。
+ * 沒有 `<頁>` 的詞書類 adb 用詞條名稱當錨點：
+ * `db?一毛不拔#起-止`（這一條的第幾個漢字），沒有詞條才退回 `db?L行號#…`。
  */
 async function charPosition(info: SelInfo): Promise<string> {
   const db = reader?.header.dbname || 'db';
   if (!info.pageId) {
+    const tag = reader ? await citationEntryTag(reader) : '';
+    const entry = reader && mapper && tag ? await entryAt(reader, mapper, tag, info.va) : null;
+    if (entry?.id) {
+      const a = await entryHanOffset(mapper!, entry, info.startLine, info.hanPrefix);
+      const end = await entryHanOffset(mapper!, entry, info.endLine, info.hanPrefixEnd);
+      const b = Math.max(a, end - 1);
+      const readable = entry.name && /^[\p{Script=Han}A-Za-z0-9_.:·（）()、-]+$/u.test(entry.name);
+      const anchor = readable ? entry.name : `${tag}${entry.id}`;
+      return `${db}?${formatCharPosition({ anchor, a, b })}`;
+    }
     const a = info.hanPrefix;
     const total = Array.from(info.raw).filter((c) => HAN_RE.test(c)).length;
     const endExclusive = info.endLine === info.startLine ? info.hanPrefixEnd : a + total;

@@ -19,17 +19,18 @@ export interface CharPosition {
   b: number;
 }
 
-/** 頁 id：`L123` 或一般頁 id（至少含一個數字，例 `yl38p4`、`5p2c`）。 */
-const ANCHOR_RE = '(?:L[0-9]+|[A-Za-z0-9][A-Za-z0-9_.-]*[0-9][A-Za-z0-9_.-]*)';
+/** 頁 id：`L123`、一般頁 id，或詞書的 `詞1`／`字1`（tag＋id）。 */
+const HAN_ANCHOR = '[\\p{Script=Han}][\\p{Script=Han}A-Za-z0-9_.:·（）()、-]*';
+const ANCHOR_RE = `(?:L[0-9]+|[A-Za-z0-9][A-Za-z0-9_.-]*[0-9][A-Za-z0-9_.-]*|${HAN_ANCHOR})`;
 const DB_RE = '([A-Za-z0-9_.-]+)';
 
 const CHAR_POS_HASH_RE = new RegExp(
-  `^\\s*(?:${DB_RE}\\?)?\\s*(${ANCHOR_RE})\\s*#\\s*([0-9]+)\\s*(?:[-–—]\\s*([0-9]+))?\\s*$`, 'i');
+  `^\\s*(?:${DB_RE}\\?)?\\s*(${ANCHOR_RE})\\s*#\\s*([0-9]+)\\s*(?:[-–—]\\s*([0-9]+))?\\s*$`, 'iu');
 const CHAR_POS_J_RE = new RegExp(
-  `^\\s*(?:${DB_RE}\\?)?\\s*(${ANCHOR_RE})\\s*j\\s*=\\s*([0-9]+)\\s*(?:[-–—]\\s*([0-9]+))?\\s*$`, 'i');
-/** 掃描整段引用字串裡的最後一個 `#起-止`（例：`《…》( yl38p4 ) yl38p4#12-34`）。 */
+  `^\\s*(?:${DB_RE}\\?)?\\s*(${ANCHOR_RE})\\s*j\\s*=\\s*([0-9]+)\\s*(?:[-–—]\\s*([0-9]+))?\\s*$`, 'iu');
+/** 掃描整段引用字串裡的最後一個 `#起-止`。 */
 const CHAR_POS_TOKEN_RE = new RegExp(
-  `(?:^|[^A-Za-z0-9_.-])(?:${DB_RE}\\?)?(${ANCHOR_RE})\\s*#\\s*([0-9]+)(?:\\s*[-–—]\\s*([0-9]+))?`, 'gi');
+  `(?:^|[^A-Za-z0-9_.-])(?:${DB_RE}\\?)?(${ANCHOR_RE})\\s*#\\s*([0-9]+)(?:\\s*[-–—]\\s*([0-9]+))?`, 'giu');
 
 function posFromMatch(m: RegExpExecArray, legacyEndExclusive: boolean): CharPosition {
   const a = Number(m[3]);
