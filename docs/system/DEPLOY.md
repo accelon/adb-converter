@@ -98,6 +98,19 @@ bun run tools/pack-7z.ts          # 只重打包壓縮檔（改 README、不動 
 CI 會建 arm64／x86_64 兩個 zip 並附到 Release，之後
 `cd ts && bun run tools/deploy-macos.ts` 把它們傳上官網。
 
+### 2.2.1 adb 由母區統一部署（作者 2026-11-06）
+
+`ys`、`fuyan`、`tx` 等 adb 工作區**只負責產出 adb**（內容、`sha256`／大小、版本說明），
+不要自行 `publish-adb`／`deploy`。桌面 RC 通常就是為了新 adb，程式與資料要一起上線，
+所以由本區在發佈時統一處理：
+
+- adb 工作區把新的 `*.adb` 放進 `D:\accelon3`，並在 `deploy/adb-notes.json`（或回報）
+  給這一版 `sha256` 的說明；`docs/adb/adb-version-log.md` 由該工作區加一列。
+- 本區跑 `deploy.ts --site` 時會一起重生 `manifest`、公開數據庫頁，並上傳這一輪
+  有更新的 adb（大檔依既有 `--allow-large` 規則）。
+- 若只是程式 RC、這輪 adb 沒變，才用 `deploy.ts --site --no-adb`。
+- 好處：程式與 adb 不會一邊新一邊舊，也避免各工作區各自上傳占滿頻寬。
+
 壓縮檔內容固定三樣：`accelon26.exe`、`README.txt`（簡體）、`README-tc.txt`（繁體）。
 兩份說明是 **UTF-8 帶 BOM ＋ CRLF**（Windows 記事本才不會亂碼；編碼規則見 [yap-software-practice.md](./yap-software-practice.md) §4.1），文字在
 [ts/tools/readme-text.ts](../../ts/tools/readme-text.ts)，`release.ts` 與 `pack-7z.ts` 共用。
