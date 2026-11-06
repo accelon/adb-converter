@@ -31,7 +31,7 @@ permissions:
 jobs:
   build:
     # macos-14 = Apple Silicon（arm64）。Intel 版用交叉編譯（同一台 runner）。
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -198,3 +198,4 @@ jobs:
           git add -A
           git commit -q -m "ci-log ${{ github.run_id }}"
           git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:ci-log
+
