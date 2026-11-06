@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------------------
  * ⚠ 生成檔，不要手改（改來源）。
  *
- * 來源：D:\2026\pinxing\src\pinxing.ts（sha256 14cf4c5d8c4cc7da，43380 bytes）
+ * 來源：D:\2026\pinxing\src\pinxing.ts（sha256 075e2e1b031117d3，55641 bytes）
  * 產生：ts/tools/vendor-pinxing.ts　→　重跑：cd ts && bun run tools/vendor-pinxing.ts
  * 檢查：bun run tools/vendor-pinxing.ts --check（來源變了會 exit 1）
  *
@@ -57,6 +57,7 @@
  *   bun run tools/pinxing.ts --cp u29028 --style yuanti --out out/a.svg
  *   （程式內：`installLitePinxing()` 之後，`svgOf()`／`evalSeq()` 等既有模組直接用它）
  */
+import { readFileSync } from "node:fs";
 
 /* ============================ 1. KAGE 資料 → 筆段 ============================ */
 
@@ -234,9 +235,30 @@ export interface StrokeStyle {
    *  實測 0.35 可以把 200 px 的針孔從 11 個降到 2 個，但墨量會超過上游 5%、IoU 反而掉 0.015
    *  —— 所以**預設 0**，需要時再開（`--bleed`）。 */
   bleed: number;
+  /**
+   * 可選：**沿筆畫的寬度剖面**（t → 半寬倍率；1 ＝ 中段寬）。
+   *
+   * 沒有給就沿用舊模型（起筆／收筆各自收細、中段等寬）。給了就整個取代它：
+   * 這是「楷體」這種**筆壓會隨位置變**的風格所需要的維度——橫的收筆頓、撇的收鋒、
+   * 捺的肚，都是同一條筆畫上不同 t 的粗細，不是端點常數。
+   *
+   * 分類：`yoko` 橫／`tate` 豎／`pie` 撇／`na` 捺／`dian` 點。
+   *
+   * 也可以給**依長度分段的版本**（`LengthBin[]`）：楷體的長橫比短橫粗、收筆頓也比較輕，
+   * 長豎和短豎的收尾也不一樣——這是「不同長度的橫豎」那一課。
+   */
+  profiles?: Partial<Record<"yoko" | "tate" | "pie" | "na" | "dian", [number, number][] | LengthBin[]>>;
 }
 
 export type CapShape = "butt" | "round" | "cut" | "point";
+
+/** 依筆畫長度分段的寬度剖面（長度單位＝200 分格）。 */
+export interface LengthBin {
+  maxLen: number;
+  profile: [number, number][];
+  /** 這一級的寬度倍率（楷體的長橫比短橫粗） */
+  width?: number;
+}
 
 /**
  * 風格表。**預設 `songti`（宋體）**：數值照上游引擎的常數（`new Kage()` 那一組：橫 2、豎 6），
@@ -248,7 +270,7 @@ export const STYLES: Record<string, StrokeStyle> = {
   /** 宋體（明朝體）：橫細豎粗、方起方收、撇捺收細 —— 上游引擎的預設筆形 */
   songti: {
     id: "songti", label: "宋體", minWidthY: 2, minWidthT: 6, minWidthC: 6, weight: 1, bleed: 0,
-    capStart: "cut", capEnd: "butt", join: "miter", cornerSoft: 0, taperEnd: 0.18, taperStart: 0.9, roundSteps: 0,
+    capStart: "cut", capEnd: "butt", join: "miter", cornerSoft: 0, taperEnd: 1, taperStart: 1, roundSteps: 0,
   },
   /** 黑體：橫豎等粗、方頭（上游引擎的第二種體只是不做自動調整，這裡真的把粗細比拉平） */
   heiti: {
@@ -264,6 +286,42 @@ export const STYLES: Record<string, StrokeStyle> = {
   xiti: {
     id: "xiti", label: "細體", minWidthY: 1.1, minWidthT: 3.2, minWidthC: 3.2, weight: 1, bleed: 0,
     capStart: "cut", capEnd: "point", join: "miter", cornerSoft: 0, taperEnd: 0.3, taperStart: 0.8, roundSteps: 0,
+  },
+  /**
+   * 楷體（第一版）：參數不是抄任何字型的輪廓，而是從「楷書筆畫的統計規律」來的——
+   * 橫：起筆略細 → 中段平 → **收筆頓**（t≈0.85 最粗）；豎：中段最粗、末端收；
+   * 撇：起筆粗 → 一路收成尖；捺：起筆細 → 肚（t≈0.75）→ 尖端；點：水滴。
+   *
+   * 數值來自 `tools/noto-vf/kai_regularities.py`（242 個筆畫基元的中位剖面），
+   * 換算成 pinxing 的 200 分格半寬（0.035 em ≈ 7 格 → 半寬 3.4）。
+   * 這是**我們自己的**風格表：只取規律（粗細隨位置的變化），沒有重製任何輪廓。
+   */
+  kaiti: {
+    id: "kaiti", label: "楷體", minWidthY: 4.7, minWidthT: 5.4, minWidthC: 4.6, weight: 1, bleed: 0,
+    capStart: "cut", capEnd: "cut", join: "miter", cornerSoft: 0.6,
+    taperEnd: 1, taperStart: 1, roundSteps: 3,
+    profiles: {
+      /* 橫：**依長度分三級**（量到的長度 0.25／0.35／0.51 em → 50／70／102 格）。
+       * 長橫比較粗（寬度倍率 1.11）、收筆頓比較輕；短橫比較細、頓比較重。
+       * 每級都是 9 個取樣點（t = 0.056…0.944），和 `kai_regularities.py` 的量法一致。 */
+      yoko: [
+        { maxLen: 60, width: 0.88, profile: [[0.056, 0.86], [0.167, 1.0], [0.278, 1.0], [0.389, 0.97], [0.5, 1.0], [0.611, 1.05], [0.722, 1.3], [0.833, 1.45], [0.944, 1.15]] },
+        { maxLen: 85, width: 1.0, profile: [[0.056, 0.82], [0.167, 1.0], [0.278, 1.0], [0.389, 1.0], [0.5, 1.0], [0.611, 1.1], [0.722, 1.3], [0.833, 1.6], [0.944, 1.35]] },
+        { maxLen: 130, width: 1.11, profile: [[0.056, 0.94], [0.167, 1.0], [0.278, 1.0], [0.389, 1.0], [0.5, 1.03], [0.611, 1.08], [0.722, 1.19], [0.833, 1.31], [0.944, 1.0]] },
+      ],
+      /* 豎：短豎收得比較尖（0.49）、長豎比較飽（0.89）；寬度差不多（0.93／1.0／0.95）。 */
+      tate: [
+        { maxLen: 36, width: 0.93, profile: [[0.056, 0.72], [0.167, 1.12], [0.278, 1.15], [0.389, 1.14], [0.5, 1.11], [0.611, 1.0], [0.722, 0.94], [0.833, 0.83], [0.944, 0.49]] },
+        { maxLen: 50, width: 1.0, profile: [[0.056, 0.93], [0.167, 1.5], [0.278, 1.33], [0.389, 1.14], [0.5, 1.03], [0.611, 1.0], [0.722, 0.89], [0.833, 0.85], [0.944, 0.58]] },
+        { maxLen: 90, width: 0.95, profile: [[0.056, 1.0], [0.167, 1.3], [0.278, 1.13], [0.389, 1.0], [0.5, 1.0], [0.611, 1.0], [0.722, 1.0], [0.833, 1.05], [0.944, 0.89]] },
+      ],
+      // 撇：起筆 0.8、中段 0.95、末端 0.5（量到 0.47–0.69）
+      pie: [[0, 0.82], [0.15, 1.0], [0.5, 0.95], [0.8, 0.7], [1, 0.5]],
+      // 捺：起筆 0.6 → 肚（t≈0.7 最粗 1.45）→ 收尾 0.72（量到 0.57→1.59→0.75–1.0）
+      na: [[0, 0.6], [0.2, 0.78], [0.55, 1.1], [0.72, 1.45], [0.88, 1.2], [1, 0.72]],
+      // 點：水滴（t≈0.3 最粗 1.15）
+      dian: [[0, 0.6], [0.3, 1.15], [0.6, 1.05], [1, 0.6]],
+    },
   },
 };
 
@@ -299,6 +357,11 @@ export interface StrokeShape {
   /** 起筆／收筆**沿路徑**多伸出的量（引擎的角會伸出中線端點，這是它「接得起來」的原因） */
   extendStart: number;
   extendEnd: number;
+  /** 寬度剖面（t → 半寬倍率）；有給就用它取代「中段等寬＋兩端收細」 */
+  profile?: [number, number][];
+  /** 起筆／收筆的「細入／細出」（KAGE 的形狀代碼 7）：t=0／t=1 的寬度倍率（1＝不變） */
+  fadeStart: number;
+  fadeEnd: number;
 }
 
 /**
@@ -309,8 +372,67 @@ export interface StrokeShape {
  *   0 平（起筆另有三段小切角）、1／6／22 平、2 圓、5 挑（收筆往上）、
  *   12 斜切起筆、13／23 折角切、32 平切、24 T 形接頭。
  */
-function shapeOf(kind: number, width: number, styleCode: number, s: StrokeStyle, orient: "yoko" | "tate" | "curve"): StrokeShape {
-  const startCode = width % 1000;
+/** 把折線均勻重取樣 n 點（依弧長）。有寬度剖面時用：直線只有 2 點的話，
+ *  剖面在中段（例如橫的收筆頓）根本不會被取樣到。 */
+function resample(pts: { x: number; y: number }[], n: number): { x: number; y: number }[] {
+  if (pts.length < 2 || n < 2) return pts;
+  const seg: number[] = [0];
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) {
+    total += Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.y - pts[i - 1]!.y);
+    seg.push(total);
+  }
+  if (total <= 0) return pts;
+  const out: { x: number; y: number }[] = [];
+  let j = 1;
+  for (let i = 0; i < n; i++) {
+    const d = (total * i) / (n - 1);
+    while (j < seg.length - 1 && seg[j]! < d) j++;
+    const d0 = seg[j - 1]!, d1 = seg[j]!;
+    const t = d1 > d0 ? (d - d0) / (d1 - d0) : 0;
+    out.push({
+      x: pts[j - 1]!.x + (pts[j]!.x - pts[j - 1]!.x) * t,
+      y: pts[j - 1]!.y + (pts[j]!.y - pts[j - 1]!.y) * t,
+    });
+  }
+  return out;
+}
+
+/** 寬度剖面在 t 的倍率（控制點之間線性內插）。 */
+function profileAt(t: number, prof: [number, number][]): number {
+  if (!prof.length) return 1;
+  if (t <= prof[0]![0]) return prof[0]![1];
+  for (let i = 1; i < prof.length; i++) {
+    const p1 = prof[i]!, p0 = prof[i - 1]!;
+    if (t <= p1[0]) return p1[0] === p0[0] ? p1[1] : p0[1] + (p1[1] - p0[1]) * (t - p0[0]) / (p1[0] - p0[0]);
+  }
+  return prof[prof.length - 1]![1];
+}
+
+function lerpProfile(a: [number, number][], b: [number, number][], k: number): [number, number][] {
+  return a.map((p, i) => [p[0], p[1] + (((b[i]?.[1] ?? p[1]) - p[1]) * k)] as [number, number]);
+}
+
+/** 依長度挑寬度剖面：單一剖面直接用；分段版本在相鄰兩段之間線性內插。 */
+function pickProfile(raw: [number, number][] | LengthBin[] | undefined, len: number): { profile?: [number, number][]; width: number } {
+  if (!raw || raw.length === 0) return { width: 1 };
+  if (Array.isArray(raw[0])) return { profile: raw as [number, number][], width: 1 };
+  const bins = raw as LengthBin[];
+  if (len <= bins[0]!.maxLen) return { profile: bins[0]!.profile, width: bins[0]!.width ?? 1 };
+  for (let i = 1; i < bins.length; i++) {
+    const a = bins[i - 1]!, b = bins[i]!;
+    if (len <= b.maxLen) {
+      const k = (len - a.maxLen) / Math.max(1e-6, b.maxLen - a.maxLen);
+      return { profile: lerpProfile(a.profile, b.profile, k), width: (a.width ?? 1) + ((b.width ?? 1) - (a.width ?? 1)) * k };
+    }
+  }
+  const last = bins[bins.length - 1]!;
+  return { profile: last.profile, width: last.width ?? 1 };
+}
+
+function shapeOf(kind: number, width: number, styleCode: number, s: StrokeStyle, orient: "yoko" | "tate" | "curve", center: { x: number; y: number }[]): StrokeShape {
+  // 形狀代碼只看低兩位：132＝32（平切）＋百位選項，引擎也是 % 1000 之後再 % 100。
+  const startCode = width % 100;
   const endCode = styleCode % 100;
   const bleed = s.bleed ?? 0;
   const thin = s.minWidthY * s.weight + bleed;
@@ -326,6 +448,8 @@ function shapeOf(kind: number, width: number, styleCode: number, s: StrokeStyle,
     // 預設只多伸出 0.3 個半寬（≈1–2 格）：引擎的角會伸出更多，見下面 12／22／13／23
     extendStart: w * 0.3,
     extendEnd: w * 0.3,
+    fadeStart: 1,
+    fadeEnd: 1,
   };
   // 曲線（撇捺）比直線容易收細；kind 2 的收筆代碼 7／4 是「掃出去」
   if (orient === "curve") {
@@ -366,6 +490,61 @@ function shapeOf(kind: number, width: number, styleCode: number, s: StrokeStyle,
     sh.halfStart = w; sh.halfEnd = w;
   }
   if (sh.blend) { sh.halfStart = sh.bodyT; sh.halfEnd = sh.bodyT; }
+
+  /* ---- KAGE 形狀代碼 7／8／4／32：**收尾** ----
+   *
+   * 這幾個代碼是「筆畫有沒有收乾淨」的來源（實測在字庫裡占 3 萬多筆）：
+   *   7＝細入（起筆）／細出（收筆）：寬度從另一端一路收到 0.2／0.15。
+   *   8＝圓滿收尾：點、止的末端是一個**實心圓**（不是方切）。
+   *   4＝鉤的尖端：鉤尾要收成尖，不是平切。
+   *   32＝平切起筆（132 的百位是選項）。
+   * 這些是**資料的語意**，不分風格；四種舊風格與 kaiti 都吃同一套。
+   */
+  const baseW = sh.blend ? sh.bodyT : w;
+  if (startCode === 7) { sh.fadeStart = 0.2; sh.capStart = "cut"; sh.taperFrom = 1; }
+  if (endCode === 7) { sh.fadeEnd = 0.15; sh.capEnd = "point"; sh.taperFrom = 1; }
+  if (endCode === 8) { sh.capEnd = "round"; sh.taperFrom = 1; }
+  if (endCode === 4) { sh.capEnd = "point"; }
+  if (startCode === 32) { sh.capStart = "cut"; sh.kirikuchi = 0; }
+
+  /* ---- 寬度剖面（楷體用）：把「粗細隨位置的變化」疊上去 ----
+   *
+   * 有 `profiles` 的風格（目前只有 kaiti）走這一條；其他風格完全不受影響。
+   * 剖面只描述**相對**倍率，實際半寬由 blend 的局部寬度 × profile(t) 決定。
+   */
+  if (s.profiles) {
+    const len = center.reduce((acc, p, i) => i ? acc + Math.hypot(p.x - center[i - 1]!.x, p.y - center[i - 1]!.y) : 0, 0);
+    const dx = center[center.length - 1]!.x - center[0]!.x;
+    const dy = center[center.length - 1]!.y - center[0]!.y;
+    const key: "yoko" | "tate" | "pie" | "na" | "dian" =
+      len < 12 ? "dian"
+        : orient === "curve" ? (Math.abs(dx) < Math.abs(dy) * 0.6 ? "tate" : dx < 0 ? "pie" : "na")
+          : orient;
+    const picked = pickProfile(s.profiles[key], len);
+    const prof = picked.profile;
+    if (prof) {
+      // 長度分級的寬度倍率（長橫比短橫粗）——先縮 body，端點再從 body 算
+      if (picked.width !== 1) {
+        sh.body *= picked.width;
+        sh.bodyY *= picked.width;
+        sh.bodyT *= picked.width;
+      }
+      sh.profile = prof;
+      const base = sh.blend ? sh.bodyT : sh.body;
+      sh.halfStart = base * profileAt(0, prof);
+      sh.halfEnd = base * profileAt(1, prof);
+      // 楷體的收筆：橫／豎用風格的 capEnd（頓筆），撇／捺收成尖（除非是鉤）
+      if (key === "pie" || key === "na") sh.capEnd = endCode === 4 || endCode === 5 ? sh.capEnd : "point";
+      if (key === "dian") { sh.capStart = "round"; sh.capEnd = "round"; }
+      // 剖面已經描述端點，不要再走「中段等寬＋兩端收細」
+      sh.taperFrom = 1;
+    }
+  }
+  // 細入／細出：端點也一起套（cap 用的是 halfStart／halfEnd）
+  if (sh.fadeStart !== 1) sh.halfStart *= sh.fadeStart;
+  if (sh.fadeEnd !== 1) sh.halfEnd *= sh.fadeEnd;
+  // 圓滿收尾（8）的圓頭半徑至少 0.9 個半寬，不然只會看到一個小疙瘩
+  if (endCode === 8) sh.halfEnd = Math.max(sh.halfEnd, baseW * 0.9);
   return sh;
 }
 
@@ -507,12 +686,28 @@ function sampleCenterline(s: Stroke, step = 3): { x: number; y: number }[] {
 
 /** 中線在 t（0–1）的寬度（半寬）：起筆、收筆各自收細（收細只發生在兩端，中間等寬）。
  *  `blend`（一筆同時有豎與橫）時，中間的寬度由呼叫端依**局部走勢**給（`localW`）。 */
+/** 形狀代碼 7 的「細入／細出」：t=0／t=1 的倍率，用 √ 過渡（和引擎的 hosomi 同一個味道）。 */
+function fadeAt(t: number, shape: StrokeShape): number {
+  const a = shape.fadeStart, b = shape.fadeEnd;
+  if (a === 1 && b === 1) return 1;
+  const fs = a + (1 - a) * Math.sqrt(t);
+  const fe = b + (1 - b) * Math.sqrt(1 - t);
+  return Math.max(0.12, fs * fe);
+}
+
 function halfWidthAt(t: number, shape: StrokeShape, localW?: number): number {
-  const { halfStart: hs, halfEnd: he, body: w, taperFrom } = shape;
+  const { body: w, taperFrom } = shape;
+  // shape.halfStart／halfEnd 已經含 fade（給 cap 用）；這裡先還原再乘，避免套兩次
+  const hs = shape.halfStart / (shape.fadeStart || 1);
+  const he = shape.halfEnd / (shape.fadeEnd || 1);
   const mid = localW ?? w;
-  if (t < 0.08) return hs + (mid - hs) * (t / 0.08);
-  if (t > taperFrom) return mid + (he - mid) * ((t - taperFrom) / (1 - taperFrom));
-  return mid;
+  let v: number;
+  // 有剖面（楷體）就整個走剖面：粗細是位置的函數，不是兩端常數
+  if (shape.profile) v = (localW ?? (shape.blend ? shape.bodyT : w)) * profileAt(t, shape.profile);
+  else if (t < 0.08) v = hs + (mid - hs) * (t / 0.08);
+  else if (t > taperFrom) v = mid + (he - mid) * ((t - taperFrom) / (1 - taperFrom));
+  else v = mid;
+  return v * fadeAt(t, shape);
 }
 
 /**
@@ -522,6 +717,8 @@ function halfWidthAt(t: number, shape: StrokeShape, localW?: number): number {
  * 折角（join）用**相鄰法線平均**；圓頭／圓角另外補圓弧點（風格層的 `roundSteps`）。
  */
 export function buildOutline(center: { x: number; y: number }[], shape: StrokeShape, s: StrokeStyle): PolyPoint[] {
+  // 有寬度剖面時要足夠的取樣點，剖面才咬得到中段（橫的收筆頓、捺的肚都在中段）
+  if (shape.profile) center = resample(center, 15);
   const n = center.length;
   if (n < 2) return [];
   const left: { x: number; y: number }[] = [];
@@ -698,7 +895,7 @@ export function glyphPolygons(strokes: Stroke[], style: StrokeStyle, opts: Rende
     const dy = Math.abs(center[center.length - 1]!.y - center[0]!.y);
     const orient: "yoko" | "tate" | "curve" =
       (k === 2 || k === 3 || k === 4 || k === 6 || k === 7 || k === 12) ? "curve" : (dy > dx ? "tate" : "yoko");
-    const shape = shapeOf(k, st.width, st.style, style, orient);
+    const shape = shapeOf(k, st.width, st.style, style, orient, center);
     const outline = buildOutline(center, shape, style);
     if (outline.length >= 3) {
       // 小字對齊裝置像素格：只動「軸對齊、且沒有鉤」的筆畫（有鉤的 y 範圍含鉤，對齊會歪）
@@ -714,7 +911,8 @@ export function glyphPolygons(strokes: Stroke[], style: StrokeStyle, opts: Rende
     }
     // 鱗（uroko）：橫筆收筆的「刷一下」——上游在淺角度的橫筆尾端加一個小三角，
     // 那是它看起來像毛筆的來源。只在「看得見」的尺寸畫（1em 的正文裡只是雜點）。
-    if (opts.ornaments && opts.uroko && k === 1 && st.style % 100 === 0) {
+    // 有寬度剖面的風格（楷體）自己就有收筆頓，不再疊這個三角。
+    if (opts.ornaments && opts.uroko && !style.profiles && k === 1 && st.style % 100 === 0) {
       const a = center[center.length - 2]!, b = center[center.length - 1]!;
       const dirx = b.x - a.x;
       if (Math.abs(dirx) > Math.abs(b.y - a.y) && dirx > 0) {   // 往右的橫筆
@@ -867,3 +1065,4 @@ export function installLitePinxing(styleId = "songti"): void {
 }
 
 /* ============================ 5. CLI ============================ */
+
