@@ -19,6 +19,7 @@ import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, r
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, repaintSummary, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 import { backendKind, goQueryCount, lastGoAnswer } from './backend';
 import { isDictDb } from './db-kind';
+import { BOOK_CATALOG, WORK_CATALOG, bookById, findBooks, resolveBook, findWorks, resolveWork, workById, worksOfBook } from './book-catalog';
 import { resolveDocCtx } from './doc-ctx';
 import { parsePageCite } from './page-cite';
 import { parseNoteQuery } from './note-label';
@@ -2219,6 +2220,16 @@ export function installDebugApi(): void {
 (window as unknown as Record<string, unknown>).__accelon26 = {
   openFile, showLine, showToken, revealHit, vapaProbe, showTab, toggleSide,
   bookmarkState, citationForSelection,
+  /** 打包進 app 的書目登錄（目標 id／別名；不是 xref 本身） */
+  bookCatalog: BOOK_CATALOG,
+  workCatalog: WORK_CATALOG,
+  bookById,
+  findBooks,
+  resolveBook,
+  findWorks,
+  resolveWork,
+  workById,
+  worksOfBook,
   sutraLookup: (q: string) => lookupBook('taisho', q),
   /** 大正藏 ⇄ 高麗藏 換址（需要開著帶 align 的 goryeo.adb） */
   /** 跨庫錨點：模擬點 <聯 i="db?anchor">（測試／診斷用） */

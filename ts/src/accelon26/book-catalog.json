@@ -1,0 +1,1140 @@
+{
+  "schema": 2,
+  "books": [
+    {
+      "id": "13j",
+      "adb": "13j.adb",
+      "title": "十三經",
+      "aliases": [
+        "十三經",
+        "13j"
+      ],
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 2252537,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "1839",
+      "adb": "1839.adb",
+      "title": "十三經",
+      "aliases": [
+        "十三經",
+        "1839"
+      ],
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 2252537,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "ccc",
+      "adb": "ccc.adb",
+      "dbname": "ccc",
+      "title": "莊春江巴利藏中譯",
+      "aliases": [
+        "莊春江巴利藏中譯",
+        "ccc"
+      ],
+      "collection": "sz",
+      "kind": "text",
+      "status": "wip",
+      "size": 6175673,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "cllk",
+      "adb": "cllk.adb",
+      "dbname": "cllk",
+      "title": "泰譯巴利三藏（朱拉隆功大學）",
+      "aliases": [
+        "泰譯巴利三藏（朱拉隆功大學）",
+        "Thai Tipitaka (MCU)",
+        "cllk",
+        "泰譯巴利三藏"
+      ],
+      "english": "Thai Tipitaka (MCU)",
+      "collection": "sz",
+      "kind": "text",
+      "status": "wip",
+      "size": 8068674,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "cllk-attha",
+      "adb": "cllk-attha.adb",
+      "dbname": "cllk-attha",
+      "title": "朱拉隆功泰譯義注（อรรถกถา）",
+      "aliases": [
+        "朱拉隆功泰譯義注（อรรถกถา）",
+        "Thai Aṭṭhakathā (MCU)",
+        "cllk-attha",
+        "朱拉隆功泰譯義注"
+      ],
+      "english": "Thai Aṭṭhakathā (MCU)",
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 14844822,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "cs",
+      "adb": "cs.adb",
+      "dbname": "cs",
+      "title": "巴利三藏（VRI／CST4）",
+      "aliases": [
+        "巴利三藏（VRI／CST4）",
+        "Pali Tipitaka (VRI)",
+        "cs",
+        "巴利三藏"
+      ],
+      "english": "Pali Tipitaka (VRI)",
+      "collection": "sz",
+      "kind": "text",
+      "status": "wip",
+      "size": 124965051,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "cs-lex",
+      "adb": "cs-lex.adb",
+      "dbname": "cs-lex",
+      "title": "巴利三藏（VRI／CST4，DN 測試）",
+      "aliases": [
+        "巴利三藏（VRI／CST4，DN 測試）",
+        "Pali Tipitaka (DN test)",
+        "cs-lex",
+        "巴利三藏"
+      ],
+      "english": "Pali Tipitaka (DN test)",
+      "collection": "sz",
+      "kind": "reference",
+      "status": "wip",
+      "size": 2826760,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "cs-mm",
+      "adb": "cs-mm.adb",
+      "dbname": "cs-mm",
+      "title": "緬譯巴利藏",
+      "aliases": [
+        "緬譯巴利藏",
+        "Tipitaka Myanmar",
+        "cs-mm"
+      ],
+      "english": "Tipitaka Myanmar",
+      "collection": "sz",
+      "kind": "text",
+      "status": "wip",
+      "size": 8393846,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "cs-split",
+      "adb": "cs-split.adb",
+      "dbname": "cs-split",
+      "title": "巴利三藏（VRI／CST4，拆詞實驗）",
+      "aliases": [
+        "巴利三藏（VRI／CST4，拆詞實驗）",
+        "Pali Tipitaka (VRI, word-split experiment)",
+        "cs-split",
+        "巴利三藏"
+      ],
+      "english": "Pali Tipitaka (VRI, word-split experiment)",
+      "collection": "sz",
+      "kind": "text",
+      "status": "wip",
+      "size": 1174120,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "cyd",
+      "adb": "cyd.adb",
+      "dbname": "cyd.xml",
+      "title": "成語典",
+      "aliases": [
+        "成語典",
+        "Chinese Idioms Dictionary",
+        "cyd"
+      ],
+      "english": "Chinese Idioms Dictionary",
+      "collection": "accelon3",
+      "kind": "dict",
+      "status": "ready",
+      "size": 13633031,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "en",
+      "adb": "en.adb",
+      "dbname": "en",
+      "title": "吠陀與奧義書（英譯）",
+      "aliases": [
+        "吠陀與奧義書（英譯）",
+        "Veda ＆ Upaniṣad — English translation",
+        "en",
+        "吠陀與奧義書"
+      ],
+      "english": "Veda ＆ Upaniṣad — English translation",
+      "collection": "accelon3",
+      "kind": "guide",
+      "status": "ready",
+      "size": 387037,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "fgdict",
+      "adb": "fgdict.adb",
+      "dbname": "fgdict.xml",
+      "title": "佛光大辭典",
+      "aliases": [
+        "佛光大辭典",
+        "Foguang Buddhist Dictionary",
+        "fgdict"
+      ],
+      "english": "Foguang Buddhist Dictionary",
+      "collection": "accelon3",
+      "kind": "dict",
+      "status": "retired",
+      "size": 19121862,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "fuyan",
+      "adb": "fuyan.adb",
+      "dbname": "fuyan.xml",
+      "title": "福嚴講義",
+      "aliases": [
+        "福嚴講義",
+        "fuyan"
+      ],
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 13275158,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "fuyan-反鏈版",
+      "adb": "fuyan-反鏈版.adb",
+      "dbname": "fuyan.xml",
+      "title": "福嚴佛學院講義",
+      "aliases": [
+        "福嚴佛學院講義",
+        "fuyan",
+        "fuyan-反鏈版"
+      ],
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 2246003,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "gjhy",
+      "adb": "gjhy.adb",
+      "dbname": "gjhy00.xml",
+      "title": "古今汉语词典",
+      "aliases": [
+        "古今汉语词典",
+        "gjhy00",
+        "gjhy",
+        "古今漢語詞典"
+      ],
+      "collection": "accelon3",
+      "kind": "dict",
+      "status": "ready",
+      "size": 18935657,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "goryeo",
+      "adb": "goryeo.adb",
+      "dbname": "goryeo.xml",
+      "title": "高麗大藏經",
+      "aliases": [
+        "高麗大藏經",
+        "Goryeo Tripitaka",
+        "goryeo",
+        "高麗藏"
+      ],
+      "english": "Goryeo Tripitaka",
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 152864921,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "goryeo_taisho",
+      "adb": "goryeo_taisho.adb",
+      "dbname": "goryeo_taisho.xml",
+      "title": "高麗⇄大正",
+      "aliases": [
+        "高麗⇄大正",
+        "Goryeo ⇄ Taisho",
+        "goryeo_taisho"
+      ],
+      "english": "Goryeo ⇄ Taisho",
+      "collection": "accelon3",
+      "kind": "reference",
+      "status": "ready",
+      "size": 2304141,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "gycd",
+      "adb": "gycd.adb",
+      "title": "重編國語辭典修訂本",
+      "aliases": [
+        "重編國語辭典修訂本",
+        "Revised Chinese Dictionary",
+        "gycd"
+      ],
+      "english": "Revised Chinese Dictionary",
+      "collection": "accelon3",
+      "kind": "dict",
+      "status": "ready",
+      "size": 55555150,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "hanyu",
+      "adb": "hanyu.adb",
+      "dbname": "hanyu.xml",
+      "title": "漢語大詞典",
+      "aliases": [
+        "漢語大詞典",
+        "hanyu"
+      ],
+      "collection": "accelon3",
+      "kind": "dict",
+      "status": "ready",
+      "size": 158831871,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "hanyu3",
+      "adb": "hanyu3.adb",
+      "title": "漢語大詞典v3",
+      "aliases": [
+        "漢語大詞典v3",
+        "hanyu3"
+      ],
+      "collection": "accelon3",
+      "kind": "dict",
+      "status": "ready",
+      "size": 164160318,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "hanyudazidian",
+      "adb": "hanyudazidian.adb",
+      "dbname": "hanyudazidian.xml",
+      "title": "漢語大字典",
+      "aliases": [
+        "漢語大字典",
+        "hanyudazidian"
+      ],
+      "collection": "accelon3",
+      "kind": "dict",
+      "status": "ready",
+      "size": 11829385,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "hcy",
+      "adb": "hcy.adb",
+      "dbname": "hcy00.xml",
+      "title": "汉语成语源流大辞典",
+      "aliases": [
+        "汉语成语源流大辞典",
+        "hcy00",
+        "hcy",
+        "成語源流大辭典"
+      ],
+      "collection": "accelon3",
+      "kind": "dict",
+      "status": "ready",
+      "size": 26334376,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "hydzd",
+      "adb": "hydzd.adb",
+      "title": "漢語大字典",
+      "aliases": [
+        "漢語大字典",
+        "Grand Chinese Dictionary",
+        "hydzd"
+      ],
+      "english": "Grand Chinese Dictionary",
+      "collection": "accelon3",
+      "kind": "dict",
+      "status": "ready",
+      "size": 35909141,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "hz",
+      "adb": "hz.adb",
+      "dbname": "hz",
+      "title": "巴利佛典譯叢（杭州佛學院）",
+      "aliases": [
+        "巴利佛典譯叢（杭州佛學院）",
+        "Pali Text in Mandarin",
+        "hz",
+        "巴利佛典譯叢"
+      ],
+      "english": "Pali Text in Mandarin",
+      "collection": "sz",
+      "kind": "text",
+      "status": "wip",
+      "size": 2903207,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "jc",
+      "adb": "jc.adb",
+      "title": "中醫笈成",
+      "aliases": [
+        "中醫笈成",
+        "jc"
+      ],
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 353928959,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "kangxi",
+      "adb": "kangxi.adb",
+      "title": "康熙字典",
+      "aliases": [
+        "康熙字典",
+        "The Kangxi Dictionary",
+        "kangxi"
+      ],
+      "english": "The Kangxi Dictionary",
+      "collection": "accelon3",
+      "kind": "dict",
+      "status": "ready",
+      "size": 11766145,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "kmj",
+      "adb": "kmj.adb",
+      "dbname": "kmj",
+      "title": "光明寺日譯",
+      "aliases": [
+        "光明寺日譯",
+        "kmj"
+      ],
+      "collection": "sz",
+      "kind": "text",
+      "status": "wip",
+      "size": 6944391,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "komyoji",
+      "adb": "komyoji.adb",
+      "dbname": "komyoji",
+      "title": "光明寺日譯",
+      "aliases": [
+        "光明寺日譯",
+        "komyoji"
+      ],
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 3453293,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "lc",
+      "adb": "lc.adb",
+      "dbname": "lc.xml",
+      "title": "呂澂佛學著作集",
+      "aliases": [
+        "呂澂佛學著作集",
+        "Corpus of Lü Cheng's Buddhist Studies",
+        "lc"
+      ],
+      "english": "Corpus of Lü Cheng's Buddhist Studies",
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 4079727,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "lex",
+      "adb": "lex.adb",
+      "dbname": "lex",
+      "title": "巴利詞解",
+      "aliases": [
+        "巴利詞解",
+        "Pali Lexicon",
+        "lex"
+      ],
+      "english": "Pali Lexicon",
+      "collection": "sz",
+      "kind": "dict",
+      "status": "wip",
+      "size": 14988945,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "manual",
+      "adb": "manual.adb",
+      "dbname": "manual.xml",
+      "title": "Accelon 操作手冊",
+      "aliases": [
+        "Accelon 操作手冊",
+        "manual"
+      ],
+      "collection": "accelon3",
+      "kind": "reference",
+      "status": "ready",
+      "size": 1453498,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "openlit",
+      "adb": "openlit.adb",
+      "title": "開放文學",
+      "aliases": [
+        "開放文學",
+        "openlit"
+      ],
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 184125681,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "ped",
+      "adb": "ped.adb",
+      "dbname": "ped",
+      "title": "PTS PED",
+      "aliases": [
+        "PTS PED",
+        "PTS Pali English Dictionary",
+        "ped"
+      ],
+      "english": "PTS Pali English Dictionary",
+      "collection": "sz",
+      "kind": "dict",
+      "status": "wip",
+      "size": 18218454,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "pku",
+      "adb": "pku.adb",
+      "dbname": "pku",
+      "title": "法勝巴利佛典",
+      "aliases": [
+        "法勝巴利佛典",
+        "pku"
+      ],
+      "collection": "sz",
+      "kind": "text",
+      "status": "wip",
+      "size": 888986,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "sa",
+      "adb": "sa.adb",
+      "dbname": "sa",
+      "title": "吠陀與奧義書（梵語原文 IAST）",
+      "aliases": [
+        "吠陀與奧義書（梵語原文 IAST）",
+        "Veda ＆ Upaniṣad — Sanskrit (IAST)",
+        "sa",
+        "吠陀與奧義書"
+      ],
+      "english": "Veda ＆ Upaniṣad — Sanskrit (IAST)",
+      "collection": "accelon3",
+      "kind": "guide",
+      "status": "ready",
+      "size": 319963,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "sc",
+      "adb": "sc.adb",
+      "dbname": "sc",
+      "title": "巴利三藏（SuttaCentral）",
+      "aliases": [
+        "巴利三藏（SuttaCentral）",
+        "Pali Tipitaka (SuttaCentral)",
+        "sc",
+        "巴利三藏"
+      ],
+      "english": "Pali Tipitaka (SuttaCentral)",
+      "collection": "sz",
+      "kind": "text",
+      "status": "wip",
+      "size": 6090107,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "swjz",
+      "adb": "swjz.adb",
+      "dbname": "swjz.xml",
+      "title": "說文解字注",
+      "aliases": [
+        "說文解字注",
+        "swjz"
+      ],
+      "collection": "accelon3",
+      "kind": "dict",
+      "status": "ready",
+      "size": 5443674,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "swjzz",
+      "adb": "swjzz.adb",
+      "dbname": "swjz.xml",
+      "title": "說文解字注",
+      "aliases": [
+        "說文解字注",
+        "swjz",
+        "swjzz"
+      ],
+      "collection": "accelon3",
+      "kind": "dict",
+      "status": "ready",
+      "size": 20435719,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "swjzzp",
+      "adb": "swjzzp.adb",
+      "dbname": "swjz.xml",
+      "title": "說文解字注",
+      "aliases": [
+        "說文解字注",
+        "swjz",
+        "swjzzp"
+      ],
+      "collection": "accelon3",
+      "kind": "dict",
+      "status": "ready",
+      "size": 5407295,
+      "pageScheme": "entry-name",
+      "entryTag": "詞"
+    },
+    {
+      "id": "swjzzsrc",
+      "adb": "swjzzsrc.adb",
+      "dbname": "swjzzsrc",
+      "title": "說文解字注引用書目",
+      "aliases": [
+        "說文解字注引用書目",
+        "swjzzsrc"
+      ],
+      "collection": "accelon3",
+      "kind": "reference",
+      "status": "ready",
+      "size": 3409624,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "taisho",
+      "adb": "taisho.adb",
+      "dbname": "taisho.xml",
+      "title": "大正新脩大藏經",
+      "aliases": [
+        "大正新脩大藏經",
+        "Taisho Tripitaka",
+        "taisho",
+        "大正藏"
+      ],
+      "english": "Taisho Tripitaka",
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 329957672,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "taisho-study",
+      "adb": "taisho-study.adb",
+      "dbname": "study.xml",
+      "title": "大正藏研究",
+      "aliases": [
+        "大正藏研究",
+        "Taisho Study",
+        "study",
+        "taisho-study"
+      ],
+      "english": "Taisho Study",
+      "collection": "accelon3",
+      "kind": "reference",
+      "status": "ready",
+      "size": 1226874,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "taixu",
+      "adb": "taixu.adb",
+      "dbname": "taixu.xml",
+      "title": "太虛大師全書",
+      "aliases": [
+        "太虛大師全書",
+        "Master Taixu Corpus",
+        "taixu"
+      ],
+      "english": "Master Taixu Corpus",
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 20475406,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "tx",
+      "adb": "tx.adb",
+      "dbname": "taixu.xml",
+      "title": "太虛大師全書",
+      "aliases": [
+        "太虛大師全書",
+        "Master Taixu Corpus",
+        "taixu",
+        "tx"
+      ],
+      "english": "Master Taixu Corpus",
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 21684309,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "veda",
+      "adb": "veda.adb",
+      "dbname": "veda",
+      "title": "吠陀與奧義書（梵／英／漢三區平行）",
+      "aliases": [
+        "吠陀與奧義書（梵／英／漢三區平行）",
+        "Veda ＆ Upaniṣad — Sanskrit / English / Chinese, address-aligned",
+        "veda",
+        "吠陀與奧義書",
+        "吠陀",
+        "奧義書"
+      ],
+      "english": "Veda ＆ Upaniṣad — Sanskrit / English / Chinese, address-aligned",
+      "collection": "accelon3",
+      "kind": "guide",
+      "status": "ready",
+      "size": 968773,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "vedic",
+      "adb": "vedic.adb",
+      "dbname": "veda",
+      "title": "吠陀與奧義書（梵／英／漢三區平行）",
+      "aliases": [
+        "吠陀與奧義書（梵／英／漢三區平行）",
+        "Veda ＆ Upaniṣad — Sanskrit / English / Chinese, address-aligned",
+        "veda",
+        "vedic",
+        "吠陀與奧義書"
+      ],
+      "english": "Veda ＆ Upaniṣad — Sanskrit / English / Chinese, address-aligned",
+      "collection": "sz",
+      "kind": "guide",
+      "status": "wip",
+      "size": 1746111,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "wxzj",
+      "adb": "wxzj.adb",
+      "dbname": "wxzj.xml",
+      "title": "卍新纂續藏經",
+      "aliases": [
+        "卍新纂續藏經",
+        "Wanzi Xuzangjing",
+        "wxzj",
+        "卍續藏",
+        "續藏經"
+      ],
+      "english": "Wanzi Xuzangjing",
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 245818762,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "xsq",
+      "adb": "xsq.adb",
+      "dbname": "xsq",
+      "title": "蕭式球譯四部尼柯耶",
+      "aliases": [
+        "蕭式球譯四部尼柯耶",
+        "xsq"
+      ],
+      "collection": "sz",
+      "kind": "text",
+      "status": "wip",
+      "size": 5626014,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "yh",
+      "adb": "yh.adb",
+      "dbname": "yh",
+      "title": "元亨南傳大藏經",
+      "aliases": [
+        "元亨南傳大藏經",
+        "yh"
+      ],
+      "collection": "sz",
+      "kind": "text",
+      "status": "wip",
+      "size": 6042552,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "yinshun",
+      "adb": "yinshun.adb",
+      "dbname": "yinshun.xml",
+      "title": "印順法師佛學著作集",
+      "aliases": [
+        "印順法師佛學著作集",
+        "Master Yinshun Corpus of Buddhist Studies",
+        "yinshun",
+        "印順",
+        "印順法師"
+      ],
+      "english": "Master Yinshun Corpus of Buddhist Studies",
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 24910598,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "yoga_cb",
+      "adb": "yoga_cb.adb",
+      "dbname": "yoga_cb.xml",
+      "title": "瑜伽師地論．常柏法師講錄",
+      "aliases": [
+        "瑜伽師地論．常柏法師講錄",
+        "yoga_cb"
+      ],
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 114338,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "ys",
+      "adb": "ys.adb",
+      "dbname": "ys.xml",
+      "title": "印順法師佛學著作集",
+      "aliases": [
+        "印順法師佛學著作集",
+        "Master Yinshun Corpus of Buddhist Studies",
+        "ys",
+        "印順",
+        "印順法師"
+      ],
+      "english": "Master Yinshun Corpus of Buddhist Studies",
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 31163498,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "yulinpo",
+      "adb": "yulinpo.adb",
+      "dbname": "9999.xml",
+      "title": "于淩波居士論著",
+      "aliases": [
+        "于淩波居士論著",
+        "9999",
+        "yulinpo",
+        "于淩波",
+        "于凌波"
+      ],
+      "collection": "accelon3",
+      "kind": "text",
+      "status": "ready",
+      "size": 12436881,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "zh",
+      "adb": "zh.adb",
+      "dbname": "zh",
+      "title": "吠陀與奧義書（漢譯 CBETA 大正藏）",
+      "aliases": [
+        "吠陀與奧義書（漢譯 CBETA 大正藏）",
+        "Veda ＆ Upaniṣad — Chinese (Taishō)",
+        "zh",
+        "吠陀與奧義書"
+      ],
+      "english": "Veda ＆ Upaniṣad — Chinese (Taishō)",
+      "collection": "accelon3",
+      "kind": "guide",
+      "status": "ready",
+      "size": 264390,
+      "pageScheme": "page-id"
+    },
+    {
+      "id": "zh2",
+      "adb": "zh2.adb",
+      "dbname": "zh2",
+      "title": "吠陀與奧義書（漢譯 黃寶生）",
+      "aliases": [
+        "吠陀與奧義書（漢譯 黃寶生）",
+        "Veda ＆ Upaniṣad — Chinese (Huang Baosheng)",
+        "zh2",
+        "吠陀與奧義書"
+      ],
+      "english": "Veda ＆ Upaniṣad — Chinese (Huang Baosheng)",
+      "collection": "sz",
+      "kind": "guide",
+      "status": "wip",
+      "size": 296239,
+      "pageScheme": "page-id"
+    }
+  ],
+  "works": [
+    {
+      "id": "erya",
+      "title": "爾雅",
+      "aliases": [
+        "爾雅"
+      ],
+      "editions": [
+        {
+          "adb": "13j",
+          "book": "爾雅",
+          "status": "ready",
+          "pageScheme": "page-id"
+        }
+      ]
+    },
+    {
+      "id": "gongyang",
+      "title": "春秋公羊傳",
+      "aliases": [
+        "春秋公羊傳",
+        "公羊傳"
+      ],
+      "editions": [
+        {
+          "adb": "13j",
+          "book": "公羊傳",
+          "status": "ready",
+          "pageScheme": "page-id"
+        }
+      ]
+    },
+    {
+      "id": "guliang",
+      "title": "春秋穀梁傳",
+      "aliases": [
+        "春秋穀梁傳",
+        "穀梁傳"
+      ],
+      "editions": [
+        {
+          "adb": "13j",
+          "book": "穀梁傳",
+          "status": "ready",
+          "pageScheme": "page-id"
+        }
+      ]
+    },
+    {
+      "id": "liji",
+      "title": "禮記",
+      "aliases": [
+        "禮記"
+      ],
+      "editions": [
+        {
+          "adb": "13j",
+          "book": "禮記",
+          "status": "ready",
+          "pageScheme": "page-id"
+        }
+      ]
+    },
+    {
+      "id": "lunyu",
+      "title": "論語",
+      "aliases": [
+        "論語"
+      ],
+      "editions": [
+        {
+          "adb": "13j",
+          "book": "論語",
+          "status": "ready",
+          "pageScheme": "page-id"
+        }
+      ]
+    },
+    {
+      "id": "mengzi",
+      "title": "孟子",
+      "aliases": [
+        "孟子"
+      ],
+      "editions": [
+        {
+          "adb": "13j",
+          "book": "孟子",
+          "status": "ready",
+          "pageScheme": "page-id"
+        }
+      ]
+    },
+    {
+      "id": "shangshu",
+      "title": "尚書",
+      "aliases": [
+        "尚書",
+        "書經"
+      ],
+      "editions": [
+        {
+          "adb": "13j",
+          "book": "尚書",
+          "status": "ready",
+          "pageScheme": "page-id"
+        }
+      ]
+    },
+    {
+      "id": "shijing",
+      "title": "詩經",
+      "aliases": [
+        "詩經",
+        "毛詩",
+        "詩"
+      ],
+      "editions": [
+        {
+          "adb": "13j",
+          "book": "毛詩",
+          "status": "ready",
+          "pageScheme": "page-id"
+        }
+      ]
+    },
+    {
+      "id": "xiaojing",
+      "title": "孝經",
+      "aliases": [
+        "孝經"
+      ],
+      "editions": [
+        {
+          "adb": "13j",
+          "book": "孝經",
+          "status": "ready",
+          "pageScheme": "page-id"
+        }
+      ]
+    },
+    {
+      "id": "yijing",
+      "title": "易",
+      "aliases": [
+        "易",
+        "周易",
+        "易經"
+      ],
+      "editions": [
+        {
+          "adb": "13j",
+          "book": "周易",
+          "status": "ready",
+          "pageScheme": "page-id"
+        }
+      ]
+    },
+    {
+      "id": "yili",
+      "title": "儀禮",
+      "aliases": [
+        "儀禮"
+      ],
+      "editions": [
+        {
+          "adb": "13j",
+          "book": "儀禮",
+          "status": "ready",
+          "pageScheme": "page-id"
+        }
+      ]
+    },
+    {
+      "id": "zhouli",
+      "title": "周禮",
+      "aliases": [
+        "周禮"
+      ],
+      "editions": [
+        {
+          "adb": "13j",
+          "book": "周禮",
+          "status": "ready",
+          "pageScheme": "page-id"
+        }
+      ]
+    },
+    {
+      "id": "zuozhuan",
+      "title": "春秋左傳",
+      "aliases": [
+        "春秋左傳",
+        "左傳"
+      ],
+      "editions": [
+        {
+          "adb": "13j",
+          "book": "左傳",
+          "status": "ready",
+          "pageScheme": "page-id"
+        }
+      ]
+    }
+  ]
+}

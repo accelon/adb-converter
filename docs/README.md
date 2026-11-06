@@ -9,7 +9,7 @@
 | 文件 | 內容 |
 |---|---|
 | [adb/adb-knowhow.md](./adb/adb-knowhow.md) | **共用 know-how**：容器、VA、漢字位置、缺字／字型、`glossary`／`<术>`、`<聯 j>`、建置六步、檢查表、已知問題 |
-| [adb/adb-version-log.md](./adb/adb-version-log.md) | **版本紀錄（canonical）**：各 adb 每次建置的日期／sha／大小／工作區／說明；adb 工作區建置後要加一列 |
+| [adb/adb-version-log.md](./adb/adb-version-log.md) | **版本紀錄（彙整版）**：各 adb 每次建置的日期／sha／大小／工作區／說明。各 adb 工作區自己維護 `version-log.md`，本頁在發佈前由本區彙整（`bun run tools/version-log-status.ts` 看還缺哪幾列） |
 | [adb/new-adb-workspace.md](./adb/new-adb-workspace.md) | 開新 adb 工作區（**已移到 agent-norms**）：canonical 是 `D:\2026\agent-norms\new-adb-workspace.md`，模板 `new-adb-AGENTS.md`；本區只留指標 |
 | [adb/stable-adb.md](./adb/stable-adb.md) | 底座／標注／功能三層、CBETA 換版流程、30 MB 與流量政策 |
 | [adb/missing-char.md](./adb/missing-char.md) | **重要**：缺字（`&CB;`／`&SD;`／`&RJ;`）與字型 |
@@ -47,7 +47,8 @@
 | [adb/table.md](./adb/table.md) | **表格**：`<表>` 語法（管線列）、框線字藝術自動轉換、`docx` 表格轉換、塗紅契約與限制 |
 | [glossary.md](./glossary.md) | `glossary` 容器格式、詞彙分頁行為、跳位置與效能 |
 | [adb/xref-j-lessons.md](./adb/xref-j-lessons.md) | `<聯 j>` 字元級反鏈的座標系、七個坑、修復順序 |
-| [adb/backlink-skill.md](./adb/backlink-skill.md) | 反鏈（誰引用這一頁）的流程 |
+| [adb/ancient-book-xref-spec.md](./adb/ancient-book-xref-spec.md) | **canonical**：50–100 本古書、catalog、分散式 `xout`、LinkBus、缺書下載引導 |
+| [adb/backlink-skill.md](./adb/backlink-skill.md) | 反鏈（誰引用這一頁）的舊中央流程（legacy） |
 | [adb/cbeta-adb-skill.md](./adb/cbeta-adb-skill.md) | CBETA TEI → adb 的六步流程與檢查表 |
 | [adb/off-to-accelon.md](./adb/off-to-accelon.md) | **`.off` → Accelon XML** 的規格：對照表（區／書／塊／段）、一行一句、註文分檔、`塊.段` 定位、驗收清單 |
 | [adb/old-adb-upgrade-skill.md](./adb/old-adb-upgrade-skill.md) | 舊 adb 升級 |

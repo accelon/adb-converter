@@ -492,6 +492,65 @@ function bindLineTip(): void {
   box.addEventListener('mouseleave', hideLineTip);
 }
 
+// `<彈 t="…">文字</彈>`：hover 超過 1 秒才顯示 t 的內容（t 不進正文）。
+let tanTipEl: HTMLElement | null = null;
+let tanTimer = 0;
+let tanTarget: HTMLElement | null = null;
+function tanTipBox(): HTMLElement {
+  if (!tanTipEl) {
+    tanTipEl = document.createElement('div');
+    tanTipEl.className = 'tanTip';
+    tanTipEl.hidden = true;
+    document.body.appendChild(tanTipEl);
+  }
+  return tanTipEl;
+}
+function hideTanTip(): void {
+  window.clearTimeout(tanTimer);
+  tanTarget = null;
+  if (tanTipEl) tanTipEl.hidden = true;
+}
+function showTanTip(el: HTMLElement): void {
+  const text = el.dataset.tip ?? '';
+  if (!text) return;
+  const box = tanTipBox();
+  box.textContent = text;
+  // 提示字級跟正文那一段一致（作者 2026-11-06：<彈> 的字太小）
+  box.style.fontSize = getComputedStyle(el).fontSize;
+  const r = el.getBoundingClientRect();
+  box.style.left = Math.min(window.innerWidth - 16, Math.max(8, r.left)) + 'px';
+  box.style.top = Math.min(window.innerHeight - 16, r.bottom + 6) + 'px';
+  box.hidden = false;
+}
+let tanBound = false;
+function bindTanTips(): void {
+  if (tanBound) return;
+  tanBound = true;
+  const box = $('#docText');
+  if (!box) return;
+  box.addEventListener('mouseover', (ev) => {
+    const el = (ev.target as Element | null)?.closest?.('.tan') as HTMLElement | null;
+    if (!el) return;
+    if (tanTarget === el) return;
+    window.clearTimeout(tanTimer);
+    if (tanTipEl) tanTipEl.hidden = true;
+    tanTarget = el;
+    tanTimer = window.setTimeout(() => {
+      if (tanTarget === el) showTanTip(el);
+    }, 1000);
+  });
+  box.addEventListener('mouseout', (ev) => {
+    const el = (ev.target as Element | null)?.closest?.('.tan') as HTMLElement | null;
+    if (!el) return;
+    const to = ev.relatedTarget as Node | null;
+    if (to && el.contains(to)) return;
+    if (tanTarget === el) hideTanTip();
+  });
+  box.addEventListener('mouseleave', hideTanTip);
+  window.addEventListener('scroll', hideTanTip, true);
+  window.addEventListener('accelon26:rerender', hideTanTip);
+}
+
 /**
  * 滾到某一行（腳注連動用，作者 2026-10-26）：不塗紅、不釘選。
  * 行號不屬於目前分頁的 `<檔>` 時，用**行號**找那個檔（不能拿 lineStartOf 的 VA 去
@@ -1214,14 +1273,14 @@ function renderBlocks(blocks: RenderBlock[], s: DocSession): string {
     if (block.kind === 'pre') {
       return '<div class="figText">' + block.lines.map((l) => {
         const cls = 'docLine' + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
-        return '<div class="' + cls + '" id="L' + l.no + (l.idSuffix ?? '') + '" data-src="' + escapeHtml(l.raw) + '">'
+        return '<div class="' + cls + '" id="L' + l.no + (l.idSuffix ?? '') + '" data-src="' + escapeHtml(l.raw) + '"' + (l.style ? ' style="' + escapeHtml(l.style) + '"' : '') + '>'
           + '<div class="lineText">' + l.html + '</div></div>';
       }).join('') + '</div>';
     }
     if (block.kind === 'line') {
       const l = block.lines[0];
       const cls = 'docLine' + (l.cls ? ' ' + l.cls : '') + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
-      return '<div class="' + cls + '" id="L' + l.no + (l.idSuffix ?? '') + '" data-src="' + escapeHtml(l.raw) + '">'
+      return '<div class="' + cls + '" id="L' + l.no + (l.idSuffix ?? '') + '" data-src="' + escapeHtml(l.raw) + '"' + (l.style ? ' style="' + escapeHtml(l.style) + '"' : '') + '>'
         + '<div class="lineText">' + l.html + '</div></div>';
     }
     const inner = block.lines.map((l, i) => {
@@ -1229,7 +1288,7 @@ function renderBlocks(blocks: RenderBlock[], s: DocSession): string {
       // 英文行接起來要留一個空白，中文不用（作者 2026-10：把硬換行去掉）
       const prev = i > 0 ? block.lines[i - 1].raw : '';
       const join = i > 0 && /[A-Za-z0-9]$/.test(prev) && /^[A-Za-z0-9]/.test(l.raw) ? ' ' : '';
-      return join + '<span class="' + cls + '" id="L' + l.no + (l.idSuffix ?? '') + '" data-src="' + escapeHtml(l.raw) + '">'
+      return join + '<span class="' + cls + '" id="L' + l.no + (l.idSuffix ?? '') + '" data-src="' + escapeHtml(l.raw) + '"' + (l.style ? ' style="' + escapeHtml(l.style) + '"' : '') + '>'
         + '<span class="lineText">' + l.html + '</span></span>';
     }).join('');
     const tag = block.kind === 'heading' ? 'div' : 'p';
@@ -1990,6 +2049,7 @@ function renderDoc(s: DocSession): void {
   clearCharBand();          // 重畫就沒有那條字元色帶了（Range 指向舊節點）
   bindInlineImageZoom();
   bindLineTip();
+  bindTanTips();
   if (s.editing && !isReadOnlyEdit(s) && !editAllowed()) s.editing = false;
   setEditControls(s);
   if (s.editing) { renderEditPage(s, dt); return; }

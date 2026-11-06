@@ -3299,3 +3299,159 @@ UTF-16 offset。`<頁 id="…">` 到下一個 `<頁>` 之間，去掉標籤後�
   不用 `info`（`setStatus('info')` 會把狀態列隱藏）。
 - 驗收（fuyan）：匯出得到 JSON；用測試檔匯入後 `#bookmarkMeta` 顯示「1 個書籤」、
   `.bmRow` 1 列、狀態「已匯入 1 個書籤」，下載檔名正確。
+
+## 29.15 無 `<頁>` 詞書的引用：用 tag 當錨點（2026-11-06）
+
+作者回報 `cyd.adb`（成語典）這類詞書沒有 `<頁>`，引用複製無法定位。定案：
+
+- 詞書用 `<樹 s="$詞">`／`s="$字">` 宣告的標籤；引用錨點是 **詞條名稱**，
+  例 `cyd?一毛不拔#0-3`。`#` 後是**這一條**的第幾個漢字（0 起、起訖都含），
+  不是全庫行號，也不是頁碼。沒有名稱表或名稱含 URL 特殊字元時，才退回
+  `tag＋id`（例 `cyd?詞1#0-3`）作相容寫法。
+- `entry-anchor.ts`：
+  - `citationEntryTag()` 讀檔頭 `<樹 s="$X">`，找有 `X.id` 實例的 tag。
+  - `entryAt()`／`entryById()` 用 `tags` 容器的 VA 與 `X.id` 對到詞條；
+  - `entryByName()` 對 `caches/<tag>` 的名稱表做 **binary search lower bound**；
+    同名詞條可能不只一筆，取第一筆（引用永遠從頭找）。若 cache 不是排序的
+    （cyd 目前是條目順序），退回從頭線性找第一個，結果一樣是「第一筆」。
+  - `entryHanOffset()` 從詞條第一行 `<tag>` 之後起算漢字；
+  - `entryLineOfHan()` 把詞條內第 k 個字換回絕對行／行內字。
+- `charPosition()` 無頁時先試詞條錨點，沒有才退回 `L行號#…`。
+- `resolveCharPosition()` 先認詞條名稱（`一毛不拔`）與相容的 `詞1` tag 錨點，
+  再走頁碼；`highlightCharBand()` 用詞條內換算出的行／字塗色。
+- `$書;` 在沒有 `<書>` 的詞書（cyd）退回 `dbcname`（成語典），引用不再出現 `《》`。
+- 驗收：cyd 搜尋「一毛不拔」→ 引用 `《成語典》：「一毛不拔」(cyd?一毛不拔#0-3)`；
+  把 `cyd?一毛不拔#0-3` 貼回搜尋／跳至，色帶文字「一毛不拔」。
+  舊 `cyd?詞1#0-3` 仍可解析（向後相容）。
+
+## 29.16 閱讀時不鎖住 adb（2026-11-06）
+
+作者測試時常被其他 agent 替換 `D:\accelon3` 的 adb；Windows 的 mmap 若只用
+`os.Open`（Go 預設 share read/write、沒有 share delete），會讓 rename／替換失敗。
+
+- `wails/sys_windows.go` 的 `mmapFile()` 改成自己 `CreateFile`，share mode 加上
+  `FILE_SHARE_DELETE`；一般閱讀不再鎖住 adb。
+- 只有編輯／覆寫時才走 `OverwriteAdb()`：先 `Close` 解除 mmap，再寫同目錄暫存檔、
+  rename 蓋回（既有流程）。
+- 回歸測試 `wails/mmap_share_test.go`：mmap 期間 rename 覆蓋 adb 必須成功；
+  `go test ./...` 通過。
+- 注意：替換後目前開啟的映射仍是舊內容，閱讀器要重新開啟該 adb 才會看到新版本。
+
+## 29.17 `<例 t="…"/>` 體例分區（2026-11-06）
+
+cyd 這類詞書用 `<例 t="注音"/>`、`<例 t="釋義"/>` 當體例分區標記（正常 VA，
+不是 skip tag；`例.t` 只放 attributes，不進全文 token）。
+
+- `render_accelon3.ts`：`EXAMPLE_TAGS` 處理 `<例>`；標記行輸出
+  `<span class="liHead">注音</span>`，列 class `liHeadLine`（標籤本身帶框線）；
+  後續文字列不加 `liBody`、不加框，避免整頁都是框。顏色用 `--li-color`／`--li-bg`
+  放在標籤上。
+- 顏色：讀檔頭 `<集 scheme="…">`（viewer 開庫時 `readExampleScheme()` →
+  `setExampleScheme()`）。`scheme` 是 **`例.t` 的清單／順序**，不是 HSV 參數：
+  ```text
+  <集 scheme="注音,漢語拼音,釋義,典源,注釋,典故說明">成語典</集>
+  ```
+  色相依 `t` 在清單中的位置（HSV 由程式產生）；同一個 `t`（注音、釋義…）在不同
+  詞條用同一個顏色。清單可用逗號、`|`、`、` 或空白分隔。
+  沒有列在 scheme 的 `t` 會排在清單後面，依第一次出現的順序取色。
+- 短值可以寫 `<例 t="注音">ㄧ　ㄇㄠˊ</例>`（標籤與內容同一行）；長的、跨行的體例
+  只寫自閉合 `<例 t="典源原文"/>`，後面各行是普通內文，不要用 `</例>` 包住。
+- 測試：`bun run test/example-marker.test.ts` 12 pass（短值、自閉合、內文不加框、換色、
+  `<集 scheme>` 的標籤順序）。
+
+## 29.18 `<詞 py|zy>` 與 `<彈 t>`（2026-11-06）
+
+- `<詞 zy="注音">`：用 `ts/src/accelon26/bpmf2pinyin.ts`（自 cyd 工作區移植）即時轉拼音；
+  詞頭包成 `.dictHead`，預設比正文大（1.3em）；詞頭旁渲染 `.dictPron`，同時顯示注音與拼音。
+  只有 `py=` 時只顯示拼音。若 `zy` 裡是拼音（cyd 目前有些資料把拼音放 zy），偵測不到注音符號就只顯示拼音。
+  `.dictPron { user-select:none }`，引用／選取不會帶走注音。
+- cs 的詞譜 `<詞 b/j>` 改用 `<辭 b/j>`（作者 2026-11-06：避免和詞典 `<詞>` 詞頭混淆）；
+  renderer 的 word branch 同時接受 `詞`／`辭`，舊 cs 資料仍可讀。
+- `<_名>詞條</_名>`：渲染成 `a[data-entry-newtab]`；`link.ts` 的委派監聽用
+  `a.textContent` 當詞條，呼叫 `linkToEntry(..., true)` 另開本文分頁（不覆蓋目前分頁）。
+- `<彈 t="…">文字</彈>`：
+  - `tokenize.ts` 的 `SKIP_TAGS` 加入 `彈`（VA=0）；`t` 只存 attributes，不是正文 token。
+  - tokenizer 對 `<` 的 strong-pair 掃描改成引號感知；`render_accelon3.ts` 的
+    `findTagEnd()` 也一樣，因此 `t` 內若有 `<tag>` 不會被第一個 `>` 截斷。
+  - `index-builder.ts` 對 `例`／`彈` 的 `t` 屬性是資料，不當成「cache 這些標籤」的宣告。
+  - renderer 產生 `<span class="tan" data-tip="…">`；`doc-pane.ts` 的
+    `bindTanTips()` hover 滿 1 秒才顯示 `.tanTip`，離開／捲動即收起。`.tanTip`
+    顯示時複製該段文字的 `font-size`，和正文同字級（作者 2026-11-06）。
+- 測試：`bun run test/dict-annotations.test.ts` 14 pass（注音轉拼音、zy/py、`彈` 文字、
+  data-tip、skip tag、`t` 內 tag 不截斷）。
+
+## 29.19 精讀模式只給 `<集 g>`（2026-11-06）
+
+作者定案：精讀模式（🙏／F4）是 vedic 群專用；只有檔頭 `<集 g="…">`
+（`集.g`）存在才可以進入，其他庫不要顯示、也不要按 F4 進入。
+
+- `reading-pane.ts`：`readingGroupInHeader()` 只掃第一個 `<檔>`（第一個 `</檔>` 之前）；
+  `setReadingAvailable()` 控制 🙏 顯示，`toggleReadingMode()`／F4 都先檢查。
+- `accelon26.template.html` 的 `#readingBtn` 預設 `hidden`，開庫時由
+  `viewer.ts` 讀檔頭後決定是否顯示。
+- 測試：`bun run test/reading-gate.test.ts` 4 pass（有 g／無 g／正文的 g 不算）。
+
+## 29.20 Tag refactor：word-spec／link-spec（2026-11-06）
+
+把 `<詞>`／`<_詞>`／`<辭>`／`<_辭>` 與 `<_名>`／`<聯>` 從 renderer 的巨大分支拆成兩層：
+
+- `ts/src/accelon26/word-spec.ts`：只判斷 word model。
+  - `<詞>` 正常 VA；詞典模式沒有 b/j/w 才是 `.dictHead`。
+  - `<_詞>` 零 VA，不是詞頭。
+  - `<辭>` 正常 VA；cs 詞譜，有 b/j/w 才是 `.word`。
+  - `<_辭>` 零 VA；同樣只做詞譜。
+  - `zy`／`py` 的注音拼音也在這裡正規化；`zy` 放拼音時不標成注音。
+- `ts/src/accelon26/link-spec.ts`：只判斷 link model。
+  - `_名` → entry／`newTab:true`（目標預設是文字）。
+  - `聯 n` → entry／`newTab:false`；`newtab="1"` 可另開。
+  - `聯 i` → xref；`q`／`j` 原樣帶入；`i` 優先於 `n`。
+- renderer 統一輸出 `<a data-link="entry|xref">`；`link.ts` 處理 entry，
+  `xref.ts` 處理 xref。舊 `data-entry`／`data-xref` 仍接受一版。
+- `_名` 的 `data-newtab` 取代 `data-entry-newtab`；entry click 也吃 Ctrl/Cmd 另開。
+- `_詞` 修正：零 VA 行內詞不再被當成詞頭放大。
+- 測試：`bun run test/tag-spec.test.ts` 13 pass；`dict-annotations` 15 pass。
+
+## 29.21 打包進 app 的 book catalog（2026-11-06）
+
+作者定案：書目登錄很小，直接放進 accelon26，不必另做一個中央服務。
+
+- `ts/tools/make-book-catalog.ts`：掃 `D:\accelon3` 與 `D:\2026\sz\accelon26`
+  的 adb 檔頭，產生 `ts/src/accelon26/book-catalog.json`。
+- 每筆書：`id`（adb stem）、`adb`、`title`、`aliases`、`english`、`collection`、
+  `kind`、`status`、`size`、`entryTag`。
+- schema 2 另有 `works`：work 是書名身份（《易》＝`yijing`），`editions` 才指向
+  目前的 adb／`<書 id>`。十三經 13 個 work 已建；`13j.adb` 只是載體。
+- `book-catalog.ts`：`bookById`／`findBooks`／`resolveBook`，以及
+  `workById`／`findWorks`／`resolveWork`／`worksOfBook`。同名書會回多筆，不硬猜。
+- 打包進 viewer：`__accelon26.bookCatalog`、`workCatalog`、各 lookup function。
+- 目前 55 個 adb、13 個 works、約 15 KiB；不是 xref，也不存正文。
+- 新增書／改 work／改別名：重跑 `make-book-catalog.ts`，重建 viewer／exe。
+
+## 29.22 分散式 xref（設計定案，2026-11-06）
+
+作者定案：**不要中央 `xref.adb`**。誰連到原文，誰在自己的 adb 記錄 outgoing links；
+原文 adb 不持久保存反向連結。
+
+```text
+引用 ADB（詞典／引文）       原文 ADB（古書）
+  xout_<workId>  ──開啟時注入──▶  記憶體 reverse view
+```
+
+- 引用目標是 **work**（《易》＝`yijing`），不是 `13j` 這個 adb；adb 只是目前載體。
+- 引用 ADB：建置時把 outgoing links 按 work 分裝（`xout_<workId>`）；每筆含來源頁／
+  VA／範圍、work 內目標頁／範圍、quote、kind、confidence。
+- 原文 ADB：沒有 `xin`、沒有反鏈表；用 `worksOfBook(adbId)` 知道自己包含哪些 works，
+  只在自己的記憶體維護「目前已開啟來源」對自己的 links。
+- LinkBus：
+  - 原文先開：不載入任何引用庫，反鏈空白（只顯示「目前已開啟的引用庫」）。
+  - 引用庫後開：只讀該庫 `xout_<workId>` 這些 bucket，注入原文視圖。
+  - 引用庫先開：不載入全部 links；原文後開時，向已開啟的引用庫要自己的 work buckets。
+  - 引用庫關閉：從原文視圖移除該來源；原文關閉：整個視圖丟掉。
+- runtime 記憶體只放「已開啟來源 × 當前原文 work」的 bucket，不是全體 5M links。
+- backward links 天生是**部分集合**（只含已開啟引用庫）；UI 必須標示，不能假裝全網。
+- 舊 `xrev`／屬性掃描只作 legacy fallback；新資料用 `xout_<workId>`。
+- 好處：各 adb 獨立建置／發佈；work 可從 `13j` 搬到 `yijing.adb`，引用不變；
+  原文改版不必重建全體引用；沒有中央 xref 檔案。
+- 代價：要開引用庫才有反鏈；全域引用熱圖只能按已開啟來源統計。
+- 測試要涵蓋：原文先開／引用先開、兩個來源、關閉來源、關閉原文、只讀 target work bucket。
+

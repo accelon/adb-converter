@@ -481,7 +481,7 @@ async function buildEntryIndex(rd: AdbReader): Promise<{ names: string[]; vas: n
  * 把一個詞頭解析成 VA 並聯動本文（`<聯 n=…>` 的點擊入口）。
  * `ctxIn` 省略時用「本文目前顯示的那個分頁」那一庫（跨庫分頁才不會查錯庫）。
  */
-export async function linkToEntry(word: string, ctxIn?: DocCtx | null): Promise<boolean> {
+export async function linkToEntry(word: string, ctxIn?: DocCtx | null, newTab = false): Promise<boolean> {
   const ctx = ctxIn ?? ctxOf(docSession()) ?? activeDocCtx();
   const rd = ctx?.reader ?? null;
   if (!ctx || !rd || !word) return false;
@@ -495,7 +495,7 @@ export async function linkToEntry(word: string, ctxIn?: DocCtx | null): Promise<
     setStatus(`「${word}」不在本庫的詞頭表`, 'warn');
     return false;
   }
-  await linkTo(entryIndex.vas[at], word, 1, { mode: 'node', exact: true, ctx });
+  await linkTo(entryIndex.vas[at], word, 1, { mode: 'node', exact: true, ctx, newTab });
   return true;
 }
 
@@ -509,12 +509,15 @@ export function initEntryLinks(): void {
     'click',
     (ev) => {
       const el = ev.target as Element | null;
-      const a = el?.closest?.('a[data-entry]') as HTMLElement | null;
+      const a = el?.closest?.('a[data-link="entry"],a[data-entry],a[data-entry-newtab]') as HTMLElement | null;
       if (!a) return;
       ev.preventDefault();
       ev.stopPropagation();
-      // 點的是「本文裡」的 `<聯>`：跟著本文分頁那一庫走（跨庫分頁也不會查錯庫）
-      void linkToEntry(a.dataset.entry ?? a.getAttribute('data-entry') ?? '', ctxOf(docSession()));
+      // 點的是「本文裡」的 `<聯>`／`_名`：跟著本文分頁那一庫走（跨庫分頁也不會查錯庫）
+      const newTab = a.dataset.newtab === '1' || a.hasAttribute('data-entry-newtab')
+        || ev.ctrlKey || ev.metaKey;
+      const target = a.dataset.entry || (a.textContent ?? '').trim();
+      void linkToEntry(target, ctxOf(docSession()), newTab);
     },
     true,
   );

@@ -14,6 +14,25 @@ let view: any = null;
 let lex: Map<string, LexEntry> | null = null;
 let lexLoading: Promise<void> | null = null;
 let rubyOn = true;
+let available = false;
+
+/** 有沒有 `<集 g="…">`：只有 vedic 群准進精讀模式（作者 2026-11-06）。 */
+export function readingGroupInHeader(raw: string): boolean {
+  const tail = raw.indexOf('</檔>');
+  const head = tail >= 0 ? raw.slice(0, tail + 5) : raw;
+  return /<集(?:\s[^>]*)?\sg(?:\s*=|\s|\/?>)/.test(head);
+}
+
+export function setReadingAvailable(on: boolean): void {
+  available = !!on;
+  const btn = document.getElementById('readingBtn');
+  if (btn) btn.hidden = !available;
+  if (!available) closeReadingMode();
+}
+
+export function readingAvailable(): boolean {
+  return available;
+}
 
 export function readingModeOn(): boolean {
   return document.body.classList.contains('reading');
@@ -132,6 +151,7 @@ function toolbar(): HTMLElement {
 }
 
 export function toggleReadingMode(): void {
+  if (!available) return;
   const on = !readingModeOn();
   document.body.classList.toggle('reading', on);
   const bar = toolbar();
@@ -153,9 +173,13 @@ export function closeReadingMode(): void {
 if (typeof document !== 'undefined') {
   const start = (): void => {
     const btn = document.getElementById('readingBtn');
-    if (btn) btn.addEventListener('click', () => toggleReadingMode());
+    if (btn) {
+      btn.hidden = !available;
+      btn.addEventListener('click', () => toggleReadingMode());
+    }
     window.addEventListener('keydown', (ev) => {
       if (ev.key !== 'F4' || ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey || ev.defaultPrevented) return;
+      if (!available) return;
       ev.preventDefault();
       toggleReadingMode();
     }, true);

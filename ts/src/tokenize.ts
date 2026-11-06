@@ -177,6 +177,7 @@ const SKIP_TAGS = new Set<string>([
   '\u9023', // 連
   '\u7dad', // 維
   '\u672f', // 术（2026-11-06 作者指示：行內術語標籤不佔 VA，否則「一切法空</术>故」這種詞組會被切開）
+  '\u5f48', // 彈（2026-11-06：t 只作提示快取，標籤本身不佔 VA）
   'HL',
   'PN',
   'BOLD',
@@ -456,6 +457,25 @@ export class Tokenizer {
     if (isWestern(this.cur())) {
       const numberstart = isNumeric(this.cur());
       const alphastart = isAlpha(this.cur());
+
+      // `<…>` 的結束 `>` 可能在屬性引號內（`<彈 t="…<x>…">`）：整段 tag 要當一個
+      // literal，不能讓引號內的 `>` 提早收尾。
+      if (this.cur() === 0x3c) {
+        const start = this.ptr;
+        let quote = 0;
+        this.ptr++;
+        while (!this.atEnd) {
+          const c = this.cur();
+          if (quote) {
+            if (c === quote) quote = 0;
+          } else if (c === 0x22 || c === 0x27) {
+            quote = c;
+          }
+          this.ptr++;
+          if (!quote && c === 0x3e) break;
+        }
+        return this.data.slice(start, this.ptr);
+      }
 
       if (isStrongPair(this.cur())) {
         const pairstart = this.ptr;
