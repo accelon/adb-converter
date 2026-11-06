@@ -104,36 +104,40 @@ workId?anchor#a-b
 例：
 
 ```text
-yijing?seg:乾#a-b
-shuowen?char:w0010010#a-b
-cyd?entry:一毛不拔#0-3
+shijing?關雎#a-b
+shangshu?堯典#a-b
+shuowen?w0010010#a-b
+cyd?一毛不拔#0-3
 ```
 
 - `workId` 優先由 catalog 的 `works` 解析。
-- 舊資料可以暫時用 adb id：`13j?seg:乾`、`swjz?char:w0010010`；新引用一律用 work。
-- `anchor` 只在該 work 內唯一；不需要全 adb 唯一。
+- `anchor` 是 work 內的 canonical id；**type prefix（`seg:`／`char:`／`entry:`）可以省略**。
+- 解析順序：先用 bare anchor 查 manifest；唯一命中就用；有同 id 多 kind／多義時才要求
+  `seg:`／`char:`／`entry:` 前綴，或加最少祖先。
+- 舊資料可以暫時用 adb id：`13j?乾`、`swjz?w0010010`；新引用一律用 work。
 - `a-b` 可省略；省略表示整個 anchor。
 
 ### 3.2 anchor 類型
 
-| 類型 | 寫法 | 適用 |
-|---|---|---|
-| 語意段落 | `seg:<segmentId>` | **13j 專用**；leaf 唯一就用 leaf，撞名才加最少祖先 |
-| 字 | `char:<charId>` | 說文這種以字條為單位的書 |
-| 條目 | `entry:<headword>` | 詞典 |
-| 頁 | `page:<pageId>` | 有真正穩定頁碼的書；**13j 不用** |
-| 行 | `line:<n>` | 舊資料 fallback，不用於新連結 |
+| 類型 | bare 寫法 | 明確寫法 | 適用 |
+|---|---|---|---|
+| 語意段落 | `關雎` | `seg:關雎` | **13j 專用**；leaf 唯一就用 leaf，撞名才加最少祖先 |
+| 字 | `w0010010` | `char:w0010010` | 說文這種以字條為單位的書 |
+| 條目 | `一毛不拔` | `entry:一毛不拔` | 詞典 |
+| 頁 | `1` | `page:1` | 有真正穩定頁碼的書；**13j 不用** |
+| 行 | `L123` | `line:123` | 舊資料 fallback，不用於新連結 |
 
 ### 3.3 重要限制
 
 - work 必須能映射到 edition（adb＋adb 內 book）。
-- 同一個 work 的多個 edition 可以共用 anchor；例如 swjz／swjzz 的 `char:w0010010`。
+- 同一個 work 的多個 edition 可以共用 anchor；例如 swjz／swjzz 的 `w0010010`。
 - **13j 不能用 page**：`<頁 n="1">` 在十三本書重複，且頁不是引用單位；用語意段落。
-- `seg:` 的 id 在 work 內唯一即可，**不強制完整路徑**：
-  - `關雎` 是唯一篇名 → `shijing?seg:關雎`。
-  - `經元年` 在左傳不同公之下重複 → `zuozhuan?seg:隱公/經元年`。
+- `seg` 的 id 在 work 內唯一即可，**不強制完整路徑**：
+  - `關雎` 是唯一篇名 → `shijing?關雎`。
+  - `經元年` 在左傳不同公之下重複 → `zuozhuan?隱公/經元年`。
+- bare anchor 與 typed anchor 指向同一位置；type prefix 只是 disambiguation，不是必要裝飾。
 - 祖先只用來 disambiguate；不要為了漂亮而把每個 anchor 都寫成 full path。
-- swjz／swjzz 用 `char:`，不用頁或行。
+- swjz／swjzz 用 bare 字 id 或 `char:`，不用頁或行。
 
 ---
 
@@ -251,33 +255,34 @@ leaf 唯一時就用 leaf：
 ```
 
 ```text
-yijing?seg:乾#a-b
-shangshu?seg:堯典#a-b
-shijing?seg:關雎#a-b
-zuozhuan?seg:隱公/經元年#a-b    # 只因「經元年」重複才加祖先
+yijing?乾#a-b
+shangshu?堯典#a-b
+shijing?關雎#a-b
+zuozhuan?隱公/經元年#a-b    # 只因「經元年」重複才加祖先
 ```
 
 - `id` 只在該 work 內唯一；顯示文字可以照舊，不必等於 id。
 - leaf id 唯一 → 用 leaf；leaf 撞名 → 加最少一層祖先；不要全部強制 full path。
+- 對外 URL 用 bare anchor；`seg:` 只在同一個 work 有同名不同 kind 時才需要。
 - `/` 只是 disambiguation 分隔符，不是固定語法層級。
 - `<頁>`／`<頁元>` 不再是 xref target；只作閱讀顯示。
 - catalog 的 edition 只指 adb／book，不指 page。
 - manifest 同時存 canonical `segmentId`、display label、parent；引用時可用
-  `關雎`／`周南·關雎` 等 aliases 找回 `seg:關雎`。
+  `關雎`／`周南·關雎` 等 aliases 找回 canonical id `關雎`。
 
 ### 5.4 引用例
 
 ```xml
-<聯 i="yijing?seg:乾#0-4" q="天行健，君子以自強不息">天行健</聯>
+<聯 i="yijing?乾#0-4" q="天行健，君子以自強不息">天行健</聯>
 ```
 
-xout：
+xout（內部保留 kind，避免 runtime 歧義）：
 
 ```json
 ["entry:一毛不拔", 12345, 0, 3, "seg:乾", 0, 4, "天行健，君子以自強不息", "quote", 92]
 ```
 
-container：`xout_yijing`。
+container：`xout_yijing`。對外顯示時可把 `seg:` 去掉，變成 `yijing?乾#0-4`。
 
 ### 5.5 要 agent 回答
 
@@ -392,18 +397,20 @@ Prebuild 可以離線跑，但**不能接受模糊定位**。只有通過以下 
 或由建置工具輸出）：
 
 ```text
-anchorId, kind, parentBook, ancestorPath, physicalVa, textHash
+anchorId, kind, parentBook, label, textHash
 ```
 
 例：
 
 ```text
-yijing   seg:乾          書=周易   label=乾
-shangshu seg:堯典        書=尚書   label=堯典
-zuozhuan seg:隱公/經元年  書=左傳   label=經元年
-shuowen  char:w0010010   book=—   va=...
+yijing   乾              seg   書=周易   label=乾
+shangshu 堯典            seg   書=尚書   label=堯典
+zuozhuan 隱公/經元年      seg   書=左傳   label=經元年
+shuowen  w0010010        char  book=—   va=...
 ```
 
+- `anchorId` 是 bare canonical id；`kind` 另外存，不把 `seg:` 寫進 id。
+- 對外 URL 用 `work?anchorId`；內部 xout 可存 `seg:<id>` 以免 runtime 歧義。
 - `anchorId` 在 work 內唯一；manifest 有重複就直接 fail。
 - `a-b` 是相對 anchor 文字的漢字序，不是 adb 全頁 offset。
 - 原文改版後 anchorId 不變；變的是 `textHash`。

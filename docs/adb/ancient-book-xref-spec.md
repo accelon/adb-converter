@@ -157,15 +157,19 @@ workId?anchor#a-b
   <項 id="關雎">關雎</項>
 ```
 
-anchor 用 canonical segment id；leaf 唯一時直接用 leaf：
+anchor 用 canonical segment id；leaf 唯一時直接用 leaf。對外 URL 可以省略 type prefix：
 
 ```text
-shangshu?seg:堯典#a-b
-shijing?seg:關雎#a-b
-yijing?seg:乾#a-b
-zuozhuan?seg:隱公/經元年#a-b   # 只因「經元年」重複才加祖先
+shangshu?堯典#a-b
+shijing?關雎#a-b
+yijing?乾#a-b
+zuozhuan?隱公/經元年#a-b   # 只因「經元年」重複才加祖先
 ```
 
+- bare anchor 先用 manifest 查；唯一命中就用；同 id 多 kind／多義時才寫
+  `seg:關雎`／`char:w0010010`／`entry:一毛不拔` 或加最少祖先。
+- `seg:`／`char:`／`entry:` 是 disambiguation prefix，不是必要裝飾；內部 xout
+  可保留 typed 字串，對外顯示可去掉。
 - leaf id 在該 work 內唯一 → 用 leaf；撞名才加最少一層祖先；不要全部強制 full path。
 - `/` 只是 disambiguation 分隔符，不是固定語意層級。
 - `<章>`／`<節>`／`<項>` 的顯示文字不是 id；要另給穩定 `id`。
