@@ -33,6 +33,10 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
   `accelon26.exe` 都在那個資料夾；`build/` 只放建置中間檔與可重建的輸出。
   桌面版開機用 `ListAdbs` 列出工作目錄與 exe 所在資料夾的 `*.adb`，放在別處它找不到。
   網頁版（file://）不能掃資料夾，使用者在 `accelon26.html` 要自己選檔。
+- **官網 adb 只從 `D:\accelon3` 上傳**（作者 2026-11-06）：測好的 adb 都放這裡，
+  `deploy.ts`／`publish-adb.ts` 也以這裡為來源；不要從 adb 工作區的 `out/`／`build/`
+  直接上傳。`D:\2026\sz\accelon26` 的 sz 系列**尚未正式上網**，不要放進
+  `www/adb/index.txt`／manifest，也不要上傳。
 - **例外：sz 與其巴利譯本的 adb 一律放 `D:\2026\sz\accelon26`，不放 `D:\accelon3`**
   （作者 2026-11-03）：`cs`、`cs-mm`、`cllk`、`ccc`、`yh`、`hz`、`pku`、`xsq`、`sc`、`kmj`、
   `lex`，以及 veda 群的 `veda`／`sa`／`en`／`zh`。這些庫還在密集重建，放同一區才不會

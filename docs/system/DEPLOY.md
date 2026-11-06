@@ -106,6 +106,10 @@ CI 會建 arm64／x86_64 兩個 zip 並附到 Release，之後
 
 - adb 工作區把新的 `*.adb` 放進 `D:\accelon3`，並在 `deploy/adb-notes.json`（或回報）
   給這一版 `sha256` 的說明；`docs/adb/adb-version-log.md` 由該工作區加一列。
+- **上傳來源只有 `D:\accelon3`**：測好的 adb 都放這裡，`deploy.ts`／`publish-adb.ts`
+  從這裡取；不要從 adb 工作區的 `out/`／`build/` 直接上傳。
+  `D:\2026\sz\accelon26` 的 sz 系列**尚未正式上網**，不要放進 `www/adb/index.txt`／
+  manifest，也不要上傳。
 - 本區跑 `deploy.ts --site` 時會一起重生 `manifest`、公開數據庫頁，並上傳這一輪
   有更新的 adb（大檔依既有 `--allow-large` 規則）。
 - 若只是程式 RC、這輪 adb 沒變，才用 `deploy.ts --site --no-adb`。
