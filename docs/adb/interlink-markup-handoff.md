@@ -342,7 +342,65 @@ container：`xout_shuowen`。
 
 ---
 
-## 7. 雙向鏈結的行為
+## 7. Prebuild xout 的穩定定位 gate
+
+Prebuild 可以離線跑，但**不能接受模糊定位**。只有通過以下 gate 的 link 才可寫入 xout。
+
+### 7.1 Target anchor manifest
+
+每個 target edition 建置時要產生一份 anchor manifest（可放 adb 的 `anchors` 容器，
+或由建置工具輸出）：
+
+```text
+anchorId, kind, parentBook, physicalVa/page, textHash
+```
+
+例：
+
+```text
+yijing  page:1   書=周易  page=1  textHash=...
+shuowen char:w0010010  book=—  va=...  textHash=...
+```
+
+- `anchorId` 在 work 內唯一；manifest 有重複就直接 fail。
+- `a-b` 是相對 anchor 文字的漢字序，不是 adb 全頁 offset。
+- 原文改版後 anchorId 不變；變的是 `textHash`。
+
+### 7.2 xout 記錄要帶穩定資訊
+
+```json
+["XOUT1","yijing",2,"targetManifestHash","targetEdition"]
+...
+["entry:一毛不拔",12345,0,3,"page:1",0,4,"天行健...","quote",92,"targetTextHash"]
+```
+
+最低要求：
+
+- `targetAnchor` 只能是 manifest 裡存在的 id。
+- `targetA/B` 必須落在該 anchor 的文字範圍內。
+- `targetTextHash` 對應 anchor 的 normalized text；不吻合就標 stale。
+- header 的 `targetEdition`／`manifestHash` 讓 runtime 知道這批 xout 是對哪一版算的。
+
+### 7.3 Prebuild 驗收
+
+- [ ] `yijing?page:1` 與 `shangshu?page:1` 各自存在且唯一。
+- [ ] 13j 的 `<頁元>` 不當成 `page:` anchor（它是書標記，不是內頁）。
+- [ ] 每個 13j work 的 page id 在該 work 內唯一。
+- [ ] swjz／swjzz／swjzzp 的 10,706 個 `char:` id 全部存在，交集 10,706。
+- [ ] 每個 accepted link 的 quote 能在 target anchor 內精確或容許異體地對上。
+- [ ] dead／ambiguous 不寫入 xout，只進 report；超過門檻 fail。
+- [ ] 沒有 manifest 的 target（未建置／版本不符）不得 prebuild 成正式 xout。
+
+### 7.4 為什麼不直接用 page/VA
+
+- 13j 的 `<頁 n="1">` 在十三本書重複；`13j?page:1` 有歧義。
+- swjz／swjzz 沒有 `<頁>`；只能用 `<字 id>`。
+- VA 會隨版本／切分變動，不能當永久 anchor。
+- 所以 target 必須是 `work + anchorId`；page／char 只是 anchor 的種類。
+
+---
+
+## 8. 雙向鏈結的行為
 
 ### 7.1 正向
 
@@ -366,7 +424,7 @@ container：`xout_shuowen`。
 
 ---
 
-## 8. 缺書時的下載引導
+## 9. 缺書時的下載引導
 
 引用庫點到 work，但本機沒有承載它的 adb：
 
@@ -379,7 +437,7 @@ container：`xout_shuowen`。
 
 ---
 
-## 9. 要 agent 推導與回報的內容
+## 10. 要 agent 推導與回報的內容
 
 請不要只回「照做」。用上面實例回答：
 
@@ -422,7 +480,7 @@ container：`xout_shuowen`。
 
 ---
 
-## 10. 驗收清單
+## 11. 驗收清單
 
 - [ ] `yijing?page:1` 與 `shangshu?page:1` 各自定位到正確的書。
 - [ ] `13j` 的 950 個 `<頁>` 都有可解析的 work 所屬。
@@ -436,7 +494,7 @@ container：`xout_shuowen`。
 
 ---
 
-## 11. 参考檔案
+## 12. 参考檔案
 
 - `docs/adb/ancient-book-xref-spec.md`：canonical 分散式 xref 規範
 - `docs/adb/han-position.md`：漢字位置與 `j`／off
@@ -445,3 +503,4 @@ container：`xout_shuowen`。
 - `ts/src/accelon26/link-spec.ts`、`word-spec.ts`：tag 語義
 - `ts/src/accelon26/xref.ts`：現有 xref 點擊與 legacy
 - 實際資料：`D:\accelon3\13j.adb`、`swjz.adb`、`swjzz.adb`、`swjzzp.adb`
+

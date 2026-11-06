@@ -168,6 +168,21 @@ work `yijing` 的 `page:1` 和 work `shangshu` 的 `page:1` 是不同位置，�
 - work id／book id／page id 不可重排；必須改就新增 edition。
 - 舊引用可能失效；LinkBus 點擊時驗證 anchor，失效就警告，不亂跳。
 
+### 4.4 Anchor manifest 與 prebuild gate
+
+Prebuild xout 只能寫「manifest 證明存在」的 anchor：
+
+```text
+anchorId, kind, parentBook, va/page, textHash
+```
+
+- anchorId 在 work 內唯一；重複 fail。
+- `a-b` 相對 anchor 文字，不是 adb 全域 offset。
+- xout record 要帶 targetTextHash；header 帶 targetEdition／manifestHash。
+- 沒有 target manifest、版本不符、hash 不符：不要寫正式 xout；進 unresolved／stale。
+- 13j 的 `<頁元>` 不是內頁 anchor；`page:` 只指 `<頁>`。
+- swjz／swjzz／swjzzp 的 `char:w…` 以三者共有的 10,706 個 id 為準。
+
 ---
 
 ## 5. 引用 ADB 的要求
