@@ -1416,6 +1416,11 @@
   .bmText { color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bmDel { flex: 0 0 auto; background: transparent; color: var(--dim); border: 0; font-size: 12px; padding: 0 7px; cursor: pointer; }
   .bmDel:hover { color: var(--err, #e06c75); }
+  #bookmarkMeta { display: flex; align-items: center; gap: 8px; }
+  .bmMetaText { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bmTools { flex: 0 0 auto; display: flex; gap: 4px; }
+  .bmTool { background: transparent; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; font: inherit; font-size: 11.5px; cursor: pointer; }
+  .bmTool:hover { color: var(--fg); border-color: var(--gold, #c9a227); }
   .lineText .pageBreak::before { content: none; }
   .lineText .pageBreak .pageId { font-variant-numeric: tabular-nums; border-bottom: 1px dotted var(--line); }
   /* <段/> → <br class="para"> ＋ 兩個全形空格 */

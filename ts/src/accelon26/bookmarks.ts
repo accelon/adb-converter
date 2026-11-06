@@ -660,6 +660,126 @@ function jumpBookmark(b: Bookmark): void {
   void revealHit(b.va, b.book || b.pageId || '書籤', 1, { mode: 'node', noMark: true });
 }
 
+function bookmarkFileStem(db: string): string {
+  const day = new Date().toISOString().slice(0, 10);
+  return 'accelon26-bookmarks-' + (db || 'db').replace(/[^A-Za-z0-9_.-]+/g, '_') + '-' + day;
+}
+
+/** 匯出目前這個庫的書籤；客戶把 JSON 傳回來，作者匯入就能看到同一個問題點。 */
+function exportBookmarks(): void {
+  const db = dbKey();
+  if (!db) { setStatus('請先開啟資料庫', 'warn'); return; }
+  const items = bookmarksOf(db);
+  if (!items.length) { setStatus('這個庫還沒有書籤', 'warn'); return; }
+  const payload = {
+    app: 'accelon26',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    db,
+    dbname: reader?.header.dbcname || db,
+    bookmarks: items,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = bookmarkFileStem(db) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setStatus('已匯出 ' + items.length + ' 個書籤（' + db + '）', 'note');
+}
+
+/** 接受單庫 `{db,bookmarks}`、多庫 `{databases:{db:[…]}}`，或直接一個書籤陣列。 */
+function mergeBookmarkData(data: unknown, fallbackDb: string): { added: number; skipped: number; dbs: Set<string> } {
+  const all = loadAll();
+  const groups: [string, unknown[]][] = [];
+  if (Array.isArray(data)) {
+    groups.push([fallbackDb, data]);
+  } else if (data && typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    if (o.databases && typeof o.databases === 'object') {
+      for (const [db, list] of Object.entries(o.databases as Record<string, unknown>)) {
+        if (Array.isArray(list)) groups.push([db, list]);
+      }
+    } else if (Array.isArray(o.bookmarks)) {
+      groups.push([typeof o.db === 'string' && o.db ? o.db : fallbackDb, o.bookmarks]);
+    }
+  }
+  let added = 0, skipped = 0;
+  const dbs = new Set<string>();
+  for (const [groupDb, list] of groups) {
+    const db = String(groupDb || '').trim();
+    if (!db || !/^[A-Za-z0-9_.-]{1,80}$/.test(db) || db === '__proto__' || db === 'constructor' || db === 'prototype') {
+      skipped += list.length;
+      continue;
+    }
+    const before = added;
+    const target = (all[db] ?? []).slice();
+    for (const raw of list) {
+      if (!raw || typeof raw !== 'object') { skipped++; continue; }
+      const o = raw as Record<string, unknown>;
+      const va = Number(o.va);
+      if (!Number.isFinite(va) || va < 0) { skipped++; continue; }
+      const id = typeof o.id === 'string' && o.id ? o.id : String(Date.now()) + Math.random().toString(16).slice(2);
+      if (target.some((x) => x.id === id)) { skipped++; continue; }
+      const at = Number(o.createdAt);
+      const createdAt = Number.isFinite(at) && at > 0 ? at : Date.now();
+      target.unshift({
+        id, db, va,
+        pageId: typeof o.pageId === 'string' ? o.pageId : '',
+        book: typeof o.book === 'string' ? o.book : '',
+        page: typeof o.page === 'string' ? o.page : '',
+        text: typeof o.text === 'string' ? o.text.slice(0, 240) : '',
+        createdAt,
+      });
+      added++;
+    }
+    all[db] = target.slice(0, 500);
+    if (added > before) dbs.add(db);
+  }
+  saveAll(all);
+  return { added, skipped, dbs };
+}
+
+function importBookmarksFile(file: File): void {
+  if (file.size > 2 * 1024 * 1024) { setStatus('書籤檔太大（上限 2 MB）', 'err'); return; }
+  const fr = new FileReader();
+  fr.onload = () => {
+    try {
+      const data = JSON.parse(String(fr.result ?? ''));
+      const r = mergeBookmarkData(data, dbKey());
+      if (!r.added) {
+        setStatus('沒有新的書籤' + (r.skipped ? '（' + r.skipped + ' 筆重複或格式不符）' : ''), 'warn');
+      } else {
+        const other = [...r.dbs].filter((d) => d !== dbKey()).length;
+        setStatus('已匯入 ' + r.added + ' 個書籤' + (other ? '（另有 ' + other + ' 個庫，開啟該庫才看得到）' : ''), 'note');
+      }
+      void renderBookmarks();
+    } catch {
+      setStatus('匯入失敗：不是有效的書籤 JSON', 'err');
+    }
+  };
+  fr.onerror = () => setStatus('讀取書籤檔失敗', 'err');
+  fr.readAsText(file, 'utf-8');
+}
+
+function pickBookmarkFile(): void {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.setAttribute('data-bm-import', '1');
+  input.style.display = 'none';
+  input.onchange = () => {
+    const f = input.files?.[0];
+    if (f) importBookmarksFile(f);
+    input.remove();
+  };
+  document.body.appendChild(input);
+  input.click();
+}
+
 export async function renderBookmarks(): Promise<void> {
   const list = $id('bookmarkList');
   const meta = $id('bookmarkMeta');
@@ -670,7 +790,16 @@ export async function renderBookmarks(): Promise<void> {
     return;
   }
   const items = bookmarksOf();
-  if (meta) meta.textContent = items.length ? items.length + ' 個書籤（' + (reader.header.dbcname || reader.header.dbname) + '）' : '';
+  if (meta) {
+    meta.innerHTML = '<span class="bmMetaText">' + items.length + ' 個書籤（'
+      + esc(reader.header.dbcname || reader.header.dbname) + '）</span>'
+      + '<span class="bmTools">'
+      + '<button type="button" class="bmTool" data-bm="export" title="匯出這個庫的書籤（JSON）">匯出</button>'
+      + '<button type="button" class="bmTool" data-bm="import" title="匯入客戶回傳的書籤（JSON）">匯入</button>'
+      + '</span>';
+    meta.querySelector<HTMLElement>('[data-bm="export"]')?.addEventListener('click', exportBookmarks);
+    meta.querySelector<HTMLElement>('[data-bm="import"]')?.addEventListener('click', pickBookmarkFile);
+  }
   if (!items.length) {
     list.innerHTML = '<p class="dim">選一段本文，按「加入書籤」。書籤只存在這個瀏覽器。</p>';
     return;
@@ -811,4 +940,3 @@ export function initBookmarks(): void {
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') hideMenu(); });
   window.addEventListener('scroll', hideMenu, true);
 }
-
