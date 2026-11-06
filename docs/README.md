@@ -48,6 +48,7 @@
 | [glossary.md](./glossary.md) | `glossary` 容器格式、詞彙分頁行為、跳位置與效能 |
 | [adb/xref-j-lessons.md](./adb/xref-j-lessons.md) | `<聯 j>` 字元級反鏈的座標系、七個坑、修復順序 |
 | [adb/ancient-book-xref-spec.md](./adb/ancient-book-xref-spec.md) | **canonical**：50–100 本古書、catalog、分散式 `xout`、LinkBus、缺書下載引導 |
+| [adb/interlink-ui-impact.md](./adb/interlink-ui-impact.md) | 互聯對閱讀器 UI 的影響與定案：semantic 錨點、引文帶、段末反鏈、書／版本、唯讀 |
 | [adb/interlink-markup-handoff.md](./adb/interlink-markup-handoff.md) | 給雙向鏈結 agent 的語法整合與 13j／swjz／swjzz 定址實例、推導任務 |
 | [adb/backlink-skill.md](./adb/backlink-skill.md) | 反鏈（誰引用這一頁）的舊中央流程（legacy） |
 | [adb/cbeta-adb-skill.md](./adb/cbeta-adb-skill.md) | CBETA TEI → adb 的六步流程與檢查表 |

@@ -1456,6 +1456,10 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
     if (!info.segMid && !info.segStart && (info.heading || rawHeading)) { out.push({ kind: 'heading', lines: [info] }); cur = null; sawBlank = false; lastPage = false; continue; }
     if (info.segStart) { cur = null; sawBlank = false; lastPage = false; }
     if (sawBlank) { cur = null; sawBlank = false; }
+    // 行首的 `<段/>` 在連排模式也是**一段的開始**（作者 2026-11-06）：它字面就是
+    // 「斷一段」；不這樣做的話，每行開頭的縮排會擠在同一段裡，例子全部黏在一起。
+    // 帶 n= 的 `<段 n="…">` 由上面的 segStart 處理，不重複。
+    if (cur && cur.lines.length && /^\s*<段(?![^>]*\bn\s*=)[^>]*>/.test(lines[i])) cur = null;
     // 這一行以頁碼結尾（…知見<頁/>）→ 後面的空行不算段落界線
     lastPage = /class="pageMark"/.test(info.html);
     if (!cur) { cur = { kind: 'para', lines: [] }; out.push(cur); }

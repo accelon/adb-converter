@@ -170,8 +170,14 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   // Bring the linked line into the viewport: a page holds up to 200 lines and the
   // target can sit below the fold (the 原書分頁 marker is the common case).
   document.getElementById('L' + s.pinned.line)?.scrollIntoView({ block: 'center' });
-  // 目錄游標只跟「左欄那一庫」的本文連動
-  if (isActiveDocCtx(ctx)) paintTreeActive();
+  // 目錄游標只跟「左欄那一庫」的本文連動。跳過來的那一節要**立刻**亮（作者 2026-11-06）：
+  // 以前只等本文捲動後的 syncCursorFromScroll，沒有捲動時要等尾端「載入更多」的 2 秒計時器，
+  // 短節點還會亮成下一個節點。
+  if (isActiveDocCtx(ctx)) {
+    const target = deepestNode(va);
+    if (target) cursorNode = target;
+    paintTreeActive();
+  }
   const totalMs = performance.now() - tLink;
   setLastLink({ va, ensureMs: Math.round(ensureMs), totalMs: Math.round(totalMs), rows: s.cache?.dt?.lines.length ?? 0 });
   // 本文標題顯示「上一輪引擎耗時」：取文字這一段（含確保頁面）
@@ -287,10 +293,29 @@ function paintTreeActive(): void {
  */
 function syncCursorFromScroll(): void {
   const body = document.querySelector<HTMLElement>('#docText .docBody');
-  if (!body || !ownsActiveDb(docSession())) return;
-  const mp = ctxOf(docSession())?.mapper ?? mapper;
+  const s = docSession();
+  if (!body || !ownsActiveDb(s)) return;
+  const mp = ctxOf(s)?.mapper ?? mapper;
   if (!mp) return;
   const mid = body.scrollTop + body.clientHeight / 2;
+  // 剛跳到某一節時，先亮「那一節」（作者 2026-11-06）：只要釘選的那一行還在中間附近，
+  // 就不要被視窗中線帶去下一個節點。短節點（手冊 5.4 只有 3 行）以前會亮成 5.5。
+  if (s?.pinned && typeof s.pinned.line === 'number') {
+    const row = document.getElementById('L' + s.pinned.line);
+    if (row) {
+      const top = row.offsetTop;
+      const bottom = top + row.offsetHeight;
+      // 還看得到釘選的那一行（±30% 視窗）→ 就以它那一節為準
+      const band = body.clientHeight * 0.3;
+      const viewTop = body.scrollTop - band;
+      const viewBottom = body.scrollTop + body.clientHeight + band;
+      if (bottom > viewTop && top < viewBottom) {
+        const node = deepestNode(s.pinned.va ?? 0);
+        if (node && node !== cursorNode) { cursorNode = node; paintTreeActive(); }
+        return;
+      }
+    }
+  }
   let midLine = -1;
   for (const row of body.querySelectorAll<HTMLElement>('.docLine')) {
     const top = row.offsetTop;

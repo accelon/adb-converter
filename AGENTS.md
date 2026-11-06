@@ -55,6 +55,10 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
   與 `deploy/adb-history.json` 裡 `<db>.adb` 那一筆（`buildTime`／`sha256`／`size`／`notes`）；
   `index.html`、`manifest.json`、別人的頁面仍歸母區。細節見
   `D:\2026\agent-norms\new-adb-workspace.md` §5.1。
+- **版本紀錄分工**（作者 2026-11-06）：每一個 adb 工作區在自己的 repo 維護 `version-log.md`
+  （建置完先寫那裡）；本區 `docs/adb/adb-version-log.md` 是**彙整版**，只在使用者說
+  「發佈」時，到各工作區取最新的 `version-log.md` 合併過來（並寫 `deploy/adb-notes.json`）。
+  各區清單與欄位規則見該檔的「各工作區的 version-log.md」；新工作區沒有這一頁時，本區幫它建。
 
 ## 2. 目前的重要狀態（2026-10-29）
 
