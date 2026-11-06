@@ -214,6 +214,31 @@ anchorId, kind, parentBook, va/page, textHash
 - 13j 的 `<頁元>`／`<頁>` 不是 anchor；13j 用 `seg:` semantic segment。
 - swjz／swjzz／swjzzp 的 `char:w…` 以三者共有的 10,706 個 id 為準。
 
+#### textHash 的精確定義（gycd 實作）
+
+`gycd` 的 `textHash` 不是 raw XML、也不是 raw adb 的 hash；演算法是：
+
+```python
+n1 = ''.join(norm_char(c, 1) for c in han_chars(segment_text))
+textHash = hashlib.sha256(n1.encode('utf-8')).hexdigest()[:16]
+```
+
+其中：
+
+- `han_chars`：regex `\p{Script=Han}`，逐 code point。
+- `segment_text`：該 anchor 的正文，已排除 skip zone（`構形`／`篆`／`圖`／`部數`…）。
+- `norm_char(c, 1)`：
+  1. `unicodedata.normalize('NFKC', c)`；
+  2. 取第一個 Han 字元（沒有就保留原字）；
+  3. OpenCC `s2t` 轉繁體；
+  4. 再取第一個 Han 字元；
+  5. 套 `VMAP`（`无→無`、`説→說`、`爲→為`…）折疊異體。
+- 最後 `sha256(UTF-8).hexdigest()[:16]`（16 個小寫 hex）。
+
+因此用 raw 文字算 sha256／md5／sha1[:16] 一定對不上。`gycd` 的值在
+`D:\2026\gycd\interlink\seg-manifest.csv` 的 `textHash` 欄，不是 `gycd.adb` 內的容器；
+stale 判斷要用同一套 parser／normalizer，否則無效。
+
 ---
 
 ## 5. 引用 ADB 的要求
