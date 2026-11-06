@@ -118,7 +118,7 @@ cyd?entry:一毛不拔#0-3
 
 | 類型 | 寫法 | 適用 |
 |---|---|---|
-| 語意段落 | `seg:<path>` | **13j 專用**；書→章→節→項，完整路徑 |
+| 語意段落 | `seg:<segmentId>` | **13j 專用**；leaf 唯一就用 leaf，撞名才加最少祖先 |
 | 字 | `char:<charId>` | 說文這種以字條為單位的書 |
 | 條目 | `entry:<headword>` | 詞典 |
 | 頁 | `page:<pageId>` | 有真正穩定頁碼的書；**13j 不用** |
@@ -129,7 +129,10 @@ cyd?entry:一毛不拔#0-3
 - work 必須能映射到 edition（adb＋adb 內 book）。
 - 同一個 work 的多個 edition 可以共用 anchor；例如 swjz／swjzz 的 `char:w0010010`。
 - **13j 不能用 page**：`<頁 n="1">` 在十三本書重複，且頁不是引用單位；用語意段落。
-- 13j 的 `seg:` 必須是完整祖先路徑，不能只用最深層標題（左傳的「經元年」會重複）。
+- `seg:` 的 id 在 work 內唯一即可，**不強制完整路徑**：
+  - `關雎` 是唯一篇名 → `shijing?seg:關雎`。
+  - `經元年` 在左傳不同公之下重複 → `zuozhuan?seg:隱公/經元年`。
+- 祖先只用來 disambiguate；不要為了漂亮而把每個 anchor 都寫成 full path。
 - swjz／swjzz 用 `char:`，不用頁或行。
 
 ---
@@ -225,11 +228,13 @@ quote, kind, confidence
 引用《尚書》會說「堯典」，引用《詩經》會說「周南·關雎」，引用《左傳》會說
 「隱公·經元年」，不會說「第 1 頁」。
 
-只用最深層標題也不夠：左傳的「經元年」在每個公之下都可能重複，必須保留祖先路徑。
+只有撞名才需要祖先。`關雎` 是唯一篇名，直接 `seg:關雎`；左傳的「經元年」在每個公
+之下重複，才寫成 `隱公/經元年`。
 
 ### 5.3 建議方向：semantic segment
 
-不要用 page；給語意節點加穩定 `id`，anchor 用完整路徑：
+不要用 page；給語意節點加穩定 `id`；`seg:` 的值是 **canonical segment id**，
+leaf 唯一時就用 leaf：
 
 ```xml
 <書 id="周易">
@@ -247,14 +252,18 @@ quote, kind, confidence
 
 ```text
 yijing?seg:乾#a-b
-shangshu?seg:虞書/堯典#a-b
-shijing?seg:國風/周南/關雎#a-b
+shangshu?seg:堯典#a-b
+shijing?seg:關雎#a-b
+zuozhuan?seg:隱公/經元年#a-b    # 只因「經元年」重複才加祖先
 ```
 
 - `id` 只在該 work 內唯一；顯示文字可以照舊，不必等於 id。
-- 祖先路徑用 `/` 串起；`seg:` 必須是完整路徑。
+- leaf id 唯一 → 用 leaf；leaf 撞名 → 加最少一層祖先；不要全部強制 full path。
+- `/` 只是 disambiguation 分隔符，不是固定語法層級。
 - `<頁>`／`<頁元>` 不再是 xref target；只作閱讀顯示。
 - catalog 的 edition 只指 adb／book，不指 page。
+- manifest 同時存 canonical `segmentId`、display label、parent；引用時可用
+  `關雎`／`周南·關雎` 等 aliases 找回 `seg:關雎`。
 
 ### 5.4 引用例
 
@@ -273,7 +282,7 @@ container：`xout_yijing`。
 ### 5.5 要 agent 回答
 
 - 13j 的 `<章>`／`<節>`／`<項>` 應如何加 `id`？用原文標題、slug，還是建置序號？
-- 完整路徑的 escaping／分隔符規則（`/` 是否會出現在標題？）。
+- 撞名時如何選「最少」祖先？`/` 的 escaping／分隔符規則（標題可能含 `/`？）。
 - 沒有最深層節點的 work（例如只有 `<章>`）如何定義 segment？
 - 同一個標題在不同祖先下重複（左傳「經元年」）如何驗證唯一？
 - 引用只到 work 層（沒有章節）時，anchor 用什麼？
@@ -389,15 +398,16 @@ anchorId, kind, parentBook, ancestorPath, physicalVa, textHash
 例：
 
 ```text
-yijing   seg:乾             書=周易   path=乾
-shangshu seg:虞書/堯典      書=尚書   path=虞書/堯典
-shuowen  char:w0010010      book=—   va=...
+yijing   seg:乾          書=周易   label=乾
+shangshu seg:堯典        書=尚書   label=堯典
+zuozhuan seg:隱公/經元年  書=左傳   label=經元年
+shuowen  char:w0010010   book=—   va=...
 ```
 
 - `anchorId` 在 work 內唯一；manifest 有重複就直接 fail。
 - `a-b` 是相對 anchor 文字的漢字序，不是 adb 全頁 offset。
 - 原文改版後 anchorId 不變；變的是 `textHash`。
-- 13j 的 anchor 是語意路徑，不是 page；`<頁>`／`<頁元>` 不進 manifest。
+- 13j 的 anchor 是 semantic segment，不是 page；`<頁>`／`<頁元>` 不進 manifest。
 
 ### 7.2 xout 記錄要帶穩定資訊
 
@@ -416,9 +426,10 @@ shuowen  char:w0010010      book=—   va=...
 
 ### 7.3 Prebuild 驗收
 
-- [ ] `yijing?seg:乾` 與 `shangshu?seg:虞書/堯典` 都存在且唯一。
+- [ ] `yijing?seg:乾`、`shangshu?seg:堯典`、`shijing?seg:關雎` 都存在且唯一。
 - [ ] 13j 的 `<頁元>`／`<頁>` 不當成 `seg:` anchor（它們不是引用單位）。
-- [ ] 13j 每個 work 的 segment path 在該 work 內唯一；祖先路徑完整。
+- [ ] 13j 每個 work 的 canonical segment id 在該 work 內唯一；撞名時才用最少祖先。
+- [ ] `zuozhuan?seg:隱公/經元年` 能 disambiguate 重複的「經元年」。
 - [ ] swjz／swjzz／swjzzp 的 10,706 個 `char:` id 全部存在，交集 10,706。
 - [ ] 每個 accepted link 的 quote 能在 target anchor 內精確或容許異體地對上。
 - [ ] dead／ambiguous 不寫入 xout，只進 report；超過門檻 fail。
@@ -479,9 +490,9 @@ shuowen  char:w0010010      book=—   va=...
 ### 9.1 13j
 
 - 13j 的 semantic segment 應如何加 `id`？（原文標題、slug、建置序號？）
-- 完整祖先路徑要包含哪些層？只用最深層標題為何不夠（左傳例子）？
+- leaf 唯一時直接用 leaf；哪些 leaf 會撞名、需要最少祖先？
 - 13 個 `<書 id>` 如何對應 work catalog？列出完整 mapping。
-- 如何驗證 259 章、1,448 節、300 項的路徑在各自 work 內唯一？
+- 如何驗證 259 章、1,448 節、300 項的 canonical segment id 在各自 work 內唯一？
 - 哪些引用只需要到「書」層？沒有章節的 work 如何定義 root segment？
 - migration 要改哪些標記？是否要重建 `13j.adb`？成本？
 - 作者已定：**13j 不用書頁**；不要再提 page 作 primary。
@@ -519,8 +530,9 @@ shuowen  char:w0010010      book=—   va=...
 
 ## 11. 驗收清單
 
-- [ ] `yijing?seg:乾` 與 `shangshu?seg:虞書/堯典` 各自定位到正確的書與段落。
-- [ ] 13j 的 13 個 work、259 章、1,448 節、300 項都有可解析的祖先路徑。
+- [ ] `yijing?seg:乾`、`shangshu?seg:堯典`、`shijing?seg:關雎` 各自定位到正確段落。
+- [ ] 13j 的 13 個 work、259 章、1,448 節、300 項都有可解析的 canonical segment id。
+- [ ] 撞名的 leaf（如左傳「經元年」）用最少祖先 disambiguate，其餘不用加祖先。
 - [ ] `13j` 的 `<頁>`／`<頁元>` 不當 xref primary；只作閱讀顯示。
 - [ ] `shuowen?char:w0010010` 在 swjz／swjzz／swjzzp 都能定位。
 - [ ] 10,706 個字 id 無重複、跨版本交集 10,706。

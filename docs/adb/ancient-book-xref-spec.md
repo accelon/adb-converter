@@ -157,16 +157,18 @@ workId?anchor#a-b
   <項 id="關雎">關雎</項>
 ```
 
-anchor 用完整語意路徑：
+anchor 用 canonical segment id；leaf 唯一時直接用 leaf：
 
 ```text
-shangshu?seg:虞書/堯典#a-b
-shijing?seg:國風/周南/關雎#a-b
+shangshu?seg:堯典#a-b
+shijing?seg:關雎#a-b
 yijing?seg:乾#a-b
+zuozhuan?seg:隱公/經元年#a-b   # 只因「經元年」重複才加祖先
 ```
 
-- 路徑中的每一層都要有穩定 `id`；`<章>`／`<節>`／`<項>` 的顯示文字不是 id。
-- 只用最深層標題不夠：左傳的「經元年」會在不同公之下重複，必須保留祖先路徑。
+- leaf id 在該 work 內唯一 → 用 leaf；撞名才加最少一層祖先；不要全部強制 full path。
+- `/` 只是 disambiguation 分隔符，不是固定語意層級。
+- `<章>`／`<節>`／`<項>` 的顯示文字不是 id；要另給穩定 `id`。
 - 13j 的 `<頁>`／`<頁元>` 不再是 xref target；只作閱讀顯示。
 
 swjz／swjzz 用 `<字 id="w…">`：
@@ -182,7 +184,7 @@ shuowen?char:w0010010#a-b
 
 - `<書 id="...">` 是 adb 內的穩定 id；不要用顯示標題當 id。
 - 13j 的 `<章>`／`<節>`／`<項>` 要加穩定 `id`；`id` 只在所屬 work 內唯一。
-- 祖先路徑用 `/` 串起；`seg:` anchor 必須是完整路徑，不是單一標題。
+- leaf id 唯一時直接用 leaf；撞名時才用 `/` 加最少祖先（例：`隱公/經元年`）。
 - 單書 adb 可以省略 `book`；多書 adb 必須提供 `book`。
 
 ### 4.3 版本
