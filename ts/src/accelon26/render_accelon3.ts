@@ -174,28 +174,68 @@ function uniqueSvgIds(inner: string): string {
   return out;
 }
 
+/**
+ * Visio 匯出的 SVG 把樣式放在 `<style>` 的 `.stN{}` 規則裡。內嵌到 HTML 之後，那份
+ * 樣式表**未必套得上**（CDATA 包裝、同頁兩張圖的 `.stN` 互相蓋掉），字級一跑掉就
+ * 重疊、溢出、被裁掉（厚觀法師 2026-11-07 回報 hg03.162／hg03.164）。
+ * 這裡把 `.stN` 的宣告直接寫進各元素的 style，並把 <style> 拿掉：
+ * 圖就不必依賴外部樣式表，兩張圖也不會互相干擾。
+ */
+function inlineSvgStyles(src: string): { inner: string; rootDecl: string } {
+  const rules: Record<string, string> = {};
+  for (const sm of src.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)) {
+    for (const rm of sm[1].matchAll(/\.([\w-]+)\s*\{([^}]*)\}/g)) {
+      const key = rm[1];
+      const decl = rm[2].trim().replace(/\s+/g, ' ');
+      rules[key] = rules[key] ? `${rules[key]};${decl}` : decl;
+    }
+  }
+  const declOf = (cls: string) => cls.trim().split(/\s+/)
+    .map((c) => rules[c] ?? '')
+    .filter(Boolean)
+    .join(';');
+  const inner = src
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/class="([^"]+)"/g, (all, cls: string) => {
+      const d = declOf(cls);
+      return d ? `${all} style="${d}"` : all;
+    });
+  return { inner, rootDecl: '' };
+}
+
+/** 取 `<style>` 裡的 `.stN` 規則（給根標籤用）。 */
+function svgStyleRules(src: string): Record<string, string> {
+  const rules: Record<string, string> = {};
+  for (const sm of src.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)) {
+    for (const rm of sm[1].matchAll(/\.([\w-]+)\s*\{([^}]*)\}/g)) {
+      const key = rm[1];
+      const decl = rm[2].trim().replace(/\s+/g, ' ');
+      rules[key] = rules[key] ? `${rules[key]};${decl}` : decl;
+    }
+  }
+  return rules;
+}
+
 export function inlineSvgHtml(src: string, label: string, figure = false): string {
   const m = /<svg\b([^>]*)>([\s\S]*?)<\/svg>/i.exec(src);
   if (!m) return `<span class="inlineImgMissing" title="${esc(label)}">▢</span>`;
   const vb = /\bviewBox\s*=\s*"([^"]*)"/i.exec(m[1])?.[1] ?? '0 0 1000 1000';
-  // 根標籤的 class 要留下來（Visio 匯出的 `.stN` 在 `<style>` 裡定義字級與 overflow，
-  // 例如 `.st4{font-size:12px;overflow:visible}`）。丟掉它，`1.33333em` 就退回瀏覽器
-  // 預設 16px，字會撐開、互相重疊，超出 viewBox 的部分也被預設 hidden 裁掉
-  // （厚觀法師 2026-11-07 回報 hg03.162／hg03.164，2026-11-08 修）。
   const rootClass = /\bclass\s*=\s*"([^"]*)"/i.exec(m[1])?.[1]?.trim() ?? '';
-  // `<![CDATA[` 只在 XML 裡有效：內嵌到 HTML 之後它會變成樣式表的一部分，整段 CSS
-  // 解析失敗（`<style>` 在 HTML 是 rawtext），所以先把包裝拿掉。
-  const inner = uniqueSvgIds(m[2]
-    .replace(/<!\[CDATA\[/g, '')
-    .replace(/\]\]>/g, '')
+  const clean = m[2].replace(/<!\[CDATA\[/g, '').replace(/\]\]>/g, '');
+  const rules = svgStyleRules(clean);
+  const inlined = inlineSvgStyles(clean);
+  const inner = uniqueSvgIds(inlined.inner
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
     .replace(/\son\w+\s*=\s*'[^']*'/gi, ''));
   // 圖版（整張插圖）照原圖的實寸顯示：Visio 匯出的 width="1.59in" 就是書上的大小。
   // CSS 再用 max-width:100% 收窄，所以窄視窗不會爆版。字形圖（小篆）仍用 1.5em。
   const size = figure ? svgFigureStyle(m[1]) : '';
-  const style = [size, 'overflow:visible'].filter(Boolean).join(';');
-  const cls = ['inlineSvg', figure ? 'figureSvg' : '', rootClass].filter(Boolean).join(' ');
+  // 根標籤原本的 class 宣告（字級 12px 等）要搬到根上，子元素才繼承得到；
+  // overflow 一律 hidden——Visio 有些文字畫在 viewBox 之外，Word 是裁掉的。
+  const rootDecl = rootClass.split(/\s+/).map((c) => rules[c] ?? '').filter(Boolean).join(';');
+  const style = [size, rootDecl, 'overflow:hidden'].filter(Boolean).join(';');
+  const cls = ['inlineSvg', figure ? 'figureSvg' : ''].filter(Boolean).join(' ');
   return `<svg class="${esc(cls)}" viewBox="${esc(vb)}" role="img" aria-label="${esc(label)}"`
     + ` title="${esc(label)}"`
     + ` style="${style}"`
