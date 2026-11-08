@@ -47,6 +47,8 @@ interface SelInfo {
   pageMark: boolean;
   startLine: number;
   endLine: number;
+  /** 選取終點所在的頁 id（跨頁引用時和 pageId 不同）。 */
+  endPageId: string;
   /** 選取起點前面有幾個漢字（換算位置用；標點與標記不計）。 */
   hanPrefix: number;
   /** 選取終點在它的那一行前面有幾個漢字（複製位址範圍用）。 */
@@ -176,6 +178,10 @@ async function selectionInfo(): Promise<SelInfo | null> {
   const endLineEl = endEl?.closest?.('#docText .docLine') as HTMLElement | null;
   const endN = Number((endLineEl?.id || '').slice(1));
   const endLine = Number.isFinite(endN) && endN >= n ? endN : n;
+  // 選取終點所在的頁（跨頁引用要用；同頁時等於 pageId）
+  let endPageId = pageId;
+  const endVa = mapper?.linesVirtual?.[endLine];
+  if (endVa != null) endPageId = (await pageIdAtVa(endVa)) || pageId;
   // 選取起點在這一行的第幾個漢字（標點、標記不計）：換址要的欄內偏置。
   let hanPrefix = 0;
   try {
@@ -193,7 +199,7 @@ async function selectionInfo(): Promise<SelInfo | null> {
     pre.setEnd(range.endContainer, range.endOffset);
     for (const ch of pre.toString()) if (HAN_RE.test(ch)) hanPrefixEnd++;
   } catch { hanPrefixEnd = hanPrefix; }
-  return { text, raw, va, pageId, book, page: pageId, rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width }, searchable, pageMark, startLine: n, endLine, hanPrefix, hanPrefixEnd };
+  return { text, raw, va, pageId, endPageId, book, page: pageId, rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width }, searchable, pageMark, startLine: n, endLine, hanPrefix, hanPrefixEnd };
 }
 
 async function hanRange(info: SelInfo): Promise<[number, number]> {
@@ -496,6 +502,21 @@ function urlPageId(db: string, pageId: string): string {
   return db === 'fuyan' ? pageId.replace(/^yl(?=\d)/i, '') : pageId;
 }
 
+/** 頁 id（`9p219`、`38p107`）→ 紙本頁碼字串；不是這種形式就回空字串。 */
+function pageNumberOf(pageId: string): string {
+  const m = /^\d+p(\d+)$/.exec(pageId);
+  return m ? m[1] : '';
+}
+
+/** `p.219` 或跨頁的 `pp.219-220`（厚觀法師 2026-11-08 要求）。 */
+function pageRangeLabel(info: SelInfo): string {
+  const a = pageNumberOf(info.pageId);
+  const b = pageNumberOf(info.endPageId || info.pageId);
+  if (!a) return info.pageId;
+  if (!b || b === a) return `p.${a}`;
+  return `pp.${a}-${b}`;
+}
+
 /** 依檔頭的 <引> 展開引用文字；`$URL;` ＝ db?頁#起-止。找不到 <引> 用預設樣板。 */
 export async function citationFor(info: SelInfo): Promise<string> {
   const r = reader;
@@ -511,7 +532,7 @@ export async function citationFor(info: SelInfo): Promise<string> {
   const tags = [...tpl.matchAll(/\$(\*?)([^;]+);/g)].map((x) => x[2]);
   const values = new Map<string, string>();
   for (const tag of tags) {
-    if (tag === '_' || tag === 'URL') continue;
+    if (tag === '_' || tag === 'URL' || tag === '頁範圍') continue;
     if (tag === '頁') { values.set(tag, info.pageId); continue; }
     const v = await labelAt(info.va, tag);
     values.set(tag, v || (tag === '書' ? (r.header.dbcname || r.header.dbname) : ''));
@@ -522,6 +543,7 @@ export async function citationFor(info: SelInfo): Promise<string> {
     if (tag === 'URL') return url;
     if (tag === '_') return info.text;
     if (tag === '頁') return info.pageId;
+    if (tag === '頁範圍') return pageRangeLabel(info);
     return values.get(tag) ?? '';
   });
   out = normalize(out);
