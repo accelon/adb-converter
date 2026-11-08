@@ -174,20 +174,31 @@ function uniqueSvgIds(inner: string): string {
   return out;
 }
 
-function inlineSvgHtml(src: string, label: string, figure = false): string {
+export function inlineSvgHtml(src: string, label: string, figure = false): string {
   const m = /<svg\b([^>]*)>([\s\S]*?)<\/svg>/i.exec(src);
   if (!m) return `<span class="inlineImgMissing" title="${esc(label)}">▢</span>`;
   const vb = /\bviewBox\s*=\s*"([^"]*)"/i.exec(m[1])?.[1] ?? '0 0 1000 1000';
+  // 根標籤的 class 要留下來（Visio 匯出的 `.stN` 在 `<style>` 裡定義字級與 overflow，
+  // 例如 `.st4{font-size:12px;overflow:visible}`）。丟掉它，`1.33333em` 就退回瀏覽器
+  // 預設 16px，字會撐開、互相重疊，超出 viewBox 的部分也被預設 hidden 裁掉
+  // （厚觀法師 2026-11-07 回報 hg03.162／hg03.164，2026-11-08 修）。
+  const rootClass = /\bclass\s*=\s*"([^"]*)"/i.exec(m[1])?.[1]?.trim() ?? '';
+  // `<![CDATA[` 只在 XML 裡有效：內嵌到 HTML 之後它會變成樣式表的一部分，整段 CSS
+  // 解析失敗（`<style>` 在 HTML 是 rawtext），所以先把包裝拿掉。
   const inner = uniqueSvgIds(m[2]
+    .replace(/<!\[CDATA\[/g, '')
+    .replace(/\]\]>/g, '')
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
     .replace(/\son\w+\s*=\s*'[^']*'/gi, ''));
   // 圖版（整張插圖）照原圖的實寸顯示：Visio 匯出的 width="1.59in" 就是書上的大小。
   // CSS 再用 max-width:100% 收窄，所以窄視窗不會爆版。字形圖（小篆）仍用 1.5em。
-  const style = figure ? svgFigureStyle(m[1]) : '';
-  return `<svg class="inlineSvg${figure ? ' figureSvg' : ''}" viewBox="${esc(vb)}" role="img" aria-label="${esc(label)}"`
+  const size = figure ? svgFigureStyle(m[1]) : '';
+  const style = [size, 'overflow:visible'].filter(Boolean).join(';');
+  const cls = ['inlineSvg', figure ? 'figureSvg' : '', rootClass].filter(Boolean).join(' ');
+  return `<svg class="${esc(cls)}" viewBox="${esc(vb)}" role="img" aria-label="${esc(label)}"`
     + ` title="${esc(label)}"`
-    + (style ? ` style="${style}"` : '')
+    + ` style="${style}"`
     + ` preserveAspectRatio="xMidYMid meet">${inner}</svg>`;
 }
 
