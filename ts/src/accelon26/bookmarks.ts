@@ -477,22 +477,34 @@ function placeMenu(m: HTMLElement, info: SelInfo): void {
   m.style.top = Math.max(6, Math.min(window.innerHeight - h - 6, info.rect.bottom + 6)) + 'px';
 }
 
-async function copyText(text: string, message: string): Promise<void> {
+async function copyText(text: string, message: string, html?: string): Promise<void> {
   // 測試／診斷：最近一次複製的字串（不管剪貼簿有沒有成功）
   (window as unknown as { __lastCopy?: string }).__lastCopy = text;
   let ok = false;
-  try {
-    await navigator.clipboard.writeText(text);
-    ok = true;
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.left = '-100000px';
-    document.body.appendChild(ta);
-    ta.select();
-    try { ok = document.execCommand('copy'); } catch { ok = false; }
-    ta.remove();
+  if (html && typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+    try {
+      const item = new ClipboardItem({
+        'text/plain': new Blob([text], { type: 'text/plain' }),
+        'text/html': new Blob([html], { type: 'text/html' }),
+      });
+      await navigator.clipboard.write([item]);
+      ok = true;
+    } catch { ok = false; }
+  }
+  if (!ok) {
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-100000px';
+      document.body.appendChild(ta);
+      ta.select();
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      ta.remove();
+    }
   }
   setStatus(ok ? message : '複製失敗（瀏覽器阻擋）', ok ? 'info' : 'err');
 }
@@ -519,8 +531,21 @@ function pageRangeLabel(info: SelInfo): string {
 
 /** 依檔頭的 <引> 展開引用文字；`$URL;` ＝ db?頁#起-止。找不到 <引> 用預設樣板。 */
 export async function citationFor(info: SelInfo): Promise<string> {
+  return (await buildCitation(info)).text;
+}
+
+/** 同一份引用的 HTML 版：頁碼範圍包成超連結（網址藏在文字底下，厚觀法師 2026-11-08）。 */
+export async function citationHtmlFor(info: SelInfo): Promise<string> {
+  return (await buildCitation(info)).html;
+}
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function buildCitation(info: SelInfo): Promise<{ text: string; html: string }> {
   const r = reader;
-  if (!r) return info.text;
+  if (!r) return { text: info.text, html: escHtml(info.text) };
   const raw = await r.sourceText(0).catch(() => '');
   // `sourceText(0)` 是整個 block：檔頭後面緊接著正文。只取第一個 <檔>…</檔>，
   // 否則會把正文某一段的 <引> 當成模板（fuyan 的引用變成別段經文，2026-11-01）。
@@ -539,24 +564,32 @@ export async function citationFor(info: SelInfo): Promise<string> {
   }
   // `$URL;` 是 db name＋頁碼＋字元（例如 fuyan?38p107#106-110）。
   const url = await charPosition(info);
+  // 頁 id 是「9p219」這種形式時，顯示改成紙本頁碼（p.219／pp.219-220），
+  // 網址只留在 HTML 版的連結裡（厚觀法師 2026-11-08）。其他庫照舊顯示網址。
+  const label = pageRangeLabel(info);
+  const useLabel = /^\d+p\d+$/.test(info.pageId);
   let out = tpl.replace(/\$(\*?)([^;]+);/g, (_all, _star, tag: string) => {
-    if (tag === 'URL') return url;
+    if (tag === 'URL') return useLabel ? label : url;
     if (tag === '_') return info.text;
     if (tag === '頁') return info.pageId;
-    if (tag === '頁範圍') return pageRangeLabel(info);
+    if (tag === '頁範圍') return label;
     return values.get(tag) ?? '';
   });
   out = normalize(out);
-  // 舊樣板（ys／tx 的 `$*頁;`）沒有 $URL：把含頁 id 的括號換成 URL 括號，
-  // 不要留下 `( yl38p107 ) yl38p107#...` 這種重複頁 id。
-  if (!hasUrl) {
+  // 樣板用 `$頁範圍;` 時就沒有網址可補；其餘舊樣板照舊在尾端補 URL。
+  const hasRange = /\$頁範圍;/i.test(tpl);
+  if (!hasUrl && !hasRange) {
     if (info.pageId) {
       const page = info.pageId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       out = normalize(out.replace(new RegExp(`\\s*[（(]\\s*(?:Y\\s*)?[^（）()]{0,48}?${page}[^（）()]{0,48}?\\s*[）)]`, 'i'), ''));
     }
     if (url) out += '(' + url + ')';
   }
-  return out;
+  let html = escHtml(out);
+  if ((hasRange || useLabel) && label && url && html.includes(escHtml(label))) {
+    html = html.replace(escHtml(label), `<a href="${escHtml(url)}">${escHtml(label)}</a>`);
+  }
+  return { text: out, html };
 }
 
 // ---------------------------------------------------------------- 兩層選單（2026-10-30）
@@ -890,7 +923,10 @@ async function runAction(action: string): Promise<void> {
     sendToTab(action.slice('search:'.length), info.text);
   } else if (action === 'bookmark') addBookmark(info);
   else if (action === 'copy') await copyText(info.raw, '已複製選取文字');
-  else if (action === 'cite' && !isTerminalDb()) await copyText(await citationFor(info), '已複製引用');
+  else if (action === 'cite' && !isTerminalDb()) {
+    const c = await buildCitation(info);
+    await copyText(c.text, '已複製引用', c.html);
+  }
   else if (action === 'rong') {
     const s = await snippetFor('rong', info);
     (window as unknown as { __lastSnippet?: string }).__lastSnippet = s;
