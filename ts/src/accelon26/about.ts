@@ -16,8 +16,8 @@
  *
  * 這一支只碰 DOM 與 host.ts，不 import viewer（避免 viewer → ui → about 的循環）。
  */
-import { desktopAppInfo, desktopCheckUpdate, desktopInstallUpdate, desktopOpenExternal, desktopRevealInFolder } from './host';
-import type { DesktopAppInfo } from './host';
+import { desktopAdbAssociation, desktopAppInfo, desktopCheckUpdate, desktopInstallUpdate, desktopOpenExternal, desktopRevealInFolder, desktopSetAdbAssociation } from './host';
+import type { DesktopAdbAssoc, DesktopAppInfo } from './host';
 import { startTour } from './tour';
 import { keySummary, openShortcuts, shortcutCount } from './shortcuts';
 import { exportSettingsFile, initSettings, settingsLocation, settingsVersion } from './settings';
@@ -65,11 +65,13 @@ export interface AboutState {
   exe: string;
   /** 「啟動時顯示本頁面」開著嗎 */
   startup: boolean;
+  /** .adb 檔案關聯現況（桌面版才有；網頁版 null） */
+  assoc: DesktopAdbAssoc | null;
 }
 
 const state: AboutState = {
   open: false, phase: 'idle', message: '', canInstall: false,
-  mode: '', buildTime: '', buildText: '', remote: '', exe: '', startup: true,
+  mode: '', buildTime: '', buildText: '', remote: '', exe: '', startup: true, assoc: null,
 };
 
 let desktopInfo: DesktopAppInfo | null = null;
@@ -170,6 +172,77 @@ async function fillSettingsInfo(): Promise<void> {
 }
 
 /**
+ * 「.adb 檔案」一列（作者 2026-11-08）：只做一件事——讓 .adb 用**現在這支 exe** 開啟。
+ *
+ * 老客戶常常把 exe 複製到每個放 adb 的資料夾（工具書型 adb 分散在不同資料夾），
+ * 所以只要現在跑的 exe 和關聯的不同、或關聯的 exe 已經不存在，就出現一顆按鈕，
+ * 按一下改指到現在這支。已經正確就只顯示路徑，不必再按。
+ */
+function renderAssoc(info: DesktopAdbAssoc | null): void {
+  state.assoc = info;
+  const row = el<HTMLElement>('aboutAssocRow');
+  const code = el<HTMLElement>('aboutAssoc');
+  const set = el<HTMLButtonElement>('aboutAssocSet');
+  const note = el<HTMLElement>('aboutAssocNote');
+  if (!info || !info.supported) {
+    if (row) row.hidden = true;
+    if (note) note.hidden = true;
+    return;
+  }
+  if (row) row.hidden = false;
+  if (note) note.hidden = false;
+  const fail = info.writeError ? `（登錄寫入失敗：${info.writeError}）` : '';
+  if (info.isCurrent) {
+    if (code) code.textContent = info.current;
+    if (set) set.hidden = true;
+    if (note) note.textContent = '✓ 雙擊 .adb 會用這個 exe 開啟。' + fail;
+    return;
+  }
+  if (set) set.hidden = false;
+  // 關聯的 exe 已經不存在 → 視同未設定（作者 2026-11-08）：直接讓使用者重新關連，
+  // 不要顯示一個按了也沒用的舊路徑。
+  if (info.linked && info.exe && info.exists) {
+    if (code) code.textContent = info.exe;
+    if (set) { set.textContent = '改用這個 exe 開啟'; set.classList.remove('prominent'); }
+    if (note) note.textContent = `目前 .adb 指到上面這個 exe（${info.dir || '—'}）。` + fail;
+    return;
+  }
+  if (code) code.textContent = '（未設定）';
+  // 完全沒有關聯（或關聯的 exe 已不存在）：這是第一次設定的人才會看到，按鈕要醒目。
+  if (set) { set.textContent = '關連 adb'; set.classList.add('prominent'); }
+  if (note) note.textContent = '按一下，以後雙擊 .adb 就會用 accelon26 開啟。' + fail;
+}
+
+/** 「已關連 .adb」小視窗：關連成功後告訴使用者以後雙擊 .adb 即可（作者 2026-11-08）。 */
+function showAssocDone(exe: string): void {
+  const back = el<HTMLElement>('assocDoneBackdrop');
+  const box = el<HTMLElement>('assocDoneBox');
+  if (!back || !box) return;
+  const path = el<HTMLElement>('assocDonePath');
+  if (path) path.textContent = exe;
+  back.hidden = false;
+  box.hidden = false;
+  el<HTMLElement>('assocDoneClose')?.focus();
+}
+
+function closeAssocDone(): void {
+  const back = el<HTMLElement>('assocDoneBackdrop');
+  const box = el<HTMLElement>('assocDoneBox');
+  if (back) back.hidden = true;
+  if (box) box.hidden = true;
+}
+
+function assocDoneOpen(): boolean {
+  const box = el<HTMLElement>('assocDoneBox');
+  return !!box && !box.hidden;
+}
+
+/** 問宿主目前 .adb 的關聯（桌面版才有；網頁版回 null，整列隱藏）。 */
+async function fillAssocInfo(): Promise<void> {
+  renderAssoc(await desktopAdbAssociation());
+}
+
+/**
  * 遠端建置時間比本地晚嗎？（桌面版由 Go 判斷；這裡留給未來的 version.json 用）
  */
 export function isNewerBuild(remote: string, local: string): boolean {
@@ -223,6 +296,7 @@ async function checkWeb(): Promise<void> {
 export async function openAbout(): Promise<void> {
   show(true);
   void fillSettingsInfo();
+  void fillAssocInfo();
   if (checking) return;
   checking = true;
   setUpdate('checking', '檢查更新中…');
@@ -312,6 +386,38 @@ export function initAbout(): void {
   el<HTMLElement>('aboutClose')?.addEventListener('click', () => closeAbout());
   el<HTMLElement>('aboutBackdrop')?.addEventListener('click', () => closeAbout());
   el<HTMLElement>('aboutInstall')?.addEventListener('click', () => { void install(); });
+  // .adb 檔案關聯（作者 2026-11-08）：只有一顆按鈕——把 .adb 改指到現在這支 exe。
+  // 按下去先顯示「設定中…」，完成後說明文字寫結果；已經正確時按鈕直接隱藏。
+  el<HTMLButtonElement>('aboutAssocSet')?.addEventListener('click', (ev) => {
+    const btn = ev.currentTarget as HTMLButtonElement;
+    const note = el<HTMLElement>('aboutAssocNote');
+    btn.disabled = true;
+    btn.textContent = '設定中…';
+    if (note) note.textContent = '正在寫入 .adb 的檔案關聯…';
+    void desktopSetAdbAssociation().then((info) => {
+      renderAssoc(info);
+      if (!info) {
+        if (note) note.textContent = '設定失敗：桌面宿主沒有回應（請重開 accelon26 再試）';
+        return;
+      }
+      if (info.writeError) {
+        if (note) note.textContent = `設定失敗：${info.writeError}`;
+        return;
+      }
+      if (info.isCurrent) {
+        if (note) note.textContent = `✓ 已設定：雙擊 .adb 會用 ${info.exe || info.current} 開啟。`;
+        showAssocDone(info.exe || info.current);
+        return;
+      }
+      if (info.userChoice) {
+        if (note) note.textContent = `已寫入，但 Windows 的「預設應用程式」仍指定給 ${info.progid}；請到 Windows 設定 → 預設應用程式更改。`;
+        return;
+      }
+      if (note) note.textContent = `已寫入，但仍未生效（目前指到 ${info.exe || '未知'}）。`;
+    }).catch((e) => {
+      if (note) note.textContent = '設定失敗：' + String((e as Error)?.message ?? e);
+    }).finally(() => { btn.disabled = false; });
+  });
   // 設定檔：匯出／在資料夾中顯示（作者 2026-10-22）
   el<HTMLElement>('aboutSettingsExport')?.addEventListener('click', () => exportSettingsFile());
   el<HTMLElement>('aboutSettingsReveal')?.addEventListener('click', () => {
@@ -346,7 +452,11 @@ export function initAbout(): void {
     keyLine.innerHTML = `快速鍵 <b>${n}</b> 個：<b>${keySummary().replace(/\+/g, '＋')}</b>…`
       + '全部在「快速鍵」卡片';
   }
+  // 「已關連 .adb」小視窗：知道了／點背景／Esc 都可以關
+  el<HTMLElement>('assocDoneClose')?.addEventListener('click', closeAssocDone);
+  el<HTMLElement>('assocDoneBackdrop')?.addEventListener('click', closeAssocDone);
   document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && assocDoneOpen()) { ev.stopPropagation(); closeAssocDone(); return; }
     if (ev.key === 'Escape' && state.open) { ev.stopPropagation(); closeAbout(); }
   }, true);
 }

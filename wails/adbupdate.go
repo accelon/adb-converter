@@ -159,12 +159,21 @@ func (d *adbDownload) finish(state, errMsg string) {
 }
 
 // StartAdbDownload 開始把 rawurl 下載到 path（必須是既有 .adb），完成後原子替換。
-// 作者 2026-11-01：一律寫到 adbRootDir()（比對／下載／開啟同一個資料夾）。
+// 作者 2026-11-08：以檔案開啟時，更新寫回**那個檔所在的資料夾**（而不是一律 exe 旁），
+// 否則 A 夾開的書會更新到 B 夾，兩份互相比舊。
 func (h *AdbHost) StartAdbDownload(rawurl, path, wantSha string, wantSize int64) (string, error) {
 	if !isHTTPURL(rawurl) {
 		return "", errors.New("只支援 http(s) 網址")
 	}
-	abs := filepath.Join(adbRootDir(), filepath.Base(path))
+	absPath, err := filepath.Abs(strings.TrimSpace(path))
+	if err != nil || absPath == "" {
+		return "", errors.New("檔案路徑不合法")
+	}
+	dir := filepath.Dir(absPath)
+	if !h.allowedAdbPath(absPath) || !canWriteDir(dir) {
+		dir = adbRootDir()
+	}
+	abs := filepath.Join(dir, filepath.Base(absPath))
 	if fi, err := os.Stat(abs); err != nil || fi.IsDir() {
 		return "", errors.New("找不到要更新的 adb：" + abs)
 	}
@@ -172,13 +181,17 @@ func (h *AdbHost) StartAdbDownload(rawurl, path, wantSha string, wantSize int64)
 }
 
 // StartNewAdbDownload 下載一個**本機還沒有**的公開資料庫：檔名經 sanitize 後寫到
-// 執行檔旁（或工作目錄／下載資料夾）。已存在同名檔則拒絕，交給更新流程處理。
+// 目前工作用的資料夾（以檔案開啟時是那個資料夾，否則 exe 旁／APPDATA）。
+// 已存在同名檔則拒絕，交給更新流程處理。
 func (h *AdbHost) StartNewAdbDownload(rawurl, name, wantSha string, wantSize int64) (string, error) {
 	if !isHTTPURL(rawurl) {
 		return "", errors.New("只支援 http(s) 網址")
 	}
 	clean := sanitizeAdbName(name)
-	dir := adbRootDir()
+	dir := h.activeAdbDir()
+	if !canWriteDir(dir) {
+		dir = adbRootDir()
+	}
 	_ = os.MkdirAll(dir, 0o755)
 	target := filepath.Join(dir, clean)
 	if _, err := os.Stat(target); err == nil {

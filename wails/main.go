@@ -33,6 +33,10 @@ func main() {
 	debugPortFlag := flag.String("debug-port", "", "internal: WebView2 remote debugging port (overrides ACCELON26_DEBUG_PORT)")
 	showVersion := flag.Bool("version", false, "print the build time, the release notes count and the update URL, then exit")
 	checkUpdate := flag.Bool("check-update", false, "check the update URL now, print the status as JSON and exit")
+	// -assoc／-assoc-set：看／設定 .adb 檔案關聯（About 頁那顆按鈕的同一條路；
+	// 診斷用——使用者回報「雙擊沒反應」時，先請他跑 -assoc 看指到哪裡）。
+	showAssoc := flag.Bool("assoc", false, "print the .adb file association as JSON and exit")
+	setAssoc := flag.Bool("assoc-set", false, "point .adb at this exe, print the result as JSON and exit")
 	// -export <adb>：不開 GUI，把文字與圖片導出成 zip（進階 → 容量 → 導出 的同一條路），
 	// 印出 ExportResult 的 JSON。診斷用，也方便寫自動化測試。
 	exportAdb := flag.String("export", "", "export the text and images of this .adb to the Downloads folder, print the result as JSON, then exit")
@@ -41,16 +45,30 @@ func main() {
 	relaunchExe := flag.String("relaunch-exe", "", "internal: exe to start after that process exits")
 	relaunchFrom := flag.String("relaunch-from", "", "internal: -updated-from for the new exe")
 	relaunchPort := flag.String("relaunch-port", "", "internal: -debug-port for the new exe")
+	// 以檔案開啟（作者 2026-11-08）：檔案關聯／拖放會把 .adb 路徑當參數傳進來。
+	// 先把它從參數裡挑出來，其餘照舊給 flag 解析。
+	launchArg, restArgs := splitLaunchArg(os.Args[1:])
+	os.Args = append([]string{os.Args[0]}, restArgs...)
 	flag.Parse()
 	if *relaunchPid > 0 && *relaunchExe != "" {
 		os.Exit(runRelauncher(*relaunchPid, *relaunchExe, *relaunchFrom, *relaunchPort))
 	}
 	if *selftest {
-		os.Exit(runSelfTest())
+		os.Exit(runSelfTest(launchArg))
 	}
 	if *showVersion {
 		fmt.Printf("accelon26\nbuild time: %s (from %s)\nrelease notes: %d entries\nupdate URL: %s\nversion info: %s\nexe: %s\n",
 			shortTime(exeBuildTime()), buildSource, len(allReleaseNotes()), updateURL(), manifestURL(), exePath())
+		return
+	}
+	if *showAssoc || *setAssoc {
+		h := &AdbHost{}
+		info := h.AdbAssociation()
+		if *setAssoc {
+			info = h.SetAdbAssociation()
+		}
+		b, _ := json.MarshalIndent(info, "", "  ")
+		fmt.Println(string(b))
 		return
 	}
 	// -check-update：發布前驗線上的 versions.json（診斷用；連本地建置的 exe 也真的連網）。
@@ -77,6 +95,9 @@ func main() {
 	}
 
 	host := &AdbHost{}
+	// 雙擊 .adb／拖到 exe：工作目錄切到那個檔的資料夾，並讓清單先列那一夾。
+	// 切換失敗（權限、UNC 斷線）不致命：Open 仍會用絕對路徑開啟它。
+	applyLaunch(host, launchArg)
 	cleanupStaleAdbTemps() // 上次中斷留下的 .accelon26-*.tmp（作者 2026-10-29）
 	host.SetUpdatedFrom(*updatedFrom)
 	// 這次是被更新程式重啟的：等重新啟動器（accelon26-prev.exe）收工後，把上一版刪掉。
@@ -246,23 +267,49 @@ func main() {
 	log.Fatal(app.Run())
 }
 
+// applyLaunch 把「以檔案開啟」套到 host：記住啟動檔，工作目錄切到它所在資料夾。
+// selftest 也走同一條，才測得到「cwd 已切換」。
+func applyLaunch(h *AdbHost, launch string) {
+	if launch == "" {
+		return
+	}
+	h.SetLaunchAdb(launch)
+	abs, err := filepath.Abs(launch)
+	if err != nil {
+		return
+	}
+	dir := filepath.Dir(abs)
+	if err := os.Chdir(dir); err != nil {
+		log.Printf("以檔案開啟：無法切換工作目錄到 %s（%v）", dir, err)
+	}
+}
+
 // runSelfTest 是不開 GUI 的自檢：列出 adb 資料夾（預設＝exe 所在資料夾）裡的 *.adb（只讀
 // 256 位元組檔頭），印出 mmap+base64 的讀取耗時，並驗證越界讀取會回報錯誤。回傳行程結束碼。
 //
 //	go build -o ..\build\desktop\accelon26.exe .
 //	cd ..
 //	..\build\desktop\accelon26.exe -selftest
-func runSelfTest() int {
+func runSelfTest(launch string) int {
+	host := &AdbHost{}
+	defer host.CloseAll()
+	applyLaunch(host, launch)
 	cwd, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "selftest: getwd: %v\n", err)
 		return 1
 	}
-	host := &AdbHost{}
-	defer host.CloseAll()
 
 	fmt.Println("accelon26 -selftest")
 	fmt.Printf("cwd: %s\n", cwd)
+	if launch != "" {
+		fmt.Printf("launch adb: %s\n", host.LaunchAdb())
+		// 以檔案開啟＝工作目錄切到那個檔的資料夾（作者 2026-11-08）
+		if abs, err := filepath.Abs(launch); err == nil && !strings.EqualFold(cwd, filepath.Dir(abs)) {
+			fmt.Fprintf(os.Stderr, "selftest FAILED: cwd %s, want %s\n", cwd, filepath.Dir(abs))
+			return 1
+		}
+	}
 
 	list, err := host.ListAdbs()
 	if err != nil {
@@ -276,8 +323,22 @@ func runSelfTest() int {
 		fmt.Printf("      dbname=%q dbcname=%q\n", a.DbName, a.DbCName)
 	}
 	if len(list) == 0 {
-		fmt.Fprintln(os.Stderr, "selftest FAILED: no .adb in the current working directory")
+		fmt.Fprintln(os.Stderr, "selftest FAILED: no .adb in the adb folders")
 		return 1
+	}
+
+	// 以檔案開啟（作者 2026-11-08）：清單第一筆必須是那個檔，而且要開得起來。
+	if launch != "" {
+		want := host.LaunchAdb()
+		if !strings.EqualFold(list[0].Path, want) {
+			fmt.Fprintf(os.Stderr, "selftest FAILED: launch adb %s is not first (%s)\n", want, list[0].Path)
+			return 1
+		}
+		if _, err := host.Open(want); err != nil {
+			fmt.Fprintf(os.Stderr, "selftest FAILED: cannot open launch adb: %v\n", err)
+			return 1
+		}
+		fmt.Println("以檔案開啟 OK：啟動檔排在清單第一筆，且開得起來")
 	}
 
 	// 計時用 13j.adb（有的話），否則第一個；區塊大小不超過檔案本身。
@@ -319,17 +380,28 @@ func runSelfTest() int {
 		return 1
 	}
 
-	// 桌面版 adb 限制（作者 2026-11-03）：只開與 exe 同一資料夾的 adb。
-	// 這裡故意拿一個不存在的「外面」路徑；Open 應該在檢查存在之前就因資料夾不對而拒絕。
-	outside := filepath.Join(filepath.Dir(adbRootDir()), "accelon26-selftest-outside.adb")
-	if _, err := host.Open(outside); err == nil {
-		fmt.Fprintf(os.Stderr, "selftest FAILED: accepted an adb outside the exe folder: %s\n", outside)
+	// 桌面版 adb 限制（作者 2026-11-03、2026-11-08）：只開清單上看得到的資料夾
+	// （啟動檔資料夾、宿主資料夾、exe 資料夾）。挑一個確定不在名單裡的「外面」路徑：
+	// Open 應該在檢查存在之前就因資料夾不對而拒絕。
+	outside := ""
+	for _, d := range []string{filepath.Dir(adbRootDir()), os.TempDir()} {
+		p := filepath.Join(d, "accelon26-selftest-outside.adb")
+		if !host.allowedAdbPath(p) {
+			outside = p
+			break
+		}
+	}
+	if outside == "" {
+		fmt.Println("（跳過資料夾限制檢查：找不到名單外的路徑）")
+	} else if _, err := host.Open(outside); err == nil {
+		fmt.Fprintf(os.Stderr, "selftest FAILED: accepted an adb outside the adb folders: %s\n", outside)
 		return 1
 	} else if !strings.Contains(err.Error(), "同一資料夾") {
 		fmt.Fprintf(os.Stderr, "selftest FAILED: outside adb rejected for the wrong reason: %v\n", err)
 		return 1
+	} else {
+		fmt.Println("adb 限制 OK：名單資料夾外的 adb 會被拒絕")
 	}
-	fmt.Println("adb 限制 OK：exe 資料夾外的 adb 會被拒絕")
 	fmt.Println("selftest OK")
 	return 0
 }

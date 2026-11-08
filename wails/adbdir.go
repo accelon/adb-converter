@@ -57,16 +57,16 @@ func canWriteDir(dir string) bool {
 }
 
 // otherAdbDir 回傳「另一邊」的資料夾（只用來標示同名檔，不會拿來讀寫）。
-func otherAdbDir() string {
-	active := adbRootDir()
-	if active == exeDir() {
+func otherAdbDir(active string) string {
+	if strings.EqualFold(active, exeDir()) {
 		return appDataAdbDir()
 	}
 	return exeDir()
 }
 
-// AdbDir 給前端顯示「目前使用的 adb 資料夾」。
-func (h *AdbHost) AdbDir() string { return adbRootDir() }
+// AdbDir 給前端顯示「目前使用的 adb 資料夾」：以檔案開啟時是那個檔案的資料夾，
+// 否則就是 adbRootDir（作者 2026-11-08）。
+func (h *AdbHost) AdbDir() string { return h.activeAdbDir() }
 
 // AdbDuplicate 是「另一邊也有同名 adb」的提示；不自動覆蓋任何一邊。
 type AdbDuplicate struct {
@@ -78,8 +78,8 @@ type AdbDuplicate struct {
 
 // AdbDuplicates 比對 active 與另一邊的同名 .adb；同名才回報（大小不同就不必算 sha）。
 func (h *AdbHost) AdbDuplicates() []AdbDuplicate {
-	active := adbRootDir()
-	other := otherAdbDir()
+	active := h.activeAdbDir()
+	other := otherAdbDir(active)
 	if active == "" || other == "" || strings.EqualFold(active, other) {
 		return nil
 	}

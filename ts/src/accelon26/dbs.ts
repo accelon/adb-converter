@@ -401,12 +401,12 @@ function fmtDateTime(ms: number): string {
  * 日期／大小從降冪開始（新／大的在前，這是大家看這種表時的直覺）。
  * 選擇存 localStorage（`accelon26.dbPickSort`），下次打開還一樣。
  */
-export type DbPickSortKey = 'id' | 'file' | 'chars' | 'size' | 'date';
+export type DbPickSortKey = 'id' | 'file' | 'dir' | 'chars' | 'size' | 'date';
 
 interface DbPickSort { k: DbPickSortKey; d: 1 | -1 }
 
 const DBPICK_SORT_KEY = 'accelon26.dbPickSort';
-const SORT_KEYS: DbPickSortKey[] = ['id', 'file', 'chars', 'size', 'date'];
+const SORT_KEYS: DbPickSortKey[] = ['id', 'file', 'dir', 'chars', 'size', 'date'];
 
 function readDbPickSort(): DbPickSort {
   try {
@@ -431,13 +431,15 @@ function sortOf(): DbPickSort {
 /** 目前選單的排序（診斷／測試用） */
 export function dbPickSortState(): { k: DbPickSortKey; d: 1 | -1 } { return { ...sortOf() }; }
 
-/** 改排序並重畫（表頭點擊用；同一個鍵再點＝反向） */
-export function setDbPickSort(k: DbPickSortKey, dir?: 1 | -1): void {
+/** 改排序並重畫（表頭點擊用；同一個鍵再點＝反向）。remember=false 只套用到這次啟動。 */
+export function setDbPickSort(k: DbPickSortKey, dir?: 1 | -1, remember = true): void {
   const cur = sortOf();
   const d: 1 | -1 = dir ?? (cur.k === k ? (cur.d === 1 ? -1 : 1) : (k === 'date' || k === 'size' ? -1 : 1));
   dbPickSort = { k, d };
   dbPickSortLoaded = true;
-  try { localStorage.setItem(DBPICK_SORT_KEY, JSON.stringify(dbPickSort)); } catch { /* 私密模式 */ }
+  if (remember) {
+    try { localStorage.setItem(DBPICK_SORT_KEY, JSON.stringify(dbPickSort)); } catch { /* 私密模式 */ }
+  }
   renderDbPick();
 }
 
@@ -445,6 +447,45 @@ export function setDbPickSort(k: DbPickSortKey, dir?: 1 | -1): void {
 function fileNameOf(e: CatalogEntry): string {
   const f = e.file.path ? (e.file.path.split(/[\\/]/).pop() ?? e.file.name) : e.file.name;
   return f;
+}
+
+/* ---- 以檔案開啟（作者 2026-11-08） ---------------------------------------------
+ *
+ * 雙擊 .adb 時，清單**預設照資料夾排**：那個檔所在資料夾的書在前，exe 資料夾的在後。
+ * 「資料夾」欄只在真的出現兩個以上資料夾時才顯示（平常單一資料夾，畫面完全不變）。
+ */
+let launchDir = '';
+
+/** 宿主回報的啟動檔路徑（bootDesktop 在第一次列清單之前設定）。 */
+export function setLaunchAdbPath(path: string): void {
+  launchDir = dirOfPath(path);
+}
+
+export function launchAdbDir(): string {
+  return launchDir;
+}
+
+function dirOfPath(path: string): string {
+  const i = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'));
+  return i > 0 ? path.slice(0, i) : '';
+}
+
+const catalogDir = (e: CatalogEntry): string => (e.file.path ? dirOfPath(e.file.path) : '');
+
+/** 資料夾名稱（給欄位顯示；完整路徑放在 title）。 */
+function dirName(dir: string): string {
+  return dir.split(/[\\/]/).filter(Boolean).pop() ?? dir;
+}
+
+function sameDir(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const norm = (s: string): string => s.replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase();
+  return norm(a) === norm(b);
+}
+
+/** 0 = 啟動檔所在資料夾（排前面），1 = 其他。 */
+function dirRank(dir: string): number {
+  return launchDir && sameDir(dir, launchDir) ? 0 : 1;
 }
 
 const numOr = (v: number | undefined, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
@@ -466,6 +507,14 @@ function compareCatalog(a: CatalogEntry, b: CatalogEntry, s: DbPickSort): number
     case 'date':
       r = by(a.file.lastModified, b.file.lastModified);
       break;
+    case 'dir': {
+      // 啟動檔那一夾先，其餘照資料夾名稱；同一夾再照 id（下面的固定次序）
+      const ad = catalogDir(a);
+      const bd = catalogDir(b);
+      r = by(dirRank(ad), dirRank(bd));
+      if (r === 0) r = by(ad.localeCompare(bd), 0);
+      break;
+    }
     default: {   // id
       const ai = (a.dbname || '').toLowerCase();
       const bi = (b.dbname || '').toLowerCase();
@@ -487,20 +536,24 @@ export function renderDbPick(): void {
   const active = activeSlot();
   const sort = sortOf();
   const shown = [...catalog].sort((a, b) => compareCatalog(a, b, sort));
+  // 兩個以上資料夾才顯示「資料夾」欄（平常單一資料夾，畫面不變）
+  const dirsShown = new Set(shown.map(catalogDir).filter(Boolean));
+  const multiDir = dirsShown.size > 1;
+  const cols = multiDir ? 7 : 6;
   // 同一個庫名可能有兩個檔案（13j.adb 與 1839.adb 都叫十三經）：表格第一欄就是檔名，
   // 不必再在標籤後面接檔名（作者 2026-10-18 改成表格）。
   if (menu) {
     // 第一項「加入 adb」＝原本 header 的 ＋（作者 2026-10）。只有 file:// 版需要：
     // 桌面版（Wails）啟動時就把工作目錄裡的 adb 全列出來了。
     const addItem = needsAddItem()
-      ? '<tr class="dbPickItem dbPickAdd" data-add="1" tabindex="0" title="開啟 .adb（最多同時 5 個）"><td colspan="6">＋ 加入 adb</td></tr>'
+      ? `<tr class="dbPickItem dbPickAdd" data-add="1" tabindex="0" title="開啟 .adb（最多同時 5 個）"><td colspan="${cols}">＋ 加入 adb</td></tr>`
       : '';
     // 「取得更多 ADB」（作者 2026-10-29）：桌面版直接從官網公開資料庫下載；
     // 一般使用者就看得到，不必先開瀏覽器。離線時變暗但**不隱藏**。
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     const storeRow = hostState().available
       ? `<tr class="dbPickItem dbPickAdd" data-store="1" tabindex="0"${offline ? ' aria-disabled="true"' : ''}`
-        + ` title="${offline ? '目前離線；連上網路後才能取得更多 ADB' : '從官網公開資料庫下載更多 .adb'}"><td colspan="6">⬇ 取得更多 ADB</td></tr>`
+        + ` title="${offline ? '目前離線；連上網路後才能取得更多 ADB' : '從官網公開資料庫下載更多 .adb'}"><td colspan="${cols}">⬇ 取得更多 ADB</td></tr>`
       : '';
     // 「加入 Obsidian」（作者 2026-10-25）：vault → adb，就在這裡轉。網頁版下載到
     // 「下載」資料夾，桌面版寫到執行檔旁邊；兩邊完成後都會更新下面的清單。
@@ -508,16 +561,23 @@ export function renderDbPick(): void {
     const advanced = document.body.classList.contains('advanced');
     const obsidianRows = advanced && vaultAddHandlers
       ? '<tr class="dbPickItem dbPickAdd" data-vault="dir" tabindex="0"'
-        + ' title="把一個 Obsidian vault（整個資料夾）轉成 .adb"><td colspan="6">＋ 加入 Obsidian（資料夾）</td></tr>'
+        + ' title="把一個 Obsidian vault（整個資料夾）轉成 .adb"><td colspan="' + cols + '">＋ 加入 Obsidian（資料夾）</td></tr>'
         + '<tr class="dbPickItem dbPickAdd" data-vault="zip" tabindex="0"'
-        + ' title="把 Obsidian vault 的 .zip 轉成 .adb"><td colspan="6">＋ 加入 Obsidian（.zip）</td></tr>'
+        + ' title="把 Obsidian vault 的 .zip 轉成 .adb"><td colspan="' + cols + '">＋ 加入 Obsidian（.zip）</td></tr>'
       : '';
+    // 以檔案開啟、照資料夾排時，在不同資料夾的第一列畫一條線（作者 2026-11-08）：
+    // 一眼看出「這一組是目前資料夾的書、下一組是 exe 資料夾的書」。
+    const groupByDir = multiDir && sort.k === 'dir';
+    let prevDir = '';
     const rows = shown.map((e) => {
       const s = slotOf(e);
       // 「檔名」＝桌面版 path 的 basename（不含 .adb）；網頁版就是 File.name
       const base = fileNameOf(e).replace(/\.adb$/i, '');
       const chars = charCache.get(e.key);
-      const cls = 'dbPickItem' + (s && s === active ? ' active' : '') + (s ? ' loaded' : '');
+      const dir = catalogDir(e);
+      const split = groupByDir && !!dir && !!prevDir && !sameDir(dir, prevDir);
+      prevDir = dir;
+      const cls = 'dbPickItem' + (s && s === active ? ' active' : '') + (s ? ' loaded' : '') + (split ? ' dbPickSplit' : '');
       // adb id（檔頭 dbname）：網頁版選檔時沒有讀到就顯示「—」
       const id = (e.dbname || '').trim();
       return `<tr class="${cls}" data-key="${escapeHtml(e.key)}" data-name="${escapeHtml(e.name)}" data-id="${escapeHtml(id)}"`
@@ -525,6 +585,9 @@ export function renderDbPick(): void {
         + ` title="${escapeHtml(e.file.name)}${s ? '' : '（尚未載入，選了才讀）'}">`
         + `<td class="dbPickId">${escapeHtml(id || '—')}</td>`
         + `<td class="dbPickFile">${escapeHtml(base)}</td>`
+        + (multiDir
+          ? `<td class="dbPickDir" title="${escapeHtml(catalogDir(e))}">${escapeHtml(dirName(catalogDir(e)))}</td>`
+          : '')
         + `<td class="dbPickName">${escapeHtml(e.name)}</td>`
         + `<td class="dbPickChars" data-key="${escapeHtml(e.key)}">${chars === undefined ? '…' : fmtInt(chars)}</td>`
         + `<td class="dbPickSize">${fmtBytes(e.file.size)}</td>`
@@ -542,6 +605,7 @@ export function renderDbPick(): void {
       ? '<table class="dbPickTable"><thead><tr>'
         + th('id', 'ID', 'adb id（檔頭 dbname）／點一下排序、再點一下反向')
         + th('file', '檔名', '檔名（不含 .adb）／點一下排序、再點一下反向')
+        + (multiDir ? th('dir', '資料夾', '檔案所在資料夾（雙擊開啟時，啟動檔那一夾排前面）') : '')
         + '<th>庫名</th>'
         + th('chars', '字數', '取自 adb 檔頭的 max VA（最大的文字位置），是近似值；點一下排序')
         + th('size', '大小', '檔案大小／點一下排序、再點一下反向')

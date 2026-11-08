@@ -528,6 +528,12 @@
   .setBtn { background: transparent; color: var(--fg); border: 1px solid var(--line); border-radius: 5px; font: inherit; font-size: 12px; padding: 3px 10px; cursor: pointer; }
   .setBtn:hover { border-color: var(--accent); }
   .setBtn:disabled { opacity: .5; cursor: default; }
+  /* 還沒有任何 .adb 關聯時，這顆要醒目（作者 2026-11-08） */
+  .setBtn.prominent {
+    background: var(--accent); color: var(--ink-on-accent); border-color: var(--accent);
+    font-size: 13px; font-weight: 700; padding: 5px 14px;
+  }
+  .setBtn.prominent:hover { filter: brightness(1.12); }
   /* 設定頁的小輸入框（閱讀狀態的名稱，作者 2026-11-01） */
   .setInput {
     flex: 0 1 14em; min-width: 8em; background: var(--panel2); color: var(--fg);
@@ -583,6 +589,23 @@
   .vnBtn.primary { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600; }
 
   #aboutBackdrop { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.55); }
+  /* 關連成功的小視窗（作者 2026-11-08）：壓在 About 之上 */
+  #assocDoneBackdrop { position: fixed; inset: 0; z-index: 86; background: rgba(0,0,0,.5); }
+  #assocDoneBackdrop[hidden], #assocDoneBox[hidden] { display: none; }
+  #assocDoneBox {
+    position: fixed; z-index: 87; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(24em, 88vw); background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.65);
+    padding: 18px 22px 16px; text-align: center;
+  }
+  #assocDoneBox h2 { margin: 0 0 8px; font-size: 17px; }
+  #assocDoneBox p { margin: 0 0 6px; line-height: 1.65; font-size: 14px; }
+  #assocDoneBox code { display: block; margin: 8px 0 14px; font-size: 12px; color: var(--dim); word-break: break-all; }
+  #assocDoneClose {
+    background: var(--accent); color: var(--ink-on-accent); border: 0; border-radius: 7px;
+    font: inherit; font-size: 14px; font-weight: 700; padding: 6px 20px; cursor: pointer;
+  }
+  #assocDoneClose:hover { filter: brightness(1.12); }
   #aboutBackdrop[hidden], #aboutBox[hidden] { display: none; }
   #aboutBox {
     position: fixed; z-index: 81; left: 50%; top: 50%; transform: translate(-50%, -50%);
@@ -1784,6 +1807,9 @@
 .dbPickMenu .dbPickItem.loaded td:first-child { box-shadow: inset 2px 0 0 var(--line); }
 .dbPickMenu .dbPickId { color: var(--dim); font-family: ui-monospace, Consolas, monospace; }
 .dbPickMenu .dbPickFile { color: var(--dim); font-family: ui-monospace, Consolas, monospace; max-width: 14em; }
+.dbPickMenu .dbPickDir { color: var(--dim); max-width: 10em; }
+/* 不同資料夾的分界線（以檔案開啟、照資料夾排時；作者 2026-11-08） */
+.dbPickMenu .dbPickTable tr.dbPickSplit td { border-top: 1px solid var(--line); padding-top: 7px; }
 .dbPickMenu .dbPickName { font-weight: 600; }
 .dbPickMenu .dbPickItem.active .dbPickName { font-weight: 700; }
 .dbPickMenu .dbPickChars { text-align: right; font-variant-numeric: tabular-nums; }
@@ -2903,6 +2929,14 @@
     <div><span>版本</span><b id="aboutBuild">—</b></div>
     <div><span>執行環境</span><b id="aboutMode">—</b></div>
     <div><span>程式檔</span><b id="aboutExe">—</b></div>
+    <!-- .adb 檔案關聯（作者 2026-11-08）：只有一顆按鈕——把 .adb 改指到現在這支 exe；
+         已經正確就只顯示路徑（按鈕隱藏）。 -->
+    <div class="aboutSettingRow" id="aboutAssocRow" hidden>
+      <span>.adb 檔案</span>
+      <b><code id="aboutAssoc">—</code></b>
+      <button class="setBtn" id="aboutAssocSet" type="button">改用這個 exe 開啟</button>
+    </div>
+    <p class="setHint" id="aboutAssocNote" style="margin:0 0 6px 5.6em" hidden></p>
     <!-- 設定檔（作者 2026-10-22）：顯示 settings.json 的實際位置 -->
     <div class="aboutSettingRow">
       <span>設定檔</span>
@@ -2928,6 +2962,15 @@
   </div>
   <!-- 操作導覽的入口已移到官網下面（見上方 .aboutActions） -->
   <p class="aboutFoot">原始碼與操作說明見官網；有問題請在官網回報。</p>
+</div>
+
+<!-- 關連成功的小視窗（作者 2026-11-08）：告訴使用者以後雙擊 .adb 即可 -->
+<div id="assocDoneBackdrop" hidden></div>
+<div id="assocDoneBox" role="dialog" aria-modal="true" aria-labelledby="assocDoneTitle" hidden>
+  <h2 id="assocDoneTitle">已關連 .adb</h2>
+  <p>以後在檔案總管雙擊 .adb，就會用這個 accelon26 開啟。</p>
+  <code id="assocDonePath">—</code>
+  <button id="assocDoneClose" type="button">知道了</button>
 </div>
 
 <!-- 快速鍵卡片（作者 2026-10-29）：About →「⌨ 快速鍵」開啟；內容由 shortcuts.ts 的

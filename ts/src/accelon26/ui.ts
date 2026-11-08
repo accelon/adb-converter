@@ -34,7 +34,7 @@ import { setDictHooks } from './dict-hooks';
 import { initTour, openTourMenu, play as playTour, startTour, stopTour, tourState } from './tour';
 import { toggleInspect } from './inspect';
 import { getUserId, setUserId } from './user-id';
-import { desktopRevealInFolder, desktopSources } from './host';
+import { desktopLaunchAdb, desktopRevealInFolder, desktopSources } from './host';
 import {
   BODY_KEY, GROUP_ID, GROUP_TAGS, STRUCTURAL_TAGS, activeDb, bodyStyleOf, counts as tagStyleCounts,
   defaultFontOf, entryOf, fontFamilyOf, memberIndex, notifyTagStyles, onActiveDbChange,
@@ -1249,6 +1249,13 @@ async function bootDesktop(): Promise<void> {
   // 網頁版沒有宿主，initDesktopBrand 直接返回（左上角就只是一行標題）。
   void initDesktopBrand((msg, kind) => setStatus(msg, kind ?? 'info'));
   void initDesktopWindowKeys();   // F11 全螢幕／Esc 回視窗（全螢幕時沒有標題列）
+  // 以檔案開啟（作者 2026-11-08）：先問宿主「這次是不是雙擊某個 .adb 進來的」，
+  // 清單才能預設照資料夾排（啟動檔那一夾在前、exe 資料夾在後）。
+  const launch = await desktopLaunchAdb();
+  if (launch) {
+    setLaunchAdbPath(launch);
+    setDbPickSort('dir', 1, false);   // 只套用到這次啟動，不覆寫使用者的排序偏好
+  }
   const srcs = await refreshHostDbs();
   // 沒有書的時候，標題列的提示改成「說明手冊」：點它就打開內建手冊（作者 2026-11-06）。
   if (hostState().available) {
@@ -1267,10 +1274,20 @@ async function bootDesktop(): Promise<void> {
     return;
   }
   // 作者 2026-11-01：啟動要把上次開著的 adb 全部開回來，不要每次都只剩一個。
-  if (!openDbs.length && await restoreOpenSet(srcs)) {
-    // 恢復成功就不再用「挑一個有 logo 的」那條路
-  } else if (!openDbs.length) {
-    await openPicked([await pickStartupDb(srcs)]);
+  // 2026-11-08：雙擊檔案進來時，除了恢復上次的分頁，再把那一個開到最上面（active）。
+  const launchSrc = launch
+    ? srcs.find((s) => !!s.path && s.path.replace(/\\/g, '/').toLowerCase() === launch.replace(/\\/g, '/').toLowerCase()) ?? null
+    : null;
+  if (!openDbs.length) {
+    const restored = await restoreOpenSet(srcs);
+    // 恢復成功就不再用「挑一個有 logo 的」那條路；有雙擊檔時也不挑，等下面直接開它
+    if (!restored && !launchSrc) await openPicked([await pickStartupDb(srcs)]);
+  }
+  if (launchSrc) {
+    await openPicked([launchSrc]);
+    if (openDbs.length) setStatus('已開啟 ' + launchSrc.name + '（雙擊的檔案）', 'info');
+  } else if (launch) {
+    setStatus('找不到雙擊開啟的 adb：' + (launch.split(/[\\/]/).pop() ?? launch), 'warn');
   }
   if (!openDbs.length && !await openBundledManual()) showWelcome();
   // 作者 2026-11-01：adb 更新只在「開啟 adb」時檢查（viewer.openFile 的 hook），
@@ -2576,7 +2593,7 @@ export function installDebugApi(): void {
 import { loadTree } from './search';
 
 import { setTabBinderPlaceholder } from './noop-unused';
-import { MAX_DBS, activeCatalogKey, activeSlot, catalog, dbNameCandidates, catalogAdd, catalogAddFile, catalogEmpty, catalogState, closeDb, dbLog, dbPickOpen, dbPickSortState, needsAddItem, openDbs, pickAddFile, refreshHostDbs, renderDbPick, setDbHooks, setDbPickOpen, switchTo } from './dbs';
+import { MAX_DBS, activeCatalogKey, activeSlot, catalog, dbNameCandidates, catalogAdd, catalogAddFile, catalogEmpty, catalogState, closeDb, dbLog, dbPickOpen, dbPickSortState, needsAddItem, openDbs, pickAddFile, refreshHostDbs, renderDbPick, setDbHooks, setDbPickOpen, setDbPickSort, setLaunchAdbPath, switchTo } from './dbs';
 import { dropLegacyReadingSetting, openDbRecs, recKey, resolveOpenSet, savedOpenSet, writeOpenSetNow } from './open-set';
 import { applyReadState, buildReadState, exportReadState, loadReadStateFile, readStateFileName, setReadStateUiInfo } from './read-state';
 import { editCount, findSession, sourceKey } from './edit-session';

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"unicode/utf16"
@@ -46,6 +45,7 @@ type mapped struct {
 // AdbInfo 是一個 .adb 對前端可見的全部資訊，只來自 256 位元組檔頭 + 目錄中繼資料。
 type AdbInfo struct {
 	Path     string `json:"path"`
+	Dir      string `json:"dir"` // 所在資料夾（前端用來分組／辨認同名檔）
 	Name     string `json:"name"`
 	DbName   string `json:"dbname"`
 	DbCName  string `json:"dbcname"`
@@ -59,6 +59,10 @@ type AdbHost struct {
 	mu     sync.Mutex
 	files  map[string]*mapped
 	search map[string]*adbSearchFile // 已解析的容器表（search.go），與映射同生共死
+
+	// launchAdb 是啟動時指定的 .adb（雙擊檔案、拖到 exe、命令列參數）。
+	// 有它就以它所在資料夾為主：先列出／開啟那一夾，再補宿主資料夾（作者 2026-11-08）。
+	launchAdb string
 
 	// winInfo 由 main 在建立視窗後注入（window.go）。UI 不需要它，測試與多螢幕排錯用。
 	winInfo func() map[string]any
@@ -165,17 +169,7 @@ func (h *AdbHost) resolve(path string) (string, error) {
 		return "", err
 	}
 	abs = filepath.Clean(abs)
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	allowed := insideDir(cwd, abs)
-	if !allowed {
-		if exe, err := os.Executable(); err == nil {
-			allowed = insideDir(filepath.Dir(exe), abs)
-		}
-	}
-	if !allowed {
+	if !h.allowedAdbPath(abs) {
 		return "", fmt.Errorf("path outside working directory: %s", abs)
 	}
 	return abs, nil
@@ -282,7 +276,7 @@ func decodeUTF16LE(b []byte) string {
 
 // infoFor 組裝一個檔案的 AdbInfo（呼叫方需已持有該檔案的映射參考）。
 func (h *AdbHost) infoFor(m *mapped) AdbInfo {
-	info := AdbInfo{Path: m.abs, Name: filepath.Base(m.abs), Size: m.size}
+	info := AdbInfo{Path: m.abs, Dir: filepath.Dir(m.abs), Name: filepath.Base(m.abs), Size: m.size}
 	if fi, err := os.Stat(m.abs); err == nil {
 		info.Modified = fi.ModTime().UnixMilli()
 	}
@@ -301,13 +295,19 @@ func (h *AdbHost) infoFor(m *mapped) AdbInfo {
 
 // ---- 暴露給 webview 的方法 ----------------------------------------------------
 
-// ListAdbs 列出 *.adb（大小寫不敏感）：工作目錄與執行檔所在目錄（作者 2026-10-25
-// 加入「加入 Obsidian」後，adb 會寫在 exe 旁邊，而 exe 的「開始位置」不一定等於它
-// 所在的資料夾）。同一個絕對路徑只列一次。每個檔案只讀前 256 位元組檔頭。
+// ListAdbs 列出 *.adb（大小寫不敏感），依 adbDirs 的優先序：
+// 先列啟動檔所在資料夾（若以檔案開啟）、再列宿主的 adb 資料夾與 exe 資料夾。
+// 啟動檔本身排最前面（雙擊哪一個，清單第一筆就是它）。同一個絕對路徑只列一次。
+// 每個檔案只讀前 256 位元組檔頭。
 func (h *AdbHost) ListAdbs() ([]AdbInfo, error) {
-	dirs := seedDirs()
+	return h.listAdbsIn(h.adbDirs())
+}
+
+// listAdbsIn 是 ListAdbs 的本體：照 dirs 的順序列出，啟動檔排第一（測試直接餵 dirs）。
+func (h *AdbHost) listAdbsIn(dirs []string) ([]AdbInfo, error) {
+	launch := strings.ToLower(h.LaunchAdb())
+	var first, rest []AdbInfo
 	seen := map[string]bool{}
-	out := make([]AdbInfo, 0, 16)
 	for _, dir := range dirs {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -331,16 +331,20 @@ func (h *AdbHost) ListAdbs() ([]AdbInfo, error) {
 			}
 			info := h.infoFor(m)
 			h.release(m)
-			out = append(out, info)
+			if launch != "" && strings.ToLower(path) == launch {
+				first = append(first, info)
+			} else {
+				rest = append(rest, info)
+			}
 		}
 	}
+	out := append(first, rest...)
 	if len(out) == 0 {
 		// 保留原本的錯誤語意：連工作目錄都讀不到時回報錯誤
 		if _, err := os.ReadDir("."); err != nil {
 			return nil, err
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
@@ -348,11 +352,11 @@ func (h *AdbHost) ListAdbs() ([]AdbInfo, error) {
 // 開啟會增加一個「釘住」的參考：映射保持到 Close / CloseAll，
 // 因此隨後的 ReadBase64 不需要重新映射。重複 Open 不會重複計數。
 func (h *AdbHost) Open(path string) (*AdbInfo, error) {
-	// 作者 2026-11-03：桌面版**只開與 exe 同一個資料夾的 adb**。
-	// adb 和 docx／pdf 不同，彼此會互相聯動（連結、對照、詞典），單獨拿到別處經常不能用；
-	// 與其讓使用者開到一半才發現，入口就直接擋掉。
-	if !inRootDir(path) {
-		return nil, fmt.Errorf("只開與 exe 同一資料夾的 adb：%s", filepath.Base(path))
+	// 桌面版只開「看得到的資料夾」的 adb（作者 2026-11-03、2026-11-08）：
+	// 啟動檔所在資料夾、宿主 adb 資料夾、exe 資料夾。其他路徑一律擋掉——
+	// adb 彼此會互相聯動（連結、對照、詞典），單獨拿到別處經常不能用。
+	if !h.allowedAdbPath(path) {
+		return nil, fmt.Errorf("只開同一資料夾的 adb：%s", filepath.Base(path))
 	}
 	m, err := h.acquire(path)
 	if err != nil {
@@ -448,17 +452,4 @@ func (h *AdbHost) CloseAll() {
 		h.dropLocked(key, m)
 	}
 	h.search = nil
-}
-
-// inRootDir 判斷這條路徑是不是在 exe 所在資料夾（桌面版唯一允許的範圍，作者 2026-11-03）。
-func inRootDir(path string) bool {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return false
-	}
-	root, err := filepath.Abs(adbRootDir())
-	if err != nil {
-		return false
-	}
-	return strings.EqualFold(filepath.Dir(abs), root)
 }

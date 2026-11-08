@@ -79,7 +79,9 @@ func (h *AdbHost) SaveAdb(name string, b64 string) SaveAdbResult {
 		return SaveAdbResult{Error: "這不是 .adb 檔（檔頭簽名不符）"}
 	}
 
-	targets := seedDirs() // 唯一 adb 資料夾
+	// 以檔案開啟時寫到那個資料夾（使用者正在那裡工作），否則寫到宿主資料夾；
+	// 寫不進去才退到下載資料夾／暫存（作者 2026-11-08）。
+	targets := []string{h.activeAdbDir(), adbRootDir()}
 	_ = os.MkdirAll(targets[0], 0o755)
 	targets = append(targets, filepath.Join(os.TempDir(), "accelon26-import"))
 	res := saveAdbInto(targets, clean, data)

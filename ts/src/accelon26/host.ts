@@ -347,9 +347,26 @@ export async function desktopRevealInFolder(path: string): Promise<boolean> {  c
 }
 
 /**
+ * The .adb this exe was started with (double-clicked file / drag-and-drop / command line).
+ * Empty when the app was started normally. The viewer opens it on boot and lists its
+ * folder before the exe folder (作者 2026-11-08).
+ */
+export async function desktopLaunchAdb(): Promise<string> {
+  const c = await hostCall();
+  if (!c) return '';
+  try {
+    return String(await c.ByName('main.AdbHost.LaunchAdb') ?? '');
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Every .adb the host found next to the executable (working directory), as ordinary
  * sources. Returns [] on `file://`, so the caller can treat "no desktop" and "no
  * databases yet" the same way.
+ *
+ * 2026-11-08：以檔案開啟時，宿主先列那個檔所在資料夾、再列 exe 資料夾（同一個檔只列一次）。
  */
 export async function desktopSources(): Promise<AdbSource[]> {
   const c = await hostCall();
@@ -467,6 +484,48 @@ export async function desktopAdbDuplicates(): Promise<Array<{
     return Array.isArray(v) ? v as Array<{ name: string; activePath: string; otherPath: string; same: boolean }> : [];
   } catch {
     return [];
+  }
+}
+
+/**
+ * .adb 檔案關聯現況（wails/assoc.go 的 AdbAssocInfo；作者 2026-11-08）。
+ * `exe`／`dir` 是目前 .adb 指到的那支 exe 與它所在資料夾；`isCurrent` 表示就是現在這支。
+ */
+export interface DesktopAdbAssoc {
+  supported: boolean;
+  linked: boolean;
+  isCurrent: boolean;
+  command: string;
+  exe: string;
+  dir: string;
+  /** 那個 exe 還在不在（換過資料夾、刪掉了就 false） */
+  exists: boolean;
+  current: string;
+  progid: string;
+  /** Windows 10/11 的「預設應用程式」選擇（雜湊保護，程式改不動） */
+  userChoice: boolean;
+  /** 設定時寫登錄失敗的原因（成功就沒有這個欄位） */
+  writeError?: string;
+}
+
+export async function desktopAdbAssociation(): Promise<DesktopAdbAssoc | null> {
+  const c = await hostCall();
+  if (!c) return null;
+  try {
+    return await c.ByName('main.AdbHost.AdbAssociation') as DesktopAdbAssoc ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** 把 .adb 指到現在這支 exe；回傳設定後重新讀到的狀態。 */
+export async function desktopSetAdbAssociation(): Promise<DesktopAdbAssoc | null> {
+  const c = await hostCall();
+  if (!c) return null;
+  try {
+    return await c.ByName('main.AdbHost.SetAdbAssociation') as DesktopAdbAssoc ?? null;
+  } catch {
+    return null;
   }
 }
 
