@@ -955,9 +955,53 @@ async function runAction(action: string): Promise<void> {
   hideMenu();
 }
 
+/**
+ * 選取時自動捲動（厚觀法師 2026-11-08：滑鼠拖到視窗底部就卡住，選不到下一頁的內容）。
+ *
+ * 按住左鍵、已經有選取時，游標靠近本文區的上下邊緣就持續捲動，並把選取終點
+ * 跟著延伸到游標下的字（Chromium 的 caretRangeFromPoint）。
+ */
+function installSelectAutoScroll(): void {
+  let raf = 0;
+  let dy = 0;
+  let last = { x: 0, y: 0 };
+  const stop = (): void => { if (raf) cancelAnimationFrame(raf); raf = 0; dy = 0; };
+  const tick = (): void => {
+    const body = document.querySelector<HTMLElement>('#docText .docBody');
+    if (!body || !dy) { stop(); return; }
+    const before = body.scrollTop;
+    body.scrollTop = before + dy;
+    if (body.scrollTop === before) { stop(); return; }
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) {
+      const doc = document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null };
+      const r = doc.caretRangeFromPoint?.(last.x, last.y);
+      if (r) { try { sel.extend(r.startContainer, r.startOffset); } catch { /* 選取已失效就忽略 */ } }
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  window.addEventListener('mousemove', (ev) => {
+    if (!(ev.buttons & 1)) { stop(); return; }
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) { stop(); return; }
+    const body = document.querySelector<HTMLElement>('#docText .docBody');
+    if (!body) { stop(); return; }
+    last = { x: ev.clientX, y: ev.clientY };
+    const r = body.getBoundingClientRect();
+    const edge = 40;
+    dy = 0;
+    if (ev.clientY > r.bottom - edge) dy = Math.min(28, 6 + (ev.clientY - (r.bottom - edge)) * 0.6);
+    else if (ev.clientY < r.top + edge) dy = -Math.min(28, 6 + ((r.top + edge) - ev.clientY) * 0.6);
+    if (dy) { if (!raf) raf = requestAnimationFrame(tick); } else stop();
+  }, { passive: true });
+  window.addEventListener('mouseup', stop, { passive: true });
+  window.addEventListener('blur', stop);
+}
+
 export function initBookmarks(): void {
   if (inited) return;
   inited = true;
+  installSelectAutoScroll();
   // 開庫＋目錄樹建好後，回到最後加入的書籤（作者 2026-10-31）
   document.addEventListener('accelon26:tree-ready', () => { void resumeLastBookmark(); });
   const menu = $id('selMenu');

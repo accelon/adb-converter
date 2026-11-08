@@ -1121,8 +1121,9 @@
     background: none; border-radius: 3px; padding: 0 2px; font-weight: 600;
   }
   /* 原書頁 <頁>：inline（作者 2026-10-31）。以前是 block＋右靠分隔線，會把後文擠到下一行 */
+  /* 頁碼用暖黃色：與正文同色時混在字裡找不到（厚觀法師 2026-11-08） */
   .lineText .pageBreak {
-    display: inline; margin: 0 4px; color: var(--dim); font-size: .8em; font-weight: 400;
+    display: inline; margin: 0 4px; color: var(--pageMark, #d99a2b); font-size: .8em; font-weight: 400;
     white-space: nowrap;
   }
   /* 不保留硬換行（「原書分行」取消）時：整頁連著排 */
@@ -1456,7 +1457,7 @@
   .tan { border-bottom: 1px dotted var(--dim); cursor: help; }
   .tanTip { position: fixed; z-index: 96; pointer-events: none; max-width: min(460px, 80vw); background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; line-height: 1.45; white-space: pre-wrap; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
   .lineText .pageBreak::before { content: none; }
-  .lineText .pageBreak .pageId { font-variant-numeric: tabular-nums; border-bottom: 1px dotted var(--line); }
+  .lineText .pageBreak .pageId { font-variant-numeric: tabular-nums; border-bottom: 1px dotted currentColor; }
   /* <段/> → <br class="para"> ＋ 兩個全形空格 */
   .lineText br.para { line-height: inherit; }
   /* <圖 n="…"/>：正文插圖。字形圖（金文、小篆）常常就嵌在句子中間，所以
