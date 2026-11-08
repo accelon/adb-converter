@@ -15,7 +15,7 @@
  * 為什麼要這支：2026-11-03 的循環 import 讓 boot 中途爆掉，按鈕全部沒反應，
  * 但沒有例外事件、build 也成功；人眼看不出來，只有真的開瀏覽器才知道。
  */
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const args = process.argv.slice(2);
@@ -33,9 +33,13 @@ const browser = BROWSERS.find((p) => existsSync(p));
 if (!browser) { console.error('找不到 Chrome／Edge'); process.exit(2); }
 
 const profile = resolve(import.meta.dir, '../../build/.smoke-' + process.pid);
+// Edge 的 BITS／暫存檔預設寫到 C:\temp；測試自己指到 build，收工一起刪
+// （作者 2026-11-06：不要在 C:\temp 留下一堆 Edge 測試中間檔）。
+const tmp = resolve(import.meta.dir, '../../build/.tmp-smoke-' + process.pid);
+mkdirSync(tmp, { recursive: true });
 const proc = Bun.spawn([browser, '--headless=new', '--disable-gpu', '--no-first-run',
   '--remote-debugging-port=0', '--remote-allow-origins=*', '--user-data-dir=' + profile,
-  'about:blank'], { stdout: 'ignore', stderr: 'ignore' });
+  'about:blank'], { stdout: 'ignore', stderr: 'ignore', env: { ...process.env, TMP: tmp, TEMP: tmp } });
 
 let wsUrl = '';
 for (let i = 0; i < 100; i++) {
@@ -44,7 +48,15 @@ for (let i = 0; i < 100; i++) {
   if (Number(port) > 0 && path) { wsUrl = 'ws://127.0.0.1:' + port + path; break; }
   await Bun.sleep(200);
 }
-if (!wsUrl) { proc.kill(); console.error('瀏覽器沒有起來'); process.exit(2); }
+if (!wsUrl) {
+  try { proc.kill(); } catch { /* ignore */ }
+  if (process.platform === 'win32') {
+    try { Bun.spawnSync(['taskkill', '/PID', String(proc.pid), '/T', '/F'], { stdout: 'ignore', stderr: 'ignore' }); } catch { /* ignore */ }
+  }
+  try { rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
+  console.error('瀏覽器沒有起來');
+  process.exit(2);
+}
 
 const ws = new WebSocket(wsUrl);
 await new Promise<void>((ok, bad) => { ws.onopen = () => ok(); ws.onerror = () => bad(new Error('ws')); });
@@ -85,9 +97,25 @@ await Bun.sleep(800);
 
 const info = await ev('JSON.stringify({ rs: document.readyState, api: !!window.__accelon26, file: !!document.querySelector("#file"), db: (window.__accelon26 && window.__accelon26.state().db) || "" })');
 const parsed = JSON.parse(String(info ?? '{}'));
-proc.kill();
-await Bun.sleep(200);
-try { rmSync(profile, { recursive: true, force: true }); } catch { /* ignore */ }
+// Windows 上 proc.kill() 只殺 launcher，Edge 的子行程還握著 profile 檔。
+// 先請瀏覽器自己關（Browser.close 會收掉整棵樹），再 taskkill 保底，等鎖放開才刪。
+try { ws.send(JSON.stringify({ id: ++id, method: 'Browser.close' })); } catch { /* ignore */ }
+await Bun.sleep(800);
+try { proc.kill(); } catch { /* ignore */ }
+if (process.platform === 'win32') {
+  try { Bun.spawnSync(['taskkill', '/PID', String(proc.pid), '/T', '/F'], { stdout: 'ignore', stderr: 'ignore' }); } catch { /* ignore */ }
+}
+await Bun.sleep(400);
+let cleaned = false;
+for (let i = 0; i < 8; i++) {
+  try {
+    rmSync(profile, { recursive: true, force: true });
+    rmSync(tmp, { recursive: true, force: true });
+    cleaned = true;
+    break;
+  } catch { await Bun.sleep(500); }
+}
+if (!cleaned) console.warn('警告：測試 profile／temp 沒有刪乾淨：' + profile);
 
 const problems: string[] = [];
 if (parsed.rs !== 'complete') problems.push('readyState=' + parsed.rs);
@@ -101,3 +129,6 @@ if (problems.length) {
   process.exit(1);
 }
 console.log('✓ 煙霧測試通過：' + target + (parsed.db ? `（已開 ${parsed.db}）` : '（未開庫）'));
+// WebSocket 沒關會讓 Bun 一直活著，測試看起來「跑完但不停」，也會留下 profile／temp。
+try { ws.close(); } catch { /* ignore */ }
+process.exit(0);

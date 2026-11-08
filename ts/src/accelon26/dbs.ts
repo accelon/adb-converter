@@ -721,9 +721,14 @@ export const catalogState = (): { name: string; file: string; open: boolean }[] 
 
 /** called by openFile once the new database is loaded and rendered */
 export function registerOpenDb(file: AdbSource, name: string): { ok: boolean; replaced?: boolean } {
-  const same = openDbs.findIndex((d) => d.name === name);
   const slot: DbSlot = { id: ++seq, name, file, usedAt: ++useSeq, core: null, docPane: null, scopes: null, summary: null, link: null, panes: null, text: null };
   saveInto(slot);
+  // 同一個 **dbname**（檔頭 id）才是同一個庫；顯示名相同不算。
+  // 說文解字注的章節版／卷字版 dbcname 都是「說文解字注」，但 dbname 是
+  // swjz／swjzz——用 name 去重會讓第二版把第一版取代掉（作者 2026-11-06：
+  // 兩個 edition 要能同時開著測互鏈）。
+  const key = slotKey(slot);
+  const same = openDbs.findIndex((d) => slotKey(d) === key);
   if (same >= 0) {
     // 同名的舊庫被新檔取代：它的本文分頁畫的是舊檔的 reader，一起關掉
     const old = openDbs[same];
@@ -763,10 +768,16 @@ export function renderDbTabs(): void {
   if (!box) return;
   collectShortNames();               // 檔頭的 集.b 是非同步的；讀到會再重畫
   const active = activeSlot();
+  // 同一個顯示名可能有多個 edition（說文解字注的章節版／卷字版）：晶片加上
+  // dbname 才分得出來（作者 2026-11-06）。
+  const nameCount = new Map<string, number>();
+  for (const d of openDbs) nameCount.set(d.name, (nameCount.get(d.name) ?? 0) + 1);
   const SAVE_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h9l3 3v9H2V2zm2 1v4h7V3H4zm0 7v4h8v-4H4z"/></svg>';
   box.innerHTML = openDbs.map((d) => {
     const on = d === active;
     const n = editCount(findSession(sourceKey(d.file)));
+    const dup = (nameCount.get(d.name) ?? 0) > 1;
+    const label = chipName(d) + (dup ? '·' + slotKey(d) : '');
     const edit = n
       ? '<span class="dbChipEdit" data-save="' + d.id + '" title="' + n + ' 頁修訂：點一下產生新 ADB">' + SAVE_SVG + n + ' 頁修訂</span>'
       : '';
@@ -779,7 +790,7 @@ export function renderDbTabs(): void {
     // 只是一圈淡外框／小圓點，**不改變 active**。
     const hasTabs = tabCountOfDb(d.id) > 0;
     return '<span class="dbChip' + (on ? ' active' : '') + (hasTabs ? ' owner' : '') + '" data-id="' + d.id + '" title="' + escapeHtml(title) + '">'
-      + escapeHtml(chipName(d)) + edit
+      + escapeHtml(label) + edit
       + '<span class="dbChipClose" data-close="' + d.id + '" title="關閉（含它的所有本文分頁）">✕</span>'
       + '</span>';
   }).join('');

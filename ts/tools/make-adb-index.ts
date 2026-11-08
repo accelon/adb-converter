@@ -20,6 +20,10 @@
  *
  * 「官方委託製作」與置頂（作者 2026-11-05）：看 deploy/adb-status.json 的 official／pin。
  * 有 official 的列在題名旁加醒目標記，pin 小的排最前面（其餘照 index.txt 的順序）。
+ *
+ * 分區「工具書」（作者 2026-11-06）：deploy/adb-status.json 填 section: "工具書" 的庫，
+ * 列在頁面下方獨立的「工具書」區（字典、辭典、對照表）；沒填的留在上面的全文庫表格。
+ * 目前沒有庫登記，先顯示「尚無工具書」。
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -146,9 +150,12 @@ const wipNotes = allDbs.filter((d) => d.statusNote && d.statusLabel && d.statusL
 const pins = new Map<string, { official: boolean; exclusive: boolean; pin: number }>();
 // 資料庫說明行（作者 2026-11-05）：deploy/adb-status.json 的 description／sourceUrl
 const details = new Map<string, { desc?: string; url?: string; label?: string }>();
+// 分區（作者 2026-11-06）：deploy/adb-status.json 的 section，目前只認「工具書」；
+// 沒填的留在上面的全文庫表格。工具書是字典、辭典、對照表這類查檢用的庫。
+const sections = new Map<string, string>();
 try {
   const st = JSON.parse(readFileSync(resolve(ROOT, 'deploy/adb-status.json'), 'utf8')) as Record<string, {
-    official?: boolean; exclusive?: boolean; pin?: number;
+    official?: boolean; exclusive?: boolean; pin?: number; section?: string;
     description?: string; sourceUrl?: string; sourceUrlLabel?: string;
   } | string>;
   for (const [file, v] of Object.entries(st)) {
@@ -159,6 +166,7 @@ try {
     if (v.description || v.sourceUrl) {
       details.set(file.toLowerCase(), { desc: v.description, url: v.sourceUrl, label: v.sourceUrlLabel });
     }
+    if (v.section) sections.set(file.toLowerCase(), v.section);
   }
 } catch { /* 沒有狀態檔就照 index.txt 的順序、不標記 */ }
 const pinOf = (file: string) => pins.get(file.toLowerCase())?.pin ?? Number.MAX_SAFE_INTEGER;
@@ -169,11 +177,16 @@ const isExclusive = (file: string) => !!pins.get(file.toLowerCase())?.exclusive;
 rows.sort((a, b) => pinOf(a.fileName) - pinOf(b.fileName));
 const officialNames = rows.filter((r) => isOfficial(r.fileName)).map((r) => r.name);
 
+// 分區（作者 2026-11-06）：工具書另立一區；目前沒有庫登記，先留空。
+const isTool = (r: { fileName: string }) => sections.get(r.fileName.toLowerCase()) === '工具書';
+const mainRows = rows.filter((r) => !isTool(r));
+const toolRows = rows.filter(isTool);
+
 const totalChars = rows.reduce((a, r) => a + (r.chars ?? 0), 0);
 const totalSize = rows.reduce((a, r) => a + r.size, 0);
 const known = rows.filter((r) => r.chars !== null).length;
 
-const body = rows.map((r) => {
+const renderRows = (list: typeof rows) => list.map((r) => {
   const cls = [isOfficial(r.fileName) ? 'official' : '', isExclusive(r.fileName) ? 'exclusive' : ''].filter(Boolean).join(' ');
   const tags = (isOfficial(r.fileName) ? '<span class="officialTag">官方委託製作</span>' : '')
     + (isExclusive(r.fileName) ? '<span class="exclusiveTag">本站獨家</span>' : '');
@@ -189,6 +202,16 @@ const body = rows.map((r) => {
   const desc = `        <tr class="dbDesc${cls ? ' ' + cls : ''}"><td colspan="5">${d.desc ? esc(d.desc) : ''}${d.url ? `　<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.label || d.url)}</a>` : ''}</td></tr>`;
   return `${row}\n${desc}`;
 }).join('\n');
+
+const body = renderRows(mainRows);
+const toolsTable = toolRows.length ? `<table class="dbTable">
+    <thead>
+      <tr><th>資料庫</th><th class="num">字數（約）</th><th class="num">建置日期</th><th class="num">檔案大小</th><th class="dl">下載</th></tr>
+    </thead>
+    <tbody>
+${renderRows(toolRows)}
+    </tbody>
+  </table>` : '<p class="toolsEmpty">尚無工具書。</p>';
 
 const html = `<!DOCTYPE html>
 <html lang="zh-Hant">
@@ -242,6 +265,11 @@ const html = `<!DOCTYPE html>
   .dbNote { margin: 22px 0 8px; padding: 14px 18px; background: var(--panel); border: 1px solid var(--line);
     border-left: 3px solid var(--gold); border-radius: 8px; color: var(--muted2); font-size: 14.5px; }
   .dbNote b { color: var(--fg); }
+  /* 分區：工具書（作者 2026-11-06）——字典、辭典、對照表另立一區 */
+  .toolsSection { margin: 38px 0 0; border-top: 1px solid var(--line); padding-top: 24px; }
+  .toolsSection h2 { font-size: 21px; margin: 0 0 6px; }
+  .toolsSection > p { margin: 0 0 6px; color: var(--dim); font-size: 14px; max-width: 48em; }
+  .toolsEmpty { color: var(--dim); font-size: 15px; margin: 14px 0 0; }
   /* 施工中（2026-10-29）：manifest 有記錄，但先不提供下載 */
   .wipSection { margin: 34px 0 0; border-top: 1px solid var(--line); padding-top: 24px; }
   .wipSection h2 { font-size: 21px; margin: 0 0 6px; }
@@ -300,6 +328,12 @@ ${body}
   </table>
 
   ${wipNotes.map((d) => `<p class="dbWarn"><b>《${esc(d.name || d.file)}》${esc(d.statusLabel || '')}</b>${esc(d.statusNote)}</p>`).join('')}
+
+  <section class="toolsSection">
+    <h2>工具書</h2>
+    <p>字典、辭典、對照表這類查檢用的資料庫，跟上面的全文庫分開。</p>
+    ${toolsTable}
+  </section>
 
   ${wip.length ? `<section class="wipSection">
     <h2>施工中</h2>

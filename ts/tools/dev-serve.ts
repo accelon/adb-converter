@@ -8,6 +8,8 @@
  * 為什麼要這支（作者 2026-11-03）：
  *   - 改 HTML／CSS／TS 之後不想每次 `build-viewer` 再手動重新整理、再手動選 adb。
  *   - 也不想為了看一頁而 build exe。
+ *   - 重新整理要記得**所有**開著的 adb（不只一個）：dev script 讀 app 的 open-set，
+ *     再從 `/__adbs` 把每個檔抓回來（2026-11-06）。
  *
  * 它做的事：
  *   1. 每個 GET / 都呼叫 `buildSingleFileHtml()`（約 0.6 秒），所以重新整理就是最新版；
@@ -45,6 +47,9 @@ const DEV_SCRIPT = `
     console.warn('[dev] ' + m);
   };
   const saveNow = () => {
+    // 作者 2026-11-06：重新整理要記得「所有」開著的 adb，不是只有一個。
+    // saveOnExit 會把 openDbs 全部寫進 app 自己的 open-set（localStorage）。
+    try { window.__accelon26?.saveOnExit?.(); } catch { /* ignore */ }
     try {
       const st = window.__accelon26?.state?.() ?? {};
       if (st.db) localStorage.setItem(DB_KEY, st.db);
@@ -64,6 +69,45 @@ const DEV_SCRIPT = `
     input.dispatchEvent(new Event('change'));
     return true;
   };
+  /** 一次開多個：把所有 File 塞進同一個 multiple input，走 openPicked 的同一條路。 */
+  const openManyFromServer = async (names) => {
+    const files = [];
+    for (const name of names) {
+      const r = await fetch('/adb/' + encodeURIComponent(name) + '.adb');
+      if (!r.ok) continue;
+      files.push(new File([await r.arrayBuffer()], name + '.adb', { type: 'application/octet-stream' }));
+    }
+    if (!files.length) return false;
+    const input = document.querySelector('#file');
+    const dt = new DataTransfer();
+    for (const f of files) dt.items.add(f);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change'));
+    return true;
+  };
+  /**
+   * app 的 open-set（saveOnExit 寫的）→ dev server 的檔名。
+   * 用 dbname（檔頭 id）先對，沒有才用大小／顯示名；active 排最後開，重整後仍是同一庫。
+   */
+  const savedServerNames = async () => {
+    let set = null;
+    try { set = window.__accelon26?.openSet?.() ?? null; } catch { /* ignore */ }
+    if (!set || !Array.isArray(set.dbs) || !set.dbs.length) return [];
+    const list = await fetch('/__adbs').then((r) => r.json()).catch(() => []);
+    const pairs = [];
+    const used = new Set();
+    for (const rec of set.dbs) {
+      let hit = list.find((x) => rec.dbname && String(x.name).toLowerCase() === String(rec.dbname).toLowerCase());
+      if (!hit && rec.size) hit = list.find((x) => x.size === rec.size);
+      if (!hit) hit = list.find((x) => String(x.name).toLowerCase() === String(rec.name).toLowerCase());
+      if (hit && !used.has(hit.name)) { used.add(hit.name); pairs.push({ file: hit.name, rec }); }
+    }
+    if (set.active) {
+      const at = pairs.findIndex((p) => 'n:' + p.rec.name + ':' + (p.rec.size ?? 0) === set.active);
+      if (at >= 0) pairs.push(pairs.splice(at, 1)[0]);
+    }
+    return pairs.map((p) => p.file);
+  };
   (async () => {
     for (let i = 0; i < 120; i++) {
       if (window.__accelon26 && document.querySelector('#file')) break;
@@ -82,11 +126,22 @@ const DEV_SCRIPT = `
       .filter((x) => !!x))];
     let opened = false;
     if (!window.__accelon26.state().db) {
-      for (const name of tries) {
-        if (await openFromServer(name)) { opened = true; break; }
+      // 先恢復上次開著的「全部」adb（app 的 open-set）；沒有紀錄才退回單一 ?db=／記憶
+      const many = await savedServerNames();
+      let want = 0;
+      if (many.length) {
+        want = many.length;
+        opened = await openManyFromServer(many);
       }
-      for (let i = 0; i < 200 && opened; i++) {
-        if (window.__accelon26.state().db) break;
+      if (!opened) {
+        want = 1;
+        for (const name of tries) {
+          if (await openFromServer(name)) { opened = true; break; }
+        }
+      }
+      for (let i = 0; i < 600 && opened; i++) {
+        const st = window.__accelon26.state();
+        if (st.db && st.dbs.length >= Math.min(want, 5)) break;
         await sleep(100);
       }
       const saved = localStorage.getItem(VA_KEY) || '';
@@ -183,7 +238,7 @@ const server = Bun.serve({
     }
 
     if (path === '/__adbs') {
-      return Response.json(listAdbs().map(({ name, label, path }) => ({ name, label, path })));
+      return Response.json(listAdbs().map(({ name, label, path }) => ({ name, label, path, size: statSync(path).size })));
     }
 
     const adb = /^\/adb\/(.+\.adb)$/.exec(path);
