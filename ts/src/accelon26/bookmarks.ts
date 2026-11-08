@@ -131,8 +131,17 @@ async function bookAt(va: number): Promise<string> {
   return reader?.header.dbcname || reader?.header.dbname || '';
 }
 
+/** 全形字（漢字與全形標點／全形英數）：接行的空白只在它兩側出現時才去掉。 */
+const WIDE = '\\u3000-\\u303f\\u3400-\\u4dbf\\u4e00-\\u9fff\\uf900-\\ufaff\\uff00-\\uffef';
+
 function normalize(s: string): string {
-  return s.replace(/\s+/g, ' ').trim();
+  // 選取跨行時瀏覽器給的是換行；中文接行不該多出半形空白（厚觀法師 2026-11-07
+  // 回報：隔行的地方會多出半形空格）。兩側都是全形字就整段拿掉，其餘（英文、
+  // 數字）照舊壓成一個空白。
+  return s
+    .replace(/\s+/g, ' ')
+    .replace(new RegExp(`(?<=[${WIDE}]) (?=[${WIDE}])`, 'g'), '')
+    .trim();
 }
 
 /** 取目前選取範圍（只接受中間本文的 .docLine，避免左右欄混在一起）。 */
