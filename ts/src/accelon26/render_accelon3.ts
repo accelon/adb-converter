@@ -329,7 +329,10 @@ export function labelDepthIndex(label?: string): number | null {
  * 直接依那個序換色。
  */
 export function tagChromaIndex(tag: string, depth: number, ctx: RenderContext = current, label?: string): number {
-  const semantic = label ? labelDepthIndex(label) : null;
+  // 天干／地支序的語意染色只適用於「章／節／項」——這是 repairSemanticTree /
+  // resolveSemanticLabels 重掛的範圍（ys 的甲一、乙一…）。`書` 這一層的標題
+  // （如「丁玲《…》」的「丁」）是普通書名，不該被當成語意層級而染成別的顏色。
+  const semantic = (tag === '章' || tag === '節' || tag === '項') && label ? labelDepthIndex(label) : null;
   if (semantic != null) return semantic;
   const tagDepth = ctx.depthOf?.get(tag);
   const tc = ctx.tagChroma?.get(tag);
