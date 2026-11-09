@@ -14,6 +14,7 @@
  * 目標庫必須已在同一工作階段開過（file:// 不能自己讀硬碟）。
  */
 import { AdbReader, BlobIO } from './adb';
+import { parseCharPosition } from './char-position';
 import { activeSlot, catalog, openCatalogEntry, openDbs, switchTo } from './dbs';
 import { mapper, reader, setStatus } from './viewer';
 import { ensureRightPane, openForeignTab, setForeignNeighbor, setForeignRender } from './text-pane';
@@ -1503,6 +1504,14 @@ async function handleXref(value: string, fromRight: boolean, newTab: boolean, qu
   const h2 = performance.now();
   (globalThis as any).__xrefClick = { reader: Math.round(h1 - h0), anchorVa: Math.round(h2 - h1), db };
   if (va == null) { setStatus((db === mainName ? '本庫' : db) + ' 找不到頁碼 ' + anchor, 'err'); return; }
+  // `頁#起-止` 是「這一頁第幾個漢字到第幾個漢字」（char-position.ts），不是句內詞序。
+  // 走 openCharPosition 才會精準塗整段引文；先前落到 linkTo → 被當成詞序，只會亂塗幾個字
+  // （厚觀法師 2026-11-09 回報「跳引用只亮引號」）。
+  const charPos = parseCharPosition(db + '?' + anchor);
+  if (charPos && !fromRight && db === mainName) {
+    await openCharPosition(charPos);
+    return;
+  }
   const short = db === 'taisho' ? 'T' : db.slice(0, 4);
   const anchorBase = splitWordKey(anchor).base;
   if (!fromRight) {
