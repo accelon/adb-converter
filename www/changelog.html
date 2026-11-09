@@ -84,16 +84,38 @@
 </header>
 <main class="wrap">
   <h1>更新說明</h1>
-  <p class="lead">accelon26 每個版本改了什麼；最新版是 <b>2026-11-08</b>。</p>
-  <div class="latest">最新版 <b>2026-11-08</b><span>·</span><span>2026-11-08 17:20 北京時間</span></div>
+  <p class="lead">accelon26 每個版本改了什麼；最新版是 <b>2026-11-09</b>。</p>
+  <div class="latest">最新版 <b>2026-11-09</b><span>·</span><span>2026-11-09 09:06 北京時間</span></div>
   <div class="actions">
     <a class="btn" href="index.html#install">下載最新版</a>
     <a class="btn ghost" href="index.html">回首頁</a>
   </div>
 
+      <article class="ver" id="d-2026-11-09">
+        <h2>2026-11-09<span class="build">2026-11-09 09:06 北京時間</span></h2>
+        
+        <ul>
+        <li>詞典同形詞：&lt;詞 a=&quot;2&quot;&gt;阿房&lt;/詞&gt; 顯示「阿²房」，但詞條與連結只包乾淨的「阿房」</li>
+        <li>app 內建書目登錄（book-catalog.json，約 15 KiB）：books 是 adb 載體、works 是書名身份（《易》＝yijing→13j/周易）</li>
+        <li>xref 改為分散式：引用 ADB 自己記 outgoing links，原文只收已開啟來源的反向連結</li>
+        <li>標籤重構：詞／_詞／辭／_辭 只管詞頭與詞譜，_名／聯 統一成連結；_名 另開分頁，聯 n 支援 Ctrl 另開</li>
+        <li>詞書體例：短值可以用 &lt;例 t=&quot;…&quot;&gt;值&lt;/例&gt;，長／跨行體例用自閉合 &lt;例 t=&quot;…&quot;/&gt; 當分區起點</li>
+        <li>成語典的 &lt;_名&gt;別名／參見連結改成點擊時另開本文分頁，不會把目前正在讀的分頁跳走</li>
+        <li>cs 的詞譜標籤改用 &lt;辭 b/j&gt;，和詞典 &lt;詞&gt; 詞頭分開；閱讀器兩種都接受</li>
+        <li>精讀模式（🙏／F4）只給有 &lt;集 g&gt; 的 vedic 群；其他資料庫不再顯示，也不會誤進精讀</li>
+        <li>詞書的詞頭預設比正文大；&lt;詞 zy=&quot;…&quot;&gt; 會同步顯示注音與拼音，只有 py 時顯示拼音；注音不佔選取</li>
+        <li>新 &lt;彈 t=&quot;…&quot;&gt; 提示：滑過文字 1 秒才顯示 t 的內容（字級和正文一樣），t 不進正文與搜尋，適合詞典的補充說明</li>
+        <li>詞書的體例分區（&lt;例 t=&quot;注音&quot;/&gt; 等）只顯示帶框線的小標籤，內文不再整區加框；顏色依 &lt;集 scheme&gt; 的體例清單順序配置，分區標籤不進搜尋</li>
+        <li>閱讀器開著 adb 時不再鎖住檔案：其他工具／agent 可以直接替換 adb；只有編輯／覆寫時才走原本的關檔替換流程</li>
+        <li>沒有 &lt;頁&gt; 的詞書（如 cyd 成語典）也能引用複製：用詞條名稱定位，例 (cyd?一毛不拔#0-3)，貼回可直接跳到那一條並塗字</li>
+        <li>雙擊 .adb（或拖到 exe）直接開啟那個檔：清單先列它所在資料夾的書，再列 exe 資料夾的書；清單只在有兩個資料夾時多一欄「資料夾」</li>
+        <li>About 多一列「.adb 檔案」：顯示雙擊 .adb 會用哪個 exe 開啟；不同就一顆按鈕改成現在這支；沒有關聯、或原本的 exe 已不存在時「關連 adb」會高亮，成功後提示以後雙擊即可</li>
+        </ul>
+      </article>
+
       <article class="ver" id="d-2026-11-08">
         <h2>2026-11-08<span class="build">2026-11-08 17:20 北京時間</span></h2>
-        <div class="noteTitle">accelon26 2026-11-08 RC1</div>
+        
         <ul>
         <li>圖版（Visio 匯出的 SVG）顯示修正：字不再變大重疊、右邊不再被裁掉，下載的 SVG 也是原檔</li>
         <li>引用複製：中文跨行接起來不再多出半形空白</li>

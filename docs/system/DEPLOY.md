@@ -115,6 +115,11 @@ CI 會建 arm64／x86_64 兩個 zip 並附到 Release，之後
 - 若只是程式 RC、這輪 adb 沒變，才用 `deploy.ts --site --no-adb`；**發 RC 前先比對
   `D:\accelon3` 與線上 `adb/manifest.json` 的 sha256，有差異就不可以加 `--no-adb`**，
   要把 adb 一起發。
+- **上傳前自動比對 adb 本體**（2026-11-09 加入）：`deploy.ts --site`／`--site-only` 會先用
+  遠端 `sha256sum` 比對站上每個 adb 與 `www/adb/manifest.json`；不一致就停止（避免使用者
+  下載到 sha 不符的檔、更新失敗）。先跑 `publish-adb.ts --files <檔名> --allow-large` 補上，
+  再重新 deploy。單獨檢查：`deploy.ts --check-adb`；明知不一致要硬發才加
+  `--allow-adb-mismatch`。
 - 好處：程式與 adb 不會一邊新一邊舊，也避免各工作區各自上傳占滿頻寬。
 
 壓縮檔內容固定三樣：`accelon26.exe`、`README.txt`（簡體）、`README-tc.txt`（繁體）。

@@ -9,6 +9,8 @@
  *   cd ts && bun run tools/deploy.ts --check        # 只驗線上，不上傳
  *   cd ts && bun run tools/deploy.ts --mirror-only  # 只做鏡像站（--primary-only 只做主站）
  *   cd ts && bun run tools/deploy.ts --site --no-adb  # 只發桌面版，不重生 adb manifest／公開頁
+ *   cd ts && bun run tools/deploy.ts --check-adb     # 只比對站上 adb 與 manifest 的 sha256
+ *   cd ts && bun run tools/deploy.ts --site --allow-adb-mismatch  # 明知不一致仍先上傳（少用）
  *
  * 為什麼要兩個站：大陸使用者一般連不到 nissaya.cn；海外使用者連 nissaya.cn 比較快。
  * 程式會探測兩站並讓使用者選（見 ts/src/accelon26/mirror.ts），所以兩邊的 versions.json
@@ -45,6 +47,8 @@ const SITE = WITH_SITE || SITE_ONLY;
 // 只發桌面版、沒有要更新 adb：跳過 manifest／公開數據庫頁的重生，
 // 免得把還沒上傳的新 adb（ys／taisho…）寫進站上的 manifest。
 const NO_ADB = args.includes('--no-adb');
+const CHECK_ADB = args.includes('--check-adb');
+const ALLOW_ADB_MISMATCH = args.includes('--allow-adb-mismatch');
 if (MIRROR_ONLY && PRIMARY_ONLY) {
   console.error('✗ --mirror-only 與 --primary-only 不能同時用');
   process.exit(2);
@@ -168,6 +172,82 @@ function makeTransport(t: Target) {
   return { upload, remote, done };
 }
 
+// ---- 站上 adb 本體與 manifest 的一致性（作者 2026-11-09）------------------------
+//
+// 為什麼要有：taisho.adb（331 MB）、wxzj.adb（245 MB）要 publish-adb 加 --allow-large
+// 才會上傳，沒加就靜默跳過；manifest 卻照樣從本機重生。結果站上是舊檔、manifest 是新檔，
+// 使用者下載後 sha 對不上、更新失敗（2026-11-09 實際發生）。
+// 這裡用遠端 sha256sum 比對，不必把幾百 MB 抓下來。
+
+interface AdbManifestDb { file: string; sha256: string; size: number }
+
+function readAdbManifest(): AdbManifestDb[] {
+  const p = resolve(ROOT, 'www/adb/manifest.json');
+  if (!existsSync(p)) return [];
+  try {
+    const m = JSON.parse(readFileSync(p, 'utf8')) as { dbs?: Array<{ file?: string; sha256?: string; size?: number }> };
+    return (m.dbs ?? [])
+      .filter((d) => d.file && d.sha256)
+      .map((d) => ({ file: d.file!, sha256: d.sha256!, size: d.size ?? 0 }));
+  } catch {
+    return [];
+  }
+}
+
+/** 回傳「站上 adb 與 manifest 不一致」的說明（空陣列＝都一致）。 */
+function adbShaProblems(tr: ReturnType<typeof makeTransport>, t: Target, dbs: AdbManifestDb[]): string[] {
+  if (!dbs.length) return [];
+  const names = dbs.map((d) => `'${d.file}'`).join(' ');
+  let listing = '';
+  try {
+    listing = tr.remote(`cd '${t.docroot}/adb' 2>/dev/null && sha256sum ${names} 2>&1 || true`, '比對站上 adb sha256');
+  } catch (e) {
+    return ['讀不到站上 adb：' + String((e as Error)?.message ?? e)];
+  }
+  const online = new Map<string, string>();
+  for (const line of listing.split(/\r?\n/)) {
+    const m = /^([0-9a-f]{64})\s+\*?(.+)$/.exec(line.trim());
+    if (m) online.set(m[2].trim(), m[1].toLowerCase());
+  }
+  const problems: string[] = [];
+  for (const d of dbs) {
+    const got = online.get(d.file);
+    const want = d.sha256.toLowerCase();
+    if (!got) problems.push(`${d.file}：站上沒有這個檔（manifest 有列）`);
+    else if (got !== want) problems.push(`${d.file}：站上 ${got.slice(0, 12)}… ≠ manifest ${want.slice(0, 12)}…（${d.size} bytes）`);
+  }
+  return problems;
+}
+
+/** 對一個站做一致性檢查（自己的連線與清理）。 */
+function checkAdbOn(t: Target, dbs: AdbManifestDb[]): { label: string; problems: string[] } {
+  const tr = makeTransport(t);
+  try {
+    return { label: t.label, problems: adbShaProblems(tr, t, dbs) };
+  } finally {
+    tr.done();
+  }
+}
+
+if (CHECK_ADB) {
+  const dbs = readAdbManifest();
+  if (!dbs.length) die('讀不到 www/adb/manifest.json 的 dbs');
+  let bad = 0;
+  for (const t of chosen) {
+    const { label, problems } = checkAdbOn(t, dbs);
+    if (!problems.length) { console.log(`[${label}] ✓ ${dbs.length} 個 adb 都與 manifest 一致`); continue; }
+    bad += problems.length;
+    console.error(`[${label}] ✗ 有 ${problems.length} 個不一致：`);
+    for (const p of problems) console.error('  - ' + p);
+  }
+  if (bad) {
+    console.error('\n先跑：bun run tools/publish-adb.ts --files <檔名> --allow-large');
+    process.exit(1);
+  }
+  console.log(`\n✓ ${dbs.length} 個 adb 在 ${chosen.length} 個站都與 manifest 一致`);
+  process.exit(0);
+}
+
 const fileSha = (p: string): string => createHash('sha256').update(readFileSync(p)).digest('hex');
 
 // ---- 本地檔案 -------------------------------------------------------------------
@@ -244,6 +324,22 @@ async function deployTarget(t: Target): Promise<void> {
   let tr: ReturnType<typeof makeTransport> | null = null;
   try {
     tr = CHECK_ONLY ? null : makeTransport(t);
+    // 上傳任何東西之前，先確認站上的 adb 本體就是 manifest 寫的那一份（作者 2026-11-09）。
+    // 不一致就停：否則使用者下載後 sha 對不上，更新一定失敗。
+    if (SITE && !NO_ADB && !CHECK_ONLY) {
+      const dbs = readAdbManifest();
+      const problems = adbShaProblems(tr!, t, dbs);
+      if (problems.length) {
+        const detail = problems.map((p) => '  - ' + p).join('\n');
+        if (!ALLOW_ADB_MISMATCH) {
+          throw new Error('站上 adb 與 manifest 不一致（使用者會下載到 sha 不符的檔）：\n' + detail
+            + '\n先跑：bun run tools/publish-adb.ts --files <檔名> --allow-large');
+        }
+        console.error(`[${t.label}] ⚠ 站上 adb 與 manifest 不一致（--allow-adb-mismatch，先繼續）：\n` + detail);
+      } else {
+        console.log(`[${t.label}] adb 本體與 manifest 一致（${dbs.length} 個檔）`);
+      }
+    }
     if (!CHECK_ONLY && !SITE_ONLY) {
       const m = manifest!;
       tr!.upload(EXE, t.docroot + '/accelon26.exe.tmp');
