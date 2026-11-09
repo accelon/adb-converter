@@ -221,7 +221,16 @@ export function inlineSvgHtml(src: string, label: string, figure = false): strin
   if (!m) return `<span class="inlineImgMissing" title="${esc(label)}">▢</span>`;
   const vb = /\bviewBox\s*=\s*"([^"]*)"/i.exec(m[1])?.[1] ?? '0 0 1000 1000';
   const rootClass = /\bclass\s*=\s*"([^"]*)"/i.exec(m[1])?.[1]?.trim() ?? '';
-  const clean = m[2].replace(/<!\[CDATA\[/g, '').replace(/\]\]>/g, '');
+  const clean = m[2].replace(/<!\[CDATA\[/g, '').replace(/\]\]>/g, '')
+    // Visio 的 <v:documentProperties>／<v:pageProps> 是看不見的檔案屬性；
+    // 內嵌時根標籤的 xmlns:v 被丟掉，存成 .svg 再開就會報
+    // 「Element v:documentproperties prefix is unbound」（hunxian 2026-11-09 回報）。
+    .replace(/<v:[a-zA-Z][\s\S]*?<\/v:[a-zA-Z]+>/gi, '')
+    .replace(/<v:[a-zA-Z][^>]*\/>/gi, '')
+    // 元素屬性上的 `v:` 前綴（Visio 的 v:mid、v:ext…）也要拿掉，否則序列化成 .svg
+    // 會是「Namespace prefix v for mid on g is not defined」，圖根本載不出來。
+    .replace(/\sv:[a-zA-Z-]+\s*=\s*"[^"]*"/g, '')
+    .replace(/\sv:[a-zA-Z-]+\s*=\s*'[^']*'/g, '');
   const rules = svgStyleRules(clean);
   const inlined = inlineSvgStyles(clean);
   const inner = uniqueSvgIds(inlined.inner

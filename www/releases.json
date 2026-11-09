@@ -1,13 +1,13 @@
 {
   "app": "accelon26",
-  "updated": "2026-11-09T03:14:58Z",
+  "updated": "2026-11-09T03:41:58Z",
   "releases": [
     {
       "date": "2026-11-09",
       "file": "releases/accelon26-2026-11-09.zip",
-      "buildTime": "2026-11-09T03:14:46Z",
-      "size": 11571247,
-      "sha256": "678002ca1ad760ce56a95ce14aae94b1eea0843f6e7d49ce33d8228dfc9ffade"
+      "buildTime": "2026-11-09T03:41:45Z",
+      "size": 11571597,
+      "sha256": "d8c5630f319f406b986d2707989d39b71328582395df2f5644203cb93ba2342e"
     },
     {
       "date": "2026-11-08",
