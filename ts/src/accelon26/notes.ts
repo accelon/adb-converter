@@ -621,13 +621,13 @@ function flashTarget(line: number, mark?: HTMLElement | null): void {
       row.classList.remove('noteTarget');
       void (row as HTMLElement).offsetWidth;   // 重新觸發動畫
       row.classList.add('noteTarget');
-      window.setTimeout(() => row.classList.remove('noteTarget'), 2600);
+      window.setTimeout(() => row.classList.remove('noteTarget'), 12000);
       const num = mark ?? row.querySelector<HTMLElement>('a.noteRef, a.noteBack');
       if (num) {
         num.classList.remove('noteTargetMark');
         void num.offsetWidth;
         num.classList.add('noteTargetMark');
-        window.setTimeout(() => num.classList.remove('noteTargetMark'), 2600);
+        window.setTimeout(() => num.classList.remove('noteTargetMark'), 12000);
       }
     }
   });

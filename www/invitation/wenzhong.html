@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>邀請函：校讀《大林間奧義書》第六品 — 吠陀與奧義書三語平行語料</title>
+<meta name="description" content="致中國美術學院聞中老師的邀請函：請其校讀《大林間奧義書》第六品的梵、徐、黃三面對應。邀請人魏秀秀。">
+<meta name="theme-color" content="#f7f7f8" id="themeColor">
+<link rel="icon" type="image/png" href="/accelon26/img/appicon.png">
+<script>
+  (function () {
+    var t = 'light';
+    try { t = localStorage.getItem('accelon26.site.theme') === 'dark' ? 'dark' : 'light'; } catch (e) { }
+    document.documentElement.setAttribute('data-theme', t);
+  }());
+</script>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f7f7f8; --panel: #ffffff; --fg: #1f2328; --dim: #6a7280;
+    --line: #d6d9de; --accent: #1f6feb; --gold: #b45309; --hl: #eef2f7;
+    --seal: #9a3412;
+  }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #16171a; --panel: #1e1f23; --fg: #e8e8e8; --dim: #9aa1ab;
+    --line: #2c2d31; --accent: #5aa9ff; --gold: #ffd479; --hl: #25272c;
+    --seal: #f0a380;
+  }
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.65 "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  header { border-bottom: 1px solid var(--line); background: var(--panel); }
+  header .wrap { display: flex; align-items: center; gap: 16px; height: 60px; max-width: 980px; margin: 0 auto; padding: 0 24px; }
+  .brand { font-size: 19px; font-weight: 700; color: var(--fg); }
+  .brand b { color: var(--gold); }
+  nav { margin-left: auto; display: flex; align-items: center; gap: 14px; font-size: 13px; }
+  nav a { color: var(--dim); }
+  nav a:hover { color: var(--fg); }
+  .chipBtn {
+    background: transparent; color: var(--dim); border: 1px solid var(--line);
+    border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .chipBtn:hover { color: var(--fg); border-color: var(--dim); }
+
+  main { max-width: 980px; margin: 0 auto; padding: 40px 24px 72px; }
+
+  /* ---------- 信紙 ---------- */
+  .sheet {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 64px 72px 56px; max-width: 780px; margin: 0 auto;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 12px 40px -24px rgba(16, 24, 40, .28);
+    font-family: "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", "SimSun", Georgia, serif;
+    font-size: 16.5px; line-height: 2.0;
+  }
+
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 6px 28px;
+    font: 13px/1.7 "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+    color: var(--dim); border-bottom: 1px solid var(--line); padding-bottom: 18px; margin: 0 0 34px;
+  }
+  .meta b { color: var(--fg); font-weight: 600; }
+
+  h1 {
+    font-size: 27px; line-height: 1.35; margin: 0 0 8px; letter-spacing: .06em;
+    font-weight: 700;
+  }
+  .subtitle {
+    font-size: 15.5px; color: var(--dim); margin: 0 0 40px; letter-spacing: .02em;
+    font-family: "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  .rule { height: 3px; width: 58px; background: var(--seal); border-radius: 2px; margin: 0 0 38px; }
+
+  .salutation { font-size: 18px; letter-spacing: .04em; margin: 0 0 22px; }
+  .sheet p { margin: 0 0 18px; text-align: justify; text-indent: 2em; }
+  .sheet p.noindent, .sheet .meta, .sheet li p { text-indent: 0; }
+
+  code {
+    font-family: "Cascadia Mono", "Consolas", "Menlo", monospace;
+    font-size: .87em; background: var(--hl); border: 1px solid var(--line);
+    border-radius: 4px; padding: .1em .38em; white-space: nowrap;
+  }
+
+  h2 {
+    font-size: 16.5px; margin: 44px 0 14px; letter-spacing: .05em; font-weight: 700;
+    display: flex; align-items: baseline; gap: 2px;
+    font-family: "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  h2 .num {
+    font-family: "Songti SC", "Source Han Serif SC", "SimSun", serif;
+    font-size: 17px; font-weight: 700; color: var(--seal);
+    letter-spacing: .02em; flex: none; line-height: 1.4;
+  }
+  h2.appendix { margin-top: 52px; }
+
+  ul.plain { margin: 0 0 18px; padding-left: 1.4em; }
+  ul.plain li { margin: 8px 0; text-align: justify; }
+  ul.plain li::marker { color: var(--seal); }
+
+  ol.q { list-style: none; counter-reset: q; margin: 0 0 18px; padding: 0; }
+  ol.q li {
+    counter-increment: q; position: relative; padding: 14px 18px 14px 56px;
+    border: 1px solid var(--line); border-radius: 10px; margin: 0 0 12px;
+    background: var(--hl); text-align: justify;
+  }
+  ol.q li::before {
+    content: counter(q); position: absolute; left: 16px; top: 14px;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--line);
+    color: var(--seal); font: 700 13px/26px "Segoe UI", sans-serif; text-align: center;
+  }
+  ol.q li strong { color: var(--fg); }
+
+  table {
+    width: 100%; border-collapse: collapse; margin: 6px 0 20px;
+    font: 14px/1.75 "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  caption { text-align: left; color: var(--dim); font-size: 13px; padding-bottom: 8px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 9px 10px; vertical-align: top; text-align: left; }
+  th { font-weight: 600; color: var(--dim); font-size: 13px; border-bottom-width: 2px; }
+  tbody tr:hover td { background: var(--hl); }
+  td.k { white-space: nowrap; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+  .note {
+    border-left: 3px solid var(--gold); background: var(--hl);
+    padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 0 0 20px;
+    font-size: 14.5px; color: var(--dim);
+  }
+  .note p { margin: 0; text-indent: 0; }
+  .note b { color: var(--fg); }
+
+  blockquote.coffee { margin: 26px 0 34px; padding: 0; border: 0; }
+  blockquote.coffee p { text-indent: 0; margin: 0; color: var(--dim); font-size: 15px; }
+
+
+  figure.shot { margin: 30px 0 34px; }
+  figure.shot img {
+    width: 100%; height: auto; display: block; border-radius: 10px;
+    border: 1px solid var(--line); box-shadow: 0 10px 30px -20px rgba(16, 24, 40, .5);
+  }
+  figure.shot figcaption {
+    margin-top: 10px; font: 12.5px/1.7 "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+    color: var(--dim); text-align: left;
+  }
+  figure.shot figcaption b { color: var(--fg); }
+
+  .case {
+    border: 1px solid var(--line); border-radius: 10px; margin: 0 0 16px;
+    overflow: hidden; break-inside: avoid;
+  }
+  .case .hd {
+    display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline;
+    padding: 10px 16px; background: var(--hl); border-bottom: 1px solid var(--line);
+    font: 13px/1.6 "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  .case .hd b { color: var(--fg); }
+  .case .bd { padding: 14px 16px 12px; }
+  .case p { margin: 0 0 10px; font-size: 15px; line-height: 1.85; text-indent: 0; }
+  .case p:last-child { margin-bottom: 0; }
+  .case .q em {
+    font-style: normal; color: var(--dim);
+    font-family: "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif; font-size: 12.5px;
+    display: block; margin-bottom: 2px;
+  }
+  .case .obs { color: var(--dim); font-size: 14.5px; }
+  .case .obs b { color: var(--seal); }
+
+  .sign { margin: 46px 0 0; text-align: right; line-height: 2.15; }
+  .sign .who { font-size: 17.5px; letter-spacing: .12em; }
+  .sign .line { color: var(--dim); font-size: 15px; letter-spacing: .06em; }
+  .seal {
+    display: inline-block; margin-left: 12px; padding: 2px 6px;
+    border: 1.5px solid var(--seal); border-radius: 4px;
+    color: var(--seal); font-size: 12.5px; letter-spacing: .18em;
+    transform: translateY(-2px);
+  }
+
+  footer { border-top: 1px solid var(--line); color: var(--dim); font-size: 12.5px; padding: 18px 0 40px; }
+  footer .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+
+  @media (max-width: 720px) {
+    main { padding: 24px 14px 56px; }
+    .sheet { padding: 34px 22px 30px; font-size: 16px; line-height: 1.95; border-radius: 10px; }
+    h1 { font-size: 23px; }
+    h2 { margin-top: 34px; }
+    header .wrap { height: auto; min-height: 54px; flex-wrap: wrap; padding: 10px 16px; }
+    nav { flex: 1 1 100%; justify-content: flex-end; }
+  }
+
+  /* ---------- 列印 / 存 PDF ---------- */
+  @page { size: A4; margin: 17mm 19mm 16mm; }
+  @media print {
+    :root, html[data-theme="dark"] {
+      --bg: #fff; --panel: #fff; --fg: #000; --dim: #444; --line: #bbb; --hl: #fff; --seal: #7c2d12;
+    }
+    header, footer, .noprint { display: none !important; }
+    body { font-size: 12pt; }
+    main { padding: 0; max-width: none; }
+    .sheet {
+      border: 0; border-radius: 0; box-shadow: none; padding: 0; max-width: none;
+      font-size: 11.5pt; line-height: 1.85;
+    }
+    h1 { font-size: 19pt; }
+    h2 { break-after: avoid; page-break-after: avoid; }
+    ol.q li, table, .note { break-inside: avoid; page-break-inside: avoid; }
+    a { color: #000; text-decoration: none; }
+    a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 9pt; color: #555; }
+    .salutation, .sign { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="/accelon26/">吠陀與奧義書三語平行語料</a>
+    <nav>
+      <a href="/accelon26/">首頁</a>
+      <a href="/accelon26/changelog.html">更新說明</a>
+      <button class="chipBtn noprint" id="themeBtn" title="切換亮底／暗底">暗底</button>
+      <button class="chipBtn noprint" id="printBtn" title="列印或存成 PDF">列印／PDF</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <article class="sheet">
+
+    <div class="meta">
+      <span>致　<b>中國美術學院　聞中老師</b></span>
+      <span>邀請人　<b>魏秀秀</b></span>
+      <span>日期　<b>＿＿＿＿年＿＿月＿＿日</b></span>
+    </div>
+
+    <h1>邀請函</h1>
+    <p class="subtitle noindent">校讀《大林間奧義書》第六品的地址對應</p>
+    <div class="rule"></div>
+
+    <p class="salutation noindent">尊敬的聞中老師：</p>
+
+    <p>您好。</p>
+
+    <p>我是魏秀秀，正在整理「吠陀與奧義書三語平行語料」。久仰老師在印度哲學與梵學領域的學養，尤其是對吠檀多與近現代印度思想的通貫理解；冒昧來信，是想請您撥冗看一看一批<b>數量不大、但我們自己已經沒有把握判定</b>的段落。</p>
+
+    <p>事情的起因很具體：這個專案做到現在，全庫只有一處曾經「知道它錯、卻不敢自己改」的地方，而它恰好落在徐梵澄與黃寶生兩位先生對同一段梵語的處理差異上。日前我們用黃譯的頌界當錨，把它逐頌改完了——但那是我們自己的判讀，<b>改得對不對，我沒有把握</b>，所以想請您核一核。若您看過後認為這件事另有更合適的請益對象，也懇請告知。</p>
+
+    <h2><span class="num">一、</span>我們在做什麼</h2>
+
+    <p>這個專案把吠陀與奧義書的<b>梵語原文、英譯、漢譯</b>按同一套地址（<code>bu.6.3.1</code>＝書.品.婆羅門書.頌）並排，做成可直接跳轉檢索的離線資料庫，供閱讀與研究引用。</p>
+
+    <p>目前規模：<b>14 部書、333 塊（品／節）、2,439 段</b>。梵語面完成 99.8%，英語面 98.8%；漢譯面以徐梵澄《五十奧義書》為主體（1,678 段，68.8%），並於近日新增黃寶生《奥义书》（商務印書館 2010）作為<b>並列的第二漢譯區</b>（1,676 段），方便對讀兩個譯本。</p>
+
+    <p>所有來源、授權與缺口原因都逐項記錄，可以隨時核查，不敢含糊。</p>
+
+    
+    <figure class="shot">
+      <img src="wenzhong-preview.png" alt="成品預想圖：同一地址 cu.6.8.7 在梵語、英譯、徐譯、黃譯四區並列的閱讀畫面">
+      <figcaption>成品預想圖——同一個地址 <code>cu.6.8.7</code>（「彼為爾矣」／<i>tat tvam asi</i>）在四區並列。<b>圖中的文字是資料庫的實際內容</b>，不是示意文案；閱讀器為 Windows 單機程式，離線可用。</figcaption>
+    </figure>
+
+
+    <h2><span class="num">二、</span>它現在能拿來做什麼</h2>
+
+    <p>並排只是形式，真正有用的是<b>它可以讓兩個傳統的文本直接對照</b>。下面兩條都出自專案已建置的部分，地址、出處都可查。</p>
+
+    <div class="case">
+      <div class="hd"><b>例一</b>　<code>rv.10.90.12</code>　四姓由何而生</div>
+      <div class="bd">
+        <p class="q"><em>《梨俱吠陀》10.90.12（原人歌）</em>
+        <b>brāhmaṇo 'sya mukham āsīd bāhū rājanyaḥ kṛtaḥ / ūrū tad asya yad vaiśyaḥ padbhyāṃ śūdro ajāyata</b>——婆羅門是他的口，剎帝利由他的臂而成，吠舍是他的腿，首陀羅從他的足生出。</p>
+        <p class="q"><em>同址所配的漢譯《起世經》T01n0024 卷十</em>
+        「此三種姓，世間生已，於後復有第四種姓，世間出生。……有一種人，各自毀呰其家本法，剃除鬚髮，著袈裟衣，棄捨世間，出（家修道）。」</p>
+        <p class="obs">吠陀的第四姓是<b>首陀羅</b>；佛教的第四姓被改寫成<b>沙門</b>，而且沒有首陀羅。同一組「四姓」框架，兩邊填的內容不同——這種差異用一條並排就能看出來。</p>
+      </div>
+    </div>
+
+    <div class="case">
+      <div class="hd"><b>例二</b>　<code>rv.10.129.7</code>　「誰知道呢」與「無記」</div>
+      <div class="bd">
+        <p class="q"><em>《梨俱吠陀》10.129.7（有無歌）</em>
+        <b>… so aṅga veda yadi vā na veda</b>——「他也許知道，<b>也許不知道</b>」。</p>
+        <p class="q"><em>同址所配的漢譯《中阿含》221 經（箭喻經）</em>
+        「所謂此見，世尊捨置除却，不盡通說，謂世有常，世無有常……」</p>
+        <p class="obs">兩處都是「不給答案」，但理由並不相同：奧義書停在<b>認識論的謙卑</b>（連「他是否知道」都無法斷定），佛教則以<b>此問無益</b>而捨置。這一條在專案裡標為「中等可信」，因為它是<b>主題平行</b>而非同源——我們把「像」與「是」分開標示。</p>
+      </div>
+    </div>
+
+    <p>這類對照目前有 21 條，每條都標了出處與可信度；查無實據的也照實留著，不湊數。</p>
+
+    <p>順帶一提：Aitareya 奧義書的第二、三章（胎藏三生、<code>prajñānaṃ brahma</code> 一節）過去只收了第一章，日前也補進來了——<code>sa au.3.1.3</code> 現在讀得到 「…prajñānaṃ brahma」，黃譯作「智慧即梵」。這是四大名句裡本庫原本缺的一句。</p>
+
+<h2><span class="num">三、</span>需要您看的，只有一段</h2>
+
+    <p>全庫目前<b>唯一「已知是錯、而非只是缺」</b>的地方，是徐梵澄譯《大林間奧義書》第六品的頌號對應。原因是徐先生的章節切分比梵語本晚，加上當年的自動切分按頁序硬切：</p>
+
+    <table>
+      <caption>已實測的現象</caption>
+      <thead>
+        <tr><th style="width:58%">現象</th><th>實測</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>徐譯「第三婆羅門書」印在 zh 6.3.12，但它其實是梵語 6.3.1</td><td class="k">偏移 11 段</td></tr>
+        <tr><td>徐譯「第四婆羅門書」印在 zh 6.4.15，但它其實是梵語 6.4.1</td><td class="k">偏移 14 段</td></tr>
+        <tr><td><code>zh 6.1.1–6.1.8</code> 與 <code>zh 5.14.1–8</code> 是同幾頁（p0639–p0643）的重複讀取</td><td class="k">8 列重複</td></tr>
+        <tr><td>徐譯 6.1.7–6.1.9（交諍、語言、眼）只存在於 OCR p0645，沒進資料庫</td><td class="k">少 3 頌</td></tr>
+        <tr><td>徐先生自己刪去 12 頌（原書標「删」「下略」，p0659、p0660、p0662）</td><td class="k">12 頌無文</td></tr>
+      </tbody>
+    </table>
+
+    <p>我們試過三條自動化的路——按 OCR 頌號指派、以黃譯當錨做序列對齊、從 OCR 整章重建——結果都不夠可靠（頌號 OCR 殘缺、兩個譯本用詞差異大、譯註與頁碼混進正文）。最後是靠<b>黃譯的頌界逐頌核對</b>，才把 75 列一次改完。但這是我們兩個人的判讀，<b>不是學術定論</b>。</p>
+
+    <h2><span class="num">四、</span>我們做了五個判斷，請您核可或否決</h2>
+
+    <ol class="q">
+      <li><b>重複頁</b>：<code>zh 6.1.1–6.1.8</code> 與 <code>5.14.1–8</code> 是同幾頁（p0639–p0643）的兩次讀取。我們<strong>刪去這 8 列</strong>，保留 <code>5.14</code> 現有的文字（第二次讀得較完整，但缺了梵語轉寫，取其一致）。</li>
+      <li><b>漏收的三頌</b>：<code>zh 6.1.7–6.1.9</code>（交諍、語言、眼）只存在於 OCR p0645。我們已抄出補入，明顯的 OCR 誤字（日→曰、人→入）就地改正，並在資料裡標「OCR 未校」。</li>
+      <li><b>6.3–6.4 的對位</b>：16 列依黃譯頌界對到梵語 13 頌。其中徐先生把「舉而祝之」與《薩維特利》頌的次序處理得與梵語本不同，我們把 <code>6.3.6</code> 收了兩列（地／空 與 天），<code>6.3.5</code> 單獨一列。</li>
+      <li><b>徐先生自刪的 14 頌</b>（原書標「删」「下略」，p0659–p0662）：漢譯欄<strong>如實留缺</strong>，由並列的黃譯補足，不混合兩個譯者。</li>
+      <li><b>一列含兩頌</b>（原 <code>6.3.13</code> 同時含偈頌與灌獻清單）：我們在句界切開，分置 <code>6.3.1</code> 與 <code>6.3.2</code>。</li>
+    </ol>
+
+    <p>改完後可抽查：<code>zh 6.3.1</code> 開頭是「第三婆罗门书：有愿望……」，<code>zh 6.4.1</code> 開頭是「第四婆罗门书：唯然！众生之真元，地也……」。<b>哪一條您認為判錯了，告訴我們，我們改回來</b>——這比從頭重做省事得多。</p>
+
+    <p>另一項代價也要向您說明：改完之後 <code>bu</code> 的漢譯由 436 段降為 <b>422 段</b>（缺 15），因為徐先生沒譯的地方現在如實留白了。全庫漢譯覆蓋率因此由 69.7% 降為 <b>68.8%</b>。我們認為誠實的缺比錯位的滿好，但這也是一個可以商量的判斷。</p>
+
+    <h2><span class="num">五、</span>工作量與節奏</h2>
+
+    <ul class="plain">
+      <li>範圍：<b>約 75 列</b>，全部集中在《大林間奧義書》第六品；每一列只需對讀三個版本（梵語、徐譯、黃譯）。</li>
+      <li>估計：<b>6–10 小時</b>，可依您的時間分兩三次進行，不必連續。</li>
+      <li>形式：我們會先把 75 列整理成一份表格（地址｜梵語｜徐譯｜黃譯，四欄並排），您可以離線看，只需標「對／不對／應改為某址」；需要時也可以線上會議逐段過。</li>
+      <li>我們會把既有判讀、頁碼證據與已知陷阱一併附上，避免您重複踩我們踩過的坑。</li>
+    </ul>
+
+    <h2><span class="num">六、</span>署名與授權</h2>
+
+    <ul class="plain">
+      <li>校讀意見會在專案文件中具名記錄（或依您的意願匿名）。</li>
+      <li>若您同意，也可以在資料庫的書誌資訊裡列為學術顧問。</li>
+      <li><b>本專案目前是私人研究，沒有散布計劃</b>，資料只在個人工作環境中使用；因此您不必顧慮授權或再散布的問題。來源仍逐項標明（CBETA 為 CC BY-NC-SA；徐、黃兩家譯本為著作權內，僅作研究對讀）。<b>校讀不涉及任何授權變更。</b></li>
+    </ul>
+
+    <h2><span class="num">七、</span>不需要您做的事</h2>
+
+    <ul class="plain">
+      <li><b>不需要翻譯</b>。要判斷的是「哪一列對應哪一頌」，不是重新譯一遍。</li>
+      <li><b>不需要處理全部缺口</b>。漢譯面其餘 737 段缺口（其中 722 段是《梨俱吠陀》無公版漢譯）不在本次範圍。</li>
+      <li>不必承諾長期參與；這一輪做完即可，之後有需要再請教。</li>
+    </ul>
+
+    <h2><span class="num">八、</span>聯絡</h2>
+
+    <p>如您願意，回覆這封信即可，我會把表格與相關檔案（含 75 列的對讀表）寄上。</p>
+
+    <p>無論如何，感謝您讀到這裡。</p>
+
+    <blockquote class="coffee">
+      <p>順頌　研安</p>
+    </blockquote>
+
+    <div class="sign">
+      <div class="who">魏秀秀<span class="seal">敬上</span></div>
+      <div class="line">＿＿＿＿年＿＿月＿＿日</div>
+      <div class="line">＿＿＿＿＿＿＿＿（信箱）</div>
+    </div>
+
+    <h2 class="appendix">隨信附上的材料</h2>
+
+    <div class="note">
+      <p>皆為研究對讀用，不作散布。</p>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th style="width:38%">材料</th><th>內容</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><a href="parallel-corpus-value.html">多語平行語料庫對義理研究的用處</a>（線上短文）</td><td>給義理研究者：三語同址可以問什麼，附三個例子（<code>ātman</code>、<code>tat tvam asi</code>、<code>na … prajñam</code>）</td></tr>
+        <tr><td>對讀表（75 列）</td><td>地址｜梵語｜徐譯｜黃譯 四欄並排，可直接在上面標註</td></tr>
+        <tr><td>偏移證據節錄</td><td>偏移的完整證據、三條自動化路線的實測與失敗原因</td></tr>
+        <tr><td>對齊問題總述節錄</td><td>漢譯對齊問題總述（塊級可信、段級須核）</td></tr>
+        <tr><td>來源與授權節錄</td><td>各來源、版本、授權狀態</td></tr>
+      </tbody>
+    </table>
+
+    <p class="noindent">若您需要看某幾段的原始出處（OCR 頁碼、梵語本行號），我可以逐段補上。</p>
+
+  </article>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>吠陀與奧義書三語平行語料　·　邀請函</span>
+    <span>製表　魏秀秀</span>
+    <a href="/accelon26/">回首頁</a>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('themeBtn');
+    var meta = document.getElementById('themeColor');
+    function sync() {
+      var dark = root.getAttribute('data-theme') === 'dark';
+      if (btn) btn.textContent = dark ? '亮底' : '暗底';
+      if (meta) meta.setAttribute('content', dark ? '#16171a' : '#f7f7f8');
+    }
+    sync();
+    if (btn) btn.addEventListener('click', function () {
+      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('accelon26.site.theme', next); } catch (e) { }
+      sync();
+    });
+    var pb = document.getElementById('printBtn');
+    if (pb) pb.addEventListener('click', function () { window.print(); });
+  }());
+</script>
+</body>
+</html>

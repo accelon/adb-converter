@@ -318,8 +318,8 @@
     ]
   },
   {
-    "buildTime": "2026-11-09T03:41:45Z",
-    "title": "accelon26 2026-11-09 RC3",
+    "buildTime": "2026-11-09T13:26:09Z",
+    "title": "accelon26 2026-11-09 RC5",
     "items": [
       "詞典同形詞：<詞 a=\"2\">阿房</詞> 顯示「阿²房」，但詞條與連結只包乾淨的「阿房」",
       "app 內建書目登錄（book-catalog.json，約 15 KiB）：books 是 adb 載體、works 是書名身份（《易》＝yijing→13j/周易）",

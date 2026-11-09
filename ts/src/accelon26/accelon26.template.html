@@ -1375,10 +1375,12 @@
   .lineText .noteBack { color: var(--gold); text-decoration: none; font-size: .8em; padding: 0 3px 0 0; cursor: pointer; }
   .lineText .noteBack:hover { text-decoration: underline; }
   .lineText .noteBody { cursor: text; white-space: normal; overflow-wrap: anywhere; }   /* 注文可以換行（長註才不會被切在右邊）；釋文本身不點擊（2026-10-31，只有編號可回本文） */
+  /* 腳注裡的引文（<經>）用楷體；其餘注文維持本文（厚觀法師 2026-11-09：不是全部腳注都用楷體） */
+  .lineText .noteBody .h[data-tag="經"] { font-family: var(--kai) !important; }
   /* 註↔釋往返：目標行與編號閃一下（作者 2026-10-31） */
   .docLine.noteTarget {
     background: var(--hl-bg); box-shadow: inset 3px 0 0 var(--accent);
-    animation: noteFlash 1.1s ease-in-out 2;
+    animation: noteFlash 5s ease-in-out 2;   /* 厚觀法師 2026-11-09：反白時間太短，至少 10 秒 */
   }
   @keyframes noteFlash {
     0%, 100% { background: var(--hl-bg); }
