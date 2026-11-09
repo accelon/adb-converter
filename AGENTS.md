@@ -37,6 +37,10 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
   `deploy.ts`／`publish-adb.ts` 也以這裡為來源；不要從 adb 工作區的 `out/`／`build/`
   直接上傳。`D:\2026\sz\accelon26` 的 sz 系列**尚未正式上網**，不要放進
   `www/adb/index.txt`／manifest，也不要上傳。
+- **驗證官網資料一律先想 HEAD**（作者 2026-11-09）：官網下行只有約 **6 Mbit/s**，
+  `*.adb`、`accelon26.exe`、`*.zip` 不要用 GET 抓回來比對；用 `HEAD`（大小／Last-Modified）
+  或 SSH 遠端 `sha256sum`（`deploy.ts --check-adb`、`publish-adb.ts` 都是這樣做）。
+  上傳不受此限。
 - **例外：sz 與其巴利譯本的 adb 一律放 `D:\2026\sz\accelon26`，不放 `D:\accelon3`**
   （作者 2026-11-03）：`cs`、`cs-mm`、`cllk`、`ccc`、`yh`、`hz`、`pku`、`xsq`、`sc`、`kmj`、
   `lex`，以及 veda 群的 `veda`／`sa`／`en`／`zh`。這些庫還在密集重建，放同一區才不會

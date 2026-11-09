@@ -319,6 +319,10 @@ cd ts && bun run tools/deploy.ts --site-only    # 連 www/adb/ 一起上傳，�
 
 `deploy.ts --site`／`--site-only` 會把 `www/adb/*.html`、`*.txt`、`*.json` 一起傳上去（不會傳 `.adb`）。
 
+> **驗證一律先想 HEAD**（作者 2026-11-09）：官網下行只有約 6 Mbit/s，`*.adb`、`accelon26.exe`、
+> `*.zip` 不要用 GET 抓回來比對；用 `HEAD` 看大小／Last-Modified，或用 SSH 遠端
+> `sha256sum`（`deploy.ts --check-adb`、`publish-adb.ts` 都是這樣）。上傳不受此限。
+
 `.adb` 本體用另一支同步兩站（只上傳 sha256 不同的檔，上傳後再算一次線上 sha256）：
 
 ```powershell

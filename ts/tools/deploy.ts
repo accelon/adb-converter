@@ -427,9 +427,28 @@ async function verifyTarget(t: Target): Promise<void> {
   if (online.url && !online.url.startsWith(t.base)) {
     throw new Error(t.base + 'versions.json 的下載網址指到別站：' + online.url);
   }
-  const eres = await fetch(t.base + 'accelon26.exe', { headers: { 'cache-control': 'no-cache' } });
+  const eres = await fetch(t.base + 'accelon26.exe', { method: 'HEAD', headers: { 'cache-control': 'no-cache' } });
   if (!eres.ok) throw new Error(t.base + 'accelon26.exe 讀不到（HTTP ' + eres.status + '）');
-  const buf = new Uint8Array(await eres.arrayBuffer());
+  const headLen = Number(eres.headers.get('content-length') ?? 0);
+  // 官網下行只有約 6 Mbit/s（作者 2026-11-09）：先不抓整顆 exe。
+  // 用 HEAD 的 content-length ＋ 遠端 sha256sum 比對；對不上才下載回來算，
+  // 這樣正常發佈少抓 2 × 21 MB，而且錯的時候仍有完整的下載診斷。
+  let remoteSha = '';
+  try {
+    const tr = makeTransport(t);
+    try {
+      remoteSha = tr.remote(`cd '${t.docroot}' && sha256sum accelon26.exe`, '比對 exe sha256').trim().split(/\s+/)[0].toLowerCase();
+    } finally {
+      tr.done();
+    }
+  } catch { /* 沒有 SSH 就退回下載驗證 */ }
+  if (headLen === manifest!.size && remoteSha === manifest!.sha256.toLowerCase()) {
+    console.log(`[${t.label}] ✓ versions.json 與 exe 都是 build ${online.buildTime}（${(headLen / 1048576).toFixed(1)} MiB，sha256 ${remoteSha.slice(0, 12)}…；HEAD＋伺服器 sha256，未下載）`);
+    return;
+  }
+  const eres2 = await fetch(t.base + 'accelon26.exe', { headers: { 'cache-control': 'no-cache' } });
+  if (!eres2.ok) throw new Error(t.base + 'accelon26.exe 讀不到（HTTP ' + eres2.status + '）');
+  const buf = new Uint8Array(await eres2.arrayBuffer());
   const got = createHash('sha256').update(buf).digest('hex');
   if (got.toLowerCase() !== manifest!.sha256.toLowerCase()) {
     throw new Error(t.base + 'exe 與 versions.json 不符（' + buf.byteLength + ' bytes，sha256 ' + got.slice(0, 12) + '…）');
