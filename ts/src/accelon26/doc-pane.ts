@@ -380,6 +380,29 @@ export const ownsActiveDb = (s: DocSession | null | undefined): boolean =>
  * hover 顯示檔名是 renderer 寫的 `title`。
  */
 let inlineImgBound = false;
+
+/**
+ * 把 inline `<svg>` 序列化成可以獨立存檔的 SVG 檔（2026-11-09）。
+ *
+ * innerHTML 建出來的 `<svg>` 沒有 `xmlns`，直接 `XMLSerializer` 存成 .svg 之後，
+ * 用瀏覽器或向量軟體打開會說格式錯誤（厚觀法師 2026-11-08 回報「下載 SVG 出現錯誤」）。
+ * 這裡補上 `xmlns`／`xmlns:xlink`，並把 `width`／`height` 從 viewBox 補出來。
+ */
+function serializeSvgElement(svg: SVGSVGElement): string {
+  let text = new XMLSerializer().serializeToString(svg);
+  const open = text.match(/^<svg\b([^>]*)>/i);
+  if (open && !/\bxmlns=/.test(open[1])) {
+    const vb = (svg.getAttribute('viewBox') || '').trim().split(/\s+/).map(Number);
+    let extra = ' xmlns="http://www.w3.org/2000/svg"';
+    if (!/\bxmlns:xlink=/.test(open[1])) extra += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
+    if (vb.length === 4 && !/\bwidth=/.test(open[1])) {
+      extra += ` width="${vb[2]}" height="${vb[3]}"`;
+    }
+    text = text.replace(open[0], `<svg${open[1]}${extra}>`);
+  }
+  return text;
+}
+
 function bindInlineImageZoom(): void {
   if (inlineImgBound) return;
   inlineImgBound = true;
@@ -391,7 +414,7 @@ function bindInlineImageZoom(): void {
       ev.preventDefault();
       ev.stopPropagation();
       const name = svg.getAttribute('aria-label') || 'inline.svg';
-      const text = new XMLSerializer().serializeToString(svg);
+      const text = serializeSvgElement(svg);
       const bytes = new TextEncoder().encode(text);
       const url = URL.createObjectURL(new Blob([bytes], { type: 'image/svg+xml' }));
       openImageView(name, url, bytes);
