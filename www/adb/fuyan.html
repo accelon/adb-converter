@@ -310,7 +310,7 @@
     <div class="brand">accelon<b>26</b><span>古籍資料庫閱讀器</span></div>
     <nav>
       <a href="../index.html">首頁</a>
-      <a href="index.html">公開數據庫</a>
+      <a href="index.html">研究用數據庫</a>
       <a href="../changelog.html">更新說明</a>
     </nav>
   </div>
@@ -503,7 +503,19 @@
       《般若燈論釋》共15卷（27品）」、注14「龍勝菩薩造，無著菩薩釋…《順中論》」現在是正文字體；
       真正的引文仍是楷體。全書 592 條改回。<br>
       <b>只動字體、沒動字</b>：改前改後逐字比對，正文 1,553,708 字完全相同。</td>
+  <td>厚觀法師（2026-11-11 回報）</td></tr>
+<tr>
+  <td>2026-11-12</td>
+  <td>腳注粗體收口（sha256 <code>8963095c…</code>）</td>
+  <td><b>粗體只粗該粗的地方</b>（厚觀法師 2026-11-11：「腳注9 的引文不應該每個字都是粗體」）：
+      轉檔時腳注段落用 <code>strip()</code> 收尾，而粗體的收口記號剛好是一個 TAB，被當行尾空白吃掉；
+      開口的記號不是空白所以留著。結果全書 <b>513 條腳注的粗體「開而沒收」</b>，一路粗到整條結束。<br>
+      現在依 Word 原稿每一個 run 的粗體重貼：5p1 注4「諸佛有二種說法……畢竟空」只粗到句末；
+      5p2 注9 只粗「龍樹」與「造《無畏論》滿十萬偈……凡五百偈」，其餘回歸正文。<br>
+      <b>只動粗體、沒動字</b>：改前改後逐字比對，正文 1,553,708 字完全相同、行數 55,097 不變。</td>
   <td>厚觀法師（2026-11-11 回報）</td>
+</tr>
+
 
 </tbody></table></div>
 <p>下載後在閱讀器裡重新整理即可看到最新版；同一個檔名就是最新版，不必刪舊檔。</p>
@@ -514,13 +526,13 @@
   <li>內容如有出入，以福嚴佛學院講義網頁為準：
       <a href="https://www.fuyan.org.tw/lecture.html" target="_blank" rel="noopener">https://www.fuyan.org.tw/lecture.html</a></li>
   <li>客戶：福嚴佛學院（提供講義 Word 稿）；本站：杭州繪欣堂（軟件公司，負責轉檔與閱讀器）。</li>
-  <li>這一版：2026-11-11，12.7 MB（13,333,963 bytes）；由本站（杭州繪欣堂）依客戶 docx 全程重建。</li>
+  <li>這一版：2026-11-12，12.7 MB（13,334,718 bytes）；由本站（杭州繪欣堂）依客戶 docx 全程重建。</li>
 </ul>
-<p><a href="index.html">← 回公開數據庫</a></p>
+<p><a href="index.html">← 回研究用數據庫</a></p>
 </main>
 <footer>
   <div class="wrap">
-    <span>accelon26 · Accelon3 跨平台平替 · <a href="index.html">公開數據庫</a></span>
+    <span>accelon26 · Accelon3 跨平台平替 · <a href="index.html">研究用數據庫</a></span>
     <span class="right">授權：Apache-2.0</span>
   </div>
 </footer>
