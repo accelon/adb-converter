@@ -1770,7 +1770,12 @@ function boot() {
     if (!s) { setStatus('目前沒有本文分頁', 'err'); return; }
     if (s.history) { setStatus('歷史版本只能檢視，不能編輯', 'err'); return; }
     if (s.editing) exitEdit(s);
-    else enterEdit(s);
+    else {
+      // F3 用鍵盤觸發，選取區還保留著：先抓當下的選取（無選取就記中線行），
+      // 進編輯後才能選中同一段／大致捲到那裡（作者 2026-11-10）。
+      rememberDocSelection();
+      enterEdit(s, true);
+    }
   };
   window.addEventListener('keydown', (ev) => {
     const mod = ev.ctrlKey || ev.metaKey;

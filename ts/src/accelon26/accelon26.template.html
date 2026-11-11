@@ -1120,10 +1120,14 @@
     color: var(--tagtext, var(--accent));
     background: none; border-radius: 3px; padding: 0 2px; font-weight: 600;
   }
-  /* 原書頁 <頁>：inline（作者 2026-10-31）。以前是 block＋右靠分隔線，會把後文擠到下一行 */
-  /* 頁碼用暖黃色：與正文同色時混在字裡找不到（厚觀法師 2026-11-08） */
+  /* 原書頁 <頁>：頁碼一律靠右（厚觀法師 2026-11-10「錯誤02」）。
+     2026-10-31 原本是 inline，理由是「block 會把後文擠到下一行」；但 inline 的結果是
+     頁碼卡在句子中間（5p42 就落在「等於沒有。5p42 一般人以為…」中間），法師回報
+     「有的在最左、有的夾在中間，沒有統一靠右」。
+     改成 float:right：頁碼浮到該行右端，後面的文字自然換到下一行——正好是紙書的
+     樣子，又不會像 block 那樣多佔一整行。 */
   .lineText .pageBreak {
-    display: inline; margin: 0 4px; color: var(--pageMark, #d99a2b); font-size: .8em; font-weight: 400;
+    float: right; margin: 0 0 0 6px; color: var(--pageMark, #d99a2b); font-size: .8em; font-weight: 400;
     white-space: nowrap;
   }
   /* 不保留硬換行（「原書分行」取消）時：整頁連著排 */
@@ -1377,6 +1381,15 @@
   .lineText .noteBody { cursor: text; white-space: normal; overflow-wrap: anywhere; }   /* 注文可以換行（長註才不會被切在右邊）；釋文本身不點擊（2026-10-31，只有編號可回本文） */
   /* 腳注裡的引文（<經>）用楷體；其餘注文維持本文（厚觀法師 2026-11-09：不是全部腳注都用楷體） */
   .lineText .noteBody .h[data-tag="經"] { font-family: var(--kai) !important; }
+  /* Word 的粗體、引文楷體、上標（2026-11-11）。
+     這三個標籤以前**沒有渲染分支**：資料裡有 39,770 個 `<粗>`、5,646 個 `<經>`，
+     但不在目錄樹的 `t=` 清單裡，被當成「不認識的標籤」整支丟掉——文字留著、樣式全無。
+     厚觀法師從 2026-11-09 起反覆回報的「腳注[9] 標楷體沒生效、該加粗處沒加粗」，
+     以及早先的「08 粗體未保留」，根因都在這裡（資料層一直是對的）。
+     `.h[data-tag="經"]` 那條留著：萬一將來 `<經>` 進了目錄樹 `t=` 清單仍適用。 */
+  .lineText .fmt-bold { font-weight: 700; }
+  .lineText .fmt-kai { font-family: var(--kai); }
+  .lineText .fmt-sup { vertical-align: super; font-size: .75em; line-height: 0; }
   /* 註↔釋往返：目標行與編號閃一下（作者 2026-10-31） */
   .docLine.noteTarget {
     background: var(--hl-bg); box-shadow: inset 3px 0 0 var(--accent);
@@ -2805,6 +2818,8 @@
 <!-- 選取文字選單（2026-10-30 改兩層）：第一層 複製／搜尋／查看，
      第二層在右邊展開；滑過或點一下就開。 -->
 <div id="selMenu" class="selMenu" role="menu" hidden>
+  <button type="button" data-sel="rawmark" title="複製選取處對應的原文標記（含 <粗>、<經> 等，並帶庫名與行數），貼到信裡即可定位問題">顯示原文標記</button>
+  <div class="selDivider"></div>
   <div class="selGroup" data-grp="copy">
     <button type="button" class="selGroupBtn">複製<span class="selCaret">▸</span></button>
     <div class="selSub" data-sub="copy">

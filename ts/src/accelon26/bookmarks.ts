@@ -202,6 +202,30 @@ async function selectionInfo(): Promise<SelInfo | null> {
   return { text, raw, va, pageId, endPageId, book, page: pageId, rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width }, searchable, pageMark, startLine: n, endLine, hanPrefix, hanPrefixEnd };
 }
 
+/**
+ * 選取處對應的「原文標記」（一行自滿足，作者 2026-11-10）：
+ * 從選中的 .docLine 讀 `data-src`（＝該行原始 XML，含 <粗>、<經> 等），
+ * 起點到終點各取整行拼起來。選中哪、標記就在哪，不必往上翻祖先節點。
+ * 回傳帶「庫名＋行數＋頁 id」，方便接手者定位（作者 2026-11-10）。
+ */
+function rawMarkFor(info: SelInfo): string {
+  const el = (n: number): HTMLElement | null =>
+    document.querySelector<HTMLElement>(`#docText .docLine[id="L${n}"]`)
+    ?? document.querySelector<HTMLElement>(`#docText .docLine[id="L${n}a"]`);
+  const lines: string[] = [];
+  for (let n = info.startLine; n <= info.endLine; n++) {
+    const node = el(n);
+    if (!node) continue;
+    const src = node.getAttribute('data-src');
+    if (src != null) lines.push(`[L${n}] ${src}`);
+  }
+  if (!lines.length) return info.text;
+  const db = reader?.header.dbname || '';
+  const page = info.pageId || '';
+  const head = `${db ? db + ' ' : ''}${page ? page + ' ' : ''}L${info.startLine}${info.endLine !== info.startLine ? `-${info.endLine}` : ''}`;
+  return `${head}\n${lines.join('\n')}`;
+}
+
 async function hanRange(info: SelInfo): Promise<[number, number]> {
   const db = reader?.header.dbname ?? '';
   const page = await pageHanText(db, info.pageId);
@@ -922,6 +946,7 @@ async function runAction(action: string): Promise<void> {
   if (action.startsWith('search:')) {
     sendToTab(action.slice('search:'.length), info.text);
   } else if (action === 'bookmark') addBookmark(info);
+  else if (action === 'rawmark') await copyText(rawMarkFor(info), '已複製原文標記（含庫名與行數）；貼到信裡即可定位');
   else if (action === 'copy') await copyText(info.raw, '已複製選取文字');
   else if (action === 'cite' && !isTerminalDb()) {
     const c = await buildCitation(info);

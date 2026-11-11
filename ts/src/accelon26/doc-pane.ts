@@ -1550,8 +1550,10 @@ export async function restoreLastRead(file: { name: string; size: number }): Pro
 
 
 
-/** 進入編輯前在本文選取的文字（用來把 caret／選取區捲進視窗） */
-let pendingDocSelection: { startLine: number; endLine: number; text: string; startText: string } | null = null;
+/** 進入編輯前在本文選取的文字（用來把 caret／選取區捲進視窗）。
+ *  `hasSelection`：true＝有選取區（進編輯後選中同一段）；false＝只有「視窗中線那行」
+ *  （進編輯後大致捲到那裡、不選取，作者 2026-11-10）。 */
+let pendingDocSelection: { startLine: number; endLine: number; text: string; startText: string; hasSelection: boolean } | null = null;
 let pendingSelectionUse = false;
 
 
@@ -1560,10 +1562,36 @@ function lineElementOf(node: Node | null): HTMLElement | null {
   return (el?.closest?.('.docLine[id^="L"]') as HTMLElement | null) ?? null;
 }
 
-/** 記住本文目前的選取（在按鉛筆之前），不用在 click 之後才抓（那時已經收合）。 */
+/** 目前本文「視窗中線」那一行（`syncCursorFromScroll` 同一套中線規則）。
+ *  中線落在內容之後（頁面很短）時，退回最後一行。 */
+function midlineLine(): number {
+  const body = document.querySelector<HTMLElement>('#docText .docBody');
+  if (!body) return -1;
+  const rows = [...body.querySelectorAll<HTMLElement>('.docLine[id^="L"]')];
+  if (!rows.length) return -1;
+  const mid = body.scrollTop + body.clientHeight / 2;
+  let last = -1;
+  for (const row of rows) {
+    const top = row.offsetTop;
+    const n = Number(/^L(\d+)/.exec(row.id)?.[1]);
+    if (!Number.isFinite(n)) continue;
+    last = n;
+    if (top <= mid && mid < top + row.offsetHeight) return n;
+  }
+  // 中線在所有行之後（短頁）：退回最後一行
+  return last;
+}
+
+/** 記住本文目前的選取（在按鉛筆之前），不用在 click 之後才抓（那時已經收合）。
+ *  沒有選取區時，退而記住「視窗中線那行」，進編輯後大致捲到那裡（作者 2026-11-10）。 */
 export function rememberDocSelection(): void {
   const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+    // 無選取：只記中線行當錨點，方便進編輯後大致定位
+    const mid = midlineLine();
+    if (mid > 0) pendingDocSelection = { startLine: mid, endLine: mid, text: '', startText: '', hasSelection: false };
+    return;
+  }
   const range = sel.getRangeAt(0);
   const root = document.getElementById('docText');
   if (!root || !root.contains(range.commonAncestorContainer)) return;
@@ -1573,28 +1601,82 @@ export function rememberDocSelection(): void {
   const startLine = Number(startEl.id.slice(1));
   const endLine = endEl && endEl.id.startsWith('L') ? Number(endEl.id.slice(1)) : startLine;
   const startText = startEl.querySelector('.lineText')?.textContent ?? '';
-  pendingDocSelection = { startLine, endLine, text: range.toString(), startText };
+  pendingDocSelection = { startLine, endLine, text: range.toString(), startText, hasSelection: true };
 }
 
-/** 把 CodeMirror 的 caret／選取移到剛剛在本文選取的那一行，並置中。 */
-function scrollEditorToSelection(view: any, pageLines: number[], sel: { startLine: number; text: string; startText: string }): void {
+/** 把 CodeMirror 的 caret／選取移到剛剛在本文選取的那一行，並置中。
+ *  有選取區→選中同一段文字；無選取→只把 caret 移到那一行開頭（大致定位），
+ *  並提示可用選取區加快定位（作者 2026-11-10）。 */
+function scrollEditorToSelection(view: any, pageLines: number[], sel: { startLine: number; text: string; startText: string; hasSelection: boolean }): void {
   const idx = pageLines.indexOf(sel.startLine);
   if (idx < 0) return;
   const doc = view.state.doc;
   const line = doc.line(Math.max(1, Math.min(doc.lines, idx + 1)));
+  const raw = line.text;
+  const CM = (globalThis as any).CM;
+  const caretOnly = (at: number): void => {
+    const caret = line.from + at;
+    try {
+      view.dispatch({ selection: { anchor: caret }, effects: CM.EditorView.scrollIntoView(caret, { y: 'center' }) });
+    } catch {
+      view.dispatch({ selection: { anchor: caret } });
+    }
+  };
   const first = (sel.text || '').split('\n')[0] || sel.startText || '';
-  let at = 0;
-  if (first) {
-    const p = line.text.indexOf(first);
-    if (p >= 0) at = p;
+  if (!sel.hasSelection || !first) {
+    caretOnly(0);
+    noticeEditor('已捲到該行；先選取本文一段再進編輯，可直接選中同一段文字，定位更快');
+    return;
+  }
+  // 選取文字在閱讀模式是「渲染後的純文字」，但編輯器裡是原始 XML（夾 <粗> 等標記），
+  // 直接 indexOf 會落空。做法：剝掉整行標籤得純文字，用選取文字的前幾個漢字當錨點
+  // 在純文字裡定位，再把純文字位置映射回原始位置（作者 2026-11-10）。
+  const hanRun = first.replace(/[^\u3400-\u9fff\uf900-\ufaff]/g, '');
+  const plain = raw.replace(/<[^>]*>/g, '').replace(/\s+/g, '');
+  const rawAtOf = (plainPos: number): number => {
+    // 原始字串裡第 plainPos 個「非標籤、非空白」字元的 index
+    let k = 0, tag = false;
+    for (let i = 0; i < raw.length; i++) {
+      const c = raw[i];
+      if (c === '<') tag = true;
+      else if (c === '>') tag = false;
+      else if (!tag && !/\s/.test(c)) {
+        if (k === plainPos) return i;
+        k++;
+      }
+    }
+    return -1;
+  };
+  let at = -1;
+  for (let n = Math.min(8, hanRun.length); n >= 2; n--) {
+    const p = plain.indexOf(hanRun.slice(0, n));
+    if (p >= 0) { at = rawAtOf(p); break; }
+  }
+  if (at < 0) {
+    caretOnly(0);
+    noticeEditor('已捲到該行（選取文字跨行或標記過密，未精確對位）；可選取本行內一段再試');
+    return;
+  }
+  // 選取跨度：從 anchor 起，跨過 hanRun.length 個非標記字元（含中間夾的標記）
+  let head = raw.length;
+  {
+    let k = 0, tag = false;
+    for (let i = at; i < raw.length; i++) {
+      const c = raw[i];
+      if (c === '<') tag = true;
+      else if (c === '>') tag = false;
+      else if (!tag && !/\s/.test(c)) {
+        k++;
+        if (k >= hanRun.length) { head = i + 1; break; }
+      }
+    }
   }
   const anchor = line.from + at;
-  const head = Math.min(line.to, anchor + Math.max(1, first.length));
-  const CM = (globalThis as any).CM;
+  const headPos = line.from + Math.min(head, raw.length);
   try {
-    view.dispatch({ selection: { anchor, head }, effects: CM.EditorView.scrollIntoView(anchor, { y: 'center' }) });
+    view.dispatch({ selection: { anchor, head: headPos }, effects: CM.EditorView.scrollIntoView(anchor, { y: 'center' }) });
   } catch {
-    view.dispatch({ selection: { anchor, head } });
+    view.dispatch({ selection: { anchor, head: headPos } });
   }
 }
 

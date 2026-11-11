@@ -45,6 +45,22 @@ export const PAGE_TAGS = new Set(['頁', '_頁', '頁元']);
 /** 段落標記 */
 export const PARA_TAGS = new Set(['段']);
 
+/**
+ * 行內格式標籤（2026-11-11）：Word 的粗體、引文楷體、上標。
+ *
+ * 這三個標籤原本**沒有渲染分支**，掉到下面 `depthOf.get(name)` 那一段時因為不在
+ * 目錄樹的 `t=` 清單裡（`書,品,章,…細目`），被當成「不認識的標籤」整支丟掉，
+ * 文字照留、樣式全無：fuyan 的資料裡有 39,770 個 `<粗>`、5,646 個 `<經>`，
+ * 畫面上卻連一個粗體、一個楷體都沒有——厚觀法師 2026-11-09 起反覆回報的
+ * 「腳注[9] 標楷體沒生效、該加粗處沒加粗」（錯誤03／08）就是這個原因，
+ * 不是資料沒標。程式裡有、資料裡有，只有畫面上沒有。
+ */
+export const FMT_TAGS: Record<string, string> = {
+  粗: 'fmt-bold', _粗: 'fmt-bold',
+  經: 'fmt-kai', _經: 'fmt-kai',
+  上標: 'fmt-sup',
+};
+
 /** `<例 t="…"/>`：詞書的體例分區標記（cyd 等）。 */
 export const EXAMPLE_TAGS = new Set(['例', '_例']);
 
@@ -520,6 +536,8 @@ export class Accelon3Renderer {
   private quoteDepth = 0;
   /** 這一行是否已經開著 `<span class="quote">` */
   private quoteOpen = false;
+  /** 跨行仍然開著的格式標籤（`<粗>`／`<經>`／`<上標>`）：行尾全收、下一行重開 */
+  private fmtStack: string[] = [];
   /** `<术 sk|pi|tb="…">` 的顯示方式（作者 2026-10-31）：hover／inline／off */
   private termMode: 'orig' | 'hover' | 'inline' | 'off' = 'orig';
   /** 目前開著的術語（跨行時要記得關掉、下一行再開） */
@@ -745,6 +763,8 @@ export class Accelon3Renderer {
       html += '<span class="quote">';
       this.quoteOpen = true;
     }
+    // 跨行的 <粗>／<經>／<上標>：同理，每行開頭把外框補回來（行尾全收）
+    for (const t of this.fmtStack) html += `<span class="${FMT_TAGS[t]}">`;
     // 跨行的 <术>：這一行開頭把外框補回來（行尾會收掉）
     if (this.termCarry) {
       const c = this.termCarry;
@@ -997,6 +1017,23 @@ export class Accelon3Renderer {
         }
         continue;
       }
+      // `<粗>`／`<經>`／`<上標>`：Word 的粗體、引文楷體、上標（2026-11-11）。
+      // 開著的跨行要記在 fmtStack，行尾全收、下一行重開（和 `<引>` 同一套做法）。
+      const fmtCls = FMT_TAGS[name];
+      if (fmtCls) {
+        if (closing) {
+          const k = this.fmtStack.lastIndexOf(name);
+          if (k >= 0) {
+            const n = this.fmtStack.length - k;
+            this.fmtStack.length = k;
+            html += '</span>'.repeat(n);
+          }
+        } else if (!selfClose) {
+          this.fmtStack.push(name);
+          html += `<span class="${fmtCls}">`;
+        }
+        continue;
+      }
       // `<hr/>`：一條水平線（作者 2026-11-01：注釋群與正文分界）
       if (name === 'hr') {
         if (!closing) html += '<hr class="docHr">';
@@ -1113,6 +1150,8 @@ export class Accelon3Renderer {
     }
     // `<聯>`／`_名` 錨點同樣在行尾收掉；跨行的聯不重新開（條目連結都是行內）
     if (this.linkStack.length) { html += '</a>'.repeat(this.linkStack.length); this.linkStack = []; }
+    // 跨行的 <粗>／<經>／<上標>：它們開在引文裡面，是最內層，所以比 <引> 先收
+    if (this.fmtStack.length) html += '</span>'.repeat(this.fmtStack.length);
     // 跨行的引文：這一行收掉外框，下一行開頭再開（HTML 每行都要平衡）
     if (this.quoteOpen) { html += '</span>'; this.quoteOpen = false; }
     while (this.notes.length && this.notes[this.notes.length - 1].line) {
