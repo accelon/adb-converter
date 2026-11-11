@@ -253,10 +253,23 @@ async function hanRange(info: SelInfo): Promise<[number, number]> {
 
 const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** 由選取產生可貼進 jingang.txt 的片段；指針用母庫的頁＋漢字範圍。 */
-async function snippetFor(kind: 'rong' | 'qian', info: SelInfo): Promise<string> {
+/**
+ * 由選取產生可貼進 jingang.txt 的片段；指針用母庫的頁＋漢字範圍。
+ * 取不到頁（或範圍是空的）就**不產生**：以前照樣拼出 `<融 i="GuangLun?" j="0-0">`，
+ * 頁空、範圍也空，貼進筆記就是一顆指向虛空的連結，滑過去只會顯示「找不到」
+ * （2026-11-11 讀者 avatar q 回報，他的庫頁標記與我們不同）。
+ */
+async function snippetFor(kind: 'rong' | 'qian', info: SelInfo): Promise<string | null> {
   const db = reader?.header.dbname ?? 'taisho';
+  if (!info.pageId) {
+    setStatus('這一段不在任何頁碼標記之下（這本書可能沒有 <頁> 標記），無法產生片段', 'err');
+    return null;
+  }
   const [a, b] = await hanRange(info);
+  if (b <= a) {
+    setStatus('這一段在 ' + info.pageId + ' 這一頁裡找不到字位，無法產生片段', 'err');
+    return null;
+  }
   const i = `${db}?${info.pageId}`;
   const q = Array.from(info.raw).filter((c) => /[\u3400-\u9fff\uf900-\ufaff]/.test(c)).join('');
   const label = info.text.slice(0, 10) || '選文';
@@ -954,12 +967,16 @@ async function runAction(action: string): Promise<void> {
   }
   else if (action === 'rong') {
     const s = await snippetFor('rong', info);
-    (window as unknown as { __lastSnippet?: string }).__lastSnippet = s;
-    await copyText(s, '已複製 <融> 片段；貼到 jingang.txt 的頁面位置');
+    if (s) {
+      (window as unknown as { __lastSnippet?: string }).__lastSnippet = s;
+      await copyText(s, '已複製 <融> 片段；貼到 jingang.txt 的頁面位置');
+    }
   } else if (action === 'qian') {
     const s = await snippetFor('qian', info);
-    (window as unknown as { __lastSnippet?: string }).__lastSnippet = s;
-    await copyText(s, '已複製 <嵌> 模板；把 q 改成要標記的經文，貼到段落後');
+    if (s) {
+      (window as unknown as { __lastSnippet?: string }).__lastSnippet = s;
+      await copyText(s, '已複製 <嵌> 模板；把 q 改成要標記的經文，貼到段落後');
+    }
   } else if (action === 'pos') {
     await copyText(await charPosition(info), '已複製位置（頁＋字元範圍）');
   } else if (action === 'addr' && addrRange) {
