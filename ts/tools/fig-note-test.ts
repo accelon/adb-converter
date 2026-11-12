@@ -220,8 +220,9 @@ if (!r.hasSvg) fails.push('這一頁沒有 inline SVG');
 if (!r.markFound) fails.push(`圖上找不到註 ${NOTE} 的注號`);
 if (r.zoomOpened) fails.push('點圖上注號順便打開了看圖視窗');
 if (r.markers && r.markers.some((m: any) => !m.inSvg)) fails.push('有注號跑到圖的框外');
-if (!r.hiddenRows || !r.hiddenRows.length) fails.push('圖前那一列注號沒有收起來');
-if (r.hiddenRows && r.hiddenRows.some((h: any) => h.shown)) fails.push('收起來的那一列還占版面');
+// 厚觀法師 2026-11-12 15:07 第 3 項：本文那列 [13][14]… 要顯示出來（與圖上的號並存）
+if (!r.visibleNoteRows || !r.visibleNoteRows.length) fails.push('圖前的注號列沒有顯示出來');
+if (r.hiddenRows && r.hiddenRows.length) fails.push('還有注號列被收起來（法師要求顯示）');
 if (!r.targetIsNoteBody) fails.push('點圖上注號沒有跳到釋文');
 if (!r.backFound) fails.push('釋文沒有回本文的編號');
 if (!r.backMarked || !r.backMarked.length) fails.push('點釋文編號後，圖上的注號沒被標記');
@@ -233,5 +234,5 @@ await Bun.sleep(200);
 try { rmSync(profile, { recursive: true, force: true }); } catch { /* 瀏覽器可能還握著 */ }
 
 if (fails.length) { console.error('FAIL ' + fails.join('; ')); console.error('screenshot ' + PNG); process.exit(1); }
-console.log('PASS 圖上注號：位置、收起舊注號列、註→釋、釋→圖 都對');
+console.log('PASS 圖上注號：位置、本文注號列顯示、註→釋、釋→圖 都對');
 console.log('screenshot ' + PNG);

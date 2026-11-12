@@ -1560,7 +1560,8 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
     // `info.heading` 依賴 depthOf（真正的 adb 才有），這裡再用原始標籤補一道保險。
     // 2026-11-06：詞典型的 `<字>`／`<詞>` 也是條目標題，連排時要另起一段
     // （hanyudazidian 的「乙」原本會黏在「一」的姓釋文後面）。
-    const rawHeading = /^\s*<(章|節|項|目|小目|細目|釋)[\s>]/.test(lines[i])
+    // 2026-11-12（陳裕文）：ys 的 `<部>`（第一章…、辛一…）漏在這裡，黏在上一段末尾。
+    const rawHeading = /^\s*<(章|節|項|目|小目|細目|釋|部)[\s>]/.test(lines[i])
       || (opts.dictEntries === true && /^\s*<(詞|字|詞條|字頭)[\s>]/.test(lines[i]));
     // 作者 2026-11-03：`<段 n>` 是段首，**即使前後沒有空行**也要另起一段（日文的段與段
     // 之間常常沒有空行）。兩種位置：行首（`segStart`）與「標題之後」（`segMid`）。

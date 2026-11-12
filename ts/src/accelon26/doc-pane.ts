@@ -1328,8 +1328,18 @@ function renderAncestorTrail(s: DocSession, anchorVa?: number): string {
  * 只收「整列只有注號」而且「下一塊是**自己帶注號**的圖」——別本書的圖沒有注號，
  * 照舊顯示，不會把讀者唯一的入口吃掉。
  */
+/** 圖前純注號列一律顯示（厚觀法師 2026-11-12 15:07 第 3 項）。改成 false 就回到「號在圖上時收起」。 */
+const NOTE_ROWS_ALWAYS_SHOWN = true;
+
+/**
+ * 圖前那行 `[13][14]…` 要不要收起來。
+ *
+ * 厚觀法師 2026-11-12 15:07 第 3 項：「本文中的腳註序號 13-16 也要顯示出來。」
+ * → 現在一律顯示，與圖上的號並存（兩處都可點）。判準留在下面，日後若又要收，改一處即可。
+ */
 function noteRowsToHide(blocks: RenderBlock[]): Set<number> {
   const out = new Set<number>();
+  if (NOTE_ROWS_ALWAYS_SHOWN) return out;
   for (let i = 0; i + 1 < blocks.length; i++) {
     const a = blocks[i];
     const b = blocks[i + 1];

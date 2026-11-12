@@ -630,6 +630,22 @@ function rowForScroll(line: number): HTMLElement | null {
 }
 
 /**
+ * 找「跟這一列同一張圖」的注號。落點若是圖前那行 `[13][14]…`（法師 2026-11-12
+ * 15:07 要求顯示出來），圖通常在一兩塊之內的下方；真的找不到就退到同一頁容器裡的第一個。
+ */
+function svgNumsNear(row: HTMLElement, sel: string): HTMLElement[] {
+  const own = [...row.querySelectorAll<HTMLElement>(sel)];
+  if (own.length) return own;
+  let el: Element | null = row;
+  for (let i = 0; i < 6 && (el = el.nextElementSibling); i++) {
+    const hit = [...(el as HTMLElement).querySelectorAll<HTMLElement>(sel)];
+    if (hit.length) return hit;
+  }
+  const box = row.closest('.docBody') ?? row.parentElement;
+  return box ? [...box.querySelectorAll<HTMLElement>(sel)] : [];
+}
+
+/**
  * 跳到目標行後閃一下（作者 2026-10-31：註↔釋往返不要讓讀者用眼睛找）。
  * 行加 `.noteTarget`，編號加 `.noteTargetMark`，2.6 秒後自動移除。
  */
@@ -650,7 +666,8 @@ function flashTarget(line: number, mark?: HTMLElement | null, note?: string): vo
       }
       // 圖上的注號也要閃（厚觀法師 2026-11-12：點釋文的編號要回得到圖上那個號）
       const svgSel = note ? `svg a.noteRef[data-note="${note}"]` : 'svg [data-note]';
-      for (const svgNum of row.querySelectorAll<HTMLElement>(svgSel)) {
+      const svgNums = svgNumsNear(row, svgSel);
+      for (const svgNum of svgNums) {
         svgNum.classList.remove('noteTargetMark');
         void (svgNum as unknown as HTMLElement).offsetWidth;
         svgNum.classList.add('noteTargetMark');
