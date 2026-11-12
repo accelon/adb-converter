@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strings"
+	"sync"
 	"unicode/utf16"
 )
 
@@ -49,6 +50,58 @@ type adbSearchFile struct {
 	view       []byte
 	maxVa      int32
 	containers map[string]*adbContainer
+	// 單字標點的 posting 聯集（跨標點比對用，對應 ts/search.ts 的 PunctSkip）
+	punctOnce sync.Once
+	punctList []int32
+}
+
+// maxPunctSkip 是一個詞組最多跨過幾個標點（與 TS 的 MAX_PUNCT_SKIP 相同）。
+const maxPunctSkip = 4
+
+// punctVas 回傳所有「單字標點」token 的 posting 聯集（遞增）。第一次呼叫時建，
+// 之後共用。標點在索引裡是普通 token，所以要從 tokens 名稱表反查。
+func (f *adbSearchFile) punctVas() []int32 {
+	f.punctOnce.Do(func() {
+		c, ok := f.container("tokens")
+		if !ok {
+			return
+		}
+		var parts [][]int32
+		for i, name := range c.names {
+			r := []rune(name)
+			if len(r) != 1 || !isPunctRune(r[0]) {
+				continue
+			}
+			l, err := f.blockList("tokens", i)
+			if err == nil && len(l) > 0 {
+				parts = append(parts, l)
+			}
+		}
+		f.punctList = unionPostings(parts)
+	})
+	return f.punctList
+}
+
+// isPunctRune 判斷單字 token 是不是「可以跨過去的」標點。只認句中停頓與包裹用的
+// 引號、書名號、括號——`．`（U+FF0E）、`·`、`／` 這類間隔符前後本來就是兩件事，
+// 跨過去會把兩句黏成假命中；`。！？…` 是句末，同理。
+//
+// 與 ts/loose-match.ts 的 isCrossablePunct 對齊，兩邊必須一致，否則共用測試集會分歧。
+func isPunctRune(r rune) bool {
+	switch r {
+	case '，', '、', '；', '：', '（', '）', '｛', '｝',
+		',', ';', ':', '(', ')', '[', ']', '{', '}':
+		return true
+	}
+	// 〈〉《》「」『』【】〔〕〖〗…
+	if r >= 0x3008 && r <= 0x301f {
+		return true
+	}
+	// 直排與兼容形式的引號、括號
+	if r >= 0xfe30 && r <= 0xfe4f {
+		return true
+	}
+	return false
 }
 
 func (f *adbSearchFile) slice(start, length int64) ([]byte, error) {
@@ -296,8 +349,9 @@ type phraseHit struct {
 }
 
 // phraseMatch 找出 lists[0..n-1] 在 VA 空間連續出現的位置。
-// idx 會跨外圈迭代保留（merge 式推進），與 TypeScript 版逐行等價。
-func phraseMatch(lists [][]int32, limit int) []phraseHit {
+// `punct` 是所有標點的 VA（`punctVas()`）：位置對不上時，只要中間那幾個 VA
+// 全部是標點就放行（跨標點比對，作者 2026-11-12）。`Units` 是實際跨度（含標點）。
+func phraseMatch(lists [][]int32, limit int, punct []int32) []phraseHit {
 	if len(lists) == 0 {
 		return nil
 	}
@@ -313,27 +367,48 @@ func phraseMatch(lists [][]int32, limit int) []phraseHit {
 		return out
 	}
 	n := len(lists)
-	idx := make([]int, n)
 	out := make([]phraseHit, 0, 4096)
 	for _, start := range lists[0] {
-		target := start
+		prev := start
 		ok := true
 		for i := 1; i < n; i++ {
-			idx[i] = lowerBound(lists[i], target, idx[i])
-			if idx[i] >= len(lists[i]) {
+			p, found := seekVa(lists[i], prev+1, punct)
+			if !found {
 				ok = false
 				break
 			}
-			target = lists[i][idx[i]]
+			prev = p
 		}
-		if ok && target == start+int32(n-1) {
-			out = append(out, phraseHit{VA: start, Units: int32(n)})
+		if ok {
+			out = append(out, phraseHit{VA: start, Units: prev - start + 1})
 			if len(out) >= limit {
 				break
 			}
 		}
 	}
 	return out
+}
+
+// seekVa 回傳 list 裡第一個 >= target 的值；target 與它之間若每一個 VA 都是
+// 標點（且不超過 maxPunctSkip 個），就當作相鄰。
+func seekVa(list []int32, target int32, punct []int32) (int32, bool) {
+	i := lowerBound(list, target, 0)
+	if i >= len(list) {
+		return 0, false
+	}
+	p := list[i]
+	if p == target {
+		return p, true
+	}
+	if len(punct) == 0 || p-target > maxPunctSkip {
+		return 0, false
+	}
+	for v := target; v < p; v++ {
+		if !hasVa(punct, v) {
+			return 0, false
+		}
+	}
+	return p, true
 }
 
 // lowerBound 回傳第一個 >= target 的索引（遞增序列，從 from 開始找）。

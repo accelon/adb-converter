@@ -12,6 +12,7 @@
 import type { DocCtx } from './doc-ctx';
 import { docSession, hardBreaksOn, scheduleCursorSync, scrollToVa, simConverter } from './doc-pane';
 import { kwMarks } from './kw-marks';
+import { findPunctLoose } from './loose-match';
 
 /** 這個命中屬於哪個關鍵字（代入它的 HSV 色相；沒有就 0＝紅） */
 function kwHue(token?: string): number {
@@ -115,17 +116,22 @@ function markPhraseInLine(line: number | undefined, phrase: string | undefined, 
 /** 在一個 `.lineText` 裡把 `needle` 包成 mark（由後往前，位移才不會被前面節點影響） */
 function markInBox(box: HTMLElement, needle: string, va: number, hue: number, all: boolean): HTMLElement | null {
   const text = lineTextOf(textNodesOf(box));
-  const at: number[] = [];
+  // 先嚴格比對（絕大多數情況）；找不到再「忽略標點」比對一次——跨標點命中
+  // （搜「涅槃寂靜」、原文「涅槃、寂靜」）只有後者找得到（作者 2026-11-12）。
+  let ranges: { start: number; end: number }[] = [];
   let from = 0;
-  while ((from = text.indexOf(needle, from)) >= 0) {
-    at.push(from);
-    from += needle.length;
+  for (;;) {
+    const at = text.indexOf(needle, from);
+    if (at < 0) break;
+    ranges.push({ start: at, end: at + needle.length });
+    from = at + needle.length;
     if (!all) break;
   }
-  if (!at.length) return null;
+  if (!ranges.length) ranges = findPunctLoose(text, needle, all);
+  if (!ranges.length) return null;
   let first: HTMLElement | null = null;
-  for (let k = at.length - 1; k >= 0; k--) {
-    const mark = markRange(textNodesOf(box), at[k], at[k] + needle.length, va, hue);
+  for (let k = ranges.length - 1; k >= 0; k--) {
+    const mark = markRange(textNodesOf(box), ranges[k].start, ranges[k].end, va, hue);
     if (mark && !first) first = mark;
   }
   return first;
@@ -150,10 +156,19 @@ function markPhraseAcrossLines(line: number | undefined, phrase: string | undefi
     if (!boxA || !boxB) continue;
     const ta = lineTextOf(textNodesOf(boxA));
     const tb = lineTextOf(textNodesOf(boxB));
-    const p = (ta + tb).indexOf(needle);
+    const total = ta + tb;
+    let p = total.indexOf(needle);
+    let len = needle.length;
+    if (p < 0) {
+      // 跨標點的命中（「涅槃、寂靜」被硬換行切開時也一樣）用寬鬆比對補
+      const r = findPunctLoose(total, needle)[0];
+      if (!r) continue;
+      p = r.start;
+      len = r.end - r.start;
+    }
     if (p < 0 || p >= ta.length) continue;      // 不在這個交界
-    const tail = ta.slice(p);
-    const head = needle.slice(tail.length);
+    const tail = total.slice(p, ta.length);
+    const head = total.slice(ta.length, p + len);
     if (!tail || !head) continue;
     const offA = ta.lastIndexOf(tail);
     const offB = tb.indexOf(head);

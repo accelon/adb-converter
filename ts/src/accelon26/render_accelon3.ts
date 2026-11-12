@@ -22,6 +22,7 @@ import { noteLabel } from './note-label';
 import { parseTableBlock } from './table-block';
 import { parseWordSpec } from './word-spec';
 import { isLinkTag, parseLinkSpec, type LinkKind } from './link-spec';
+import { findPunctLoose } from './loose-match';
 
 export interface RenderContext {
   /** 標籤 → 它在樹裡的深度（0＝最上層） */
@@ -671,23 +672,34 @@ export class Accelon3Renderer {
       return esc(this.conv(first)) + sup + this.emitChunk(rest);
     }
     if (!this.opts.marks.length) return esc(this.conv(decoded));
+    // 收集每個關鍵字的所有出現位置：先嚴格比對；某個關鍵字嚴格找不到時，再用
+    // 「忽略標點」比對補上（搜「涅槃寂靜」、原文「涅槃、寂靜」）——作者 2026-11-12。
+    type Sp = { start: number; end: number; m: { text: string; hue: number } };
+    const spans: Sp[] = [];
+    for (const m of this.opts.marks) {
+      let at = 0;
+      let found = false;
+      while ((at = decoded.indexOf(m.text, at)) >= 0) {
+        spans.push({ start: at, end: at + m.text.length, m });
+        at += m.text.length;
+        found = true;
+      }
+      if (!found) {
+        for (const r of findPunctLoose(decoded, m.text, true)) spans.push({ start: r.start, end: r.end, m });
+      }
+    }
+    if (!spans.length) return esc(this.conv(decoded));
+    spans.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
     let out = '';
     let i = 0;
-    while (i < decoded.length) {
-      let bestAt = -1;
-      let best: { text: string; hue: number } | null = null;
-      for (const m of this.opts.marks) {
-        const at = decoded.indexOf(m.text, i);
-        if (at < 0) continue;
-        if (bestAt < 0 || at < bestAt) { bestAt = at; best = m; }
-      }
-      if (bestAt < 0 || !best) { out += esc(this.conv(decoded.slice(i))); break; }
-      out += esc(this.conv(decoded.slice(i, bestAt)));
-      const cur = this.opts.primary && best.text === this.opts.primary ? ' cur' : '';
-      out += `<mark class="kw${cur}" style="--hue:${best.hue}">${esc(this.conv(best.text))}</mark>`;
-      i = bestAt + best.text.length;
+    for (const sp of spans) {
+      if (sp.start < i) continue;                 // 已被前一個（更長的）區間蓋住
+      out += esc(this.conv(decoded.slice(i, sp.start)));
+      const cur = this.opts.primary && sp.m.text === this.opts.primary ? ' cur' : '';
+      out += `<mark class="kw${cur}" style="--hue:${sp.m.hue}">${esc(this.conv(decoded.slice(sp.start, sp.end)))}</mark>`;
+      i = sp.end;
     }
-    return out;
+    return out + esc(this.conv(decoded.slice(i)));
   }
 
   private openSpan(tag: string, depth: number, colorOverride?: string): string {

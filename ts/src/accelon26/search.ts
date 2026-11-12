@@ -20,12 +20,55 @@ import { AdbReader, type Container, type DocRow } from './adb';
 import { parseAttrs } from './vapa';
 import { normalize, tokenProfileOf, Tokenizer } from '../tokenize';
 import { tntTrim, isPunctuation, isWhitespace } from '../unicode';
+import { findLooseInMarkup, isCrossablePunct } from './loose-match';
 import { parseQuery, splitWildcard, PROXIMITY_TOKENS, type QueryClause } from './query';
 import { variantGroupOf, variantSearchOn } from './variants';
 import type { VaPaMapper } from './vapa';
 
 /** `.` 在詞組樣式裡代表「任意一個 token」 */
 const WILD = null;
+
+/**
+ * 跨標點比對（作者 2026-11-12）。
+ *
+ * 標點在索引裡**是 token、佔一個 VA**（`fuyan.adb`：逗號 89,200 個 posting，
+ * 全書 26.7 萬個標點 posting），所以「涅槃、寂靜」的 VA 是 涅 n／、n+1／寂 n+2，
+ * 查「涅槃寂靜」要求 VA 連續就永遠對不上。
+ *
+ * 這裡不改索引（那要把 ADB 重建、`lines.virtual`／`tags.virtual`／頁碼全部重算，
+ * 還會讓舊庫與新庫語義不一致），而是**在比對時容許跳過標點**：
+ * 位置對不上時，只要卡在中間的那幾個 VA 全部是單字標點，就往後讓。
+ * 命中的 `units` 取**實際跨度**（含被跳過的標點），所以塗紅、摘要都還是原文那一段。
+ *
+ * `skip(va)` 回傳 true ＝ 這個 VA 是可以跨過去的標點。
+ */
+export type PunctSkip = (va: number) => boolean;
+
+/** 一個詞組最多跨過幾個標點（「甲、乙」1 個；「甲，」『乙』」也不該超過 4 個） */
+const MAX_PUNCT_SKIP = 4;
+
+/** 一個 token 是不是「可以跨過去的」標點（查詢端與索引端同一套判準）。 */
+function isPunctToken(t: string): boolean {
+  return t.length === 1 && isCrossablePunct(t.codePointAt(0) ?? 0);
+}
+
+/**
+ * 從 `list` 裡找第一個 ≥ `target` 的位置，允許：
+ *   * `target…p-1` 的距離 ≤ `maxGap`（外文空白佔的 VA）
+ *   * 或者 `target…p-1` 每一個 VA 都是可跳過的標點，且不超過 `MAX_PUNCT_SKIP`
+ * 回傳 -1 ＝ 這個位置接不上。
+ */
+function seek(list: number[], target: number, maxGap: number, skip?: PunctSkip): number {
+  let i = lowerBound(list, target);
+  if (i >= list.length) return -1;
+  const p = list[i];
+  if (p - target <= maxGap) return p;
+  if (!skip) return -1;
+  const gap = p - target;
+  if (gap > MAX_PUNCT_SKIP) return -1;
+  for (let v = target; v < p; v++) if (!skip(v)) return -1;
+  return p;
+}
 
 /** binary search: does the ascending list contain `v`? */
 function hasVa(list: number[], v: number): boolean {
@@ -42,9 +85,9 @@ function hasVa(list: number[], v: number): boolean {
  * 詞組比對，支援單字萬用字元：`lists` 裡的 `null` ＝ `.`（任意一個 token）。
  * 沒有萬用字元時退回 `phraseMatch`（同一套規則，只是快一點）。
  */
-export function phraseMatchPattern(lists: (number[] | null)[], limit = 1_000_000, maxGap = 0): PhraseHit[] {
+export function phraseMatchPattern(lists: (number[] | null)[], limit = 1_000_000, maxGap = 0, skip?: PunctSkip): PhraseHit[] {
   if (!lists.length) return [];
-  if (lists.every((l) => l !== null)) return phraseMatch(lists as number[][], limit, maxGap);
+  if (lists.every((l) => l !== null)) return phraseMatch(lists as number[][], limit, maxGap, skip);
   const n = lists.length;
   // 用第一個「有實際 token」的清單當錨點，回推詞組起點
   const anchorAt = lists.findIndex((l) => l !== null);
@@ -54,17 +97,16 @@ export function phraseMatchPattern(lists: (number[] | null)[], limit = 1_000_000
     const start = va - anchorAt;
     if (start < 0) continue;
     let ok = true;
-    for (let i = 0; i < n; i++) {
+    let prev = start + anchorAt;
+    for (let i = anchorAt + 1; i < n; i++) {
       const l = lists[i];
-      if (!l || i === anchorAt) continue;
-      let found = false;
-      for (let g = 0; g <= maxGap; g++) {
-        if (hasVa(l, start + i + g)) { found = true; break; }
-      }
-      if (!found) { ok = false; break; }
+      if (!l) { prev++; continue; }          // `.`：任意一個 token
+      const p = seek(l, prev + 1, maxGap, skip);
+      if (p < 0) { ok = false; break; }
+      prev = p;
     }
     if (ok) {
-      out.push({ va: start, units: n + maxGap });
+      out.push({ va: start, units: prev - start + 1 });
       if (out.length >= limit) break;
     }
   }
@@ -94,7 +136,7 @@ export interface PhraseHit {
  * Rules are exactly `phraseMatchPattern()`'s: the anchor is the first real list,
  * `start = anchorVa - anchorIndex`, and every other position must be present.
  */
-export function matchesInRange(lists: (number[] | null)[], from: number, to: number, max = 0): { count: number; first: number; hits: PhraseHit[] } {
+export function matchesInRange(lists: (number[] | null)[], from: number, to: number, max = 0, skip?: PunctSkip): { count: number; first: number; hits: PhraseHit[] } {
   const n = lists.length;
   const out: PhraseHit[] = [];
   let count = 0, first = -1;
@@ -112,25 +154,50 @@ export function matchesInRange(lists: (number[] | null)[], from: number, to: num
   const anchorAt = lists.findIndex((l) => l !== null && l !== undefined);
   if (anchorAt < 0) return { count: 0, first: -1, hits: out };
   const anchor = lists[anchorAt]!;
-  // a match starting at `start` occupies [start, start + n - 1], so the anchor's own
-  // VA for that match is start + anchorAt
-  const lo = lowerBound(anchor, from + anchorAt);
-  const hi = lowerBound(anchor, to + anchorAt);
+  // a match starting at `start` normally has its anchor at `start + anchorAt`, but
+  // a skipped punctuation shifts it — widen the window, then verify each candidate
+  // properly below (start must still be inside [from, to)).
+  const lo = lowerBound(anchor, from + anchorAt - MAX_PUNCT_SKIP);
+  const hi = lowerBound(anchor, to + anchorAt + MAX_PUNCT_SKIP);
   for (let i = lo; i < hi; i++) {
     const start = anchor[i] - anchorAt;
-    if (start < 0) continue;
+    if (start < from || start >= to) continue;
     let ok = true;
-    for (let k = 0; k < n; k++) {
+    let prev = start + anchorAt;
+    for (let k = anchorAt + 1; k < n; k++) {
       const l = lists[k];
-      if (!l || k === anchorAt) continue;
-      if (!hasVa(l, start + k)) { ok = false; break; }
+      if (!l) { prev++; continue; }
+      const p = seek(l, prev + 1, 0, skip);
+      if (p < 0) { ok = false; break; }
+      prev = p;
+    }
+    for (let k = anchorAt - 1; k >= 0 && ok; k--) {
+      const l = lists[k];
+      if (!l) { prev--; continue; }
+      const p = seekBack(l, prev - 1, skip);
+      if (p < 0) { ok = false; break; }
+      prev = p;
     }
     if (!ok) continue;
+    const units = prev - start + 1;
     if (first < 0) first = start;
     count++;
-    if (!max || out.length < max) out.push({ va: start, units: n });
+    if (!max || out.length < max) out.push({ va: start, units });
   }
   return { count, first, hits: out };
+}
+
+/** `seek` 的反向版：找最後一個 ≤ `target` 的位置，允許跨過標點。 */
+function seekBack(list: number[], target: number, skip?: PunctSkip): number {
+  let i = lowerBound(list, target + 1) - 1;
+  if (i < 0) return -1;
+  const p = list[i];
+  if (p === target) return p;
+  if (!skip) return -1;
+  const gap = target - p;
+  if (gap > MAX_PUNCT_SKIP) return -1;
+  for (let v = p + 1; v <= target; v++) if (!skip(v)) return -1;
+  return p;
 }
 
 /**
@@ -140,25 +207,23 @@ export function matchesInRange(lists: (number[] | null)[], from: number, to: num
  * later list up to its predecessor, and accept when the last equals the first
  * plus the token count minus one.
  */
-export function phraseMatch(lists: number[][], limit = 1_000_000, maxGap = 0): PhraseHit[] {
+export function phraseMatch(lists: number[][], limit = 1_000_000, maxGap = 0, skip?: PunctSkip): PhraseHit[] {
   if (!lists.length) return [];
   if (lists.length === 1) return lists[0].slice(0, limit).map((va) => ({ va, units: 1 }));
   const n = lists.length;
-  const idx = new Array(n).fill(0);
   const out: PhraseHit[] = [];
   for (const start of lists[0]) {
-    let target = start;
+    let prev = start;
     let ok = true;
     for (let i = 1; i < n; i++) {
-      idx[i] = lowerBound(lists[i], target + 1, idx[i]);
-      if (idx[i] >= lists[i].length) { ok = false; break; }
-      const pos = lists[i][idx[i]];
-      // 中文相鄰＝VA 連續；純外文的空白會多佔 VA，允許每個詞之間最多 maxGap。
-      if (pos < start + i || pos > start + i + maxGap) { ok = false; break; }
-      target = pos;
+      // 中文相鄰＝VA 連續；純外文的空白會多佔 VA，允許每個詞之間最多 maxGap；
+      // 標點也佔 VA，但可以由 `skip` 跨過去（見 PunctSkip）。
+      const p = seek(lists[i], prev + 1, maxGap, skip);
+      if (p < 0) { ok = false; break; }
+      prev = p;
     }
-    if (ok && target >= start + n - 1 && target <= start + n - 1 + maxGap) {
-      out.push({ va: start, units: n + maxGap });
+    if (ok) {
+      out.push({ va: start, units: prev - start + 1 });
       if (out.length >= limit) break;
     }
   }
@@ -998,6 +1063,54 @@ export class SearchSession {
   /** kmj 日文：查詢與索引都用 ICU 日文詞典；其他庫不開。 */
   private readonly japanese: boolean;
 
+  /** 標點 VA 清單（遞增，見 `PunctSkip`）；`null` ＝ 還沒建。 */
+  private punctVas: number[] | null = null;
+  private punctBuilt = false;
+
+  /**
+   * 「這個 VA 是單字標點嗎」——跨標點比對用（作者 2026-11-12）。
+   *
+   * 標點在索引裡是普通 token，所以要從 tokens 容器反查：名字長度 1、`isPunctuation`
+   * 就算，把它的 posting 全部併起來。`fuyan.adb` 是 8,000 個 token 名裡約 20 個
+   * 標點、26.7 萬個 posting，建一次約 30–60 ms，之後二分查。
+   *
+   * 用「有序陣列」而不是位圖：taisho 的 maxVA 是 8,790 萬，位圖要 88 MB；
+   * 有序陣列只有實際標點數那麼大。
+   */
+  private async ensurePunct(): Promise<PunctSkip | undefined> {
+    if (this.punctBuilt) return this.punctVas ? (va: number) => hasVa(this.punctVas!, va) : undefined;
+    this.punctBuilt = true;
+    const c = this.tokensC;
+    if (!c) return undefined;
+    const parts: number[][] = [];
+    for (let i = 0; i < c.names.length; i++) {
+      const name = c.names[i];
+      if (!name || name.length !== 1) continue;
+      const cp = name.codePointAt(0) ?? 0;
+      if (!isCrossablePunct(cp)) continue;
+      const list = await this.reader.decodeBlockList('tokens', i);
+      if (list.length) parts.push(list);
+    }
+    if (!parts.length) return undefined;
+    // 每個 list 都已遞增 → k 路合併，去重
+    const out: number[] = [];
+    const idx = new Array(parts.length).fill(0);
+    for (;;) {
+      let best = -1;
+      let bestVal = Infinity;
+      for (let i = 0; i < parts.length; i++) {
+        const l = parts[i];
+        if (idx[i] >= l.length) continue;
+        if (l[idx[i]] < bestVal) { bestVal = l[idx[i]]; best = i; }
+      }
+      if (best < 0) break;
+      for (let i = 0; i < parts.length; i++) if (idx[i] < parts[i].length && parts[i][idx[i]] === bestVal) idx[i]++;
+      out.push(bestVal);
+    }
+    this.punctVas = out;
+    return (va: number) => hasVa(this.punctVas!, va);
+  }
+
   constructor(reader: AdbReader) {
     this.reader = reader;
     this.tokensC = reader.containers.get('tokens') ?? null;
@@ -1369,12 +1482,19 @@ export class SearchSession {
         colorIndex: c.role === 'excluded' ? -1 : colorIndex++,
       };
       clause.hits = prepared.lists.length && !prepared.missing.length
-        ? phraseMatchPattern(prepared.lists, maxHits, phrase ? 1 : 0)
+        ? phraseMatchPattern(prepared.lists, maxHits, phrase ? 1 : 0, await this.punctSkipFor(prepared.lists))
         : [];
       clause.occurrences = clause.hits.length;
       out.push(clause);
     }
     return out;
+  }
+
+  /** 多字詞組才需要標點清單（單字查詢的 units 恆為 1，沒有「中間」可跨）。 */
+  private async punctSkipFor(lists: (number[] | null)[]): Promise<PunctSkip | undefined> {
+    let solid = 0;
+    for (const l of lists) if (l && l.length) solid++;
+    return solid > 1 ? this.ensurePunct() : undefined;
   }
 
   /**
@@ -1395,7 +1515,13 @@ export class SearchSession {
       lists.push(st.postings);
     };
     if (!wild) {
-      for (const t of tokens) await pushToken(t);
+      // 查詢自己帶的標點不參與比對：「甲、乙」與「甲乙」查同一批位置，
+      // 讓步由 `phraseMatch` 的 `skip` 做（正文的標點可跨）。
+      // 例外：整個詞組只有標點（有人要數逗號），那就照原樣查。
+      const solid = tokens.filter((t) => !isPunctToken(t));
+      const use = solid.length ? solid : tokens;
+      for (const t of use) await pushToken(t);
+      return { tokens: use, wildcard: wild, lists, missing };
     } else {
       // parts[i] 之間各插一個 WILD（`.`）；空片段（開頭／結尾的 `.`）不產生 token
       for (let i = 0; i < parts.length; i++) {
@@ -1421,7 +1547,7 @@ export class SearchSession {
       if (c.role === 'excluded') continue;
       const prepared = await this.clauseFor(c);
       if (!prepared.lists.length || prepared.missing.length) { complete = false; continue; }
-      const r = matchesInRange(prepared.lists, from, to, 1);
+      const r = matchesInRange(prepared.lists, from, to, 1, await this.punctSkipFor(prepared.lists));
       count += r.count;
       if (r.first >= 0 && (first < 0 || r.first < first)) first = r.first;
     }
@@ -1436,7 +1562,7 @@ export class SearchSession {
       if (c.role === 'excluded') continue;
       const prepared = await this.clauseFor(c);
       if (!prepared.lists.length || prepared.missing.length) continue;
-      out.push(...matchesInRange(prepared.lists, from, to, max).hits);
+      out.push(...matchesInRange(prepared.lists, from, to, max, await this.punctSkipFor(prepared.lists)).hits);
       if (out.length >= max) break;
     }
     return out.sort((a, b) => a.va - b.va).slice(0, max);
@@ -1724,6 +1850,22 @@ export async function searchSummary(
         const pad = 30;
         const win = snapOutsideTags(text, Math.max(0, at - pad), Math.min(text.length, at + opts.phrase.length + pad));
         return { text: text.slice(win.from, win.to), start: at - win.from, end: at - win.from + opts.phrase.length, line };
+      }
+      // 1b) 跨標點：原文「諸行無常，諸法無我」，查的是「諸行無常諸法無我」。
+      //     標籤與標點都當透明再比對，命中的**原文**區間（連標點、標籤一起）才是
+      //     卡片要切的範圍——作者 2026-11-12。跨硬換行時接下一行再試。
+      {
+        let text = firstText;
+        for (let k = 0; k <= 3; k++) {
+          const loose = findLooseInMarkup(text, opts.phrase);
+          if (loose) {
+            const pad = 30;
+            const win = snapOutsideTags(text, Math.max(0, loose.start - pad), Math.min(text.length, loose.end + pad));
+            return { text: text.slice(win.from, win.to), start: loose.start - win.from, end: loose.end - win.from, line };
+          }
+          if (line + k + 1 >= mapper.lineCount) break;
+          text += await mapper.lineText(line + k + 1);
+        }
       }
       // 2) 詞組被 skip 標籤切開（`<术>一切法空</术>故`，2026-11-06）：索引層是連續的，
       //    摘要卻在原文裡找不到。允許字元之間夾標籤再找；找到後把那幾個標籤收緊，

@@ -673,6 +673,56 @@
    ]
   },
   {
+   "db": "13j",
+   "query": "涅槃解脫",
+   "clauses": [
+    {
+     "text": "涅槃解脫",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "涅",
+      "槃",
+      "解",
+      "脫"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
+   "db": "13j",
+   "query": "諸行無常諸法無我",
+   "clauses": [
+    {
+     "text": "諸行無常諸法無我",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "諸",
+      "行",
+      "無",
+      "常",
+      "諸",
+      "法",
+      "無",
+      "我"
+     ],
+     "missing": [],
+     "occurrences": 0,
+     "units": 0,
+     "first": [],
+     "last": -1
+    }
+   ]
+  },
+  {
    "db": "yinshun",
    "query": "乾",
    "clauses": [
@@ -908,14 +958,14 @@
       "龍"
      ],
      "missing": [],
-     "occurrences": 4,
+     "occurrences": 7,
      "units": 3,
      "first": [
       596672,
       4980804,
-      4990844
+      4985993
      ],
-     "last": 5675421
+     "last": 7571427
     }
    ]
   },
@@ -999,7 +1049,7 @@
       "起"
      ],
      "missing": [],
-     "occurrences": 4632,
+     "occurrences": 4645,
      "units": 2,
      "first": [
       1371,
@@ -1018,7 +1068,7 @@
       "空"
      ],
      "missing": [],
-     "occurrences": 2051,
+     "occurrences": 2113,
      "units": 2,
      "first": [
       661,
@@ -1043,7 +1093,7 @@
       "起"
      ],
      "missing": [],
-     "occurrences": 4632,
+     "occurrences": 4645,
      "units": 2,
      "first": [
       1371,
@@ -1062,7 +1112,7 @@
       "空"
      ],
      "missing": [],
-     "occurrences": 2051,
+     "occurrences": 2113,
      "units": 2,
      "first": [
       661,
@@ -1087,7 +1137,7 @@
       "起"
      ],
      "missing": [],
-     "occurrences": 4632,
+     "occurrences": 4645,
      "units": 2,
      "first": [
       1371,
@@ -1106,7 +1156,7 @@
       "空"
      ],
      "missing": [],
-     "occurrences": 2051,
+     "occurrences": 2113,
      "units": 2,
      "first": [
       661,
@@ -1175,7 +1225,7 @@
       "心"
      ],
      "missing": [],
-     "occurrences": 1506,
+     "occurrences": 1521,
      "units": 3,
      "first": [
       959,
@@ -1219,7 +1269,7 @@
       "脫"
      ],
      "missing": [],
-     "occurrences": 5351,
+     "occurrences": 5366,
      "units": 2,
      "first": [
       3618,
@@ -1311,7 +1361,7 @@
       "明"
      ],
      "missing": [],
-     "occurrences": 1076,
+     "occurrences": 1084,
      "units": 2,
      "first": [
       38365,
@@ -1355,7 +1405,7 @@
       "法"
      ],
      "missing": [],
-     "occurrences": 616,
+     "occurrences": 665,
      "units": 3,
      "first": [
       16076,
@@ -1363,6 +1413,64 @@
       31866
      ],
      "last": 7638076
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "涅槃解脫",
+   "clauses": [
+    {
+     "text": "涅槃解脫",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "涅",
+      "槃",
+      "解",
+      "脫"
+     ],
+     "missing": [],
+     "occurrences": 50,
+     "units": 4,
+     "first": [
+      19077,
+      271084,
+      300034
+     ],
+     "last": 7617786
+    }
+   ]
+  },
+  {
+   "db": "yinshun",
+   "query": "諸行無常諸法無我",
+   "clauses": [
+    {
+     "text": "諸行無常諸法無我",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "諸",
+      "行",
+      "無",
+      "常",
+      "諸",
+      "法",
+      "無",
+      "我"
+     ],
+     "missing": [],
+     "occurrences": 35,
+     "units": 9,
+     "first": [
+      69335,
+      70189,
+      70513
+     ],
+     "last": 7617995
     }
    ]
   },
@@ -1701,7 +1809,7 @@
       "起"
      ],
      "missing": [],
-     "occurrences": 922,
+     "occurrences": 927,
      "units": 2,
      "first": [
       51799,
@@ -1720,7 +1828,7 @@
       "空"
      ],
      "missing": [],
-     "occurrences": 194,
+     "occurrences": 199,
      "units": 2,
      "first": [
       50714,
@@ -1745,7 +1853,7 @@
       "起"
      ],
      "missing": [],
-     "occurrences": 922,
+     "occurrences": 927,
      "units": 2,
      "first": [
       51799,
@@ -1764,7 +1872,7 @@
       "空"
      ],
      "missing": [],
-     "occurrences": 194,
+     "occurrences": 199,
      "units": 2,
      "first": [
       50714,
@@ -1789,7 +1897,7 @@
       "起"
      ],
      "missing": [],
-     "occurrences": 922,
+     "occurrences": 927,
      "units": 2,
      "first": [
       51799,
@@ -1808,7 +1916,7 @@
       "空"
      ],
      "missing": [],
-     "occurrences": 194,
+     "occurrences": 199,
      "units": 2,
      "first": [
       50714,
@@ -1827,7 +1935,7 @@
       "明"
      ],
      "missing": [],
-     "occurrences": 1141,
+     "occurrences": 1143,
      "units": 2,
      "first": [
       6278,
@@ -1877,12 +1985,12 @@
       "心"
      ],
      "missing": [],
-     "occurrences": 842,
+     "occurrences": 845,
      "units": 3,
      "first": [
       1788,
-      8041,
-      8052
+      4185,
+      8041
      ],
      "last": 6147109
     }
@@ -1988,7 +2096,7 @@
       "明"
      ],
      "missing": [],
-     "occurrences": 1141,
+     "occurrences": 1143,
      "units": 2,
      "first": [
       6278,
@@ -2013,7 +2121,7 @@
       "明"
      ],
      "missing": [],
-     "occurrences": 1379,
+     "occurrences": 1389,
      "units": 2,
      "first": [
       7879,
@@ -2032,7 +2140,7 @@
       "明"
      ],
      "missing": [],
-     "occurrences": 1141,
+     "occurrences": 1143,
      "units": 2,
      "first": [
       6278,
@@ -2057,7 +2165,7 @@
       "法"
      ],
      "missing": [],
-     "occurrences": 451,
+     "occurrences": 505,
      "units": 3,
      "first": [
       694,
@@ -2065,6 +2173,64 @@
       24942
      ],
      "last": 6153054
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "涅槃解脫",
+   "clauses": [
+    {
+     "text": "涅槃解脫",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "涅",
+      "槃",
+      "解",
+      "脫"
+     ],
+     "missing": [],
+     "occurrences": 12,
+     "units": 4,
+     "first": [
+      31652,
+      259519,
+      352914
+     ],
+     "last": 5787213
+    }
+   ]
+  },
+  {
+   "db": "fgdict",
+   "query": "諸行無常諸法無我",
+   "clauses": [
+    {
+     "text": "諸行無常諸法無我",
+     "role": "optional",
+     "near": -1,
+     "wild": false,
+     "tokens": [
+      "諸",
+      "行",
+      "無",
+      "常",
+      "諸",
+      "法",
+      "無",
+      "我"
+     ],
+     "missing": [],
+     "occurrences": 9,
+     "units": 9,
+     "first": [
+      522491,
+      1105459,
+      1449055
+     ],
+     "last": 2387055
     }
    ]
   }
@@ -2281,7 +2447,7 @@
       "生"
      ],
      "missing": [],
-     "occurrences": 8611,
+     "occurrences": 8624,
      "units": 2,
      "first": [
       6997,
@@ -2309,12 +2475,12 @@
       "服"
      ],
      "missing": [],
-     "occurrences": 10,
+     "occurrences": 13,
      "units": 2,
      "first": [
       249056,
       2458359,
-      2630747
+      2619759
      ],
      "last": 7630188
     }
@@ -2356,7 +2522,7 @@
       "脫"
      ],
      "missing": [],
-     "occurrences": 5351,
+     "occurrences": 5366,
      "units": 2,
      "first": [
       3618,
@@ -2382,7 +2548,7 @@
       "心"
      ],
      "missing": [],
-     "occurrences": 1506,
+     "occurrences": 1521,
      "units": 3,
      "first": [
       959,
@@ -2408,7 +2574,7 @@
       "法"
      ],
      "missing": [],
-     "occurrences": 616,
+     "occurrences": 665,
      "units": 3,
      "first": [
       16076,
@@ -2464,7 +2630,7 @@
       "生"
      ],
      "missing": [],
-     "occurrences": 5934,
+     "occurrences": 5935,
      "units": 2,
      "first": [
       2164,
@@ -2565,12 +2731,12 @@
       "心"
      ],
      "missing": [],
-     "occurrences": 842,
+     "occurrences": 845,
      "units": 3,
      "first": [
       1788,
-      8041,
-      8052
+      4185,
+      8041
      ],
      "last": 6147109
     }
@@ -2591,7 +2757,7 @@
       "法"
      ],
      "missing": [],
-     "occurrences": 451,
+     "occurrences": 505,
      "units": 3,
      "first": [
       694,

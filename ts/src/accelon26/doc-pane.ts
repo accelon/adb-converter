@@ -418,6 +418,10 @@ function bindInlineImageZoom(): void {
   document.addEventListener('click', (ev) => {
     const el = ev.target as Element | null;
     const svg = el?.closest?.('#docText svg.inlineSvg') as SVGSVGElement | null;
+    // 圖上的注號（厚觀法師 2026-11-12）：點它要跳到釋文，不是把圖放大。
+    // notes.ts 的處理也在 document 上，stopPropagation 擋不住同層的其他監聽，
+    // 所以在這裡先讓開。
+    if (svg && el?.closest?.('a.noteRef')) return;
     if (svg) {
       // 不要讓點圖同時觸發文字的「選取／查字典」手勢
       ev.preventDefault();
@@ -1314,8 +1318,36 @@ function renderAncestorTrail(s: DocSession, anchorVa?: number): string {
     + items.join('<span class="trailSep">›</span>') + sep + sibHtml + '</nav>';
 }
 
+/**
+ * 圖上自己帶注號時，圖前那一列「只有 [13][14]…」的注號要收起來（厚觀法師 2026-11-12）。
+ *
+ * 05B 的表格是另一份〈圖表文檔〉做的，那份的腳註參照在「摘出來另存」時斷了，
+ * 所以注號不在圖上、只在正文裡排成一列疊在圖的上方。補回圖上之後（見
+ * `src/patch_fig_note_marks.py`），那一列就重複了。
+ *
+ * 只收「整列只有注號」而且「下一塊是**自己帶注號**的圖」——別本書的圖沒有注號，
+ * 照舊顯示，不會把讀者唯一的入口吃掉。
+ */
+function noteRowsToHide(blocks: RenderBlock[]): Set<number> {
+  const out = new Set<number>();
+  for (let i = 0; i + 1 < blocks.length; i++) {
+    const a = blocks[i];
+    const b = blocks[i + 1];
+    if (a.kind !== 'line' || a.lines.length !== 1 || b.kind === 'table') continue;
+    const line = a.lines[0];
+    if (!/<a class="noteRef"/.test(line.html)) continue;
+    const text = line.html.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]*>/g, '').replace(/[\s\u3000]/g, '');
+    if (!/^(\[\d+\])+$/.test(text)) continue;
+    if (!/class="noteRef"/.test(b.lines[0]?.html ?? '')) continue;
+    out.add(line.no);
+  }
+  return out;
+}
+
 /** 把一頁的版面塊變成 HTML：保留硬換行＝每行一列；不保留＝整段連排 */
 function renderBlocks(blocks: RenderBlock[], s: DocSession): string {
+  const merged = noteRowsToHide(blocks);
+  const mergedCls = (no: number) => (merged.has(no) ? ' noteRefsMerged' : '');
 
   return blocks.map((block) => {
     if (block.kind === 'table' && block.table) {
@@ -1333,12 +1365,12 @@ function renderBlocks(blocks: RenderBlock[], s: DocSession): string {
     }
     if (block.kind === 'line') {
       const l = block.lines[0];
-      const cls = 'docLine' + (l.cls ? ' ' + l.cls : '') + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
+      const cls = 'docLine' + mergedCls(l.no) + (l.cls ? ' ' + l.cls : '') + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
       return '<div class="' + cls + '" id="L' + l.no + (l.idSuffix ?? '') + '" data-src="' + escapeHtml(l.raw) + '"' + (l.style ? ' style="' + escapeHtml(l.style) + '"' : '') + '>'
         + '<div class="lineText">' + l.html + '</div></div>';
     }
     const inner = block.lines.map((l, i) => {
-      const cls = 'docLine' + (l.cls ? ' ' + l.cls : '') + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
+      const cls = 'docLine' + mergedCls(l.no) + (l.cls ? ' ' + l.cls : '') + (s.pinned && l.no === s.pinned.line ? ' hitLine' : '') + (inJumpRange(l.no) ? ' jumpHit' : '');
       // 英文行接起來要留一個空白，中文不用（作者 2026-10：把硬換行去掉）
       const prev = i > 0 ? block.lines[i - 1].raw : '';
       const join = i > 0 && /[A-Za-z0-9]$/.test(prev) && /^[A-Za-z0-9]/.test(l.raw) ? ' ' : '';

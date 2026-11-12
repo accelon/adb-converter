@@ -364,7 +364,10 @@ async function findRef(n: string, fromLine: number): Promise<number> {
     const pick = pickNote(idx, 'ref', n, vaOfLine(fromLine), fromLine);
     if (pick) {
       const line = lineOfVa(pick.va);
-      for (const d of [0, 1, -1, 2, -2]) {
+      // 窗口 ±8：圖表裡好幾個注號會排成一列（05B 的 p35–36 表有五個），
+      // 標籤的 VA 會全部落在緊接的 `<圖>` 那一行，±2 就找不回上面那幾行
+      // （厚觀法師 2026-11-12：點釋文編號要回得到圖上的注號）。
+      for (const d of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8]) {
         const l = line + d;
         if (l < 0 || l > last) continue;
         if (await check(l)) { found = l; break; }
@@ -611,12 +614,28 @@ async function showTip(ref: HTMLElement): Promise<void> {
 }
 
 /**
+ * 跳躍目標「看得到的」那一列。圖前那行 `[13][14]…` 在圖自己帶注號之後會收起來
+ * （`display:none`，見 doc-pane 的 noteRowsToHide），那一列沒有版面、捲不動，
+ * 所以往下找第一個有版面的兄弟（就是那張圖）——讀者眼裡「跳回圖上」。
+ */
+function rowForScroll(line: number): HTMLElement | null {
+  const row = document.getElementById('L' + line);
+  if (!row) return null;
+  if (row.getClientRects().length) return row;
+  let el: Element | null = row;
+  while ((el = el.nextElementSibling)) {
+    if ((el as HTMLElement).getClientRects?.().length) return el as HTMLElement;
+  }
+  return row;
+}
+
+/**
  * 跳到目標行後閃一下（作者 2026-10-31：註↔釋往返不要讓讀者用眼睛找）。
  * 行加 `.noteTarget`，編號加 `.noteTargetMark`，2.6 秒後自動移除。
  */
-function flashTarget(line: number, mark?: HTMLElement | null): void {
+function flashTarget(line: number, mark?: HTMLElement | null, note?: string): void {
   requestAnimationFrame(() => {
-    const row = document.getElementById('L' + line);
+    const row = rowForScroll(line);
     if (row) {
       row.classList.remove('noteTarget');
       void (row as HTMLElement).offsetWidth;   // 重新觸發動畫
@@ -628,6 +647,14 @@ function flashTarget(line: number, mark?: HTMLElement | null): void {
         void num.offsetWidth;
         num.classList.add('noteTargetMark');
         window.setTimeout(() => num.classList.remove('noteTargetMark'), 12000);
+      }
+      // 圖上的注號也要閃（厚觀法師 2026-11-12：點釋文的編號要回得到圖上那個號）
+      const svgSel = note ? `svg a.noteRef[data-note="${note}"]` : 'svg [data-note]';
+      for (const svgNum of row.querySelectorAll<HTMLElement>(svgSel)) {
+        svgNum.classList.remove('noteTargetMark');
+        void (svgNum as unknown as HTMLElement).offsetWidth;
+        svgNum.classList.add('noteTargetMark');
+        window.setTimeout(() => svgNum.classList.remove('noteTargetMark'), 12000);
       }
     }
   });
@@ -641,7 +668,7 @@ async function jumpToBody(ref: HTMLElement): Promise<void> {
   const hit = await findBody(n, from);
   if (!hit) { setStatus(`找不到 <釋 n="${noteLabel(n)}">`, 'warn'); return; }
   await revealDocLine(hit.line);
-  flashTarget(hit.line);
+  flashTarget(hit.line, null, n);
 }
 
 async function jumpToRef(body: HTMLElement): Promise<void> {
@@ -652,7 +679,9 @@ async function jumpToRef(body: HTMLElement): Promise<void> {
   const line = await findRef(n, from);
   if (line < 0) { setStatus(`找不到 <註 n="${n}">`, 'warn'); return; }
   await revealDocLine(line);
-  flashTarget(line);
+  // 註號行若被收起（圖上自帶注號），捲到它下面那張圖
+  requestAnimationFrame(() => rowForScroll(line)?.scrollIntoView({ block: 'center' }));
+  flashTarget(line, null, n);
 }
 
 function onClick(ev: MouseEvent): void {

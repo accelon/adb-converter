@@ -1376,6 +1376,10 @@
     vertical-align: super; padding: 0 1px; cursor: pointer;
   }
   .lineText .noteRef:hover { color: var(--accent); text-decoration: underline; }
+  /* 圖上自己畫了注號之後（厚觀法師 2026-11-12），圖前那一行 `[13][14]…` 就多餘了：
+     注號已經長在圖上，這一列整個收起來（元素留著，`.docLine` 的 id 還在，
+     釋文點回本文時 notes.ts 會改捲到下面那一張圖）。 */
+  .docLine.noteRefsMerged { display: none; }
   .lineText .noteBack { color: var(--gold); text-decoration: none; font-size: .8em; padding: 0 3px 0 0; cursor: pointer; }
   .lineText .noteBack:hover { text-decoration: underline; }
   .lineText .noteBody { cursor: text; white-space: normal; overflow-wrap: anywhere; }   /* 注文可以換行（長註才不會被切在右邊）；釋文本身不點擊（2026-10-31，只有編號可回本文） */
@@ -1402,6 +1406,10 @@
   .lineText .noteRef.noteTargetMark, .lineText .noteBack.noteTargetMark {
     outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px;
   }
+  /* 圖（SVG）上的注號：hover 換色、跳回來時也換色（outline 在 SVG 內不一定畫得出來） */
+  .inlineSvg a.noteRef { cursor: pointer; }
+  .inlineSvg a.noteRef:hover text { fill: var(--accent); }
+  .inlineSvg a.noteRef.noteTargetMark text { fill: var(--accent); font-weight: 700; }
   /* <引>：CBETA 的引文，用楷體（2026-10-30）；字級略大 1.02em，楷體看起來才不會偏小 */
   .lineText .quote { font-family: var(--kai); font-size: 1.02em; }
   /* <术 sk|pi|tb="…">：術語（作者 2026-10-31）。漢詞只加虛線，**不上色**；
@@ -2049,7 +2057,7 @@
   .editProgressTrack { height: 6px; background: var(--panel2); border-radius: 999px; overflow: hidden; }
   #editProgressBar { height: 100%; width: 0; background: var(--accent); transition: width .18s ease; }
 
-  /* ---- 公開資料庫更新（作者 2026-10-29） ---------------------------------- */
+  /* ---- 研究用資料庫更新（作者 2026-10-29） ---------------------------------- */
   /* #dbTabs 裡的按鈕：**有新版才出現**（作者 2026-11-01：沒得更新就不顯示），
      紅色的 New 是整條 header 最醒目的一點。 */
   .adbUpBtn {
@@ -2876,7 +2884,7 @@
   </div>
   <div id="revListBody" class="revListBody"><p class="dim">載入中…</p></div>
 </div>
-<!-- 公開資料庫更新（作者 2026-10-29）：#dbTabs 的「New」按鈕打開這一盒 -->
+<!-- 研究用資料庫更新（作者 2026-10-29）：#dbTabs 的「New」按鈕打開這一盒 -->
 <div id="adbUpdateBackdrop" hidden></div>
 <div id="adbUpdateBox" role="dialog" aria-modal="true" aria-labelledby="adbUpdateTitle" hidden>
   <div class="adbUpTop">

@@ -290,8 +290,9 @@ func (f *adbSearchFile) postingsOf(token string) ([]int32, bool) {
 	return l, true
 }
 
-// phraseMatchPattern 支援 nil（萬用字元）的詞組比對，與 TS 版同一套規則。
-func phraseMatchPattern(lists [][]int32, limit int) []phraseHit {
+// phraseMatchPattern 支援 nil（萬用字元）的詞組比對，與 TS 版同一套規則；
+// `punct` 是所有標點的 VA，用來跨標點（見 search.go seekVa）。
+func phraseMatchPattern(lists [][]int32, limit int, punct []int32) []phraseHit {
 	if len(lists) == 0 {
 		return nil
 	}
@@ -303,7 +304,7 @@ func phraseMatchPattern(lists [][]int32, limit int) []phraseHit {
 		}
 	}
 	if allReal {
-		return phraseMatch(lists, limit)
+		return phraseMatch(lists, limit, punct)
 	}
 	anchor := -1
 	for i, l := range lists {
@@ -321,18 +322,23 @@ func phraseMatchPattern(lists [][]int32, limit int) []phraseHit {
 		if start < 0 {
 			continue
 		}
+		prev := start + int32(anchor)
 		ok := true
-		for i, l := range lists {
-			if l == nil || i == anchor {
+		for i := anchor + 1; i < len(lists); i++ {
+			l := lists[i]
+			if l == nil { // `.`：任意一個 token
+				prev++
 				continue
 			}
-			if !hasVa(l, start+int32(i)) {
+			p, found := seekVa(l, prev+1, punct)
+			if !found {
 				ok = false
 				break
 			}
+			prev = p
 		}
 		if ok {
-			out = append(out, phraseHit{VA: start, Units: int32(len(lists))})
+			out = append(out, phraseHit{VA: start, Units: prev - start + 1})
 			if len(out) >= limit {
 				break
 			}
@@ -392,7 +398,7 @@ func (h *AdbHost) SearchQuery(path string, query string, maxHits int, groups []s
 				ch.NearOf = i - 1
 			}
 			if len(lists) > 0 && len(missing) == 0 {
-				ch.Hits = phraseMatchPattern(lists, maxHits)
+				ch.Hits = phraseMatchPattern(lists, maxHits, f.punctVas())
 			}
 			ch.Occurrences = len(ch.Hits)
 			results[i] = ch

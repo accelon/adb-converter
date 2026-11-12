@@ -14,6 +14,9 @@ import { noteSearch, resetEngineStats } from './engine-stats';
 import { renderPageBlocks } from './render_accelon3';
 import { simConverter } from './doc-pane';
 import { foldGlossary, loadGlossary } from './glossary';
+import { findPunctLoose } from './loose-match';
+import { decodeXmlEntities } from '../xml-entities';
+import { joinedText, markSpan, textNodesOf } from './mark-dom';
 
 /** search state */
 let lastResult: SearchResult | null = null;
@@ -288,9 +291,18 @@ function markedSnippetHtml(text: string, marks: { text: string; hue: number }[],
     if (!m.text || seen.has(m.text)) continue;
     seen.add(m.text);
     let at = 0;
+    let hit = false;
     while ((at = text.indexOf(m.text, at)) >= 0) {
       spans.push({ start: at, end: at + m.text.length, hue: m.hue, own: !!own && m.text === own });
       at += m.text.length;
+      hit = true;
+    }
+    // 跨標點命中（搜「涅槃寂靜」、摘要寫「涅槃、寂靜」）：嚴格比對找不到就把
+    // 去標點後的每一次出現補進來，區間取原文（含標點）。
+    if (!hit) {
+      for (const r of findPunctLoose(text, m.text, true)) {
+        spans.push({ start: r.start, end: r.end, hue: m.hue, own: !!own && m.text === own });
+      }
     }
   }
   if (!spans.length) return escapeHtml(text);
@@ -321,8 +333,57 @@ function snippetHtml(text: string, marks: { text: string; hue: number }[], prima
   return blocks.map((b) => b.lines.map((l) => l.html).join('')).join('');
 }
 
-async function renderSnippets(seq: number) {
-  const my = ++snippetSeq;
+/**
+ * 把一張摘要卡片裡的關鍵字塗紅（卡片已進 DOM）。
+ *
+ * 為什麼不在 `renderPageBlocks` 的上色階段做：那裡是一段一段文字節點上色，
+ * 命中跨過 `<术>` 標籤或跨過標點時，關鍵字被切成好幾段，`indexOf` 一段都找不到。
+ * 這裡把整張卡的文字節點串起來算位移，再逐段包 `<mark>`（見 `mark-dom`）。
+ */
+function paintCardMarks(card: HTMLElement, marks: { text: string; hue: number; own: boolean }[]): void {
+  if (!marks.length) return;
+  // 書名（`.snippetBook`）不是原文，不塗
+  const nodes = textNodesOf(card, (el) => el.classList.contains('snippetBook'));
+  const text = joinedText(nodes);
+  if (!text) return;
+  type Sp = { start: number; end: number; hue: number; own: boolean };
+  const spans: Sp[] = [];
+  for (const m of marks) {
+    if (!m.text) continue;
+    let at = 0;
+    let hit = false;
+    while ((at = text.indexOf(m.text, at)) >= 0) {
+      spans.push({ start: at, end: at + m.text.length, hue: m.hue, own: m.own });
+      at += m.text.length;
+      hit = true;
+    }
+    if (!hit) {
+      for (const r of findPunctLoose(text, m.text, true)) {
+        spans.push({ start: r.start, end: r.end, hue: m.hue, own: m.own });
+      }
+    }
+  }
+  if (!spans.length) return;
+  spans.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
+  // 由右往左包：重疊時保留「起點較前、長度較長」的那一個
+  const kept: Sp[] = [];
+  let last = Infinity;
+  for (let i = spans.length - 1; i >= 0; i--) {
+    if (spans[i].end > last) continue;
+    kept.push(spans[i]);
+    last = spans[i].start;
+  }
+  for (const sp of kept) {
+    markSpan(nodes, {
+      start: sp.start,
+      end: sp.end,
+      className: sp.own ? 'kw cur' : 'kw',
+      style: { '--hue': String(Math.round(sp.hue)) },
+    });
+  }
+}
+
+async function renderSnippets(seq: number) {  const my = ++snippetSeq;
   const superseded = () => seq !== searchSeq || my !== snippetSeq;
   const res = summaryResult ?? lastResult;
   if (!res || !mapper) return;
@@ -339,6 +400,10 @@ async function renderSnippets(seq: number) {
   // 否則「向於捨」這種 2 筆只會列 1 筆；key 用「起點行:終點行」。
   const seenLines = new Set<string>();
   let merged = 0;
+  // 每張卡片要塗紅的字：渲染期不再上色（跨標籤、跨標點的命中在單一文字節點裡
+  // 找不到），改成卡片進 DOM 後用 Range 包（`paintCardMarks`，作者 2026-11-12）。
+  type CardMark = { text: string; hue: number; own: boolean };
+  const cardMarks: CardMark[][] = [];
   for (const hit of show) {
     const book = bookNameOf(res.groups, hit.va);
     const bookHtml = book ? `<span class="snippetBook">${escapeHtml(book)}</span>` : '';
@@ -353,23 +418,31 @@ async function renderSnippets(seq: number) {
       const s = await searchSummary(mapper, hit.va, hit.units, wildcard ? {} : { phrase: own });
       if (superseded()) return;
       let body: string;
+      let marks: CardMark[] = [];
       if (!s) {
         body = `VA ${fmtInt(hit.va)}：無法定位`;
-      } else if (wildcard && s.end > s.start) {
-        const hue = hueFor(Math.max(0, clause?.colorIndex ?? 0), Math.max(1, positives));
-        const hitText = s.text.slice(s.start, s.end);
-        body = snippetHtml(s.text, [...kwMarks(), { text: hitText, hue }], hitText);
       } else {
-        body = snippetHtml(s.text, kwMarks(), own);
+        const hue = hueFor(Math.max(0, clause?.colorIndex ?? 0), Math.max(1, positives));
+        const ownText = decodeXmlEntities(s.text.slice(s.start, s.end).replace(/<[^>]*>/g, ''));
+        marks = [
+          ...kwMarks().map((m) => ({ text: m.text, hue: m.hue, own: false })),
+          { text: ownText, hue, own: true },
+        ];
+        body = snippetHtml(s.text, []);
       }
       cards.push(`<div class="snippet" data-va="${hit.va}" data-units="${hit.units}" data-clause="${hit.clause ?? 0}">
           <div>${body}${bookHtml}</div></div>`);
+      cardMarks.push(marks);
       continue;
     }
     // pass the query: the snippet then anchors on the line table (walk-independent)
     const s = await searchSummary(mapper, hit.va, hit.units, { phrase: res.query });
     if (superseded()) return;        // superseded while building snippets
-    if (!s) { cards.push(`<div class="snippet"><div class="snippetHead">VA ${fmtInt(hit.va)}：無法定位</div></div>`); continue; }
+    if (!s) {
+      cards.push(`<div class="snippet"><div class="snippetHead">VA ${fmtInt(hit.va)}：無法定位</div></div>`);
+      cardMarks.push([]);
+      continue;
+    }
     // 用 edgeLine 而不是 lineOfVa：命中落在某行最後一個字時，lineOfVa 會跳到下一行，
     // 兩個不同的命中就會撞在同一個 key（2026-11-05）。跨折行的命中 key 是「起:訖」。
     const startLine = mapper.edgeLine(hit.va);
@@ -377,14 +450,19 @@ async function renderSnippets(seq: number) {
     const lineKey = startLine + ':' + endLine;
     if (seenLines.has(lineKey)) { merged++; continue; }
     seenLines.add(lineKey);
-    const mid = s.text.slice(s.start, s.end);
-    const body = snippetHtml(s.text, [{ text: mid, hue: 0 }], mid);
+    // 卡片的著色字串必須是「畫面上看得到的文字」：snippet 的原文含 `<术>` 這類
+    // 標籤，若把標籤一起當關鍵字，渲染後永遠找不到（跨標點的命中就是這樣）。
+    const mid = decodeXmlEntities(s.text.slice(s.start, s.end).replace(/<[^>]*>/g, ''));
+    const body = snippetHtml(s.text, []);
     cards.push(`<div class="snippet" data-va="${hit.va}" data-units="${hit.units}">
         <div>${body}${bookHtml}</div>
       </div>`);
+    cardMarks.push([{ text: mid, hue: 0, own: true }]);
   }
   if (superseded()) return;   // 較新的一次已經開始畫：不要把舊清單寫回去
   list.innerHTML = cards.join('');
+  [...list.querySelectorAll<HTMLElement>('.snippet')]
+    .forEach((el, i) => paintCardMarks(el, cardMarks[i] ?? []));
   list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
     el.onclick = (ev) => {
       list.querySelectorAll('.snippet').forEach((x) => x.classList.toggle('active', x === el));

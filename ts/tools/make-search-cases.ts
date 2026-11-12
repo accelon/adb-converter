@@ -42,6 +42,10 @@ const QUERIES = [
   '-無明',
   '光明 無明',
   '佛.法',
+  // 跨標點（作者 2026-11-12）：原文是「涅槃、解脫」「諸行無常，諸法無我」，
+  // 查詢不帶標點也要命中；units 會比字數多（含被跨過的標點）。
+  '涅槃解脫',
+  '諸行無常諸法無我',
 ];
 
 const OUT = resolve(import.meta.dir, '..\\test\\shared\\search-cases.json');
