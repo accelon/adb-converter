@@ -35,6 +35,40 @@ ZIP 下載與 10-29 正式版。完整脈絡、資料格式、建置指令與已
 | 反向索引複刻對拍 | `compare-index.ts` | yinshun **9,516 token / 7,256,439 命中，逐位置完全一致** |
 | XML 結構掃描 | `xml-lint.ts` | 93 庫已掃；`mismatch=18,348`、`entity=11,870`、`unterminated=464` 等已量化 |
 
+## 讀 adb → 用 MCP（不必再看 ADBEngine）
+
+`.adb` 的**讀取／搜尋引擎**已包成一個 MCP 伺服器：[`mcp/server.ts`](./mcp/server.ts)（說明見 [`mcp/README.md`](./mcp/README.md)）。
+只要接進支援 MCP 的客戶端（QwenWork、Claude Desktop 等），AI 助手就能直接呼叫工具讀 adb——
+**往後只要是「讀 adb」，不必再翻 `ts/tools/adb-skill` 的 ADBEngine 原始碼，也不必手打 CLI。**
+
+| 工具 | 作用 |
+|---|---|
+| `adb_list` | 列出可用的 `.adb`（搜尋目錄 `D:\accelon3` ＋ repo 根） |
+| `adb_info` | 檔頭：書名／行數／VA 上限／標籤數／文件數／資源數／容器 |
+| `adb_tags` | 標籤清單＋各標籤實例數 |
+| `adb_toc` | 目錄樹（`depth／tag／label／va／vaEnd`） |
+| `adb_search` | 全文搜尋（走 adb 內建詞索引；空白＝AND、連寫＝詞組、支援 `+ - * .`） |
+| `adb_read` | 讀某幾行（預設去標籤；搜尋命中後取上下文） |
+
+用法沿用既有慣例：**先 `adb_info`／`adb_search`（引擎端查詢）定位，再用 `adb_read` 取那幾行**，不整本抽取。
+底下仍是 `engine.ts` 的同一顆 `AdbEngine`，所以行號、VA、搜尋結果都與 accelon26 閱讀器一致；CLI（下方 adb-skill）與 MCP 共用引擎、同時可用。
+
+客戶端設定（stdio）：
+
+```json
+{
+  "mcpServers": {
+    "accelon26-adb": {
+      "command": "bun",
+      "args": ["run", "D:\\2026\\adb-converter\\mcp\\server.ts"],
+      "env": { "ADB_MCP_DIRS": "D:\\accelon3;D:\\2026\\adb-converter" }
+    }
+  }
+}
+```
+
+協定同時相容 **MCP 2026-07-28（無狀態，`server/discover`＋`resultType`）** 與**舊握手（`initialize`）**；採零依賴純 Bun，不裝 `@modelcontextprotocol/sdk`。
+
 ## 快速開始
 
 ```bash
@@ -125,6 +159,7 @@ bun run test/index-match.ts # 反向索引認證
 ### 系統：accelon26、部署、offtext、開發規範
 
 * **[ACCELON26-HANDOVER.md](./docs/system/ACCELON26-HANDOVER.md) — accelon26 應用（桌面版＋官網）交接文件（先看「現況」）**
+* **[mcp/README.md](./mcp/README.md) — 讀 adb 的 MCP 伺服器（`adb_list/info/tags/toc/search/read`；接客戶端就能讓 AI 直接讀，不必再看 ADBEngine）**
 * [architecture.md](./docs/system/architecture.md) — Accelon26 系統架構
 * [DEPLOY.md](./docs/system/DEPLOY.md) — 主機、部署、更新器、回滾
 * [MACOS.md](./docs/system/MACOS.md) — macOS 版建置、簽章、上傳
