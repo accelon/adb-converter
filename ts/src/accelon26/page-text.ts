@@ -70,28 +70,37 @@ export function shortPageId(id: string): string {
   return short === id ? id : short;
 }
 
-/** 頁 id → VA（走 accelon3 的 attributes/頁.id → pointer → tags/頁 鏈） */
+/** 頁 id → VA（走 accelon3 的 attributes/頁.id → pointer → tags/頁 鏈）；
+ *  沒有頁 id 或頁 id 不中時，依序退回 `塊.段` 與「通用節點錨點」（科判等，見 nodeAnchorInfo）。 */
 export async function anchorVa(r: AdbReader, anchor: string): Promise<number | null> {
   // `#N`／`#詞` 只是句內詞序（vedic 的 `<詞 w="1">`），不影響 VA；先切掉再定位。
   // key 由閱讀端（word-hl.ts）另行反白，見 `splitWordKey()`。
   const hash = anchor.indexOf('#');
   const base = hash >= 0 ? anchor.slice(0, hash) : anchor;
   const idx = await anchorIndex(r);
-  // 沒有 `<頁>` 標籤的庫（sz 系列）：退回 `塊.段` 定位
-  if (!idx) return locatorVa(r, base);
-  // 前導 0 可有可無：`9p94a`／`9p0094a` 都能命中（ys 新舊版頁 id 並存時也一樣）
-  let i = idx.values.indexOf(base);
-  const candidates = [padPageId(base), shortPageId(base)];
-  // fuyan 的舊頁 id 是 `yl38p107`，新寫法（與 ys 同步）是 `38p107`；兩種都接受。
-  if (r.header.dbname === 'fuyan' && /^[0-9]+p/i.test(base)) candidates.push('yl' + base);
-  for (const cand of candidates) {
-    if (i >= 0) break;
-    if (cand !== base) i = idx.values.indexOf(cand);
+  if (idx) {
+    // 前導 0 可有可無：`9p94a`／`9p0094a` 都能命中（ys 新舊版頁 id 並存時也一樣）
+    let i = idx.values.indexOf(base);
+    const candidates = [padPageId(base), shortPageId(base)];
+    // fuyan 的舊頁 id 是 `yl38p107`，新寫法（與 ys 同步）是 `38p107`；兩種都接受。
+    if (r.header.dbname === 'fuyan' && /^[0-9]+p/i.test(base)) candidates.push('yl' + base);
+    for (const cand of candidates) {
+      if (i >= 0) break;
+      if (cand !== base) i = idx.values.indexOf(cand);
+    }
+    if (i >= 0) {
+      const ptr = idx.pointers[i];
+      if (idx.tags[(ptr >>> 24) & 0xff] === '頁') {
+        const va = idx.vas[(ptr & 0xffffff) - 1];
+        if (va != null) return va;
+      }
+    }
   }
-  if (i < 0) return locatorVa(r, base);
-  const ptr = idx.pointers[i];
-  if (idx.tags[(ptr >>> 24) & 0xff] !== '頁') return locatorVa(r, base);
-  return idx.vas[(ptr & 0xffffff) - 1] ?? null;
+  // 沒有 `<頁>` 標籤的庫（sz 系列）：退回 `塊.段` 定位；都沒有就試通用節點錨點。
+  const loc = await locatorVa(r, base);
+  if (loc != null) return loc;
+  const node = await nodeAnchorInfo(r, anchor);
+  return node ? node.va : null;
 }
 
 /** `標籤.屬性` → 值 → VA 清單（走 attributes 的共用鏈，和 anchorIndex 同一套） */
@@ -114,6 +123,160 @@ async function attrVas(r: AdbReader, tag: string, attr: string): Promise<Map<str
   }
   for (const list of out.values()) list.sort((a, b) => a - b);
   return out;
+}
+
+// ───────────────────── 通用節點錨點（科判等結構節點，2026-11-13） ─────────────────────
+
+export interface NodeAnchorInfo {
+  va: number;
+  /** 下一個結構節點的 VA（節點範圍到那裡為止）；沒有就 null（到檔尾）。 */
+  vaEnd: number | null;
+  tag: string;
+  ns: string;
+  value: string;
+}
+
+interface NodeAnchorIndex {
+  /** `ns#值` → VA（帶命名空間，精確） */
+  nsMap: Map<string, number>;
+  /** `值` → VA（文件序第一筆；同值跨著作時取最早那個） */
+  bare: Map<string, number>;
+  vaInfo: Map<number, { tag: string; value: string; ns: string }>;
+  /** 所有錨點標籤實例的 VA（排序；用來算節點範圍） */
+  endVas: number[];
+  nsTag: string;
+}
+const nodeAnchorCache = new WeakMap<AdbReader, Promise<NodeAnchorIndex | null>>();
+
+async function tagVasList(r: AdbReader, tag: string): Promise<number[]> {
+  const tagsC = r.containers.get('tags');
+  const ti = tagsC?.names.indexOf(tag) ?? -1;
+  return tagsC && ti >= 0 ? r.decodeBlockList('tags', ti) : [];
+}
+
+/** 樹 `t="篇,章,科01,…,科54."` → 標籤清單（去尾點、去空白）。 */
+function levelsOf(t: string): string[] {
+  return t.split(',').map((x) => x.trim().replace(/[.\s]+$/, '')).filter(Boolean);
+}
+
+/** 節點標題文字：去掉標籤後，取最後一個括號內的代碼（`瑜伽師地論（T1579）`→`T1579`）。 */
+async function nodeLabelCode(r: AdbReader, tag: string, va: number): Promise<string> {
+  const mp = await mapperOf(r);
+  const line = mp.edgeLine(va);
+  let t = await mp.lineText(line);
+  t = t.replace(new RegExp('^\\s*<' + tag + '(?=[\\s/>])[^>]*>'), '');
+  const close = t.indexOf('</' + tag + '>');
+  if (close >= 0) t = t.slice(0, close);
+  t = t.replace(/<[^>]*>/g, '').trim();
+  const pm = /[（(]([^（）()]+)[）)]\s*$/.exec(t);
+  return pm ? pm[1].trim() : t;
+}
+
+/**
+ * 通用節點錨點索引：
+ * - 錨點標籤＝所有 `<樹 t="…">` 宣告的層級標籤聯集（若有 `<錨>` 也納入）。
+ * - 命名空間＝層級最多那條 `t=` 的第一個標籤（通常「篇／書」）；值優先取該標籤實例的
+ *   `id`／`n` 屬性，沒有就讀標題最後一個括號內的代碼（ybh：`（T1579）`、`（PXJ-H）`）。
+ * - 索引 `ns#值 → VA` 與 `值 → VA`（文件序第一筆）。第一次建立後快取。
+ */
+async function nodeAnchorIndex(r: AdbReader): Promise<NodeAnchorIndex | null> {
+  let p = nodeAnchorCache.get(r);
+  if (!p) { p = buildNodeAnchorIndex(r); nodeAnchorCache.set(r, p); }
+  return p;
+}
+
+async function buildNodeAnchorIndex(r: AdbReader): Promise<NodeAnchorIndex | null> {
+  const treeT = await attrVas(r, '樹', 't');
+  const lists = [...treeT.keys()].map(levelsOf).filter((a) => a.length);
+  const tagsC = r.containers.get('tags');
+  const anchorTags = new Set<string>();
+  for (const L of lists) for (const t of L) anchorTags.add(t);
+  if (tagsC?.names.includes('錨')) anchorTags.add('錨');
+  if (!anchorTags.size) return null;
+  // 命名空間標籤：層級最多那條 t= 的第一個（ybh 的 t= 有 56 層 → 篇）
+  const nsList = [...lists].sort((a, b) => b.length - a.length)[0];
+  const nsTag = nsList?.[0] ?? '';
+
+  // 命名空間值（VA → 名稱）
+  const nsValByVa = new Map<number, string>();
+  for (const attr of ['id', 'n']) {
+    const m = await attrVas(r, nsTag, attr);
+    for (const [val, vas] of m) for (const va of vas) if (!nsValByVa.has(va)) nsValByVa.set(va, val);
+  }
+  const nsVas = (await tagVasList(r, nsTag)).slice().sort((a, b) => a - b);
+  for (const va of nsVas) {
+    if (!nsValByVa.has(va) && nsTag) nsValByVa.set(va, await nodeLabelCode(r, nsTag, va));
+  }
+  const nsFor = (va: number): string => {
+    let lo = 0, hi = nsVas.length - 1, ans = -1;
+    while (lo <= hi) { const md = (lo + hi) >> 1; if (nsVas[md] <= va) { ans = md; lo = md + 1; } else hi = md - 1; }
+    return ans < 0 ? '' : (nsValByVa.get(nsVas[ans]) ?? '');
+  };
+
+  const nsMap = new Map<string, number>();
+  const bareCand = new Map<string, number>();
+  const vaInfo = new Map<number, { tag: string; value: string; ns: string }>();
+  const endSet = new Set<number>();
+  for (const tag of anchorTags) {
+    for (const attr of ['n', 'id']) {
+      const m = await attrVas(r, tag, attr);
+      for (const [rawVal, vas] of m) {
+        const value = rawVal.trim();
+        if (!value) continue;
+        for (const va of vas) {
+          endSet.add(va);
+          const ns = tag === nsTag ? '' : nsFor(va);
+          if (ns) nsMap.set(ns + '#' + value, va);
+          const prev = bareCand.get(value);
+          if (prev == null || va < prev) bareCand.set(value, va);
+          if (!vaInfo.has(va)) vaInfo.set(va, { tag, value, ns });
+        }
+      }
+    }
+  }
+  return { nsMap, bare: bareCand, vaInfo, endVas: [...endSet].sort((a, b) => a - b), nsTag };
+}
+
+/**
+ * 解析通用節點錨點，回 VA 與節點範圍。
+ * `NS#值` 或 `NS/值` 為帶命名空間；純值取文件序第一筆。
+ * 命名空間給了卻找不到 → 回 null（不退回純值，避免跳到錯的著作）。
+ */
+export async function nodeAnchorInfo(r: AdbReader, anchor: string): Promise<NodeAnchorInfo | null> {
+  const idx = await nodeAnchorIndex(r);
+  if (!idx) return null;
+  let va: number | undefined;
+  let ns = '';
+  let value = anchor;
+  const nsSep = /^([^#/]+)[#/](.+)$/.exec(anchor);
+  if (nsSep) {
+    ns = nsSep[1];
+    value = nsSep[2];
+    va = idx.nsMap.get(ns + '#' + value);
+    if (va == null) return null;
+  } else {
+    va = idx.bare.get(value);
+    if (va == null) return null;
+  }
+  const info = idx.vaInfo.get(va);
+  // 節點範圍＝下一個錨點 VA（二分）
+  let vaEnd: number | null = null;
+  let lo = 0, hi = idx.endVas.length - 1, ans = -1;
+  while (lo <= hi) { const md = (lo + hi) >> 1; if (idx.endVas[md] > va) { ans = md; hi = md - 1; } else lo = md + 1; }
+  if (ans >= 0) vaEnd = idx.endVas[ans];
+  return { va, vaEnd, tag: info?.tag ?? '', ns: info?.ns ?? ns, value: info?.value ?? value };
+}
+
+/** 節點範圍的原始文字（含標籤；給 `<嵌>` 用）。從節點 VA 的行讀到 vaEnd 前一行。 */
+export async function nodeSpanText(r: AdbReader, va: number, vaEnd: number | null, maxLines = 60): Promise<string> {
+  const mp = await mapperOf(r);
+  const total = r.header.lineCount;
+  const start = mp.edgeLine(va);
+  let end = vaEnd != null ? mp.edgeLine(Math.max(va, vaEnd - 1)) : Math.min(total - 1, start + maxLines - 1);
+  end = Math.min(end, start + maxLines - 1, total - 1);
+  const out: string[] = [];
+  for (let L = start; L <= end; L++) out.push(await mp.lineText(L));
+  return out.join('\n');
 }
 
 /**

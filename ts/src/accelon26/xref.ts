@@ -30,7 +30,7 @@ import { openAdbStore } from './adb-store';
 import { hostState } from './host';
 import { bz2Decompress } from '../bzip2-wasm';
 import { HAN_RE, isHan, hanChars, hanCount } from './han';
-import { anchorIndex, anchorVa, blockOf, pageHanTextOf, shortPageId, type AnchorIndex } from './page-text';
+import { anchorIndex, anchorVa, blockOf, nodeAnchorInfo, nodeSpanText, pageHanTextOf, shortPageId, type AnchorIndex } from './page-text';
 import { citationEntryTag, entryById, entryByName, entryLineOfHan } from './entry-anchor';
 import { splitPageCol, type PageCite } from './page-cite';
 import { splitWordKey } from './word-hl';
@@ -2044,13 +2044,29 @@ export async function pageHanText(db: string, anchor: string): Promise<string> {
  * `j` 是目標頁的漢字索引（0 起，end 不含）；和 `q` 對不上時退回 q 比對。
  * 回傳的 HTML 只包含一段 `.embedDoc`，由 embed.ts 插在晶片後面。
  */
-export async function renderEmbed(db: string, anchor: string, quote = '', range = '', label = '', bare = false): Promise<{ html: string; title: string }> {
-  const r = await readerFor(db);
+export async function renderEmbed(db: string, anchor: string, quote = '', range = '', label = '', bare = false, rIn?: AdbReader): Promise<{ html: string; title: string }> {
+  const r = rIn ?? await readerFor(db);
   if (!r) return { html: '<p class="dim">請先開啟 ' + esc(db) + '.adb（同一個瀏覽器工作階段）。</p>', title: label || db };
+  const va = await anchorVa(r, anchor);
+  if (va == null) return { html: '<p class="dim">找不到位置 ' + esc(anchor) + '。</p>', title: label || db };
+  // 通用節點錨點（科判等結構節點，2026-11-13）：用節點範圍取文，不依賴 <頁>。
+  const node = await nodeAnchorInfo(r, anchor);
+  if (node && node.va === va) {
+    const raw = await nodeSpanText(r, node.va, node.vaEnd);
+    const body = raw.split('\n').map((line) => lineHtml(line)).join('<br>');
+    const head = label || [node.ns, node.tag].filter(Boolean).join(' · ') || anchor;
+    if (bare) return { html: '<div class="embedText reflow">' + body + '</div>', title: head };
+    return {
+      html: '<div class="embedDoc">'
+        + '<div class="embedHead"><span class="embedSrc">' + esc(head) + '</span>'
+        + '<span class="embedPage">' + esc(anchor) + '</span></div>'
+        + '<div class="embedText reflow">' + body + '</div>'
+        + '</div>',
+      title: head,
+    };
+  }
   const idx = await anchorIndex(r);
   if (!idx) return { html: '<p class="dim">這個庫沒有頁碼表。</p>', title: label || db };
-  const va = await anchorVa(r, anchor);
-  if (va == null) return { html: '<p class="dim">找不到頁碼 ' + esc(anchor) + '。</p>', title: label || db };
 
   const blk0 = blockOf(idx, va);
   let blk = blk0;
