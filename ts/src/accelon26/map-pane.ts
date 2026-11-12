@@ -313,7 +313,7 @@ const DBNAME: Record<Side, string> = { T: 'taisho', K: 'goryeo' };
 export async function openSide(side: Side, addr: Address): Promise<void> {
   const db = DBNAME[side];
   const pageId = `${addr.vol}p${addr.page}${COL[addr.col] ?? 'a'}`;
-  const ok = await openInMain(db, { anchor: pageId, label: pageId });
+  const ok = await openInMain(db, { anchor: pageId, label: pageId, exactLine: true });
   if (!ok) setStatus(`請先開啟 ${db}.adb（或用 📁 選取），才能跳到 ${pageId}`, 'warn');
 }
 

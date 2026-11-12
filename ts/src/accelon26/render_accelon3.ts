@@ -1515,7 +1515,12 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
       if (pageOnly) {
         // 作者 2026-11-01：`<頁>` 後面接的是標題時，標題要從頁首獨立一行，
         // 不能和上一個段落、頁碼擠在同一行（例：05B-p287 的〈二〉〈18觀法品〉）。
-        const headingNext = /^\s*<(章|節|項|目|小目|細目|釋)[\s>]/.test(lines[i]);
+        // 2026-11-12（厚觀法師第八項）：後面接的是**圖表標題**時同理 —— `38p93`
+        // 的頁碼就擺在〔圖表 HG02.093〕之前，接上前一行會讓 93 頁第一行變成
+        // 上一頁那句「…總列如下：〔圖表 …〕」，而紙本是表格直接開頭。
+        const headingNext = /^\s*<(章|節|項|目|小目|細目|釋)[\s>]/.test(lines[i])
+          || /^\s*〔圖表/.test(lines[i])
+          || /^\s*<圖[\s>]/.test(lines[i]);
         if (headingNext) {
           appendToPrev(pageOnly);                              // 頁碼留在前一行尾端
           pageOnly = '';

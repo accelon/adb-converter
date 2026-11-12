@@ -53,7 +53,7 @@ function nodeContaining(va: number): { realm: { from: number; to: number }; name
  * the tab's realm). Otherwise the current tab is kept when it already contains
  * the hit, which is what keeps clicks inside one chapter in one tab.
  */
-async function linkTo(va: number, token: string, units: number | undefined, opts: { newTab?: boolean; exact?: boolean; phrase?: string; noMark?: boolean; name?: string; mode?: 'reuse' | 'node' | 'hit'; realm?: { from: number; to: number }; ctx?: DocCtx | null } = {}): Promise<void> {
+async function linkTo(va: number, token: string, units: number | undefined, opts: { newTab?: boolean; exact?: boolean; phrase?: string; noMark?: boolean; name?: string; mode?: 'reuse' | 'node' | 'hit'; realm?: { from: number; to: number }; ctx?: DocCtx | null; alignTop?: boolean } = {}): Promise<void> {
   // 連結是從「左欄那一庫」發起的（目錄、摘要、全文、詞典…），所以預設用 active ctx；
   // 呼叫端要指定別的庫時可以自己給 ctx（作者 2026-11-01）。
   const ctx = opts.ctx ?? activeDocCtx();
@@ -169,7 +169,24 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   const ensureMs = performance.now() - tLink;
   // Bring the linked line into the viewport: a page holds up to 200 lines and the
   // target can sit below the fold (the 原書分頁 marker is the common case).
-  document.getElementById('L' + s.pinned.line)?.scrollIntoView({ block: 'center' });
+  // 頁跳轉要讓那一行**貼齊頂端**（厚觀法師 2026-11-12：「107 頁的第一行應該是（圖二）」）：
+  // 原本一律 block:'center'，目標行落在視窗中央，上方就看得到前一頁的圖，讀者以為跳錯頁。
+  let scrollEl: HTMLElement | null = document.getElementById('L' + s.pinned.line);
+  if (opts.alignTop && scrollEl) {
+    // 頁標記本身不帶文字，而且常常落在上一塊的尾巴（空行、圖、段落末）：
+    // 往下找「第一個真正有字、又不是圖」的那一行，那才是使用者眼中的頁首。
+    let n: Element | null = scrollEl;
+    for (let k = 0; k < 12 && n; k++) {
+      const t = (n.textContent || '').replace(/\s/g, '');
+      if (t && !n.querySelector('svg')) break;
+      n = n.nextElementSibling;
+    }
+    if (n instanceof HTMLElement) {
+      scrollEl = n;
+      s.pinned.line = Number((n.id || '').replace(/^L/, '')) || s.pinned.line;
+    }
+  }
+  scrollEl?.scrollIntoView({ block: opts.alignTop ? 'start' : 'center' });
   // 目錄游標只跟「左欄那一庫」的本文連動。跳過來的那一節要**立刻**亮（作者 2026-11-06）：
   // 以前只等本文捲動後的 syncCursorFromScroll，沒有捲動時要等尾端「載入更多」的 2 秒計時器，
   // 短節點還會亮成下一個節點。
@@ -195,7 +212,7 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
 }
 
 /** a search/summary link: the same action, plus the "snippet" token name */
-async function revealHit(va: number, token: string, units?: number, opts: { newTab?: boolean; exact?: boolean; phrase?: string; noMark?: boolean; name?: string; mode?: 'reuse' | 'node' | 'hit'; realm?: { from: number; to: number }; ctx?: DocCtx | null } = {}): Promise<void> {
+async function revealHit(va: number, token: string, units?: number, opts: { newTab?: boolean; exact?: boolean; phrase?: string; noMark?: boolean; name?: string; mode?: 'reuse' | 'node' | 'hit'; realm?: { from: number; to: number }; ctx?: DocCtx | null; alignTop?: boolean } = {}): Promise<void> {
   return linkTo(va, token, units, opts);
 }
 

@@ -11,6 +11,7 @@ import { showToken } from './panes';
 import { paintTreeActive, revealHit, treeRowClasses } from './link';
 import { findCharPosition, jumpPageCite, jumpTaishoCite, openCharPosition, parseCharPosition, parseTaishoCite } from './xref';
 import { parsePageCite } from './page-cite';
+import { pageAliasForms, pageAliasMissing } from './page-alias';
 import { parseNoteQuery } from './note-label';
 import { jumpToNote } from './notes';
 import { dbNameCandidates } from './dbs';
@@ -1727,7 +1728,9 @@ async function jumpEntries(): Promise<{ label: string; va: number }[]> {
     if (va === undefined) continue;
     out.push({ label: av.values[i], va });
   }
-  jumpCache = out;
+  // 只快取「有東西」的結果：這個函式會被跳至分頁在別的載入階段叫到，
+  // 那時 tags 還沒備好會回空陣列；把空陣列記成答案，跳至就整個庫都空的了。
+  if (out.length) jumpCache = out;
   return out;
 }
 
@@ -2058,7 +2061,9 @@ export async function renderJump(enter = false): Promise<void> {
   let hit = entries;
   // 省略前導 0 的寫法（8p52a）也接受：短寫與補零後兩種形式都比一次
   const qn = normalizePageQuery(q);
-  const forms = qn && qn !== q ? [qn, q] : [q];
+  // 講記代號（厚觀法師 2026-11-12）：`HG02p93`／`2p93` 也當成頁 id
+  const forms = [...new Set([...pageAliasForms(q, reader?.header.dbname ?? ''), ...(qn && qn !== q ? [qn] : []), q])]
+    .filter((f) => !!f);
   const rankOf = (label: string): number => {
     let best = 9;
     for (const f of forms) best = Math.min(best, jumpRank(label, f));
@@ -2071,7 +2076,9 @@ export async function renderJump(enter = false): Promise<void> {
   }
   const go = (e: { label: string; va: number }) => {
     setJumpRange(null);            // 換頁就收起上一段的大正藏色帶
-    void revealHit(e.va, e.label, 1, { mode: 'node', noMark: true });
+    // 頁跳轉要落在**那一行**、而且貼齊頂端（厚觀法師 2026-11-12 第三項）：
+    // 原本 mode:'node' 會滾到節點開頭，敲 38p107 卻停在「第二節」的標題上。
+    void revealHit(e.va, e.label, 1, { mode: 'hit', noMark: true, alignTop: true });
   };
   // 貼上「引用複製」的整段文字時，從裡面認出頁 id（例：( Y 1pa001a )）。
   const emb = q ? embeddedPage(entries, q) : null;
@@ -2081,7 +2088,7 @@ export async function renderJump(enter = false): Promise<void> {
     list.innerHTML = `<div class="snippet active" data-va="${emb.va}"><div><b>${escapeHtml(emb.label)}</b></div></div>`;
     list.querySelector<HTMLElement>('[data-va]')!.onclick = (ev) => {
       setJumpRange(null);
-      void revealHit(emb.va, emb.label, 1, { ...(mods(ev) ?? {}), mode: 'node', noMark: true });
+      void revealHit(emb.va, emb.label, 1, { ...(mods(ev) ?? {}), mode: 'hit', noMark: true, alignTop: true });
     };
     return;
   }
@@ -2090,16 +2097,20 @@ export async function renderJump(enter = false): Promise<void> {
   // 作者 2026-11-01：不必告知使用者「一共有多少頁」；只提示下一步。
   meta.textContent = q
     ? `「${shown}」：按 Enter 跳到最接近的一頁`
-    : '輸入頁 id 的一部份即可；Enter 直接跳';
+    : (reader.header.dbname?.toLowerCase() === 'fuyan'
+      ? '輸入頁 id 的一部份即可（38p107、HG02p107 都行）；Enter 直接跳'
+      : '輸入頁 id 的一部份即可；Enter 直接跳');
   if (!hit.length) {
-    list.innerHTML = '<p class="dim">沒有符合的頁 id。</p>';
+    // 講記代號認得、但這本書還沒進來：說出書名，不要只回「沒有符合的頁 id」
+    const miss = pageAliasMissing(q, reader.header.dbname ?? '');
+    list.innerHTML = `<p class="dim">${miss ? `${escapeHtml(miss)}不在這個資料庫。` : '沒有符合的頁 id。'}</p>`;
     return;
   }
   await renderChunked(list, hit, {
     html: (e) => `<div class="snippet${qn && e.label === qn ? ' active' : ''}" data-va="${e.va}">
       <div><b>${escapeHtml(e.label)}</b></div></div>`,
     bind: (el, e) => {
-      el.onclick = (ev) => { setJumpRange(null); void revealHit(e.va, e.label, 1, { ...(mods(ev) ?? {}), mode: 'node', noMark: true }); };
+      el.onclick = (ev) => { setJumpRange(null); void revealHit(e.va, e.label, 1, { ...(mods(ev) ?? {}), mode: 'hit', noMark: true, alignTop: true }); };
     },
   });
 }
@@ -2147,7 +2158,9 @@ export async function jumpByQuery(q: string): Promise<boolean> {
   const entries = await jumpEntries();
   if (!entries.length) return jumpByBlockWord(text);
   const qn = normalizePageQuery(text);
-  const forms = qn && qn !== text ? [qn, text] : [text];
+  // 講記代號（厚觀法師 2026-11-12）：`HG02p93`／`2p93` → `38p93`
+  const forms = [...new Set([...pageAliasForms(text, reader.header.dbname ?? ''), ...(qn && qn !== text ? [qn] : []), text])]
+    .filter((f) => !!f);
   let hit = entries.filter((e) => forms.some((f) => e.label.includes(f)));
   if (!hit.length) {
     const emb = embeddedPage(entries, text);
@@ -2159,7 +2172,7 @@ export async function jumpByQuery(q: string): Promise<boolean> {
     return rank(a.label) - rank(b.label) || a.label.localeCompare(b.label, 'en', { numeric: true });
   });
   setJumpRange(null);
-  void revealHit(hit[0].va, hit[0].label, 1, { mode: 'node', noMark: true });
+  void revealHit(hit[0].va, hit[0].label, 1, { mode: 'hit', noMark: true, alignTop: true });
   return true;
 }
 

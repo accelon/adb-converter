@@ -1860,7 +1860,7 @@ async function activateDb(db: string): Promise<boolean> {
  */
 export async function openInMain(
   db: string,
-  opts: { va?: number; anchor?: string; label?: string; phrase?: string } = {},
+  opts: { va?: number; anchor?: string; label?: string; phrase?: string; exactLine?: boolean } = {},
 ): Promise<boolean> {
   if (!(await activateDb(db))) {
     guideMissingDb(db);
@@ -1887,7 +1887,10 @@ export async function openInMain(
   }
   const rawAnchor = opts.anchor ?? '';
   const label = opts.label || splitWordKey(rawAnchor).base || '';
-  const o: Record<string, unknown> = { mode: 'node', name: label };
+  // 頁跳轉（`exactLine`）不要用 `mode: 'node'`：那會滾到 VA 所屬**節點的開頭**，
+  // 於是敲 `38p107` 卻停在「第二節」的標題上，讀者以為頁跳錯了（厚觀法師 2026-11-12
+  // 第三項：「107 頁的第一行應該是（圖二）」）。頁 id 就是要落在那一行。
+  const o: Record<string, unknown> = { mode: opts.exactLine ? 'hit' : 'node', name: label, alignTop: !!opts.exactLine };
   if (opts.phrase) { o.exact = false; o.phrase = opts.phrase; } else o.noMark = true;
   // token 保留完整 `#`（word-hl 要用）；分頁名／狀態列用 label（已切掉）。
   await linkTo(va, rawAnchor || label, 1, o as never);

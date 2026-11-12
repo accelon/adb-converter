@@ -2266,7 +2266,7 @@ export function installDebugApi(): void {
   /** 跨庫錨點：模擬點 <聯 i="db?anchor">（測試／診斷用） */
   xrefJump: async (v: string, fromRight = false, newTab = false, quote = '') => { await xrefJump(v, fromRight, newTab, quote); return true; },
   /** 在中间開啟某庫的一頁（設置頁的「在 taisho／wxzj 開啟」用同一條路徑） */
-  openPage: (db: string, page: string, phrase = '') => openInMain(db, { anchor: page, label: page, phrase }),
+  openPage: (db: string, page: string, phrase = '') => openInMain(db, { anchor: page, label: page, phrase, exactLine: true }),
   xrefDebug: () => xrefDebug(),
   xrefProbe: (db: string, a: string) => xrefProbe(db, a),
   xrefPreview: (db: string, a: string, q?: string) => previewForeign(db, a, q),
