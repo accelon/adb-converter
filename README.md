@@ -169,6 +169,7 @@ bun run test/index-match.ts # 反向索引認證
 * [wails3-pitfalls.md](./docs/system/wails3-pitfalls.md) — Wails3 桌面版避坑
 * [yap-software-practice.md](./docs/system/yap-software-practice.md) — 作者預設做法（Windows／Bun／單檔 HTML／Wails3）
 * [EDIT-MODE.md](./docs/system/EDIT-MODE.md) — 網頁版編輯態與修訂 diff
+* [SAVED-INPUTS.md](./docs/system/SAVED-INPUTS.md) — 已存輸入設計稿（位置／此庫／全域，四頁合一提示卡）
 * [TAG-STYLE-SETTINGS.md](./docs/system/TAG-STYLE-SETTINGS.md) — 標籤樣式設定（設計稿）
 * [adbviewer.md](./docs/system/adbviewer.md) — adb viewer
 * [adbviewer-http.md](./docs/system/adbviewer-http.md) — HTTP + Range 版架構
