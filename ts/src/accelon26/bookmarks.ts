@@ -21,6 +21,7 @@ import {
 import { formatAddress } from './posmap';
 import { openExternalUrl } from './plates';
 import { GLOSS_LANG_NAME, foldGlossary, loadGlossary } from './glossary';
+import { add as addSaved } from './saved-inputs';
 
 interface Bookmark {
   id: string;
@@ -482,7 +483,7 @@ function showMenu(info: SelInfo): void {
       const g = grpOf(m, kind);
       if (g) g.hidden = true;
     }
-    for (const sel of ['cite', 'rong', 'qian', 'pos', 'addr', 'gloss', 'lexHan']) {
+    for (const sel of ['cite', 'rong', 'qian', 'pos', 'savepos', 'addr', 'gloss', 'lexHan']) {
       const b = actOf(m, sel);
       if (b) b.hidden = true;
     }
@@ -499,7 +500,7 @@ function showMenu(info: SelInfo): void {
     sutraHit = null;
     const gs = grpOf(m, 'search');
     if (gs) gs.hidden = true;
-    for (const sel of ['cite', 'rong', 'qian', 'pos', 'addr', 'dict', 'plateT', 'plateK', 'gloss', 'lexHan']) {
+    for (const sel of ['cite', 'rong', 'qian', 'pos', 'savepos', 'addr', 'dict', 'plateT', 'plateK', 'gloss', 'lexHan']) {
       const b = actOf(m, sel);
       if (b) b.hidden = true;
     }
@@ -1014,6 +1015,15 @@ async function runAction(action: string): Promise<void> {
     }
   } else if (action === 'pos') {
     await copyText(await charPosition(info), '已複製位置（頁＋字元範圍）');
+  } else if (action === 'savepos') {
+    const text = await charPosition(info);
+    const db = reader?.header.dbname ?? '';
+    if (!text) setStatus('這一段找不到可存的位置', 'warn');
+    else if (!db) setStatus('尚未開啟資料庫', 'warn');
+    else {
+      addSaved(db, 'pos', text, info.text.trim().slice(0, 20) || undefined);
+      setStatus('已存為位置（輸入框提示卡 → 位置）', 'info');
+    }
   } else if (action === 'addr' && addrRange) {
     await copyText(addrRange, '已複製高麗⇄大正位址範圍');
   } else if (action === 'dict') await openDictLookup(info.text);

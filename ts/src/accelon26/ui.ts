@@ -18,6 +18,7 @@ import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderRevisions,
 import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderGlossary, renderJump, jumpByQuery, jumpByTocPath, jumpByTocIndex, isTocPathQuery, isTocIndexQuery, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully, treeSnapshot } from './scopes';
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, repaintSummary, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 import { backendKind, goQueryCount, lastGoAnswer } from './backend';
+import { list as listSaved, add as addSaved, remove as removeSaved, clear as clearSaved, isPosition } from './saved-inputs';
 import { isDictDb } from './db-kind';
 import { BOOK_CATALOG, WORK_CATALOG, bookById, findBooks, resolveBook, findWorks, resolveWork, workById, worksOfBook } from './book-catalog';
 import { resolveDocCtx } from './doc-ctx';
@@ -1476,10 +1477,21 @@ function queryModeOf(s: string): string {
 }
 
 /**
- * 「跳至」語法 cheat card（作者 2026-11-01）。
- * 輸入框取得 focus、內容空白、停 1.5 秒 → 在正下方顯示；一有輸入或失去 focus 立即收起。
+ * 「跳至」語法提示 ＋「已存輸入」（作者 2026-11-01／2026-11-12）。
+ *
+ * 一張卡、四個分頁：提示／位置／此庫／全域。
+ * - focus 且空白：有存項就立即顯示（可直接點）；沒有存項才照舊 1.5 秒後顯示「提示」。
+ * - 搜尋框右側的 ☆（#savedOpen）可隨時開卡，帶文字時可「＋存目前輸入」。
+ * - 位置分頁點一下＝跳；此庫／全域點一下＝搜。位置與詞分開，是因為走不同管線。
  */
-function wireJumpCheat(input: HTMLInputElement | null): void {
+interface SavedCardHooks {
+  dbName?: () => string;
+  run?: (text: string, bucket: 'pos' | 'db' | 'global') => void;
+  syncMode?: () => void;
+}
+type SavedTab = 'hint' | 'pos' | 'db' | 'global';
+
+function wireJumpCheat(input: HTMLInputElement | null, hooks?: SavedCardHooks): void {
   if (!input) return;
   const card = $('#jumpCheatCard') as HTMLElement | null;
   if (!card) return;
@@ -1496,6 +1508,153 @@ function wireJumpCheat(input: HTMLInputElement | null): void {
       setStatus('已關閉「輸入跳至提示」；可在 設置 → 閱讀 重新開啟', 'info');
     });
   }
+
+  // 目前的已存分頁（只有 #query 那次會真的接上；其餘輸入框沿用同一張卡）
+  let tab: SavedTab = 'hint';
+  let onShowSaved: () => void = () => { /* 尚未接上已存分頁 */ };
+  let savedHas: () => boolean = () => false;
+  let onDbChanged: () => void = () => { /* 尚未接上已存分頁 */ };
+
+  let timer = 0;
+  let forced = false;
+  const hide = (): void => { window.clearTimeout(timer); timer = 0; card.hidden = true; };
+  const show = (): void => {
+    if (!forced && document.activeElement !== input) return;
+    if (!forced && input.value.trim()) return;
+    const r = input.getBoundingClientRect();
+    const width = Math.min(Math.max(r.width, 320), window.innerWidth - 16);
+    const left = Math.min(Math.max(8, r.left), window.innerWidth - 8 - width);
+    card.style.width = width + 'px';
+    card.style.left = Math.round(left) + 'px';
+    card.style.top = Math.round(r.bottom + 6) + 'px';
+    card.hidden = false;
+    onShowSaved();
+  };
+
+  // ── 已存輸入分頁：整張卡只接一次（避免第二次呼叫把分頁藏掉／重複綁事件）──
+  if (hooks && card.dataset.savedWired !== '1') {
+    card.dataset.savedWired = '1';
+    const TAB_KEY = 'accelon26.savedInputs.tab';
+    const readTab = (): SavedTab => {
+      try {
+        const v = localStorage.getItem(TAB_KEY);
+        if (v === 'pos' || v === 'db' || v === 'global' || v === 'hint') return v;
+      } catch { /* 無痕模式 */ }
+      return 'hint';
+    };
+    const writeTab = (t: SavedTab): void => { try { localStorage.setItem(TAB_KEY, t); } catch { /* 無痕模式 */ } };
+    const dbName = (): string => hooks.dbName?.() ?? (reader?.header.dbname ?? '');
+    const tabs = Array.from(card.querySelectorAll<HTMLButtonElement>('.ccTab'));
+    const panes = Array.from(card.querySelectorAll<HTMLElement>('.ccPane'));
+    const lists: Record<string, HTMLElement | null> = {
+      pos: card.querySelector('[data-cc-list="pos"]'),
+      db: card.querySelector('[data-cc-list="db"]'),
+      global: card.querySelector('[data-cc-list="global"]'),
+    };
+    const saveBtn = card.querySelector<HTMLButtonElement>('#ccSave');
+    const clearBtn = card.querySelector<HTMLButtonElement>('#ccClear');
+    const noteEl = card.querySelector<HTMLElement>('#ccNote');
+    const gotItBtn = card.querySelector<HTMLElement>('#ccGotIt');
+
+    const hasSaved = (): boolean => {
+      const d = dbName();
+      return listSaved(d, 'pos').length + listSaved(d, 'db').length + listSaved('', 'global').length > 0;
+    };
+    const syncFooter = (): void => {
+      const onSaved = tab !== 'hint';
+      if (saveBtn) saveBtn.hidden = !onSaved;
+      if (clearBtn) clearBtn.hidden = !onSaved;
+      if (noteEl) noteEl.hidden = onSaved;
+      if (gotItBtn) gotItBtn.hidden = onSaved;
+    };
+    const rowFor = (bucket: 'pos' | 'db' | 'global', it: { id: string; text: string; label?: string }): HTMLElement => {
+      const wrap = document.createElement('div');
+      wrap.className = 'ccItem';
+      const pick = document.createElement('button');
+      pick.type = 'button';
+      pick.className = 'ccPick';
+      pick.textContent = it.label || it.text;
+      pick.title = it.text;
+      pick.addEventListener('click', () => {
+        input.value = it.text;
+        hooks.syncMode?.();
+        hooks.run?.(it.text, bucket);
+        hide();
+      });
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'ccDel';
+      del.textContent = '✕';
+      del.title = '從清單移除';
+      del.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        removeSaved(bucket === 'global' ? '' : dbName(), bucket, it.id);
+        render(tab);
+      });
+      wrap.append(pick, del);
+      return wrap;
+    };
+    const render = (t: SavedTab): void => {
+      if (t === 'hint') return;
+      const el = lists[t];
+      if (!el) return;
+      const items = t === 'global' ? listSaved('', 'global') : listSaved(dbName(), t);
+      el.textContent = '';
+      if (!items.length) {
+        const d = document.createElement('div');
+        d.className = 'ccEmpty';
+        d.textContent = t === 'pos'
+          ? '還沒有存位置；用選取選單「複製 → 存為位置」。'
+          : t === 'db' ? '這個庫還沒有存詞；搜尋後點摘要會自動記下。'
+            : '還沒有全域詞；打字後按「＋ 存目前輸入」。';
+        el.appendChild(d);
+        return;
+      }
+      for (const it of items) el.appendChild(rowFor(t, it));
+    };
+    const setTab = (t: SavedTab): void => {
+      tab = t;
+      writeTab(t);
+      for (const b of tabs) b.classList.toggle('active', b.dataset.cc === t);
+      for (const p of panes) p.hidden = p.dataset.cc !== t;
+      syncFooter();
+      render(t);
+    };
+
+    // 卡片 pointer-events:none（只有按鈕與清單可互動）；卡內按下時 preventDefault，
+    // 免得輸入框失焦把卡收掉。
+    card.addEventListener('mousedown', (ev) => ev.preventDefault());
+    for (const b of tabs) b.addEventListener('click', () => setTab((b.dataset.cc as SavedTab) ?? 'hint'));
+    saveBtn?.addEventListener('click', () => {
+      if (tab === 'hint') return;
+      const text = input.value.trim();
+      if (!text) { setStatus('先輸入內容再存', 'warn'); return; }
+      if (tab === 'pos' && !isPosition(text)) { setStatus('這不是位置寫法（例：49p15、y38p4#12-34）', 'warn'); return; }
+      addSaved(tab === 'global' ? '' : dbName(), tab, text);
+      setStatus('已存到「' + (tab === 'pos' ? '位置' : tab === 'db' ? '此庫' : '全域') + '」', 'info');
+      render(tab);
+    });
+    clearBtn?.addEventListener('click', () => {
+      if (tab === 'hint') return;
+      clearSaved(tab === 'global' ? '' : dbName(), tab);
+      setStatus('已清空這個分頁', 'info');
+      render(tab);
+    });
+    // 搜尋框右側的 ☆：隨時開卡（可帶文字）。
+    if (input.id === 'query') {
+      document.getElementById('savedOpen')?.addEventListener('click', () => {
+        forced = true;
+        input.focus();
+        show();
+      });
+    }
+
+    savedHas = hasSaved;
+    onShowSaved = () => { syncFooter(); render(tab); };
+    onDbChanged = () => { render('pos'); render('db'); };
+    setTab(readTab());
+  }
+
   let filledFor = '';
   /**
    * 依目前 adb 調整卡片內容（作者 2026-11-01）：不是 taisho 就不顯示「大正引用」，
@@ -1518,6 +1677,8 @@ function wireJumpCheat(input: HTMLInputElement | null): void {
         : /^fuyan/i.test(db) ? 'f1p7a3'
           : `${prefix}1p7a8`;
     }
+    // 換了庫：重畫已存的「位置／此庫」
+    onDbChanged();
     if (isTaisho) {
       if (pageEl) pageEl.textContent = '8p848c';
       if (pageHint) pageHint.innerHTML = '、<code>49p15</code>（英文字母後的 0 可以省略）';
@@ -1536,27 +1697,16 @@ function wireJumpCheat(input: HTMLInputElement | null): void {
     if (pageEl) pageEl.textContent = sample || '頁 id';
     if (pageHint) pageHint.textContent = sample ? '（英文字母後的 0 可以省略；輸入片段即可）' : '（輸入頁 id 的一部份即可）';
   };
-  let timer = 0;
-  const hide = (): void => { window.clearTimeout(timer); timer = 0; card.hidden = true; };
-  const show = (): void => {
-    if (!jumpCheatOn()) return;
-    if (document.activeElement !== input || input.value.trim()) return;
-    const r = input.getBoundingClientRect();
-    const width = Math.min(Math.max(r.width, 320), window.innerWidth - 16);
-    const left = Math.min(Math.max(8, r.left), window.innerWidth - 8 - width);
-    card.style.width = width + 'px';
-    card.style.left = Math.round(left) + 'px';
-    card.style.top = Math.round(r.bottom + 6) + 'px';
-    card.hidden = false;
-  };
+
   input.addEventListener('focus', () => {
     hide();
-    if (!jumpCheatOn()) return;
     void fill();                       // 1.5 秒內先依 adb 換好內容
+    if (hooks && savedHas()) { show(); return; }   // 有存項：立即顯示，方便直接點
+    if (!jumpCheatOn()) return;
     if (!input.value.trim()) timer = window.setTimeout(show, 1500);
   });
-  input.addEventListener('input', hide);
-  input.addEventListener('blur', hide);
+  input.addEventListener('input', () => { forced = false; hide(); });
+  input.addEventListener('blur', () => { forced = false; hide(); });
   // 捲動或視窗大小改變時，固定的卡片位置會不準；直接收起
   window.addEventListener('scroll', hide, true);
   window.addEventListener('resize', hide);
@@ -2048,7 +2198,14 @@ function boot() {
     // clears ITSELF on Escape (Chromium default action), so the event has to be stopped.
     if (ev.key === 'Escape') ev.preventDefault();
   };
-  wireJumpCheat(query);
+  wireJumpCheat(query, {
+    dbName: () => reader?.header.dbname ?? '',
+    run: (text, bucket) => {
+      if (bucket === 'pos') void tryJumpQuery(text);
+      else void runSearch(text, { subtoken: true });
+    },
+    syncMode: syncQueryMode,
+  });
   $('#searchList').addEventListener('scroll', (ev) => {
     const el = ev.target as HTMLElement;
     if (!lastResult) return;

@@ -6,6 +6,7 @@
  * state it declares, and other modules get/set it through that module's exports.
  */
 import { $, displayName, escapeHtml, fmtInt, mapper, reader, session } from './viewer';
+import { add as addSaved } from './saved-inputs';
 import { setSide, showTab } from './ui';
 import { dirTrees, realmHits, renderDirTree, renderFreq } from './scopes';
 import { revealHit } from './link';
@@ -465,6 +466,13 @@ async function renderSnippets(seq: number) {  const my = ++snippetSeq;
     .forEach((el, i) => paintCardMarks(el, cardMarks[i] ?? []));
   list.querySelectorAll<HTMLElement>('.snippet').forEach((el) => {
     el.onclick = (ev) => {
+      // 自動記下這次查詢（2026-11-12 使用者要求）：只有「點摘要檢視」才算真的用過。
+      // 沒有結果就不會有摘要可點；連續輸入也不會逐字都被記下。存進目前庫的「此庫」分頁。
+      {
+        const q = (lastQuery ?? '').trim();
+        const db = reader?.header.dbname ?? '';
+        if (q && db) addSaved(db, 'db', q);
+      }
       list.querySelectorAll('.snippet').forEach((x) => x.classList.toggle('active', x === el));
       // the summary is the reader's context: make sure the right column is visible
       setSide('right', true);
