@@ -22,6 +22,7 @@ import { isDictDb } from './db-kind';
 import { BOOK_CATALOG, WORK_CATALOG, bookById, findBooks, resolveBook, findWorks, resolveWork, workById, worksOfBook } from './book-catalog';
 import { resolveDocCtx } from './doc-ctx';
 import { parsePageCite } from './page-cite';
+import { looksLikeQuote } from './page-alias';
 import { parseNoteQuery } from './note-label';
 import { parseWildcard } from './wildcard';
 import { allSearchMode, closeSearchAll, initSearchAll, openSearchAll, runSearchAll, searchAllState, setAllSearchMode, stopSearchAll } from './allsearch';
@@ -2018,6 +2019,17 @@ function boot() {
       // 目錄路徑：直接走 TOC，不經過搜尋（作者 2026-11-01）
       if (isTocIndexQuery(q)) { void jumpByTocIndex(q); return; }
       if (isTocPathQuery(q)) { void jumpByTocPath(q); return; }
+      // 貼上「引用複製」的整段（《書名》…（p.93））或字元級位置時，先當跳頁：
+      // 這種字串搜尋也命中得到，但命中的是「某一段」；讀者要的是「那一頁」。
+      if (looksLikeQuote(q)) {
+        void jumpByQuery(q).then((ok) => {
+          if (ok) return;
+          void runSearch(query.value, { subtoken: true }).then(() => {
+            if (!jumpToFirstHit(q)) setStatus(`「${q}」沒有結果`, 'warn');
+          });
+        });
+        return;
+      }
       // 全文搜尋：Enter 直接跳到第一筆（2026-10-31）。同一個查詢不必重跑；
       // 但上一次 0 筆時要重跑一次（帶「詞內」回退，作者 2026-11-03）。
       if (lastQuery === q && lastResult && lastResult.hits.length) {

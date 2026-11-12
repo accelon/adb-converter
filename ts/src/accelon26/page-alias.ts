@@ -42,7 +42,7 @@ const ALIAS_DB = 'fuyan';
  *   - 只展開有登記過的代號，未登記的回空陣列。
  */
 export function pageAliasForms(q: string, db = ''): string[] {
-  if (db.toLowerCase() !== ALIAS_DB) return [];
+  if (!isAliasDb(db)) return [];
   const m = matchCode(q);
   if (!m) return [];
   const prefix = BOOK_PREFIX['hg0' + m.code];
@@ -50,9 +50,62 @@ export function pageAliasForms(q: string, db = ''): string[] {
   return [`${prefix}p${m.page}${m.tail ?? ''}`];
 }
 
+/**
+ * 書名 → 頁 id 前綴（fuyan 一個庫裝三本，頁 id 前綴＝書 id 去掉 `yl`：yl38→38、yl5→5、yl9→9）。
+ * 資料來源是 `out/fuyan.txt` 的 `<書 id="yl38">空之探究講義</書>`，不是法師的 HG 代號。
+ */
+const BOOK_PAGE_PREFIX: [string, string][] = [
+  ['空之探究講義', '38'],
+  ['中觀論頌講記', '5'],
+  ['中觀今論講義', '9'],
+];
+
+/**
+ * 「引用複製」貼回搜尋框（厚觀法師 2026-11-12「字元級引用複製，我們都可以直接跳」）。
+ *
+ * 引用出來的文字長這樣：
+ *
+ *   《空之探究講義》：「由於十遍處……」（p.93）
+ *
+ * 裡面的頁碼是**紙本頁碼**（`p.93`），不是頁 id（`38p93`），所以光靠 `embeddedPage()`
+ * 認不出來——它找的是頁 id 本身。這裡用書名補上前面那一段，再交給 `anchorVa` 驗證。
+ * 認不出書名／頁碼就回 null，呼叫端照原樣（當搜尋字串）處理。
+ */
+export function pageIdFromQuote(q: string, db = ''): string | null {
+  if (!isAliasDb(db)) return null;
+  const s = (q ?? '').normalize('NFC');
+  const book = BOOK_PAGE_PREFIX.find(([t]) => s.includes(t));
+  if (!book) return null;
+  const m = /pp?\.\s*(\d{1,4})(?:\s*[-–—~]\s*\d{1,4})?/i.exec(s)
+    ?? /[（(]\s*(\d{1,4})\s*[）)]/.exec(s);
+  if (!m) return null;
+  return `${book[1]}p${m[1]}`;
+}
+
+/**
+ * 這段字串看起來像「引用複製」貼回來的整段，或字元級位置？
+ *
+ * Enter 時要先試跳頁：搜尋也命中得到，但命中的是「某一段」，讀者要的是「那一頁」。
+ * 只認兩種明顯的形狀，一般搜尋字串不會被吃掉：
+ *   - `fuyan?38p93#12-34`（字元級位置）
+ *   - 《書名》…（p.93）／pp.92-93（引用複製；大正藏那種 `(T02, 206a15)` 另外走）
+ */
+export function looksLikeQuote(q: string): boolean {
+  const s = (q ?? '').trim();
+  if (!s) return false;
+  if (/[?#]\s*\d+\s*(?:[-–—]\s*\d+)?\s*$/.test(s)) return true;
+  return /《[^》]{2,24}》/.test(s) && /pp?\.\s*\d{1,4}/i.test(s);
+}
+
+/** 這個庫吃不吃講記代號（dbname／檔名／中文書名任一個指向 fuyan 就算）。 */
+function isAliasDb(db: string): boolean {
+  const s = (db ?? '').trim().toLowerCase();
+  return s === ALIAS_DB || s.includes(ALIAS_DB) || s.includes('福嚴');
+}
+
 /** 認得的代號但這個庫裡沒有那本書：回書名（給「找不到」的訊息用），否則是空字串。 */
 export function pageAliasMissing(q: string, db = ''): string {
-  if (db.toLowerCase() !== ALIAS_DB) return '';
+  if (!isAliasDb(db)) return '';
   const m = matchCode(q);
   if (!m) return '';
   if (BOOK_PREFIX['hg0' + m.code]) return '';

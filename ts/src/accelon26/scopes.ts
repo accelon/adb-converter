@@ -11,7 +11,7 @@ import { showToken } from './panes';
 import { paintTreeActive, revealHit, treeRowClasses } from './link';
 import { findCharPosition, jumpPageCite, jumpTaishoCite, openCharPosition, parseCharPosition, parseTaishoCite } from './xref';
 import { parsePageCite } from './page-cite';
-import { pageAliasForms, pageAliasMissing } from './page-alias';
+import { pageAliasForms, pageAliasMissing, pageIdFromQuote } from './page-alias';
 import { parseNoteQuery } from './note-label';
 import { jumpToNote } from './notes';
 import { dbNameCandidates } from './dbs';
@@ -2149,6 +2149,40 @@ export async function jumpByQuery(q: string): Promise<boolean> {
     const hit = await openCharPosition(embeddedPos);
     if (hit) setStatus(`已跳到 ${hit.anchor} 第 ${hit.fromHan}–${hit.toHan} 個字`, 'info');
     return !!hit;
+  }
+  // 講記代號（厚觀法師 2026-11-12）：`HG02p93`／`2p93` 先翻成這個庫的頁 id（`38p93`）再走原路。
+  // 這一步要**自己跳**，不能只丟給下面的頁 id 清單：清單（`jumpEntries`）是第一次用到才建，
+  // 打代號的那一刻可能還沒好，於是 `38p93` 跳得動、`2p93` 卻回「沒有結果」
+  // （2026-11-12 實測就是這樣，而信上已經跟法師說三種寫法都通——不能讓它不通）。
+  const aliasPage = pageAliasForms(text, reader.header.dbname ?? '')[0];
+  if (aliasPage) {
+    const aliasVa = await anchorVa(reader, aliasPage);
+    if (aliasVa != null) {
+      setJumpRange(null);
+      void revealHit(aliasVa, aliasPage, 1, { mode: 'hit', noMark: true, alignTop: true });
+      return true;
+    }
+  }
+  // 「引用複製」整段貼回來（厚觀法師 2026-11-12「字元級引用複製，我們都可以直接跳」）：
+  // 文字裡是紙本頁碼（`p.93`）而不是頁 id（`38p93`），靠書名補前綴。
+  const quotePage = pageIdFromQuote(text, reader.header.dbname ?? '');
+  if (quotePage) {
+    const qv = await anchorVa(reader, quotePage);
+    if (qv != null) {
+      setJumpRange(null);
+      void revealHit(qv, quotePage, 1, { mode: 'hit', noMark: true, alignTop: true });
+      return true;
+    }
+  }
+  // 只打頁碼（`93`）不能猜：fuyan 三本書都有第 93 頁，猜錯就是跳到別本書（實測會落到
+  // 《中觀論頌講記》去）。與其亂跳，不如告訴讀者怎麼寫（厚觀法師 2026-11-12 問的就是寫法）。
+  // 只攔這種「一個庫裝好幾本書」的庫；一般庫的 `93` 照舊當第 93 頁。
+  const barePage = /^\d{1,4}$/.test(text)
+    ? pageAliasForms('2p' + text, reader.header.dbname ?? '')[0]
+    : '';
+  if (barePage) {
+    setStatus(`請寫成「${barePage}」這樣（書的代號＋p＋頁碼）`, 'warn');
+    return true;
   }
   // 先看整串是不是這個庫現成的頁 id（`yl38p24` 是 yl38 的頁 id，庫名本身就帶數字），
   // 是的話交給下面的頁 id 清單，不要被頁行引用搶走。
