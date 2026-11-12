@@ -268,6 +268,15 @@ interface DocSession {
   name: string;
   /** 0-based page of the realm that is loaded in the DOM */
   page: number;
+  /**
+   * 這一頁再往下多渲染幾頁（0＝只有本頁 200 行）。
+   *
+   * 厚觀法師 2026-11-12「引用複製不能往下捲」：連續閱讀雖然叫連續，其實還是
+   * 200 行一頁，滾到底就是頁底，拖選只能選到那一行為止。往下滾時把這個數字
+   * 加一，渲染窗口就跟著長一頁，滾動條變長、內容接下去，選取再用
+   * captureDocSelection／applyDocSelection 接回去。
+   */
+  win?: number;
   /** the `<檔>` the realm lives in */
   doc: DocRow;
   /**
@@ -1106,9 +1115,11 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
   // 半句話，跨小條目複製就會少一截。只在整本視窗做，節點視窗的邊界是節點本身。
   const whole = s.continuous || isWholeDocRealm(ctx, s.realm);
   const realmLast = boundsOfRealm(ctx, s.realm).last;
+  // 往下滾過頁底時，把渲染窗口多接幾頁（見 DocSession.win）
+  const winLast = Math.min(b.last + (s.win ?? 0) * PAGE_LINES, realmLast);
   const lastPara = whole
-    ? await pageEndAtParagraph(ctx, b.last, realmLast)
-    : b.last;
+    ? await pageEndAtParagraph(ctx, winLast, realmLast)
+    : winLast;
   // 表格區塊整塊留在同一頁（作者 2026-11-06）
   const last = await pageEndAtBlock(ctx, b.first, lastPara, realmLast);
   // page (or tab/db) changed: keep what the user typed, then leave edit mode;
@@ -1140,6 +1151,7 @@ async function ensurePage(s: DocSession, targetLine?: number): Promise<{ auto: b
   // `<圖>` 要用的圖檔先解成 blob URL（渲染是同步的，見 resolvePageImages）
   await resolvePageImages(ctx, dtNow.lines);
   renderDoc(s);
+  setupGrowOnScroll();
   saveLastReadNow();
   return { auto, ms: performance.now() - t0 };
 }
@@ -2524,6 +2536,7 @@ async function enterContinuous(s: DocSession, line: number, anchor?: ScrollAncho
   s.nodeLine = line;
   s.realm = { from: Math.max(doc.vaStart, fromVa), to: doc.vaEnd };
   s.continuous = true;
+  s.win = 0;
   s.cache = null;
   await ensurePage(s, line);
   // 從讀窗底部「自動載入更多」時，把原本置頂的那一行留在原位；用 offset 還原，
@@ -2648,16 +2661,54 @@ async function loadMoreFromEnd(s: DocSession): Promise<void> {
   await enterContinuous(s, line, anchor ?? undefined, lastLine == null ? undefined : lastLine + 1);
 }
 
+let growEl: HTMLElement | null = null;
+let growing = false;
+
+/**
+ * 連續閱讀時往下滾過頁底，就再渲染下一頁接上去（厚觀法師 2026-11-12
+ * 「引用複製不能往下捲」）。一頁只有 200 行，滾到底就是頁底，不是書底；
+ * 以前只能按「下一頁」，拖選也就斷在那裡。窗口往下長一頁，滾動條變長、
+ * 內容接下去，選取事後再接回去。
+ */
+function setupGrowOnScroll(): void {
+  const body = document.querySelector<HTMLElement>('#docText .docBody');
+  if (!body || growEl === body) return;
+  growEl = body;
+  body.addEventListener('scroll', () => {
+    if (growing) return;
+    const s = docSession();
+    if (!s) return;
+    if (body.scrollHeight - body.scrollTop - body.clientHeight > 240) return;   // 還沒到底
+    const ctx = ctxOf(s);
+    if (!ctx) return;
+    const realmLast = boundsOfRealm(ctx, s.realm).last;
+    const shown = s.cache?.dt.lineNumbers.at(-1) ?? 0;
+    if (shown >= realmLast) return;                                            // 整本都出來了
+    growing = true;
+    const sel = captureDocSelection();
+    const keepTop = body.scrollTop;          // 重畫會把捲動位置歸零，先記住
+    s.win = (s.win ?? 0) + 1;
+    void ensurePage(s)
+      .then(() => {
+        const nb = document.querySelector<HTMLElement>('#docText .docBody');
+        if (nb) nb.scrollTop = keepTop;      // 內容接在下面，停在原來的地方
+        if (sel) applyDocSelection(sel, { scroll: false });
+      })
+      .finally(() => { growing = false; });
+  }, { passive: true });
+}
+
 function startEndTimer(s: DocSession): void {
   clearEndTimer();
   endFooterTimer = window.setTimeout(() => {
     endFooterTimer = null;
-    // 正在本文裡選取／複製就不要動畫面（載入會重畫 DOM，選取會消失）
-    const sel = window.getSelection();
-    const inDoc = !!(sel && sel.rangeCount && $('#docText')?.contains(sel.getRangeAt(0).commonAncestorContainer));
-    if (inDoc && (sel?.toString() ?? '').trim()) { startEndTimer(s); return; }
+    // 舊版在這裡「有選取就不載入」，怕重畫把選取洗掉。結果是死結：用滑鼠
+    // 拉到頁底就開始選 → 一直有選取 → 永遠不載入 → 就捲不下去，選不到下面的
+    // 段落（厚觀法師 2026-11-12「引用複製不能往下捲」，他給的兩個場景都是如此）。
+    // 改成：先記住選取（行號＋行內漢字），載入完再接回去。
+    const sel = captureDocSelection();
     clearEndFooter();
-    void loadMoreFromEnd(s);
+    void loadMoreFromEnd(s).then(() => { if (sel) applyDocSelection(sel, { scroll: false }); });
   }, 2000);
 }
 
@@ -2754,6 +2805,7 @@ function renderPager(s: DocSession, b: { first: number; last: number; total: num
 async function goPage(s: DocSession, page: number, keepLine: boolean): Promise<void> {
   const keep = keepLine ? s.cache?.dt?.lineNumbers[0] : undefined;
   s.page = page;
+  s.win = 0;                       // 換頁就回到一頁的窗口
   await ensurePage(s);
   if (keep !== undefined) document.getElementById('L' + keep)?.scrollIntoView({ block: 'start' });
   const b = pageBounds(ctxOf(s), s.realm, s.page);

@@ -36,6 +36,8 @@ interface Bookmark {
 interface SelInfo {
   text: string;
   raw: string;
+  /** 逐行文字（已去掉夾在文中的頁碼標記）；「引用複製」要保留原書分行用。 */
+  lines: string[];
   va: number;
   pageId: string;
   book: string;
@@ -146,6 +148,34 @@ function normalize(s: string): string {
     .trim();
 }
 
+/** 逐行正規化，保留換行（引用複製要「隨原書分行」，厚觀法師 2026-11-12）。 */
+function normalizeLines(s: string): string {
+  return s.split('\n').map((x) => normalize(x)).filter((x, i, a) => x || i === a.length - 1).join('\n').trim();
+}
+
+/**
+ * 取選取範圍內每一行的文字（去掉 `.pageBreak` 裡的頁碼：那個頁碼是給人看的，
+ * 選進引用會變成「5p8（1）略說」這種夾在文中的雜訊）。
+ */
+function selectedLines(range: Range, startLine: number, endLine: number): string[] {
+  const out: string[] = [];
+  for (let n = startLine; n <= endLine; n++) {
+    const node = document.querySelector<HTMLElement>(`#docText .docLine[id="L${n}"]`)
+      ?? document.querySelector<HTMLElement>(`#docText .docLine[id="L${n}a"]`);
+    if (!node) continue;
+    const r = document.createRange();
+    r.selectNodeContents(node);
+    if (n === startLine) { try { r.setStart(range.startContainer, range.startOffset); } catch { /* 起點不在這一行 */ } }
+    if (n === endLine) { try { r.setEnd(range.endContainer, range.endOffset); } catch { /* 終點不在這一行 */ } }
+    const box = document.createElement('div');
+    box.appendChild(r.cloneContents());
+    box.querySelectorAll('.pageBreak').forEach((e) => e.remove());
+    const t = (box.textContent || '').replace(/[ \t\u00a0]+/g, ' ').trim();
+    if (t) out.push(t);
+  }
+  return out;
+}
+
 /** 取目前選取範圍（只接受中間本文的 .docLine，避免左右欄混在一起）。 */
 async function selectionInfo(): Promise<SelInfo | null> {
   const sel = window.getSelection();
@@ -199,7 +229,8 @@ async function selectionInfo(): Promise<SelInfo | null> {
     pre.setEnd(range.endContainer, range.endOffset);
     for (const ch of pre.toString()) if (HAN_RE.test(ch)) hanPrefixEnd++;
   } catch { hanPrefixEnd = hanPrefix; }
-  return { text, raw, va, pageId, endPageId, book, page: pageId, rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width }, searchable, pageMark, startLine: n, endLine, hanPrefix, hanPrefixEnd };
+  const lines = selectedLines(range, n, endLine);
+  return { text, raw, lines, va, pageId, endPageId, book, page: pageId, rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width }, searchable, pageMark, startLine: n, endLine, hanPrefix, hanPrefixEnd };
 }
 
 /**
@@ -605,24 +636,28 @@ async function buildCitation(info: SelInfo): Promise<{ text: string; html: strin
   // 網址只留在 HTML 版的連結裡（厚觀法師 2026-11-08）。其他庫照舊顯示網址。
   const label = pageRangeLabel(info);
   const useLabel = /^\d+p\d+$/.test(info.pageId);
+  // 「引用複製」要「保留原有的段落與格式，並隨原書分行」（厚觀法師 2026-11-12）：
+  // 選到多段才插換行，單段／短句照舊，免得一句話被硬拆成兩行。
+  const quoted = info.lines && info.lines.length > 1 ? info.lines.join('\n') : info.text;
   let out = tpl.replace(/\$(\*?)([^;]+);/g, (_all, _star, tag: string) => {
     if (tag === 'URL') return useLabel ? label : url;
-    if (tag === '_') return info.text;
+    if (tag === '_') return quoted;
     if (tag === '頁') return info.pageId;
     if (tag === '頁範圍') return label;
     return values.get(tag) ?? '';
   });
-  out = normalize(out);
+  out = normalizeLines(out);
   // 樣板用 `$頁範圍;` 時就沒有網址可補；其餘舊樣板照舊在尾端補 URL。
   const hasRange = /\$頁範圍;/i.test(tpl);
   if (!hasUrl && !hasRange) {
     if (info.pageId) {
       const page = info.pageId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      out = normalize(out.replace(new RegExp(`\\s*[（(]\\s*(?:Y\\s*)?[^（）()]{0,48}?${page}[^（）()]{0,48}?\\s*[）)]`, 'i'), ''));
+      out = normalizeLines(out.replace(new RegExp(`[ \\t]*[（(]\\s*(?:Y\\s*)?[^（）()\\n]{0,48}?${page}[^（）()\\n]{0,48}?\\s*[）)]`, 'i'), ''));
     }
     if (url) out += '(' + url + ')';
   }
-  let html = escHtml(out);
+  // HTML 版（貼進 Word 用）也要分行，否則貼過去又擠成一團。
+  let html = escHtml(out).replace(/\n/g, '<br>');
   if ((hasRange || useLabel) && label && url && html.includes(escHtml(label))) {
     html = html.replace(escHtml(label), `<a href="${escHtml(url)}">${escHtml(label)}</a>`);
   }

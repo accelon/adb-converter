@@ -1,5 +1,5 @@
 {
-  "_comment": "公開資料庫的狀態。status: available（可下載）／wip（施工中，不下載）／revision（整修中）。downloadable:false 的庫只記在 manifest 版本歷史裡，官網與桌面版都不提供下載。source／licenseNote 是給使用者看的出處與授權說明。official:true 是官方委託製作，公開頁會加醒目標記；exclusive:true 是本站獨家，公開頁加另一種醒目標記；pin 是置頂順序（1 最前，沒有的照 index.txt 的順序）。",
+  "_comment": "研究用資料庫的狀態。status: available（可下載）／wip（施工中，不下載）／revision（整修中）。downloadable:false 的庫只記在 manifest 版本歷史裡，官網與桌面版都不提供下載。source／licenseNote 是給使用者看的出處與授權說明。official:true 是官方委託製作，公開頁會加醒目標記；exclusive:true 是本站獨家，公開頁加另一種醒目標記；pin 是置頂順序（1 最前，沒有的照 index.txt 的順序）。",
   "fuyan.adb": {
     "status": "available",
     "official": true,
