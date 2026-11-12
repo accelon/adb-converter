@@ -8,6 +8,8 @@
  *   2. ybh 命名空間：anchorVa("T1579#kpD03-001") 與 anchorVa("PXJ-H#kpD03-001") 為不同 VA。
  *   3. 節點範圍：nodeAnchorInfo 的 vaEnd > va；nodeSpanText 含節點標題與其下交叉引。
  *   4. 回歸：taisho 頁 id（30p328c）與 sa 塊.段（rv.1.2.1）行為不變；不存在的錨點回 null。
+ *   5. ybh v3 卷級別名（章 id＝W-V）：T1579-1/-4/-21#kpD01-001 各自精確；篇級同值取
+ *      文件序最後一筆；卷內沒有該值回 null（不退回篇級）。
  *
  * 只用到本地 adb（預設 D:\accelon3）；缺少的檔案會略過該段，不算失敗。
  */
@@ -19,6 +21,7 @@ import { anchorVa, nodeAnchorInfo, nodeSpanText } from '../src/accelon26/page-te
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
 const YBH = opt('ybh', 'D:/accelon3/ybh-v2.adb');
+const V3 = opt('v3', 'D:/accelon3/ybh-v3.adb');
 const TAISHO = opt('taisho', 'D:/accelon3/taisho.adb');
 const SA = opt('sa', 'D:/accelon3/sa.adb');
 
@@ -109,6 +112,45 @@ if (!existsSync(YBH)) {
   ok('未知錨點回 null', (await anchorVa(r, 'no-such-anchor')) == null);
   ok('命名空間不存在回 null', (await anchorVa(r, 'T1579#nope-999')) == null);
   ok('快取後結果一致', (await anchorVa(r, 'T1579#kpD03-001')) === a);
+}
+
+// ── ybh v3：卷級 NS 別名（章 id＝W-V）─────────────────────────
+if (!existsSync(V3)) skipped('缺 ' + V3 + '（卷級別名略過）');
+else {
+  console.log('\n=== ybh v3 卷級別名：' + V3 + ' ===');
+  const r = await open(V3);
+  const mp = new VaPaMapper(r); await mp.init();
+  const lineAt = async (va: number) => mp.lineText(mp.edgeLine(va));
+
+  // 雙層檔頭：篇 id 與章 id（W-V）都要存在
+  const pianId = await r.attributeValues('篇.id').catch(() => null);
+  const zhangId = await r.attributeValues('章.id').catch(() => null);
+  ok('篇 id 存在（雙層檔頭）', !!pianId && (pianId.values?.length ?? 0) > 0, String(pianId?.values?.length ?? 0));
+  ok('章 id 存在且形如 W-V', !!zhangId && /-\d+$/.test(zhangId.values?.[0] ?? ''), (zhangId?.values?.[0] ?? '(none)'));
+
+  // kpD01-001 在 T1579 的多卷重複（-1/-4/-11/-16/-20/-21）→ 卷級必須各自精確
+  const v1 = await anchorVa(r, 'T1579-1#kpD01-001');
+  const v4 = await anchorVa(r, 'T1579-4#kpD01-001');
+  const v21 = await anchorVa(r, 'T1579-21#kpD01-001');
+  ok('T1579-1#kpD01-001 可解析', v1 != null, String(v1));
+  ok('T1579-4#kpD01-001 可解析', v4 != null, String(v4));
+  ok('T1579-21#kpD01-001 可解析', v21 != null, String(v21));
+  ok('三卷 VA 互不相同', v1 != null && v4 != null && v21 != null && new Set([v1, v4, v21]).size === 3, `${v1}/${v4}/${v21}`);
+  for (const [q, va] of [['T1579-1', v1], ['T1579-4', v4], ['T1579-21', v21]] as [string, number | null][]) {
+    if (va != null) ok(q + ' 落在 n="kpD01-001" 的節點', (await lineAt(va)).includes('n="kpD01-001"'));
+  }
+
+  // 篇級同值多卷：語義＝文件序最後一筆（與 T1579-21 相同）——README 已寫死
+  const pian = await anchorVa(r, 'T1579#kpD01-001');
+  ok('篇級 T1579#kpD01-001 = 最後一卷（last）', pian != null && pian === v21, `${pian} vs ${v21}`);
+
+  // 卷內沒有該值 → null（不退回篇級）
+  ok('T1579-2#kpD03-001 卷內不存在 → null', (await anchorVa(r, 'T1579-2#kpD03-001')) == null);
+
+  // 驗收鉤子：卷 1 的 kpD03-001
+  const hook = await anchorVa(r, 'T1579-1#kpD03-001');
+  ok('驗收鉤子 T1579-1#kpD03-001 可解析', hook != null, String(hook));
+  if (hook != null) ok('鉤子落在 <科03 n="kpD03-001">', (await lineAt(hook)).includes('n="kpD03-001"'));
 }
 
 // ── 回歸：taisho 頁 id ───────────────────────────────────────

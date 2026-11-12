@@ -133,6 +133,7 @@ bun run test/index-match.ts # 反向索引認證
 * [old-adb-upgrade-skill.md](./docs/adb/old-adb-upgrade-skill.md) — 舊 accelon3 `.adb` 升級：保留 schema／頁碼／caches，補 `<聯 i q j>`
 * [backlink-skill.md](./docs/adb/backlink-skill.md) — 引文接回大正藏的完整 runbook（cue、單字 VA、`j`、打包、上架）
 * [xref-j-lessons.md](./docs/adb/xref-j-lessons.md) — `<聯 j>` 字元級反鏈的實戰筆記：座標、重複頁 id、驗證與工具鏈
+* [NODE-ANCHORS.md](./docs/adb/NODE-ANCHORS.md) — 通用節點錨點（科判等結構節點；篇級／卷級命名空間、first/last 語義、`<嵌>`）
 * [broken-quote.md](./docs/adb/broken-quote.md) — 尚無精確 `j` 的 823 條 `<聯>` 清單，待人工校正
 * [broken-quote-elsewhere.md](./docs/adb/broken-quote-elsewhere.md) — 576 條有 `q` 的全文檢索結果（0 條整句、237 條前綴、339 條找不到）
 * [taisho-steps.md](./docs/adb/taisho-steps.md) — 大正藏 1–85 冊

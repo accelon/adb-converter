@@ -213,6 +213,27 @@ async function buildNodeAnchorIndex(r: AdbReader): Promise<NodeAnchorIndex | nul
     return ans < 0 ? '' : (nsValByVa.get(nsVas[ans]) ?? '');
   };
 
+  // 卷級命名空間（2026-11-13，ybh 請求）：第二層標籤（章）的 id 形如 `W-V`，
+  // 例如 `<章 id="T1579-1">`。kpD 編號每卷重排，篇級 `W#kp` 會在多卷間撞號；
+  // 卷級 `W-V#kp` 才是全局唯一。只在章 id **全域唯一**時啟用，避免其他庫的
+  // 「章1、章2」跨著作撞號（此時退回只有篇級別名，行為與舊版相同）。
+  const volTag = nsList?.[1] ?? '';
+  const volIdByVa = new Map<number, string>();
+  let volVas: number[] = [];
+  if (volTag) {
+    const m = await attrVas(r, volTag, 'id');
+    for (const [val, vas] of m) for (const va of vas) volIdByVa.set(va, val);
+    const ids = [...volIdByVa.values()];
+    if (ids.length && new Set(ids).size === ids.length) volVas = [...volIdByVa.keys()].sort((a, b) => a - b);
+    else volIdByVa.clear();
+  }
+  const volFor = (va: number): string => {
+    if (!volVas.length) return '';
+    let lo = 0, hi = volVas.length - 1, ans = -1;
+    while (lo <= hi) { const md = (lo + hi) >> 1; if (volVas[md] <= va) { ans = md; lo = md + 1; } else hi = md - 1; }
+    return ans < 0 ? '' : (volIdByVa.get(volVas[ans]) ?? '');
+  };
+
   const nsMap = new Map<string, number>();
   const bareCand = new Map<string, number>();
   const vaInfo = new Map<number, { tag: string; value: string; ns: string }>();
@@ -227,6 +248,9 @@ async function buildNodeAnchorIndex(r: AdbReader): Promise<NodeAnchorIndex | nul
           endSet.add(va);
           const ns = tag === nsTag ? '' : nsFor(va);
           if (ns) nsMap.set(ns + '#' + value, va);
+          // 卷級別名（章 id＝W-V）：只在本章範圍內生效，精確到卷
+          const vol = tag === nsTag ? '' : volFor(va);
+          if (vol) nsMap.set(vol + '#' + value, va);
           const prev = bareCand.get(value);
           if (prev == null || va < prev) bareCand.set(value, va);
           if (!vaInfo.has(va)) vaInfo.set(va, { tag, value, ns });
