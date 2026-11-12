@@ -58,6 +58,14 @@
 - [ ] `--pascal-line-end` 兼容開關：模擬 Pascal `nextLiteral` 在行尾未閉合 `<` 時讀進下一行緩衝區的越界行為（目前採規範版本，DFB_J 因此少 56 個 token 命中）
 - [ ] 合法化修復的可逆性：把「逃脫/刪除」的位置也記進 manifest，讓 XML → ADB 能還原到更接近原檔（目前控制字元刪除不可逆）
 - [ ] `andtagid` 之外，檢查是否還有其他「依整庫計算」的 header 欄位在子集/改庫時需要重算
+- [ ] **標點不佔 VA（`--drop-punct-zero`，作者 2026-11-12 定；下回重建 taisho 時用）**
+
+  動機：大正藏有些標點本身是錯的，不能拿它當結構，索性讓標點不參與位置計算——跨標點變成天然行為，也不必再判斷「哪個標點可信」。
+  現況：`index-builder.ts:182` 的 `dropPunct` 只把命中去掉，**仍 `voff++`**（照樣佔 1 個 VA）。
+  要做：① `addToken` 對指定字元不 `voff++`；② `vapa.ts` walker 對同一批字元給 `vaUnits: 0`（`頁`/`聯`/`註` 等 skip 標籤已是 0，機制現成）；③ 清掉 `vapa.ts` 裡 8 處 `Math.max(1, e.vaUnits)` 的兜底（0 會被當成 1 而錯位）。① ② 必須同時改，只改一邊 → VA 全域錯位。
+  代價（需業主確認已知悉）：句號不再擋跨句命中；「搜標點本身」失效；舊 adb 的書籤／反鏈／頁 id 不可沿用（VA 語意變了）。
+
+  **驗收方式**：重建後 `bun run test/search.test.ts --adb <新檔>` 全綠；`tools/punct-bench.ts` 的 `ensurePunct` 顯示「無可跨標點」（表為空）；同一查詢在舊／新檔的命中數差異逐筆可解釋（新檔多出的是被錯標點切開的位置）；`check_note_cases`／`cites verify` 不受影響。
 
 ---
 
