@@ -29,6 +29,7 @@
  */
 import { readdirSync, existsSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { openAdb, type AdbEngine } from '../ts/tools/adb-skill/engine.ts';
 
 // ───────────────────────── 協議常量 ─────────────────────────
@@ -53,16 +54,32 @@ const withResultType = <T extends Record<string, unknown>>(r: T): T & { resultTy
 
 // ───────────────────────── adb 目錄與解析 ─────────────────────────
 
-/** 依序搜尋 `<name>.adb` 的目錄（去重、存在的優先，但保留給 list 掃）。 */
+/** 從 import.meta.url 找 repo 根（source 模式：.../adb-converter/mcp/server.ts）；打包成單檔時回 null。 */
+function detectRepoRoot(): string | null {
+  const marker = join('ts', 'tools', 'adb-skill', 'engine.ts');
+  try {
+    let dir = dirname(fileURLToPath(import.meta.url));
+    for (let i = 0; i < 3; i++) {
+      if (existsSync(join(dir, marker))) return dir;
+      dir = dirname(dir);
+    }
+  } catch {
+    /* 獨立打包檔：import.meta.url 可能不是檔案路徑，忽略 */
+  }
+  return null;
+}
+
+/** 依序搜尋 `<name>.adb` 的目錄（去重；不存在也保留給 list 掃）。 */
 const adbDirs: string[] = (() => {
   const env = process.env.ADB_MCP_DIRS ?? process.env.ADB_MCP_DIR ?? '';
-  const raw = env ? env.split(/;|:/).map((s) => s.trim()).filter(Boolean) : [];
-  const repoRoot = dirname(import.meta.dir); // .../adb-converter（本檔在 adb-converter/mcp/）
-  const def = ['D:\\accelon3', repoRoot];
+  // 只用 ';' 分隔：Windows 絕對路徑含 ':'（D:\…），以 ':' 切會把磁碟機代號弄壞。
+  const raw = env ? env.split(';').map((s) => s.trim()).filter(Boolean) : [];
+  const def = ['D:\\accelon3', detectRepoRoot() ?? process.cwd()];
   const seen = new Set<string>();
   const out: string[] = [];
   for (const d of [...raw, ...def]) {
-    const k = resolve(d);
+    let k: string;
+    try { k = resolve(d); } catch { continue; }
     if (!seen.has(k)) { seen.add(k); out.push(k); }
   }
   return out;

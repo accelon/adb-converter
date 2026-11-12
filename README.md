@@ -37,7 +37,7 @@ ZIP 下載與 10-29 正式版。完整脈絡、資料格式、建置指令與已
 
 ## 讀 adb → 用 MCP（不必再看 ADBEngine）
 
-`.adb` 的**讀取／搜尋引擎**已包成一個 MCP 伺服器：[`mcp/server.ts`](./mcp/server.ts)（說明見 [`mcp/README.md`](./mcp/README.md)）。
+`.adb` 的**讀取／搜尋引擎**已包成一個 MCP 伺服器：原始碼 [`mcp/server.ts`](./mcp/server.ts)、打包器 [`mcp/build-node.ts`](./mcp/build-node.ts)（說明見 [`mcp/README.md`](./mcp/README.md)），並發佈在 **[GitHub Releases](https://github.com/accelon/adb-converter/releases)**（`adb-mcp.zip`，約 145 KiB 單一檔）。
 只要接進支援 MCP 的客戶端（QwenWork、Claude Desktop 等），AI 助手就能直接呼叫工具讀 adb——
 **往後只要是「讀 adb」，不必再翻 `ts/tools/adb-skill` 的 ADBEngine 原始碼，也不必手打 CLI。**
 
@@ -53,21 +53,24 @@ ZIP 下載與 10-29 正式版。完整脈絡、資料格式、建置指令與已
 用法沿用既有慣例：**先 `adb_info`／`adb_search`（引擎端查詢）定位，再用 `adb_read` 取那幾行**，不整本抽取。
 底下仍是 `engine.ts` 的同一顆 `AdbEngine`，所以行號、VA、搜尋結果都與 accelon26 閱讀器一致；CLI（下方 adb-skill）與 MCP 共用引擎、同時可用。
 
-客戶端設定（stdio）：
+客戶端設定（stdio）。**一般使用者**：從 Release 解開 `adb-mcp.zip` 得到 `adb-mcp.cjs`，用 **Node**（≥18，不需 Bun、不需整個 repo）跑：
 
 ```json
 {
   "mcpServers": {
     "accelon26-adb": {
-      "command": "bun",
-      "args": ["run", "D:\\2026\\adb-converter\\mcp\\server.ts"],
+      "command": "node",
+      "args": ["C:\\path\\to\\adb-mcp.cjs"],
       "env": { "ADB_MCP_DIRS": "D:\\accelon3;D:\\2026\\adb-converter" }
     }
   }
 }
 ```
 
-協定同時相容 **MCP 2026-07-28（無狀態，`server/discover`＋`resultType`）** 與**舊握手（`initialize`）**；採零依賴純 Bun，不裝 `@modelcontextprotocol/sdk`。
+開發者也可用 Bun 直接跑原始碼（把上面兩行換成 `"command": "bun"`、`"args": ["run", "D:\\2026\\adb-converter\\mcp\\server.ts"]`），工具與行為完全相同。
+解壓走內附的純 JS bzip2（讀 adb 只需解壓），所以 Node 版不需 `libbz2`、不需原生編譯。
+
+協定同時相容 **MCP 2026-07-28（無狀態，`server/discover`＋`resultType`）** 與**舊握手（`initialize`）**；採零依賴，不裝 `@modelcontextprotocol/sdk`。
 
 ## 快速開始
 

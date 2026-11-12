@@ -5,15 +5,31 @@
 **列庫、看檔頭、走詞索引搜尋、讀目錄樹、取某幾行**——**往後只要是「讀 adb」，不必再翻 `ts/tools/adb-skill` 的 ADBEngine 原始碼、也不必手打 CLI**。
 
 - 只讀：不改 `.adb`、不匯出、不寫檔。
-- 零依賴：純 Bun，自己講 stdio 上的 newline-delimited JSON-RPC，**不裝 `@modelcontextprotocol/sdk`**（與本 repo「全專案無 npm 依賴」一致）。
+- 零依賴：自己講 stdio 上的 newline-delimited JSON-RPC，**不裝 `@modelcontextprotocol/sdk`**（與本 repo「全專案無 npm 依賴」一致）。
 - 與 accelon26 閱讀器**同一套讀取層**（`ts/tools/adb-skill/engine.ts`）：行號、VA、搜尋結果都與閱讀器一致。
+- 兩種跑法：**一般使用者**從 GitHub Release 下載單檔 `adb-mcp.cjs`，用 **Node** 直接跑（不需 Bun、不需整個 repo）；**開發者**用 Bun 直接跑原始碼 `mcp/server.ts`。
 
 ## 需要的東西
 
-- Bun ≥ 1.1（本 repo 已用 Bun）
-- 要讀的 `.adb` 放在搜尋目錄裡（預設 `D:\accelon3` ＋ repo 根 `D:\2026\adb-converter`，見下方「adb 搜尋目錄」）
+- 執行：**Node ≥ 18**（跑 Release 的 `adb-mcp.cjs`）；或 **Bun ≥ 1.1**（跑原始碼、或自己重新打包）。
+- 要讀的 `.adb` 放在搜尋目錄裡（預設 `D:\accelon3` ＋ repo 根 `D:\2026\adb-converter`，見下方「adb 搜尋目錄」）。
 
-## 執行
+## 安裝（從 GitHub Release，一般使用者）
+
+1. 到 <https://github.com/accelon/adb-converter/releases> 下載最新 `adb-mcp` 那一版的 **`adb-mcp.zip`**（約 145 KiB，跨平台單一檔）。
+2. 解開得到 `adb-mcp.cjs`（內嵌整條只讀引擎，不需要 repo 其他檔案）。
+3. 先確認能跑（Node 直接讀 stdio 上的 JSON-RPC）：
+
+   ```powershell
+   echo {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}} | node adb-mcp.cjs
+   ```
+
+   會看到六個工具的名字，就代表成功（除錯訊息走 stderr，stdout 只有協定內容）。
+4. 把 `command`／`args` 指到這個檔案接進你的 MCP 客戶端（見下方「連線到你的 MCP 客戶端」）。
+
+> `.zip` 旁附 `adb-mcp.zip.sha256`；解壓後可用 `Get-FileHash adb-mcp.zip`（Windows）或 `shasum -a 256`（macOS/Linux）核對。
+
+## 執行（開發者，用 Bun 跑原始碼）
 
 ```powershell
 bun run D:\2026\adb-converter\mcp\server.ts
@@ -22,10 +38,10 @@ bun run D:\2026\adb-converter\mcp\server.ts
 單跑不會有畫面——它講的是 **stdio**（標準輸入輸出）的 JSON-RPC，等 MCP 客戶端接進來。
 除錯訊息一律走 stderr（`[adb-mcp] ready · 6 tools · searchDirs: ...`），stdout 只有協定訊息。
 
-想先自己確認能跑：用任何 MCP 客戶端接上，或直接發一行：
+重新打包 Node 單檔（改完 `server.ts` 後）：
 
 ```powershell
-'{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | bun run D:\2026\adb-converter\mcp\server.ts 2>$null
+bun run D:\2026\adb-converter\mcp\build-node.ts   # → build/mcp-release/adb-mcp.cjs
 ```
 
 ## 工具
@@ -55,7 +71,23 @@ adb_search taisho "如是我聞" → 3,210 筆（241 MB 庫，928 ms）
 
 MCP 客戶端會**自己啟動這個程式**（spawn）再透過 stdio 溝通。把下面這段存進各家的設定檔即可。
 
-### QwenWork / Claude Desktop 等通用格式
+### 用 Release 的 `adb-mcp.cjs`（Node；一般使用者）
+
+```json
+{
+  "mcpServers": {
+    "accelon26-adb": {
+      "command": "node",
+      "args": ["C:\\Users\\你\\adb-mcp\\adb-mcp.cjs"],
+      "env": { "ADB_MCP_DIRS": "D:\\accelon3;D:\\2026\\adb-converter" }
+    }
+  }
+}
+```
+
+`args` 換成你解開 `adb-mcp.zip` 後那個 `adb-mcp.cjs` 的實際路徑。macOS/Linux 同理，路徑用 `/`。
+
+### 用 repo 原始碼（Bun；開發者）
 
 ```json
 {
@@ -69,7 +101,7 @@ MCP 客戶端會**自己啟動這個程式**（spawn）再透過 stdio 溝通。
 }
 ```
 
-沒有 Bun 時改用絕對路徑也可以（只要 `command` 是可執行檔）。
+兩段只差在 `command`／`args`：一個 `node` 跑打包好的 `.cjs`、一個 `bun` 跑原始碼；工具、行為完全相同。
 
 ### 只有本機要試、不想改全域設定
 
@@ -119,4 +151,5 @@ MCP 客戶端會**自己啟動這個程式**（spawn）再透過 stdio 溝通。
 - 唯讀，且**只提供 tools**（不宣告 resources／prompts）。
 - 搜尋走 adb 內建詞索引：只找得到索引裡有的詞（標點、空白通常不進索引）；查不到時 `missing` 會列出。
 - 單次 `adb_read` 上限 5,000 行；`adb_search` 單次最多回 500 筆（`total` 仍是全部命中數，引擎內部最多掃 5,000）。
-- 没有 `<樹>` 宣告的库（多半是词典）`adb_toc` 回空，用 `adb_info`／`adb_search`／`adb_tags`。
+- 沒有 `<樹>` 宣告的庫（多半是詞典）`adb_toc` 回空，用 `adb_info`／`adb_search`／`adb_tags`。
+- Release 的 `adb-mcp.cjs` 是純 Node、跨平台單一檔：解壓走內附的純 JS bzip2（**讀 adb 只需解壓，不需要 libbz2、也不需要 Bun**），比原生 libbz2 慢數倍但結果逐位元組相同。開發機用 Bun 跑原始碼時，有 `libbz2` 會自動走原生加速。
