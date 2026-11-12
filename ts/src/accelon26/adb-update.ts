@@ -1,5 +1,5 @@
 /**
- * 公開資料庫（.adb）的版本與更新（作者 2026-10-29）。
+ * 研究用資料庫（.adb）的版本與更新（作者 2026-10-29）。
  *
  * 作者要求：**adb 也像 exe 一樣維護版本更新** —— 每一次建置都記下 buildTime／sha256／
  * 改版說明；使用者看得到「從我這一版到最新版之間每一次改變」，要不要更新由使用者決定。
@@ -14,7 +14,7 @@
  * 更新：按「更新」才會下載；進度條、隨時放棄，先寫同目錄暫存檔，驗證失敗／放棄都
  * 只刪暫存檔，原檔不動；全部驗過才由 Go 原子替換。
  *
- * 對話盒有兩個頁籤：「可更新」與「版本記錄」——後者列出每個已安裝公開資料庫的
+ * 對話盒有兩個頁籤：「可更新」與「版本記錄」——後者列出每個已安裝研究用資料庫的
  * 完整版本歷史，不必等有新版才看得到。
  */
 import { $, escapeHtml, fmtBytes, openFile, setDbOpenedHook } from './viewer';
@@ -322,7 +322,7 @@ function paintButton(): void {
   if (!box) return;
   const ups = updates();
   // 作者 2026-11-01：**沒有需要更新的庫就不顯示**。
-  // 以前只要裝過公開資料庫就一直留一顆「資料庫版本」（沒新版也能看版本記錄），
+  // 以前只要裝過研究用資料庫就一直留一顆「資料庫版本」（沒新版也能看版本記錄），
   // 作者說不必；有新版時才出現（New ＋ 數量），更新完就消失。
   if (!ups.length) {
     button?.remove();
@@ -504,7 +504,7 @@ function renderDialog(): void {
   if (sub) {
     sub.textContent = checking ? '檢查中…'
       : loadError ? loadError
-        : `${ups.length} 個可以更新 · 已安裝 ${items.length} 個公開資料庫${blocked ? ` · ${blocked} 個施工中／需離線更新` : ''}`;
+        : `${ups.length} 個可以更新 · 已安裝 ${items.length} 個研究用資料庫${blocked ? ` · ${blocked} 個施工中／需離線更新` : ''}`;
     sub.classList.toggle('err', !!loadError);
   }
   if (tabCount) tabCount.textContent = String(ups.length);
@@ -518,7 +518,7 @@ function renderDialog(): void {
       : loadError
         ? `<p class="dim">${escapeHtml(loadError)}</p><p class="dim">按「重新檢查」再試一次。</p>`
         : tab === 'history'
-          ? '<p class="dim">這個資料夾裡沒有公開資料庫。</p>'
+          ? '<p class="dim">這個資料夾裡沒有研究用資料庫。</p>'
           : blocked
             ? `<p class="dim">沒有可下載的更新；有 ${blocked} 個資料庫施工中／超過 30 MB，按「版本記錄」可以看。</p>`
             : '<p class="dim">沒有需要更新的資料庫；按「版本記錄」可以看每一版的改變。</p>';
@@ -531,7 +531,7 @@ function renderDialog(): void {
       status.textContent = it ? `正在下載《${it.m.name || it.m.file}》…（下載期間請不要編輯這個庫）` : '';
     } else if (notice) status.textContent = notice;
     else if (loadError) status.textContent = loadError;
-    else if (tab === 'history') status.textContent = `${items.length} 個已安裝的公開資料庫；版本由新到舊，預設收合。`;
+    else if (tab === 'history') status.textContent = `${items.length} 個已安裝的研究用資料庫；版本由新到舊，預設收合。`;
     else if (ups.length) status.textContent = '下載來源 ' + (manifestHost() || '官網') + '（設置 → 更新可切換鏡像）；按「放棄」隨時取消，原本的 adb 不會被更動。';
     else status.textContent = '';
   }

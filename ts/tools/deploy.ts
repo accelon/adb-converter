@@ -4,7 +4,7 @@
  *   * 鏡像 https://nissaya.cn/accelon26/（境外）
  *
  *   cd ts && bun run tools/deploy.ts                # exe ＋ versions.json（兩站）
- *   cd ts && bun run tools/deploy.ts --site         # 另外上傳 www/（首頁、圖片、7z、公開數據庫頁）
+ *   cd ts && bun run tools/deploy.ts --site         # 另外上傳 www/（首頁、圖片、7z、研究用數據庫頁）
  *   cd ts && bun run tools/deploy.ts --site-only    # 只換 www/，完全不碰 exe／versions.json
  *   cd ts && bun run tools/deploy.ts --check        # 只驗線上，不上傳
  *   cd ts && bun run tools/deploy.ts --mirror-only  # 只做鏡像站（--primary-only 只做主站）
@@ -44,7 +44,7 @@ const SITE_ONLY = args.includes('--site-only');
 const MIRROR_ONLY = args.includes('--mirror-only');
 const PRIMARY_ONLY = args.includes('--primary-only');
 const SITE = WITH_SITE || SITE_ONLY;
-// 只發桌面版、沒有要更新 adb：跳過 manifest／公開數據庫頁的重生，
+// 只發桌面版、沒有要更新 adb：跳過 manifest／研究用數據庫頁的重生，
 // 免得把還沒上傳的新 adb（ys／taisho…）寫進站上的 manifest。
 const NO_ADB = args.includes('--no-adb');
 const CHECK_ADB = args.includes('--check-adb');
@@ -308,7 +308,7 @@ if (SITE && !CHECK_ONLY) {
     const gen = Bun.spawnSync({ cmd: ['bun', 'run', 'tools/' + tool], cwd: resolve(ROOT, 'ts'), stdout: 'inherit', stderr: 'inherit' });
     if (gen.exitCode !== 0) die(tool + ' 產生失敗');
   }
-  // manifest 與公開數據庫頁：`--no-adb` 時不碰（adb 由各 adb 工作區自己部署）。
+  // manifest 與研究用數據庫頁：`--no-adb` 時不碰（adb 由各 adb 工作區自己部署）。
   if (!NO_ADB) {
     for (const argv of [['tools/make-adb-manifest.ts'], ['tools/make-adb-index.ts', '--index', resolve(ROOT, 'www/adb/index.txt')]]) {
       const gen = Bun.spawnSync({ cmd: ['bun', 'run', ...argv], cwd: resolve(ROOT, 'ts'), stdout: 'inherit', stderr: 'inherit' });

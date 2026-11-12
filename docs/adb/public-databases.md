@@ -1,4 +1,4 @@
-# 官網公開資料庫（`www/adb`）與桌面下載
+# 官網研究用資料庫（`www/adb`）與桌面下載
 
 > 這一頁處理「官網有哪些 adb、manifest 長什麼樣、桌面版怎麼抓」。
 > 不是單一 adb 的正文結構；各個 adb 的內容見 [ADB 索引](./taisho-study.md)。
@@ -13,7 +13,7 @@ https://nissaya.cn/accelon26/adb/
 主要檔案：
 
 ```text
-www/adb/index.html       公開資料庫頁
+www/adb/index.html       研究用資料庫頁
 www/adb/index.txt        清單摘要
 www/adb/manifest.json    schema 2 清單
 www/adb/*.adb            實際資料庫
@@ -99,7 +99,7 @@ Schema 2，大致：
 
 ## 4. 各 adb 的文件
 
-公開資料庫很多，不在這裡逐一重寫。與本輪直接相關的：
+研究用資料庫很多，不在這裡逐一重寫。與本輪直接相關的：
 
 - [taisho.adb](./taisho.md)：母庫
 - [taisho-study.adb](./taisho-study.md)：研究讀本

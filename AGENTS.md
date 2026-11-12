@@ -16,7 +16,7 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
 - 要改已移出的 adb，先確認使用者要回哪個工作區；不要跨區複製檔案。
 - **adb 工作區只負責產出 adb，不自行部署**（作者 2026-11-06）：`ys`、`fuyan`、`tx`
   等工作區把 `*.adb`、版本說明、`sha256`／大小交給本區就好；**官網與鏡像的 adb 上傳、
-  `manifest`／公開數據庫頁更新，由本區在桌面 RC 時一起做**（程序＋這一輪有更新的 adb）。
+  `manifest`／研究用數據庫頁更新，由本區在桌面 RC 時一起做**（程序＋這一輪有更新的 adb）。
   原因：桌面版更新通常就是為了新 adb，分成兩邊部署會慢、也容易程式與資料不同步。
   各 adb 工作區仍負責建置、內容正確性與版本紀錄；本區不修改已移出工作區的正文。
 - **`ys.adb` 的建置由 `D:\2026\ys` 工作區負責**（作者 2026-10-29）：
@@ -70,7 +70,7 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
 
 ## 2. 目前的重要狀態（2026-10-29）
 
-- 官網公開數據庫 **7 個**：`13j`、`swjzz`、`tx`、`yulinpo`、`ys`（都 <30 MB）
+- 官網研究用數據庫 **7 個**：`13j`、`swjzz`、`tx`、`yulinpo`、`ys`（都 <30 MB）
   ＋ `taisho`（331 MB 大檔）＋ `wxzj`（2026-10-31 開放，234.4 MB 大檔）。
 - `taisho.adb`：2026-10-29 起 **available／可下載**（`large:true`、不列入「全部更新」，
   只能整檔下載）；製作說明是 `www/adb/taisho.html`（來源 `docs/adb/taisho-about.md`）。
@@ -96,7 +96,7 @@ ADB 的發展初期也可能在這裡做（`jingqun/`、`lc/`、`build/` 的實�
 | `ts/` | accelon26 前端（Bun/TypeScript）、`tools/` 建置／部署／測試工具 |
 | `wails/` | Wails 桌面宿主（Go）；`wails/assets/` 是內嵌前端 |
 | `cmd/` | Go 工具（`tei2adb`、`abx` 等） |
-| `www/` | 官網；`www/adb/` 是公開資料庫頁與 manifest |
+| `www/` | 官網；`www/adb/` 是研究用資料庫頁與 manifest |
 | `deploy/` | 部署設定、adb 狀態／版本歷史、發布清單 |
 | `docs/` | 軟件、adb、系統與交接文件 |
 | `jingqun/`、`lc/` | 還在這裡的 adb 實驗／資料 |
@@ -146,7 +146,7 @@ bun run tools/publish-adb.ts            # >30 MB 需加 --allow-large；wip 一�
 bun run tools/cbeta-base.ts --check
 ```
 
-- `deploy.ts --site` 會自動重生 changelog、版本下載頁、adb manifest 與公開數據庫頁。
+- `deploy.ts --site` 會自動重生 changelog、版本下載頁、adb manifest 與研究用數據庫頁。
 - `publish-adb.ts` 會拒絕 `wip`／`revision` 的庫；>30 MB 要明確 `--allow-large`。
 - 不要把 `.local/server.env`、主機指紋或密碼貼進回覆、log、commit。
 

@@ -44,7 +44,7 @@ D:\accelon3\*.adb
 
 1. 讀主站／鏡像 `adb/manifest.json`
 2. 比較下載速度
-3. 列出公開資料庫
+3. 列出研究用資料庫
 4. Go `StartNewAdbDownload` 下載
 5. 驗證 size／sha256／adb 檔頭
 6. `refreshHostDbs()` 重刷 `📁`

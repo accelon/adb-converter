@@ -40,7 +40,7 @@ Accelon3 `.adb` 的**純經文底座**，給 accelon26 離線閱讀與全文檢�
 ## 三、怎麼取得與使用
 
 - **桌面版**：開 accelon26 →「取得更多 ADB」→ 選 `wxzj.adb` 下載（大檔整檔下載）。
-- **網頁版**：到[公開數據庫](https://shutonggui.cn/accelon26/adb/index.html)下載後，
+- **網頁版**：到[研究用數據庫](https://shutonggui.cn/accelon26/adb/index.html)下載後，
   在 `accelon26.html` 選檔開啟。
 - 這個庫是純經文底座，**不含**本專案加的連結、嵌入、經群；那些放在獨立的功能 adb。
 

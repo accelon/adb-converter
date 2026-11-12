@@ -280,7 +280,7 @@ bun run ts/tools/check-tabs.ts --adb build\taisho-85.adb               # 左欄�
 [ ] 打包前檢查行長 ≤ 4,096 字
 [ ] 驗證：abx inspect、probe-adb、目錄展開、抽頁 id、sha256
 [ ] 寫一份 xxx-steps.md（照 ys-steps.md 的骨架）
-[ ] 上架：公開資料庫 index.txt 加一行；有說明頁就加第二欄
+[ ] 上架：研究用資料庫 index.txt 加一行；有說明頁就加第二欄
 ```
 
 ---
@@ -295,6 +295,6 @@ bun run ts/tools/check-tabs.ts --adb build\taisho-85.adb               # 左欄�
 | `ys-steps.md` | 印順（Y 部）：目錄層級、補 `u=`、字元級對位、標點收尾 |
 | `goryeo-steps.md` | 高麗藏：k-txt（TSV）→ adb |
 | `FORMAT.md` | adb 二進位格式（容器、packed list、檔頭） |
-| `DEPLOY.md` | 官網、exe、公開資料庫的上架流程 |
+| `DEPLOY.md` | 官網、exe、研究用資料庫的上架流程 |
 
 

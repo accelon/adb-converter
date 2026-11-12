@@ -1,6 +1,6 @@
 # 官網（`www/`）
 
-> 官網是純靜態 HTML＋CSS＋少量 JS；下載包、公開資料庫與鏡像都在這裡。
+> 官網是純靜態 HTML＋CSS＋少量 JS；下載包、研究用資料庫與鏡像都在這裡。
 > 閱讀器本體在 [accelon26.md](./accelon26.md)，桌面功能在 [desktop.md](./desktop.md)。
 
 ## 1. 網域
@@ -80,7 +80,7 @@ www/changelog.html
 - 修正過 UTC 造成 `2026-10-28T23:11Z` 顯示成 10-28 的問題。
 - 同日多個 RC 合併成一個條目，避免一天多筆。
 
-## 5. 公開資料庫
+## 5. 研究用資料庫
 
 ```text
 www/adb/index.html

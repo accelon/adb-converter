@@ -3,7 +3,7 @@
  *
  * 桌面版在 📁 下拉多一個「取得更多 ADB」：先由 mirror.ts 探測主站／鏡像
  * （Go 的 HEAD，和 exe／manifest 用同一套），再讀官網的 `adb/manifest.json`，
- * 列出公開資料庫。下載走 Go 的 StartNewAdbDownload，直接寫到執行檔旁邊，
+ * 列出研究用資料庫。下載走 Go 的 StartNewAdbDownload，直接寫到執行檔旁邊，
  * 完成後 refreshHostDbs() 重刷 📁 清單，使用者不必開瀏覽器。
  *
  * 網頁版沒有宿主，這個入口不顯示。
@@ -122,7 +122,7 @@ async function load(): Promise<void> {
   render();
   try {
     await ensureMirrorReady();
-    // 直接量「公開資料庫清單」而不是只量網站首頁：按下去才決定這次要從哪個鏡像抓。
+    // 直接量「研究用資料庫清單」而不是只量網站首頁：按下去才決定這次要從哪個鏡像抓。
     const bases = mirrorMode() === 'auto'
       ? [MIRRORS.primary.base, MIRRORS.overseas.base]
       : [currentMirrorBase()];
@@ -137,7 +137,7 @@ async function load(): Promise<void> {
     }));
     const best = probes.filter((p) => !!p.text).sort((a, b) => a.ms - b.ms)[0];
     if (!best) {
-      error = '連不上官網的公開資料庫清單（主站與鏡像都失敗）。';
+      error = '連不上官網的研究用資料庫清單（主站與鏡像都失敗）。';
       return;
     }
     manifestBase = best.base;

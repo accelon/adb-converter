@@ -1,5 +1,5 @@
 /**
- * 把公開資料庫的 .adb 同步到主站與鏡像（作者 2026-10-29）。
+ * 把研究用資料庫的 .adb 同步到主站與鏡像（作者 2026-10-29）。
  *
  *   cd ts && bun run tools/publish-adb.ts                       # index.txt 裡的每一個 adb，兩站
  *   cd ts && bun run tools/publish-adb.ts --files swjzz.adb,ys.adb

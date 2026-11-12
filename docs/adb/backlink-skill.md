@@ -129,7 +129,7 @@ bun run ts/tools/backlink.ts --src build/yulinpo-original.adb --slug yulinpo --d
 - [ ] 最終 `.adb` 已放到 `accelon3\<dbname>.adb`，兩邊 SHA-256 相同（作者可直接在 Accelon26 測試）。
 - [ ] 公開：`index.txt`／`index.html` 有這個檔；下載檔 SHA-256 與本地相同；舊檔 404。
 
-## 四、上架（公開資料庫）
+## 四、上架（研究用資料庫）
 
 1. **寫差異說明**（可選但建議）：`<name>.md` → `www/adb/<name>.html`
    ```bat

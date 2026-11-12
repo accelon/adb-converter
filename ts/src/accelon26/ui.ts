@@ -1596,7 +1596,7 @@ function boot() {
   initShortcuts();
   // 加入 Obsidian（作者 2026-10-25）：vault → adb，選單與兩個隱藏 input 都在這裡接線
   initVaultImport();
-  // 取得更多 ADB（作者 2026-10-29）：桌面版從官網公開資料庫下載，完成後重刷 📁 清單
+  // 取得更多 ADB（作者 2026-10-29）：桌面版從官網研究用資料庫下載，完成後重刷 📁 清單
   initAdbStore();
   initStudyIndex();
   // 🪾 left of the 文件內容 title: only on demand does the tree open up to the node
@@ -2339,7 +2339,7 @@ export function installDebugApi(): void {
   vaultImport: vaultImportState,
   /** 軟件說明（About） */
   openAbout, closeAbout, aboutState,
-  /** 公開資料庫更新（測試／診斷用） */
+  /** 研究用資料庫更新（測試／診斷用） */
   adbUpdate: adbUpdateState, checkAdbUpdates: () => checkAdbUpdates(true),
   openAdbUpdate: openAdbUpdateDialog, closeAdbUpdate: closeAdbUpdateDialog, paintAdbUpdateButton,
   /** 更新鏡像（測試／診斷用） */
@@ -2665,7 +2665,7 @@ const WELCOME_HTML = '<div id="docWelcome">'
   + '<h2>開始閱讀</h2>'
   + '<p>桌面版需要一個資料庫（<code>.adb</code>）才能看書。下載後會放在 <code>accelon26.exe</code> 旁邊，清單會自動更新。</p>'
   + '<p class="welcomeBtns">'
-  + '<button type="button" class="mini primary" data-welcome="store">⬇ 下載公開資料庫</button>'
+  + '<button type="button" class="mini primary" data-welcome="store">⬇ 下載研究用資料庫</button>'
   + '<button type="button" class="mini" data-welcome="open">📂 開啟本機 .adb</button>'
   + '</p>'
   + '<p class="dim">也可以把 .adb 放進 exe 同一個資料夾，重新開啟就會列出。網頁版請用「開啟本機 .adb」。</p>'

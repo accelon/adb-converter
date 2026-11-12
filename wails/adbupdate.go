@@ -1,8 +1,8 @@
 package main
 
-// ---- 公開資料庫的 .adb 自動更新（作者 2026-10-29）----------------------------------
+// ---- 研究用資料庫的 .adb 自動更新（作者 2026-10-29）----------------------------------
 //
-// 官網「公開數據庫」的 adb 會更新；程式開機時讀 `adb/manifest.json`（檔名、大小、
+// 官網「研究用數據庫」的 adb 會更新；程式開機時讀 `adb/manifest.json`（檔名、大小、
 // sha256、說明），比對資料夾裡同名的 .adb，有新版就在 #dbTabs 顯示紅色的「New」。
 //
 // 為什麼下載放在 Go：
@@ -180,7 +180,7 @@ func (h *AdbHost) StartAdbDownload(rawurl, path, wantSha string, wantSize int64)
 	return startAdbDownload(h, rawurl, abs, wantSha, wantSize)
 }
 
-// StartNewAdbDownload 下載一個**本機還沒有**的公開資料庫：檔名經 sanitize 後寫到
+// StartNewAdbDownload 下載一個**本機還沒有**的研究用資料庫：檔名經 sanitize 後寫到
 // 目前工作用的資料夾（以檔案開啟時是那個資料夾，否則 exe 旁／APPDATA）。
 // 已存在同名檔則拒絕，交給更新流程處理。
 func (h *AdbHost) StartNewAdbDownload(rawurl, name, wantSha string, wantSize int64) (string, error) {

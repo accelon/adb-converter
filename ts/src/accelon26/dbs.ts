@@ -548,12 +548,12 @@ export function renderDbPick(): void {
     const addItem = needsAddItem()
       ? `<tr class="dbPickItem dbPickAdd" data-add="1" tabindex="0" title="開啟 .adb（最多同時 5 個）"><td colspan="${cols}">＋ 加入 adb</td></tr>`
       : '';
-    // 「取得更多 ADB」（作者 2026-10-29）：桌面版直接從官網公開資料庫下載；
+    // 「取得更多 ADB」（作者 2026-10-29）：桌面版直接從官網研究用資料庫下載；
     // 一般使用者就看得到，不必先開瀏覽器。離線時變暗但**不隱藏**。
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     const storeRow = hostState().available
       ? `<tr class="dbPickItem dbPickAdd" data-store="1" tabindex="0"${offline ? ' aria-disabled="true"' : ''}`
-        + ` title="${offline ? '目前離線；連上網路後才能取得更多 ADB' : '從官網公開資料庫下載更多 .adb'}"><td colspan="${cols}">⬇ 取得更多 ADB</td></tr>`
+        + ` title="${offline ? '目前離線；連上網路後才能取得更多 ADB' : '從官網研究用資料庫下載更多 .adb'}"><td colspan="${cols}">⬇ 取得更多 ADB</td></tr>`
       : '';
     // 「加入 Obsidian」（作者 2026-10-25）：vault → adb，就在這裡轉。網頁版下載到
     // 「下載」資料夾，桌面版寫到執行檔旁邊；兩邊完成後都會更新下面的清單。

@@ -1,5 +1,5 @@
 /**
- * 產生公開資料庫的更新清單 `www/adb/manifest.json` **與版本歷史**
+ * 產生研究用資料庫的更新清單 `www/adb/manifest.json` **與版本歷史**
  * `deploy/adb-history.json`（作者 2026-10-29：adb 也像 exe 一樣維護版本）。
  *
  *   cd ts && bun run tools/make-adb-manifest.ts
@@ -209,7 +209,7 @@ if (missing.length) {
 
 // ---- 寫歷史與清單 ---------------------------------------------------------------
 const histOut: Record<string, unknown> = {
-  _comment: '公開資料庫的版本歷史（由 ts/tools/make-adb-manifest.ts 維護；新的在前）。'
+  _comment: '研究用資料庫的版本歷史（由 ts/tools/make-adb-manifest.ts 維護；新的在前）。'
     + 'buildTime 是建置時的本機檔案時間，sha256 是那一版的內容。',
 };
 for (const [file, hist] of Object.entries(history)) if (file !== '_comment') histOut[file] = hist;

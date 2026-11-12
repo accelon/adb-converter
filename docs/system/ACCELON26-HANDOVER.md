@@ -8,7 +8,7 @@
 > * **本輪（今天）做了什麼**：見 §13。摘要 ——
 >   資料庫清單字數改讀檔頭 max VA（15 庫 58 ms）、jc 目錄樹修復、
 >   進階多了「檔頭」分頁、進階 → 容量多了「導出文字與圖片」（一篇一個 xml、保留硬換行）、
->   官網多了「公開數據庫」頁、`build/` 清掉 5 GB、發佈新版（Windows ＋ macOS）。
+>   官網多了「研究用數據庫」頁、`build/` 清掉 5 GB、發佈新版（Windows ＋ macOS）。
 > * **repo**：`b56dfaa`（`git status` 乾淨、`ahead 0`）。單檔 HTML＝`build/accelon26.html`；
 >   桌面 exe＝`accelon3/accelon26.exe`（同一次 release 建置）。
 > * **發佈節奏（作者 2026-10 的規矩）**：平常改 UI 只跑 `bun run tools/build-viewer.ts`；
@@ -1799,7 +1799,7 @@ www/
 | 畫面區 | 四張截圖是**輪播**（`#gallery`，2026-10-18：作者說首頁太長）：3 秒換一張、小白點可點、滑鼠移入／鍵盤聚焦／切到別的頁籤時暫停、系統要求減少動態時不自動換 |
 | 重拍截圖 | `bun run tools/site-shots.ts`（1600×1000 ×1.5 → 2400×1500 JPEG q88）。UI 改了就跑一次，官網的圖才不會過時 |
 | 產生下載檔 | `bun run tools/release.ts`：建好 exe 之後順便打包 `www/accelon26.7z`（7-Zip ultra，17 MB → 7.1 MB）。壓縮檔裡有 `accelon26.exe` ＋ `README.txt`（簡體）＋ `README-tc.txt`（繁體），兩份說明是 **UTF-8 帶 BOM ＋ CRLF**（理由與編碼規則見 [yap-software-practice.md](./yap-software-practice.md) §4.1；文字在 `ts/tools/readme-text.ts`）。只改說明時跑 `tools/pack-7z.ts`，不會動 exe、也不會讓使用者跳更新 |
-| 公開數據庫頁 | `www/adb/index.html`（作者 2026-10-18）：`index.txt` 是清單來源，`bun run tools/make-adb-index.ts` 讀本地 `accelon3/` 的 adb **檔頭**（`maxblockoffset`＝字數（約）、`dbcname`、檔案時間、大小）產生頁面；adb 有增補就重跑一次再 `bun run tools/deploy.ts --site-only`。首頁 nav／頁尾都有入口 |
+| 研究用數據庫頁 | `www/adb/index.html`（作者 2026-10-18）：`index.txt` 是清單來源，`bun run tools/make-adb-index.ts` 讀本地 `accelon3/` 的 adb **檔頭**（`maxblockoffset`＝字數（約）、`dbcname`、檔案時間、大小）產生頁面；adb 有增補就重跑一次再 `bun run tools/deploy.ts --site-only`。首頁 nav／頁尾都有入口 |
 | 部署 | `bun run tools/deploy.ts --site`：先 exe、後 versions.json、再首頁與 7z；每一項都先 `.tmp` 再 `mv`，最後從 https 抓回來驗 sha256。主機事實、回滾與更新器的判斷邏輯見 [DEPLOY.md](./DEPLOY.md) |
 | 頁面上的安裝說明 | 解開 7z → 把 `accelon26.exe` 放到 **accelon3.exe 同一個資料夾** → 雙擊。打不開 7z 就到 https://sparanoid.com/lab/7z/ 下載 Windows x64 版 |
 | 亮底／暗底 | 右上角切換（`#themeBtn`），**預設亮底**（軟件截圖是暗色的，亮底才有對比）；`localStorage['accelon26.site.theme']`，`<head>` 裡的行內腳本在畫面出現前就套上，不會閃。留言頁共用同一個設定 |
@@ -1831,7 +1831,7 @@ www/
 |---|---|---|---|
 | 1 | macOS 版要能下載，但**只提示更新、不自動安裝** | `updatesSupported()` 在 darwin 回 false；CI（`.github/workflows/build-macos.yml`）用 `macos-14` 建 arm64＋x86_64；`wails/scripts/package-macos.sh` 統一打包；官網兩顆按鈕加 OS 標誌 | `wails/*darwin*`、`www/index.html`、`MACOS.md` |
 | 2 | 字級按鈕在亮色／護眼主題下是「一塊黑」 | 新增 `--chip-bg`／`--chip-fg`（暗／亮／護眼三套） | `accelon26.template.html` |
-| 3 | 官網要有「公開數據庫」頁 | `ts/tools/make-adb-index.ts` 讀 **本地** `accelon3/` 的 adb 檔頭（`maxblockoffset`＝字數、`dbcname`＝中文名、檔案時間、大小）→ `www/adb/index.txt` ＋ `index.html`；`deploy.ts --site-only` 一起上傳 | `ts/tools/make-adb-index.ts`、`www/adb/` |
+| 3 | 官網要有「研究用數據庫」頁 | `ts/tools/make-adb-index.ts` 讀 **本地** `accelon3/` 的 adb 檔頭（`maxblockoffset`＝字數、`dbcname`＝中文名、檔案時間、大小）→ `www/adb/index.txt` ＋ `index.html`；`deploy.ts --site-only` 一起上傳 | `ts/tools/make-adb-index.ts`、`www/adb/` |
 | 4 | 字數不要抓本文算（太慢），用 max VA | 官網頁一開始就用 `maxblockoffset`；**資料庫清單**（📁）原本還會呼叫 Go 的 `SourceCharCount` 解壓整本（jc 15,838 塊）→ 改成 `maxVaOf()` 只讀檔頭 offset 96 的 4 個位元組 | `ts/src/accelon26/dbs.ts` |
 | 5 | jc 一打開看到的是書的內目，應該先是第一層的書 | `loadTree()` 補 fallback：層級只宣告在 `<樹>` 上（jc 是 `t="書名,章,節,項,目,條"`）時，用宣告鏈當父子關係 | `ts/src/accelon26/search.ts` |
 | 6 | 進階要一個「檔頭」分頁，顯示開頭第一個 block，沒有圖片／文件就不必顯示 | `renderHeader()` ＋ `headerExcerpt()`／`bodyTagsOf()`（規則見 §13.3） | `panes.ts`、`accelon26.template.html` |
@@ -1923,7 +1923,7 @@ async function maxVaOf(file: AdbSource): Promise<number | null> {
   表頭有 tooltip 說明。
 * Go 的 `SourceCharCount` 留著當診斷（`TestSourceCharCount` 仍守著 13j 的 831,156）。
 
-### 13.5 公開數據庫頁（`www/adb/`）
+### 13.5 研究用數據庫頁（`www/adb/`）
 
 * 清單在 `www/adb/index.txt`（**不要刪**，是來源），`make-adb-index.ts` 讀它 ＋ 本地 `accelon3/`
   的 adb 檔頭產生 `index.html`（字數（約）、建置日期、檔案大小、下載連結）。
@@ -1999,7 +1999,7 @@ bun run tools/deploy-macos.ts
 | `ts/src/accelon26/host.ts` | `desktopExportTextImages`、`desktopRevealInFolder` |
 | `ts/src/accelon26/search.ts` | `loadTree()` 的層級 fallback（jc） |
 | `ts/tools/clean.ts` | 清 `build/` |
-| `ts/tools/make-adb-index.ts` | 公開數據庫頁 |
+| `ts/tools/make-adb-index.ts` | 研究用數據庫頁 |
 | `wails/release_notes.draft.txt` | 下一版要告訴使用者的句子（發佈時 append 進 `release_notes.json`） |
 
 ## 14. 2026-10-22：`<檔>` 邊界與 breadcrumb（作者回報）

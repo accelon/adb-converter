@@ -1,5 +1,5 @@
 /**
- * 產生官網的「公開數據庫」頁面：www/adb/index.html（清單存檔 www/adb/index.txt）。
+ * 產生官網的「研究用數據庫」頁面：www/adb/index.html（清單存檔 www/adb/index.txt）。
  *
  *   cd ts && bun run tools/make-adb-index.ts
  *   bun run tools/make-adb-index.ts --adb-dir D:\accelon3
@@ -218,12 +218,12 @@ const html = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>公開數據庫 — 開放古籍平台 accelon26</title>
+<title>研究用數據庫 — 開放古籍平台 accelon26</title>
 <meta name="description" content="accelon26 公開的 .adb 古籍資料庫清單：可直接下載，放進 accelon3.exe 同一個資料夾就能讀。">
 <link rel="icon" href="../img/appicon.png">
 <script>${themeBoot}</script>
 <style>${style}
-  /* ---- 這一頁自己的（公開數據庫） ---- */
+  /* ---- 這一頁自己的（研究用數據庫） ---- */
   .dbHead { padding: 34px 0 8px; }
   .dbHead h1 { font-size: clamp(22px, 2.6vw, 30px); margin: 0 0 10px; font-weight: 700; }
   .dbHead p { margin: 0; color: var(--muted); font-size: 16px; max-width: 46em; }
@@ -299,7 +299,7 @@ const html = `<!DOCTYPE html>
       <a href="../index.html#shots">畫面</a>
       <a href="../index.html#install">下載與安裝</a>
       <a href="../index.html#contact">聯絡</a>
-      <a href="index.html">公開數據庫</a>
+      <a href="index.html">研究用數據庫</a>
       <button type="button" class="themeBtn" id="themeBtn" aria-label="切換亮底／暗底" title="切換亮底／暗底">
         <svg viewBox="0 0 24 24" aria-hidden="true" id="themeIcon"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
         <span id="themeLabel">亮底</span>
@@ -310,7 +310,7 @@ const html = `<!DOCTYPE html>
 
 <main class="wrap">
   <section class="dbHead" style="border-top:none">
-    <h1>公開數據庫</h1>
+    <h1>研究用數據庫</h1>
     <p>這些 <code>.adb</code> 都可以直接下載：放進 <code>accelon3.exe</code> 同一個資料夾，
       accelon26 開啟時就會自動列出來；也可以在程式裡用 <code>📁</code> 或拖進視窗。</p>
     <p class="dbMeta">共 ${rows.length} 個可下載資料庫${wip.length ? ` · 另有 ${wip.length} 個施工中（不提供下載）` : ''}${known ? ` · 合計約 ${fmtInt(totalChars)} 字` : ''} · 下載約 ${fmtSize(totalSize)}</p>

@@ -115,7 +115,7 @@ const html = `<!doctype html>
   <nav>
     <a href="index.html">首頁</a>
     <a href="changelog.html">更新說明</a>
-    <a href="adb/index.html">公開數據庫</a>
+    <a href="adb/index.html">研究用數據庫</a>
     <a href="releases.html">版本下載</a>
   </nav>
 </div></header>

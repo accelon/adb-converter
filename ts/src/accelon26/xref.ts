@@ -1466,7 +1466,7 @@ export async function openRevHeat(hostDb: string, srcDb?: string): Promise<void>
 /**
  * 少了目標庫時的引導（作者 2026-10-29）：讀者只下載了 ys.adb，點到 <聯> 才發現
  * 沒有 taisho.adb。桌面版直接打開「取得更多 ADB」（從官網下載，不用開瀏覽器）；
- * 網頁版開官網的公開資料庫頁，下載後用 📁 選取即可。
+ * 網頁版開官網的研究用資料庫頁，下載後用 📁 選取即可。
  */
 function guideMissingDb(db: string): void {
   const work = resolveWork(db);

@@ -115,7 +115,7 @@ const html = `<!doctype html>
     <div class="brand">accelon<b>26</b><span>古籍資料庫閱讀器</span></div>
     <nav>
       <a href="../index.html">首頁</a>
-      <a href="index.html">公開數據庫</a>
+      <a href="index.html">研究用數據庫</a>
       <a href="../changelog.html">更新說明</a>
     </nav>
   </div>
@@ -125,7 +125,7 @@ ${out.join('\n')}
 </main>
 <footer>
   <div class="wrap">
-    <span>accelon26 · Accelon3 跨平台平替 · <a href="index.html">公開數據庫</a></span>
+    <span>accelon26 · Accelon3 跨平台平替 · <a href="index.html">研究用數據庫</a></span>
     <span class="right">授權：Apache-2.0</span>
   </div>
 </footer>

@@ -4,7 +4,7 @@
  *
  *   cd ts && bun run tools/welcome-test.ts [--html ../build/accelon26.html]
  *
- * 驗：沒有開庫時，本文區出現 #docWelcome；桌面專用的「下載公開資料庫」在網頁版隱藏；
+ * 驗：沒有開庫時，本文區出現 #docWelcome；桌面專用的「下載研究用資料庫」在網頁版隱藏；
  * 按「開啟本機 .adb」會觸發檔案選擇（#file 的 click）。順便截一張 build/welcome.png。
  */
 import { existsSync, rmSync, writeFileSync } from 'node:fs';
@@ -114,7 +114,7 @@ console.log(JSON.stringify(out, null, 1));
 const fails: string[] = [];
 if (!out.card) fails.push('沒有開庫時應顯示 #docWelcome');
 if (out.title !== '開始閱讀') fails.push('引導卡標題不對：' + out.title);
-if (!out.storeHidden) fails.push('網頁版應隱藏「下載公開資料庫」');
+if (!out.storeHidden) fails.push('網頁版應隱藏「下載研究用資料庫」');
 if (!out.fileClicked) fails.push('按「開啟本機 .adb」應觸發 #file');
 if (out.db) fails.push('不應該已有資料庫：' + out.db);
 if (fails.length) { console.error('FAIL:\n- ' + fails.join('\n- ')); process.exit(1); }

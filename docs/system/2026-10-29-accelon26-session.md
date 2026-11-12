@@ -8,7 +8,7 @@
 > - [閱讀器](../software/accelon26.md)／[桌面宿主](../software/desktop.md)／
 >   [官網](../software/website.md)／[發佈](../software/release.md)
 > - [母庫 taisho.adb](../adb/taisho.md)／[研究讀本 taisho-study.adb](../adb/taisho-study.md)／
->   [舊 jingang](../adb/jingang.md)／[公開資料庫](../adb/public-databases.md)
+>   [舊 jingang](../adb/jingang.md)／[研究用資料庫](../adb/public-databases.md)
 > - [taisho-study-skill.md](../adb/taisho-study-skill.md)
 > - [taisho-study-structure.md](../adb/taisho-study-structure.md)
 > - [DEPLOY.md](./DEPLOY.md)
@@ -281,7 +281,7 @@ T18n0890_p0014c
 
 1. 同時向主站／鏡像取得 `adb/manifest.json`
 2. 選下載較快的鏡像
-3. 列出公開資料庫
+3. 列出研究用資料庫
 4. 由 Go 宿主 `StartNewAdbDownload` 下載到執行檔旁
 5. 驗證大小、sha256、adb 檔頭
 6. 完成後 `refreshHostDbs()` 重刷 `📁` 清單

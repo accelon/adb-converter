@@ -34,7 +34,7 @@
 | [adb/ys.md](./adb/ys.md)、[adb/ys-steps.md](./adb/ys-steps.md) | 印順 `ys.adb`（建置以 `D:\2026\ys` 為準） |
 | [adb/taisho-study.md](./adb/taisho-study.md) | 研究讀本 `taisho-study.adb`：三經、逐經目錄、注疏索引 |
 | [adb/jingang.md](./adb/jingang.md) | 舊 `jingang.adb`／`jingang-group.adb` 與遷移關係 |
-| [adb/public-databases.md](./adb/public-databases.md) | 官網公開資料庫 manifest 與桌面下載 |
+| [adb/public-databases.md](./adb/public-databases.md) | 官網研究用資料庫 manifest 與桌面下載 |
 | [adb/goryeo-steps.md](./adb/goryeo-steps.md) | 高麗藏 `goryeo.adb` 建置步驟；工作區 `D:\2026\goryeo`（2026-11-01 建立） |
 | `D:\2026\fuyan\README.md`、`REPORT-05B.md` | 福嚴 `fuyan.adb`（外部工作區） |
 | [github.com/accelon/vedic](https://github.com/accelon/vedic) | **吠陀與奧義書三語平行** `veda.adb`＋`sa`／`en`／`zh`（獨立 repo，本地 `D:\2026\vedic`；成品仍產到 `D:\2026\sz\accelon26`） |
