@@ -36,6 +36,10 @@
      字體依序找：Windows 標楷體／KaiTi、macOS Kaiti、Linux AR PL UKai；
      都沒有就退回襯線字體，至少不會變無襯線。 */
   --kai: "Kaiti TC", "Kaiti SC", "KaiTi", "BiauKai", "標楷體", "DFKai-SB", "AR PL UKai CN", "Noto Serif CJK TC", serif;
+  /* 明體（新細明體）：科判用（厚觀法師 2026-11-12「科判應該用新細明體」）。
+     紙本的科判是 11pt 新細明體加框，本文才是楷體；電子版先前科判跟著本文用黑體，
+     法師一眼看出不同。Windows 新細明體＝PMingLiU（MingLiU 是細明體，先找 PMingLiU）。 */
+  --ming: "PMingLiU", "新細明體", "MingLiU", "Songti TC", "STSong", "Noto Serif CJK TC", "Source Han Serif TC", "SimSun", serif;
   /* diff 用的紅綠（比 --hit-2／--ok 更亮，作者 2026-10-25） */
   --diff-add: #7dff9e; --diff-del: #ff5252;
   /* 歷史版本 docTab：棕黃 */
@@ -1119,6 +1123,25 @@
   .lineText .h {
     color: var(--tagtext, var(--accent));
     background: none; border-radius: 3px; padding: 0 2px; font-weight: 600;
+  }
+  /* 科判（厚觀法師 2026-11-12）：「（三）經論中所說的『慈心功德』」這一層應該用
+     新細明體，並反顏色。紙本上科判是 11pt 新細明體加框，本文才是楷體；電子版先前
+     科判跟本文一樣是黑體，顏色也只是標籤色，法師一眼看出不同。
+     做法：科判階層（項／目／小目／細目，不含章、節——那兩個是書的大標題）改用明體，
+     並把「字色」與「底色」對調（底色＝該層的標籤色，字色＝頁面底色），也就是反白。
+     深色主題下是一條淺色底、深色字的科判條；淺色主題下自動變成深底白字。 */
+  .lineText .h[data-tag="項"],
+  .lineText .h[data-tag="目"],
+  .lineText .h[data-tag="小目"],
+  .lineText .h[data-tag="細目"] {
+    font-family: var(--ming);
+    font-weight: 700;
+    background: var(--tagtext, var(--accent));
+    color: var(--bg);
+    padding: 0 .18em;
+    border-radius: 2px;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
   }
   /* 原書頁 <頁>：頁碼一律靠右（厚觀法師 2026-11-10「錯誤02」）。
      2026-10-31 原本是 inline，理由是「block 會把後文擠到下一行」；但 inline 的結果是
