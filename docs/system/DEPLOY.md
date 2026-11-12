@@ -49,7 +49,7 @@
   accelon26.exe.prev    ← 上一版 exe（deploy 自動留，伺服器端回滾用）
   versions.json.prev    ← 上一版版本資訊
   img/…                 ← 首頁圖片
-  adb/…                 ← 公開數據庫：index.html／index.txt／manifest.json＋.adb 本體
+  adb/…                 ← 研究用數據庫：index.html／index.txt／manifest.json＋.adb 本體
 ```
 
 使用者電腦上則是 `accelon26.exe` ＋（更新後暫時存在的）`accelon26-prev.exe`
@@ -78,7 +78,11 @@ bun test test/render.test.ts      # 22 項版面／渲染測試
 `wails/assets/index.html`（exe 內嵌的那份）與 `www/accelon26.7z`、`versions.json`
 **平常不用動**，發佈時 `release.ts` 會一起重建。
 
-### 2.2 發佈（只在他說「發佈新版」時）
+### 2.2 發佈（2026-11-12 起：修好 bug、驗過就自己發）
+
+> 作者 2026-11-12 16:24：「以後改好bug 就自己發。」——不必再等一句「發佈」。
+> 但驗證照舊不可省：畫面層證據、`bun test`、發後兩站 sha256 核過、回報一行。
+> 仍在試樣或方向未定（等客戶回話）的改動，仍只走 2.1。
 
 ```powershell
 cd ts
@@ -110,7 +114,7 @@ CI 會建 arm64／x86_64 兩個 zip 並附到 Release，之後
   從這裡取；不要從 adb 工作區的 `out/`／`build/` 直接上傳。
   `D:\2026\sz\accelon26` 的 sz 系列**尚未正式上網**，不要放進 `www/adb/index.txt`／
   manifest，也不要上傳。
-- 本區跑 `deploy.ts --site` 時會一起重生 `manifest`、公開數據庫頁，並上傳這一輪
+- 本區跑 `deploy.ts --site` 時會一起重生 `manifest`、研究用數據庫頁，並上傳這一輪
   有更新的 adb（大檔依既有 `--allow-large` 規則）。
 - 若只是程式 RC、這輪 adb 沒變，才用 `deploy.ts --site --no-adb`；**發 RC 前先比對
   `D:\accelon3` 與線上 `adb/manifest.json` 的 sha256，有差異就不可以加 `--no-adb`**，
@@ -289,7 +293,7 @@ cd ts && bun run tools/install-message-backend.ts --uninstall
 > 授權碼是 QQ 信箱「設定 → 帳號 → POP3/SMTP 服務」產生的 16 位字串，**不是登入密碼**。
 > 沒有後端時（例如新機器還沒裝），表單一樣可用：會用使用者自己的郵件程式寄到同一個信箱。
 
-## 7. 公開數據庫頁面（2026-10-18）
+## 7. 研究用數據庫頁面（2026-10-18）
 
 官網最下面（nav 最後一項與頁尾）連到 <https://shutonggui.cn/accelon26/adb/index.html>。
 
@@ -366,7 +370,7 @@ cd ts && bun run tools/publish-adb.ts --files ys.adb
   `#dbTabs` 的「資料庫更新」按鈕**只在有新版時出現**（作者 2026-11-01：沒得更新就
   不必顯示），加上紅色的 **New** 與可更新數量；更新完（或清單比對沒有新版）就消失。
   對話盒（點那顆按鈕才會開）有「可更新」與「版本記錄」兩個頁籤；「可更新」列出**本機版本之後的每一版**（跳過幾版也看得到每一次改變），
-  「版本記錄」列出每一本已安裝公開資料庫的完整歷史。
+  「版本記錄」列出每一本已安裝研究用資料庫的完整歷史。
   > 副作用：沒有新版時就沒有進入「版本記錄」的入口（`adbUpdate()` 的資料仍在，
   > 只是 UI 沒有按鈕）。若作者要保留隨時可看版本記錄，得另外開一個入口。
 * **adb 只認一個資料夾**（2026-11-01）：
@@ -419,13 +423,13 @@ cd ts && bun run tools/publish-adb.ts --files ys.adb
 * macOS 的 `.zip` 目前仍是固定檔名（`accelon26-macos-arm64.zip`／`x86_64`），
   還沒有做歷史版本；要的話可以照同一套日期命名再加。
 
-### 7.4 公開資料庫的界線（2026-10-29）
+### 7.4 研究用資料庫的界線（2026-10-29）
 
 * **<30 MB** 的 adb 可以經常更新；**>30 MB** 的底座仍可整檔下載，但只在 CBETA 換版等
   重大更新時才換版，且不列入桌面版的「全部更新」。伺服器每月流量只有 **1 TB**。
 * `tools/publish-adb.ts` 對 >30 MB 的檔要求加 `--allow-large`；wip／revision 一律不上傳。
 * `taisho.adb`、`wxzj.adb` 在 `deploy/adb-extra.txt` 裡，只納入 manifest 版本記錄
-  （施工中 `status:wip`、`downloadable:false`）；官網「公開數據庫」顯示施工中，不給下載連結，
+  （施工中 `status:wip`、`downloadable:false`）；官網「研究用數據庫」顯示施工中，不給下載連結，
   兩站的 `adb/taisho.adb`、`adb/wxzj.adb` 已刪除（404）。整理完成後可改成 available，
   讓使用者整檔下載。
 * `fgdict.adb` 作者要大修：已從 index／manifest 移除，兩站檔案刪除（404）。
