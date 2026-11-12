@@ -1406,6 +1406,11 @@
   .lineText .noteBack { color: var(--gold); text-decoration: none; font-size: .8em; padding: 0 3px 0 0; cursor: pointer; }
   .lineText .noteBack:hover { text-decoration: underline; }
   .lineText .noteBody { cursor: text; white-space: normal; overflow-wrap: anywhere; }   /* 注文可以換行（長註才不會被切在右邊）；釋文本身不點擊（2026-10-31，只有編號可回本文） */
+  /* 腳注整體預設用**明體**（厚觀法師 2026-11-12 19:27：「腳注為何都是標楷體？
+     一般還是用新細明體，引文才用標楷體」）。紙本的腳注是 11pt 新細明體，楷體只給引文；
+     先前注文沒有自己的字體，跟著本文（讀者把本文設成楷體）一起變楷體，整片腳注都是楷體。
+     寫在 `.quote`／`.fmt-kai` 之前，讓引文那兩條（同權重、後出）仍然蓋得過。 */
+  .lineText .noteBody { font-family: var(--ming); }
   /* 腳注裡的引文（<經>）用楷體；其餘注文維持本文（厚觀法師 2026-11-09：不是全部腳注都用楷體） */
   .lineText .noteBody .h[data-tag="經"] { font-family: var(--kai) !important; }
   /* Word 的粗體、引文楷體、上標（2026-11-11）。
@@ -1435,6 +1440,26 @@
   .inlineSvg a.noteRef.noteTargetMark text { fill: var(--accent); font-weight: 700; }
   /* <引>：CBETA 的引文，用楷體（2026-10-30）；字級略大 1.02em，楷體看起來才不會偏小 */
   .lineText .quote { font-family: var(--kai); font-size: 1.02em; }
+  /* 「線條字元排的圖表」（厚觀法師 2026-11-12 82 頁「文字編排不整齊」）：
+     這種表用 ┌│└├┤─ 加全形空白排出欄位，紙本靠等寬字對齊。
+     原本每一列都被當成一個段落 → 兩側縮排＋行距，欄位就散了；明體裡線條字元是全寬，
+     換成明體、收緊行距、去掉段落縮排，才會跟紙本一樣。 */
+  .docLine.figArt { line-height: 1.3; }
+  .docLine.figArt .lineText { font-family: var(--ming); }
+  .docLine.figArt .paraIndent { display: none; }
+  .docLine.figArt br.para { display: none; }
+  /* 線條字元一律佔一個全形字寬（見 render_accelon3.ts 的 figArt 註解） */
+  .lineText .boxd { display: inline-block; width: 1em; text-align: center; }
+  /* 這種表格裡的注號（法師特別交代「注意：有腳注23」）：縮成上標小字，仍可點回本文。
+     它要剛好佔**一個全形格**，後面的欄位才對得上：字級 .62em，寬度就給 1/0.62 = 1.6129em
+     （兩者相乘剛好 1em）。資料端因此讓它後面少留一格（見 src/fix_figart_yl38.py）。
+     不能只靠 `width:0` 讓它溢出——那會被逐字折行，`[23]` 變成豎排。 */
+  .docLine.figArt .noteRef,
+  .docLine.figArt .noteBack {
+    font-size: .62em; vertical-align: super;
+    display: inline-block; width: 1.6129em; text-align: center; padding: 0;
+    white-space: nowrap;
+  }
   /* <术 sk|pi|tb="…">：術語（作者 2026-10-31）。漢詞只加虛線，**不上色**；
      只有 hover 模式掛 title（外語提示），inline 模式外語直接接「（外語）」，
      off 模式只留漢詞。若想自訂顏色，可自行加 .term-sk／.term-pi／.term-tb 規則。 */

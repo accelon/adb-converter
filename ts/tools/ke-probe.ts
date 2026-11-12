@@ -1,15 +1,24 @@
 #!/usr/bin/env bun
 /**
- * 暫用探針：看一頁 page head 的科判（`<目>`）在瀏覽器裡長什麼樣。
+ * 暫用探針：看某一頁、某一行的實際渲染。
  *
- *   bun run tools/ke-probe.ts [--page 38p35] [--line 739] [--png build/ke.png]
+ *   bun run tools/ke-probe.ts --page 38p35 --line 739 [--png build/ke.png] [--timing]
  *
- * 印出該行的 outerHTML 與 computed style（font-family / background / border），
- * 並截一張「頁首」的圖，方便和紙本比。
+ * 印出該行的 outerHTML、computed style（font / background / border）、
+ * 附近幾列每個字的 x 座標（查線條字元排的表格對不對齊），並截一張圖。
+ *
+ * 2026-11-12：改用 `_cdp.ts`。先前每次要 66.5 秒，其中 60 秒是 send() 的
+ * 超時 timer 沒清、拖住進程，4.8 秒是刪 profile。現在約 3～4 秒。
  */
-import { existsSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { launch, loadAdb } from './_cdp';
+
+const T0 = performance.now();
+const LAP_ON = process.argv.includes('--timing');
+/** 分段計時（打 stderr，不弄髒 stdout 的 JSON） */
+const lap = (m: string) => {
+  if (LAP_ON) console.error(`[${((performance.now() - T0) / 1000).toFixed(1)}s] ${m}`);
+};
 
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => {
@@ -23,104 +32,55 @@ const PNG = resolve(opt('png', resolve(ROOT, 'build/ke-probe.png')));
 const PAGE = opt('page', '38p35');
 const LINE = Number(opt('line', '739'));
 
-const BROWSERS = [
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-];
-const browser = BROWSERS.find((p) => existsSync(p));
-if (!browser) { console.error('no Chromium browser found'); process.exit(2); }
-for (const p of [HTML, ADB]) if (!existsSync(p)) { console.error('missing ' + p); process.exit(2); }
-
-const profile = resolve(ROOT, 'build/.chrome-profile-keprobe-' + process.pid);
-const proc = Bun.spawn([browser, '--headless=new', '--disable-gpu', '--no-first-run',
-  '--remote-debugging-port=0', '--remote-allow-origins=*', '--allow-file-access-from-files',
-  '--window-size=1400,1000', `--user-data-dir=${profile}`, 'about:blank'],
-  { stdout: 'pipe', stderr: 'pipe' });
-
-async function devtoolsUrl(): Promise<string> {
-  const deadline = Date.now() + 20000;
-  while (Date.now() < deadline) {
-    const text = await Bun.file(resolve(profile, 'DevToolsActivePort')).text().catch(() => '');
-    const [portLine, pathLine] = text.split('\n').map((s) => s.trim());
-    if (Number(portLine) > 0 && pathLine) return `ws://127.0.0.1:${portLine}${pathLine}`;
-    await Bun.sleep(200);
-  }
-  throw new Error('DevToolsActivePort never appeared');
-}
-
-class Cdp {
-  ws!: WebSocket;
-  id = 0;
-  pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
-  sessionId = '';
-  static async attach(url: string): Promise<Cdp> {
-    const c = new Cdp();
-    await new Promise<void>((res, rej) => {
-      c.ws = new WebSocket(url);
-      c.ws.onopen = () => res();
-      c.ws.onerror = () => rej(new Error('ws error'));
-      c.ws.onmessage = (ev) => {
-        const m = JSON.parse(String(ev.data));
-        if (m.id && c.pending.has(m.id)) {
-          const p = c.pending.get(m.id)!;
-          c.pending.delete(m.id);
-          m.error ? p.reject(new Error(m.error.message)) : p.resolve(m.result);
-        }
-      };
-    });
-    return c;
-  }
-  async send(method: string, params: Record<string, unknown> = {}, session = true): Promise<any> {
-    const id = ++this.id;
-    const payload: Record<string, unknown> = { id, method, params };
-    if (session && this.sessionId) payload.sessionId = this.sessionId;
-    return new Promise((res, rej) => {
-      this.pending.set(id, { resolve: res, reject: rej });
-      this.ws.send(JSON.stringify(payload));
-      setTimeout(() => { if (this.pending.delete(id)) rej(new Error('timeout ' + method)); }, 60000);
-    });
-  }
-  async openPage(url: string) {
-    const { targetId } = await this.send('Target.createTarget', { url }, false);
-    const { sessionId } = await this.send('Target.attachToTarget', { targetId, flatten: true }, false);
-    this.sessionId = sessionId;
-    await this.send('Runtime.enable');
-    await this.send('Page.enable');
-    await this.send('DOM.enable');
-  }
-  async eval<T>(expression: string): Promise<T> {
-    const r = await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
-    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? 'eval failed');
-    return r.result.value as T;
-  }
-}
-
+const { cdp, close } = await launch({ html: HTML, tag: 'keprobe' });
 try {
-  const cdp = await Cdp.attach(await devtoolsUrl());
-  await cdp.openPage(pathToFileURL(HTML).href + '?v=' + Date.now());
-  await Bun.sleep(800);
-  const doc = await cdp.send('DOM.getDocument');
-  const q = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#file' });
-  await cdp.send('DOM.setFileInputFiles', { files: [ADB], nodeId: q.nodeId });
-  await cdp.eval('document.querySelector("#file").dispatchEvent(new Event("change"))');
-  await Bun.sleep(2500);
+  lap('browser up');
+  await loadAdb(cdp, ADB);
+  lap('adb loaded');
 
   const report = await cdp.eval<string>(`
     (async () => {
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const until = async (fn, ms = 15000) => {
+        const d = Date.now() + ms;
+        while (Date.now() < d) { if (fn()) return true; await sleep(50); }
+        return false;
+      };
+      // 內容是漸進渲染的：條件一成立就截圖會拿到半頁（38p107 曾只看到 3 塊）。
+      // 等「同一個數字連續三次不變」才算定下來。
+      const settle = async (fn, ms = 15000) => {
+        const d = Date.now() + ms;
+        let prev = null, same = 0;
+        while (Date.now() < d) {
+          const v = fn();
+          if (v === prev) { if (++same >= 3) return true; } else { same = 0; prev = v; }
+          await sleep(60);
+        }
+        return false;
+      };
       document.querySelector('#aboutClose')?.click();
       await window.__accelon26.openPage('fuyan', ${JSON.stringify(PAGE)});
-      await sleep(900);
+      // 不等「行數穩定」（按需渲染，行數會一直長，只會等到超時），也不等 openPage
+      // 之後的懶加載（目標行常常不在它開的那個窗口裡）：沒有就直接 showLine 跳過去。
+      if (!document.getElementById('L' + ${LINE})) {
+        await window.__accelon26.showLine(${LINE});
+      }
+      await until(() => !!document.getElementById('L' + ${LINE}), 5000);
       const out = { page: ${JSON.stringify(PAGE)}, line: ${LINE} };
       const row = document.getElementById('L' + ${LINE});
       out.firstRows = [...document.querySelectorAll('#docText .docLine')].slice(0, 6)
         .map((e) => e.id + ' | ' + (e.textContent || '').replace(/\\s+/g, ' ').slice(0, 28));
       out.rowCount = document.querySelectorAll('#docText .docLine').length;
-      if (!row) { await window.__accelon26.showLine(${LINE}); await sleep(900); }
+      if (!row) {
+        await window.__accelon26.showLine(${LINE});
+        await until(() => document.getElementById('L' + ${LINE}));
+      }
       const row2 = document.getElementById('L' + ${LINE});
       row2?.scrollIntoView({ block: 'start' });
-      await sleep(400);
+      await until(() => {
+        const r = document.getElementById('L' + ${LINE})?.getBoundingClientRect();
+        return r && r.top >= 0 && r.top < window.innerHeight;
+      }, 3000);
       out.found = !!row2;
       out.html = row2 ? row2.outerHTML.slice(0, 1200) : '';
       out.text = row2 ? (row2.textContent || '').replace(/\\s+/g, ' ').slice(0, 80) : '';
@@ -134,6 +94,40 @@ try {
           border: cs.border, borderTop: cs.borderTopWidth + ' ' + cs.borderTopStyle + ' ' + cs.borderTopColor,
         };
       }
+      const nb = row2?.querySelector('.noteBody');
+      if (nb) {
+        const cs2 = getComputedStyle(nb);
+        out.note = {
+          fontFamily: cs2.fontFamily, fontWeight: cs2.fontWeight, fontSize: cs2.fontSize,
+          cls: nb.className,
+          kids: [...nb.querySelectorAll('*')].slice(0, 6).map((e) => {
+            const c3 = getComputedStyle(e);
+            return (e.className || '(none)') + '[' + ((e.dataset && e.dataset.tag) || '') + '] ' + c3.fontFamily + ' / ' + c3.fontWeight;
+          }),
+        };
+        const bodyCS = getComputedStyle(document.querySelector('#docText'));
+        out.docTextFont = bodyCS.fontFamily;
+      }
+      // 附近幾列的每個字 x（查「線條字元排的表格」對不對齊）
+      out.fig = [];
+      for (const el of [...document.querySelectorAll('#docText .docLine')]) {
+        const id = Number((el.id || '').replace('L', ''));
+        if (!id || Math.abs(id - ${LINE}) > 4) continue;
+        const chars = [];
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+          const v = node.nodeValue || '';
+          for (let k = 0; k < v.length; k++) {
+            const rg = document.createRange();
+            rg.setStart(node, k); rg.setEnd(node, k + 1);
+            const b = rg.getBoundingClientRect();
+            if (!b.width) continue;
+            chars.push([v[k] === '\u3000' ? '_' : v[k], Math.round(b.left)]);
+          }
+        }
+        out.fig.push({ id: id, chars: chars.slice(0, 40) });
+      }
       const r = row2?.getBoundingClientRect();
       out.rect = r ? { top: Math.round(r.top), left: Math.round(r.left), w: Math.round(r.width), h: Math.round(r.height) } : null;
       out.bodyBg = getComputedStyle(document.body).backgroundColor;
@@ -142,12 +136,12 @@ try {
     })()
   `);
   console.log(report);
+  lap('eval done');
 
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
   await Bun.write(PNG, Buffer.from(shot.data, 'base64'));
   console.log('screenshot ' + PNG);
 } finally {
-  try { proc.kill(); } catch { /* ignore */ }
-  await Bun.sleep(300);
-  try { rmSync(profile, { recursive: true, force: true }); } catch { /* ignore */ }
+  await close();
+  lap('closed');
 }

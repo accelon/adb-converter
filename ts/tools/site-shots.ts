@@ -79,9 +79,12 @@ class Cdp {
     const payload: any = { id, method, params };
     if (session && this.sessionId) payload.sessionId = this.sessionId;
     return new Promise((res, rej) => {
-      this.pending.set(id, { resolve: res, reject: rej });
+      const timer = setTimeout(() => { if (this.pending.delete(id)) rej(new Error('timeout ' + method)); }, 60000);
+      this.pending.set(id, {
+        resolve: (v) => { clearTimeout(timer); res(v); },
+        reject: (e) => { clearTimeout(timer); rej(e); },
+      });
       this.ws.send(JSON.stringify(payload));
-      setTimeout(() => { if (this.pending.delete(id)) rej(new Error('timeout ' + method)); }, 60000);
     });
   }
   async openPage(url: string) {

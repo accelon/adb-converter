@@ -119,9 +119,15 @@ class Cdp {
     const payload: Record<string, unknown> = { id, method, params };
     if (session && this.sessionId) payload.sessionId = this.sessionId;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      // timer 一定要清：Bun 的 timer 是 ref'd，沒清會讓進程拖到 timeout 才退出
+      const timer = setTimeout(() => {
+        if (this.pending.delete(id)) reject(new Error('timeout: ' + method));
+      }, 30000);
+      this.pending.set(id, {
+        resolve: (v) => { clearTimeout(timer); resolve(v); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
       this.ws.send(JSON.stringify(payload));
-      setTimeout(() => { if (this.pending.delete(id)) reject(new Error('timeout: ' + method)); }, 30000);
     });
   }
 

@@ -1191,6 +1191,20 @@ export class Accelon3Renderer {
       if (visibleAfter) split = { before, after };
       else html = before + '<br class="para">' + after;
     }
+    // 「線條字元排的圖表」（厚觀法師 2026-11-12 82 頁）：整段用 ┌│└├┤─ 與全形空白
+    // 排出欄位，紙本靠等寬對齊。加上 figArt 讓 CSS 用明體、行距收緊、去掉段落縮排，
+    // 否則每一列都被當成一個段落（縮排＋行距），欄位就散了。
+    // 只認「框線」字元（┌└├┤┬┴┼│）；單純的 ─ 是中文破折號（「空──無相」這類句子很多），
+    // 不能因為一個破折號就整行當圖表。雙線框（║╔╗╚╝╠╣╦╩╬，U+2550–256C）同理算框線：
+    // 全書只有 231 頁注 51 那一行「║」（本種滅／現行滅的中間），行距收緊才不會浮在半空中。
+    if (/[\u250C\u2510\u2514\u2518\u251C\u2524\u252C\u2534\u253C\u2502\u2550-\u256C]/.test(text)) {
+      this.lineCls = (this.lineCls ? this.lineCls + ' ' : '') + 'figArt';
+      // 線條字元（┌│└├┤─…）在部分字型裡是「半寬」，一列幾十個就會把後面的欄位推歪。
+      // 包一層定寬 span（1em），不管字型怎麼畫都佔一個全形字的位置（只換標籤外的字）。
+      html = html.split(/(<[^>]*>)/).map((seg) =>
+        seg.startsWith('<') ? seg : seg.replace(/[\u2500-\u257F]/g, (c) => `<span class="boxd">${c}</span>`)
+      ).join('');
+    }
     return {
       no: lineNo, html, raw: text, visible: this.sawText, heading: this.sawHeading,
       segStart: this.sawSegStart, segMid: this.sawSegMid, split,
