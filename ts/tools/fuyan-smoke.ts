@@ -44,6 +44,11 @@ const LINES: Array<{ page: string; line: number; must: string; note: string }> =
   { page: '9p260', line: 53816, must: '㲲', note: 'ExtA 罕用字' },
   { page: '9p294', line: 54227, must: '㲉', note: 'ExtA 罕用字' },
   { page: '5p17', line: 30000, must: '', note: '科判（標題不以句號收尾）' },
+  // 附錄科判表的頌號（2026-11-13）：紙本是 `[NN]` 的字面文字，不是腳註。
+  // 曾被 docx2zhonglun 當成註號（`<註 n="23"/>`），讀者看到一個點不動的藍上標，頌號反而不見。
+  { page: '5p189', line: 17072, must: '[23]', note: '附錄科判表頌號（7觀三相品）' },
+  { page: '5p353', line: 19241, must: '[02]', note: '附錄科判表頌號（17觀業品）' },
+  { page: '5p596', line: 22852, must: '[02]', note: '附錄科判表頌號（25觀涅槃品）' },
   { page: '38p112', line: 15000, must: '', note: '正文空頁（紙本只有腳注續文）' },
   { page: '38p348', line: 55000, must: '', note: '全書末頁' },
 ];
