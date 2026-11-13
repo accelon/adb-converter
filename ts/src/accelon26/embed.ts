@@ -130,6 +130,27 @@ export function initEmbed(): void {
       }
       return;
     }
+    // R6：子樹截斷的「繼續展開」——取下一段插到按鈕前，按鈕替換成新的（或消失=取完）。
+    const moreBtn = (ev.target as Element | null)?.closest?.('button.embedMore') as HTMLElement | null;
+    if (moreBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const value = moreBtn.dataset.embed ?? '';
+      const q = value.indexOf('?');
+      const db = q >= 0 ? value.slice(0, q) : '';
+      const anchor = q >= 0 ? value.slice(q + 1) : value;
+      if (!db || !anchor) return;
+      (moreBtn as HTMLButtonElement).disabled = true;
+      void renderEmbed(db, anchor, '', '', moreBtn.dataset.label ?? '', false, undefined, {
+        sub: moreBtn.dataset.sub === '1',
+        max: Number(moreBtn.dataset.max ?? 200),
+        from: Number(moreBtn.dataset.from ?? 0),
+      }).then((res) => {
+        moreBtn.insertAdjacentHTML('beforebegin', res.html);
+        moreBtn.remove();
+      }).catch(() => { (moreBtn as HTMLButtonElement).disabled = false; });
+      return;
+    }
     const btn = (ev.target as Element | null)?.closest?.('button.embedChip') as HTMLElement | null;
     if (!btn) return;
     ev.preventDefault();

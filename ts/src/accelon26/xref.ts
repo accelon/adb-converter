@@ -30,7 +30,7 @@ import { openAdbStore } from './adb-store';
 import { hostState } from './host';
 import { bz2Decompress } from '../bzip2-wasm';
 import { HAN_RE, isHan, hanChars, hanCount } from './han';
-import { anchorIndex, anchorVa, blockOf, nodeAnchorInfo, nodeSpanText, nodeSubtreeEnd, pageHanTextOf, shortPageId, type AnchorIndex } from './page-text';
+import { anchorIndex, anchorVa, blockOf, nodeAnchorInfo, nodeSpanChunk, nodeSubtreeEnd, pageHanTextOf, shortPageId, type AnchorIndex } from './page-text';
 import { citationEntryTag, entryById, entryByName, entryLineOfHan } from './entry-anchor';
 import { splitPageCol, type PageCite } from './page-cite';
 import { splitWordKey } from './word-hl';
@@ -2082,7 +2082,7 @@ export function embedNodeBody(raw: string): string {
   return out.join('');
 }
 
-export async function renderEmbed(db: string, anchor: string, quote = '', range = '', label = '', bare = false, rIn?: AdbReader, opts?: { sub?: boolean; max?: number }): Promise<{ html: string; title: string }> {
+export async function renderEmbed(db: string, anchor: string, quote = '', range = '', label = '', bare = false, rIn?: AdbReader, opts?: { sub?: boolean; max?: number; from?: number }): Promise<{ html: string; title: string }> {
   const r = rIn ?? await readerFor(db);
   if (!r) return { html: '<p class="dim">請先開啟 ' + esc(db) + '.adb（同一個瀏覽器工作階段）。</p>', title: label || db };
   const va = await anchorVa(r, anchor);
@@ -2093,15 +2093,23 @@ export async function renderEmbed(db: string, anchor: string, quote = '', range 
     // sub="1"＝整棵子樹（到下一個同層或更淺節點為止，ybh 回函 §4）；max 覆寫行數上限。
     const vaEnd = opts?.sub ? await nodeSubtreeEnd(r, node.va) : node.vaEnd;
     const maxLines = opts?.max && opts.max > 0 ? opts.max : opts?.sub ? 200 : 60;
-    const raw = await nodeSpanText(r, node.va, vaEnd, maxLines);
-    const body = embedNodeBody(raw);
+    const chunk = await nodeSpanChunk(r, node.va, vaEnd, opts?.from ?? null, maxLines);
+    const body = embedNodeBody(chunk.text);
+    // R6：子樹比 maxLines 長 → 附「繼續展開」鈕（帶 db/anchor/sub/max/next 行）。
+    const more = chunk.next != null
+      ? '<button type="button" class="embedMore" data-embed="' + esc(db + '?' + anchor) + '"'
+        + ' data-label="' + esc(label) + '"' + (opts?.sub ? ' data-sub="1"' : '')
+        + ' data-max="' + maxLines + '" data-from="' + chunk.next + '"'
+        + ' title="還有更多，展開下一 ' + maxLines + ' 行">⋯ 繼續展開（尚有後續）</button>'
+      : '';
+    if (opts?.from != null) return { html: body + more, title: '' };   // 續段：只回片段
     const head = label || [node.ns, node.tag].filter(Boolean).join(' · ') || anchor;
-    if (bare) return { html: '<div class="embedText reflow">' + body + '</div>', title: head };
+    if (bare) return { html: '<div class="embedText reflow">' + body + more + '</div>', title: head };
     return {
       html: '<div class="embedDoc">'
         + '<div class="embedHead"><span class="embedSrc">' + esc(head) + '</span>'
         + '<span class="embedPage">' + esc(anchor) + '</span></div>'
-        + '<div class="embedText reflow">' + body + '</div>'
+        + '<div class="embedText reflow">' + body + more + '</div>'
         + '</div>',
       title: head,
     };

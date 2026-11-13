@@ -324,16 +324,26 @@ export async function nodeSubtreeEnd(r: AdbReader, va: number): Promise<number |
   return null;
 }
 
-/** 節點範圍的原始文字（含標籤；給 `<嵌>` 用）。從節點 VA 的行讀到 vaEnd 前一行。 */
-export async function nodeSpanText(r: AdbReader, va: number, vaEnd: number | null, maxLines = 60): Promise<string> {
+/**
+ * 節點範圍文字（R6 可分段）：`fromLine=null` 從節點行起;回 `text` ＋ `next`
+ * （還有哪些行未取：下一段起始行，取完為 null）。
+ */
+export async function nodeSpanChunk(
+  r: AdbReader, va: number, vaEnd: number | null, fromLine: number | null, maxLines: number,
+): Promise<{ text: string; next: number | null }> {
   const mp = await mapperOf(r);
   const total = r.header.lineCount;
-  const start = mp.edgeLine(va);
-  let end = vaEnd != null ? mp.edgeLine(Math.max(va, vaEnd - 1)) : Math.min(total - 1, start + maxLines - 1);
-  end = Math.min(end, start + maxLines - 1, total - 1);
+  const start = fromLine != null ? fromLine : mp.edgeLine(va);
+  const fullEnd = vaEnd != null ? mp.edgeLine(Math.max(va, vaEnd - 1)) : total - 1;
+  const end = Math.min(start + maxLines - 1, fullEnd, total - 1);
   const out: string[] = [];
   for (let L = start; L <= end; L++) out.push(await mp.lineText(L));
-  return out.join('\n');
+  return { text: out.join('\n'), next: end < fullEnd ? end + 1 : null };
+}
+
+/** 節點範圍的原始文字（含標籤；給 `<嵌>` 用）。從節點 VA 的行讀到 vaEnd 前一行（單段，向後相容）。 */
+export async function nodeSpanText(r: AdbReader, va: number, vaEnd: number | null, maxLines = 60): Promise<string> {
+  return (await nodeSpanChunk(r, va, vaEnd, null, maxLines)).text;
 }
 
 /**

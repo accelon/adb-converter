@@ -14,6 +14,9 @@ let items: RevItem[] = [];
 let fixedItems: RevItem[] | null = null;
 let inited = false;
 let loading = false;
+// R7：抽屜一次全渲染 3.5 萬會卡 → 分頁，每頁 PAGE 筆、可「載入更多」。熱圖不受影響。
+const PAGE = 300;
+let limit = PAGE;
 
 const $id = <T extends HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -44,14 +47,18 @@ function paint(): void {
   const shown = q
     ? items.filter((it) => (it.full + ' ' + it.pageId + ' ' + (it.quote || '') + ' ' + (it.cite || '')).includes(q))
     : items;
+  const view = shown.slice(0, limit);
   let last = '';
   const rows: string[] = [];
-  for (const it of shown) {
+  for (const it of view) {
     if (it.full !== last) {
       rows.push('<div class="revListGroup">' + esc(it.full) + '</div>');
       last = it.full;
     }
     rows.push(revRowHtml(it));
+  }
+  if (shown.length > limit) {
+    rows.push('<button type="button" class="revMore">⋯ 載入更多（已 ' + view.length + '／共 ' + shown.length + ' 筆）</button>');
   }
   body.innerHTML = rows.join('') || '<p class="dim">沒有符合的反鏈。</p>';
   document.querySelectorAll<HTMLElement>('#revList [data-revsort]').forEach((b) => b.classList.toggle('active', b.dataset.revsort === mode));
@@ -59,6 +66,7 @@ function paint(): void {
 
 async function load(): Promise<void> {
   if (loading) return;
+  limit = PAGE;                                  // R7：每次載入從第一頁起
   if (fixedItems) { items = sortRevItems(fixedItems, mode); paint(); return; }
   if (!hostDb || !pageId) return;
   loading = true;
@@ -97,6 +105,7 @@ export function openRevListItems(title: string, list: RevItem[]): void {
   if (box) box.hidden = false;
   const input = $id<HTMLInputElement>('revListFilter');
   if (input) input.value = '';
+  limit = PAGE;
   paint();
 }
 
@@ -112,7 +121,7 @@ export function initRevList(): void {
   $id('revList')?.addEventListener('click', (ev) => {
     if (ev.target === ev.currentTarget) closeRevList();
   });
-  $id<HTMLInputElement>('revListFilter')?.addEventListener('input', paint);
+  $id<HTMLInputElement>('revListFilter')?.addEventListener('input', () => { limit = PAGE; paint(); });
   document.querySelectorAll<HTMLElement>('#revList [data-revsort]').forEach((b) => {
     b.addEventListener('click', () => {
       mode = (b.dataset.revsort as RevSort) || 'freq';
@@ -125,6 +134,7 @@ export function initRevList(): void {
   });
   // 點一列後，讓 xref 的 data-rrev 委派去導航，再把抽屜收起
   $id('revListBody')?.addEventListener('click', (ev) => {
+    if ((ev.target as Element | null)?.closest?.('.revMore')) { limit += PAGE; paint(); return; }  // R7 載入更多
     if ((ev.target as Element | null)?.closest?.('[data-rrev]')) setTimeout(closeRevList, 50);
   });
   window.addEventListener('keydown', (ev) => {

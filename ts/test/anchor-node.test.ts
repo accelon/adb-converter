@@ -18,7 +18,7 @@
 import { existsSync } from 'node:fs';
 import { AdbReader, SyncIO } from '../src/accelon26/adb';
 import { VaPaMapper } from '../src/accelon26/vapa';
-import { anchorVa, nodeAnchorInfo, nodeSpanText, nodeSubtreeEnd, pageHanTextOf } from '../src/accelon26/page-text';
+import { anchorVa, nodeAnchorInfo, nodeSpanChunk, nodeSpanText, nodeSubtreeEnd, pageHanTextOf } from '../src/accelon26/page-text';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
@@ -235,6 +235,25 @@ else {
   const va = await anchorVa(r, 'rv.1.2.1');
   ok('塊.段 rv.1.2.1 仍可解析', va != null, String(va));
   ok('塊.段不存在的段回 null', (await anchorVa(r, 'rv.1.2.9999')) == null);
+}
+
+// ── R6：節點 span 分塊取（截斷→「繼續展開」的資料層） ──────────
+if (existsSync(FIXTURE)) {
+  console.log('\n=== R6 分塊取：' + FIXTURE + ' ===');
+  const r = await open(FIXTURE);
+  const n = await nodeAnchorInfo(r, 'T1579-1#kpD01-001');
+  if (n) {
+    const end = await nodeSubtreeEnd(r, n.va);
+    const c1 = await nodeSpanChunk(r, n.va, end, null, 2);
+    ok('R6：max=2 有 next（子樹超長→可繼續展開）', c1.next != null, 'next=' + c1.next);
+    if (c1.next != null) {
+      const c2 = await nodeSpanChunk(r, n.va, end, c1.next, 2);
+      ok('R6：第二塊非空、不重複第一塊', c2.text.length > 0 && c2.text !== c1.text, c2.text.length + '字');
+    }
+    const whole = await nodeSpanChunk(r, n.va, end, null, 100000);
+    ok('R6：取滿 next=null', whole.next == null);
+    ok('R6：分塊拼回＝整段（第一塊為整段前綴）', whole.text.startsWith(c1.text), 'len=' + whole.text.length);
+  } else ok('R6：anchor T1579-1#kpD01-001 可解析', false);
 }
 
 console.log(`\n${pass} passed, ${fail} failed, ${skip} skipped`);
