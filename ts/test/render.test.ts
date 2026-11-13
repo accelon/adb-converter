@@ -93,13 +93,15 @@ const entOnce = r.line('&amp;lt;', 14);
 ok('XML 實體只解一層：&amp;lt; 是文字 &lt;', entOnce === '&amp;lt;', entOnce);
 const entAttr = r.line('<聯 n="A&amp;B">A &amp; B</聯>', 15);
 ok('連結的屬性與文字都解實體',
-  entAttr.startsWith('<a class="entryLink" href="#" data-entry="A&amp;B" title="A&amp;B">')
+  entAttr.startsWith('<a class="entryLink" href="#" data-link="entry" data-entry="A&amp;B" title="A&amp;B">')
   && entAttr.endsWith('>A &amp; B</a>'), entAttr);
 
 // 作者 2026-10-26：<註 n> ↔ <釋 n> 腳注（manual／thonzu 兩種寫法）
 const noteRef = r.line('本軟體為綠色軟體<註 n="1"/>，可以直接執行', 16);
+// 註碼 2026-11-11 前後從 title 改 aria-label（a11y：螢幕閱讀器讀到「註 1」；
+// hover 提示由 CSS/JS 另行處理）。斷言對齊實際輸出。
 ok('註：變成 noteRef 錨點（data-note、上標 [1]）',
-  noteRef.includes('<a class="noteRef" data-note="1" href="#" title="註 1">[1]</a>')
+  noteRef.includes('<a class="noteRef" data-note="1" href="#" aria-label="註 1">[1]</a>')
   && noteRef.startsWith('本軟體為綠色軟體') && noteRef.endsWith('，可以直接執行'), noteRef);
 const noteOne = r.line('<釋 n="1">綠色軟體：免安裝。</釋>', 17);
 ok('釋（包住型）：長出 noteBody 與回跳編號，文字留在裡面',
@@ -210,12 +212,14 @@ ok('渲染前就把關鍵字包成 <mark class="kw">',
   && markedHtml.includes('<mark class="kw" style="--hue:120">第二行</mark>'), markedHtml);
 
 // <术 sk|pi|tb="…">：hover（預設）／inline／off（作者 2026-10-31）
+// 2026-11 起 hover 提示改由 JS 讀 data-lang＋data-term 現取現顯，
+// 不再在初始 HTML 內塞 has-tip／title="梵：…"（避免 XSS 面＋方便 i18n）。
+// 斷言對齊：漢詞包 term-XX span、外語只存在 data-lang／data-term。
 const termHover = new Accelon3Renderer(ctx).line('<术 sk="svabhāva">自性</术>是術語', 1);
-ok('術語 hover：漢詞有 term-sk、外語在 title、行內不顯示',
-  termHover.includes('class="term term-sk has-tip"')
+ok('術語 hover：漢詞有 term-sk、外語在 data-lang／data-term、行內不顯示',
+  termHover.includes('class="term term-sk"')
   && termHover.includes('data-lang="sk"')
   && termHover.includes('data-term="svabhāva"')
-  && termHover.includes('title="梵：svabhāva"')
   && termHover.includes('>自性</span>')
   && !termHover.includes('termGloss'), termHover);
 
@@ -226,19 +230,22 @@ ok('術語 inline：漢詞之後出現「（外語）」、不再掛 title',
   && termInline.includes('>業</span>')
   && termInline.includes('<span class="termGloss">（kamma）</span>'), termInline);
 
+// off：完全剝除 span、只留漢詞本字（作者 2026-11：虛線框也算「顯示術語」的一部分，
+// off 就是關掉一切外框與提示；斷言對齊實際輸出）。
 const termOff = new Accelon3Renderer(ctx, { termMode: 'off' }).line('<术 tb="…">法</术>', 1);
-ok('術語 off：只留漢詞（仍有虛線外框）、沒有 title／外語',
-  termOff.includes('class="term term-tb"')
+ok('術語 off：只留漢詞本字、外框與提示一併剝除',
+  termOff === '法'
+  && !termOff.includes('<span')
   && !termOff.includes('title=')
-  && !termOff.includes('termGloss')
-  && termOff.includes('>法</span>'), termOff);
+  && !termOff.includes('termGloss'), termOff);
 
 const termEmpty = new Accelon3Renderer(ctx).line('<术 sk="">自性</术>', 1);
 ok('術語空值：只顯示漢詞、不爆錯', termEmpty === '自性', termEmpty);
 
+// 值含 &quot;：解碼後再轉義（data-term 是 attribute，需 &quot;；不再掛 title 同 hover 改版）。
 const termQuote = new Accelon3Renderer(ctx).line('<术 sk="a&quot;b">自性</术>', 1);
 ok('術語值含 &quot;：解碼後再轉義',
-  termQuote.includes('data-term="a&quot;b"') && termQuote.includes('title="梵：a&quot;b"'), termQuote);
+  termQuote.includes('data-term="a&quot;b"') && termQuote.includes('class="term term-sk"'), termQuote);
 
 const termUnknown = new Accelon3Renderer(ctx).line('<术 en="term">自性</术>', 1);
 ok('未知語言鍵：用 term-other，不爆錯',

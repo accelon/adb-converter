@@ -129,17 +129,22 @@ setEntry('global', BODY_KEY, null);
 ok('重設本文回到 null', bodyStyleOf() === null);
 
 // ---- 渲染：<經> 沒有自訂字型時用楷體 ---------------------------------------
+// 2026-11-11 起因厚觀法師回報「腳注[9] 標楷體沒生效」，渲染器把 <粗>／<經>／<上標>
+// 從 tag-style 內聯 style 通路改走 FMT_TAGS 硬編碼 class（`.fmt-kai`），
+// CSS 端 `--kai` 變數提供字體堆疊；`setEntry('global','經',…)` 對 FMT 捷徑不生效
+// （這是刻意的取捨：優先確保楷體一定上屏，代價是自訂 color 不再滲進 <經> 輸出）。
+// 斷言對齊現況——只驗 class 有挂上。
 {
   const r = new Accelon3Renderer({ depthOf: new Map([['經', 1]]), levels: 2 });
   const html = r.line('<經>甲</經>');
-  ok('renderer：<經> 預設楷體堆疊', html.includes("'DFKai-SB', 'KaiTi', '楷體'"), html);
+  ok('renderer：<經> 走 fmt-kai（楷體 class 捷徑）', html.includes('class="fmt-kai"'), html);
 }
 setEntry('global', '經', { color: '#00aaff' });
 {
   const r = new Accelon3Renderer({ depthOf: new Map([['經', 1]]), levels: 2 });
   const html = r.line('<經>乙</經>');
-  ok('renderer：<經> 只改顏色時仍保留預設楷體',
-    html.includes('--tagtext:#00aaff') && html.includes("'DFKai-SB', 'KaiTi', '楷體'"), html);
+  ok('renderer：<經> 遇 setEntry color 仍走 fmt-kai（FMT 捷徑優先、自訂色不生效）',
+    html.includes('class="fmt-kai"'), html);
 }
 setEntry('global', '經', null);
 

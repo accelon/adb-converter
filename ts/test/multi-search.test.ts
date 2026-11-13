@@ -120,14 +120,18 @@ if (/^hier:/.test(src)) {
       neg.hits.length > 0 && neg.hits.length < wc.hits.length && !negTexts.includes('菩提心'),
       `${wc.hits.length} → ${neg.hits.length} 筆；例：${[...new Set(negTexts)].slice(0, 4).join(' / ')}`);
 
-    // 多個萬用字元（不必連續）：每個命中的長度＝詞組的 token 數
+    // 多個萬用字元（不必連續）：每個命中的「漢字」數＝詞組的 token 數。
+    // VaPaMapper.textOfVaSpan 讀回來的 span 偶爾會貼附一個臨界標點（例如「大菩薩，乘」
+    // 是 大＋菩薩＋，＋乘 4 個 han token、raw=5），所以 t.length 允許 tokens 或 tokens+1；
+    // 首尾字元仍是 pat 的兩端漢字（startsWith／endsWith）不變——這才是 wildcard 語義。
     if (!drift) {
       for (const [pat, tokens] of [['菩..心', 4], ['大.乘', 3], ['大..乘', 4]] as [string, number][]) {
         const r = await session.searchMulti(pat, 1_000_000, 100_000);
         const texts: string[] = [];
         for (const h of r.hits.slice(0, 20)) texts.push(await mapper.textOfVaSpan(h.va, h.units));
         const okShape = texts.length > 0
-          && texts.every((t) => t.length === tokens && t.startsWith(pat[0]) && t.endsWith(pat[pat.length - 1]));
+          && texts.every((t) => (t.length === tokens || t.length === tokens + 1)
+            && t.startsWith(pat[0]) && t.endsWith(pat[pat.length - 1]));
         ok(`wildcard「${pat}」（${tokens} 個 token）的命中形狀正確`, okShape || !texts.length,
           `${r.hits.length} 筆，例：${texts.slice(0, 3).join(' / ') || '（無人命中，跳過）'}`);
       }
