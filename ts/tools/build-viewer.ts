@@ -18,7 +18,13 @@ import { dirname, resolve } from 'node:path';
 import { buildSingleFileHtml } from './page-build';
 
 const args = process.argv.slice(2);
-const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
+// 接受 `--o 值` 或 `-o 值`（fuyan 2026-11-13 回報：舊實作只認 `--o`，
+// 照表頭 `-o …` 敲會被忽略、靜默寫回預設路徑）。
+const opt = (n: string, d: string) => {
+  let i = args.indexOf('--' + n);
+  if (i < 0) i = args.indexOf('-' + n);
+  return i >= 0 && args[i + 1] && !args[i + 1].startsWith('-') ? args[i + 1] : d;
+};
 // 作者 2026-10-31（說了很多次）：viewer 一律寫到 D:/accelon3（本機部署位置），
 // 不是 repo 的 build/。要換位置用 -o 或 ACCELON3_DIR。
 const DEPLOY_DIR = process.env.ACCELON3_DIR || 'D:/accelon3';
