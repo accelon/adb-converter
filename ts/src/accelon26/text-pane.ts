@@ -206,9 +206,10 @@ export async function renderTextPane(): Promise<void> {
       if (prev) { prev.onclick = () => void moveForeignPage(-1); prev.setAttribute('aria-disabled', 'false'); }
       if (next) { next.onclick = () => void moveForeignPage(1); next.setAttribute('aria-disabled', 'false'); }
     }
-    // 有塗紅就把那一段捲到視窗中央（回印順時直接看到引註）
+    // 有塗紅就把該段捲到視窗**頂**（ybh 批次單 R4：跨庫 `#a-b` 頂齊，與同庫字級定位一致；
+    // 不足半頁時瀏覽器自然停在可捲上限）。
     const hit = body.querySelector('mark.xrefHit') as HTMLElement | null;
-    if (hit) hit.scrollIntoView({ block: 'center' });
+    if (hit) hit.scrollIntoView({ block: 'start' });
     else body.scrollTo(0, 0);
     // 跨庫分頁的詞級定位（`#N`／`#詞`）：anchor 保留完整 `#`，由 word-hl 解析。
     highlightWordIn(body, t.foreign.anchor);
