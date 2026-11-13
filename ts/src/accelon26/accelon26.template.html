@@ -22,6 +22,11 @@
   --gold: #ffd479; --gold-2: #fff3c4;
   --hl-bg: #2b3b4d; --row-hover: #262626;
   --ink-on-accent: #08243f; --link: #7cc0ff;
+  /* 圖上的注號（厚觀法師 2026-11-13：「我瀏覽器用黑底，藍色的腳注看不見」）：
+     暗色系整張圖版會過 `invert(1) hue-rotate(180deg)`，這裡給的是**反轉前**的顏色。
+     #402000 反轉後在螢幕上是淡琥珀 #f6d6b6（黑底對比 15，原本的藍是 2.7）。
+     淺色主題不反轉，直接跟著 --gold 走。 */
+  --note-mark: #402000;
   --mark-fg: #fff3d6; --hint-blue: #9fb6cd;
   --popup-bg: #31353f; --popup-fg: #f2f2f2;
   --border-soft: #2a2a2a; --code-bg: #1b1b1b;
@@ -82,7 +87,7 @@
     --fg: #1f2328; --dim: #6a7280; --accent: #1f6feb; --warn: #b45309; --err: #c0392b; --pageMark: #a15d00;
     --fg-strong: #000000;
     --fg-muted: #3c444d;
-    --gold: #8a5a00; --gold-2: #7a4a00;
+    --gold: #8a5a00; --gold-2: #7a4a00; --note-mark: var(--gold);
     --hl-bg: #dbe9ff; --row-hover: #eef1f5;
     --ink-on-accent: #ffffff; --link: #1f6feb;
     --mark-fg: #fff3d6; --hint-blue: #5b6b80;
@@ -108,7 +113,7 @@
     --fg: #2c3a2a; --dim: #5d6c55; --accent: #3f7d4e; --warn: #8a6d1f; --err: #b0413e; --pageMark: #6f5a12;
     --fg-strong: #131d12;
     --fg-muted: #45523f;
-    --gold: #6d5a12; --gold-2: #5c4a0c;
+    --gold: #6d5a12; --gold-2: #5c4a0c; --note-mark: var(--gold);
     --hl-bg: #cfe3c2; --row-hover: #dfe9d5;
     --ink-on-accent: #ffffff; --link: #2f6b3e;
     --mark-fg: #fff8e6; --hint-blue: #64745c;
@@ -135,7 +140,7 @@
     --fg: #3a2d1b; --dim: #7d6a47; --accent: #a8691f; --warn: #8a5a12; --err: #a53f2a; --pageMark: #8a5a12;
     --fg-strong: #211708;
     --fg-muted: #57482f;
-    --gold: #7a4f0e; --gold-2: #6a4208;
+    --gold: #7a4f0e; --gold-2: #6a4208; --note-mark: var(--gold);
     --hl-bg: #ecd5a6; --row-hover: #eee0c4;
     --ink-on-accent: #ffffff; --link: #8a5a12;
     --mark-fg: #fff7e4; --hint-blue: #7d6a47;
@@ -1448,6 +1453,17 @@
   .inlineSvg a.noteRef { cursor: pointer; }
   .inlineSvg a.noteRef:hover text { fill: var(--accent); }
   .inlineSvg a.noteRef.noteTargetMark text { fill: var(--accent); font-weight: 700; }
+  /* 圖版上的注號自己一個顏色（厚觀法師 2026-11-13：「我瀏覽器用黑底，藍色的腳注看不見」）。
+     為什麼會變藍：圖版同時帶 `inlineSvg` 與 `figureSvg` 兩個類，吃到 `svg.inlineSvg` 的
+     `fill: currentColor`，而 `.lineText .noteRef` 又把 <a> 的 color 設成 --link（淺藍 #7cc0ff）；
+     暗色系整張圖再過 `invert(1) hue-rotate(180deg)`，淺藍就變成深藍 #0f5392，貼在黑底上幾乎看不到。
+     現在注號走 --note-mark：暗色系給反轉前的深棕（螢幕上是淡琥珀），淺色主題直接給 --gold。
+     hover／閃示也不再換成 --accent（那在暗色系同樣會被反轉成深藍），改成加底線。 */
+  .lineText svg.figureSvg a.noteRef text { fill: var(--note-mark); }
+  .lineText svg.figureSvg a.noteRef:hover text { fill: var(--note-mark); text-decoration: underline; }
+  .lineText svg.figureSvg a.noteRef.noteTargetMark text {
+    fill: var(--note-mark); text-decoration: underline; font-weight: 700;
+  }
   /* <引>：CBETA 的引文，用楷體（2026-10-30）；字級略大 1.02em，楷體看起來才不會偏小 */
   .lineText .quote { font-family: var(--kai); font-size: 1.02em; }
   /* 「線條字元排的圖表」（厚觀法師 2026-11-12 82 頁「文字編排不整齊」）：

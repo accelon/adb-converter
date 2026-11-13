@@ -56,6 +56,13 @@
 
 ## 紀錄
 
+### 2026-11-13
+
+| adb | sha256（前 12） | 大小 | buildTime（UTC） | 工作區 | 說明 |
+|---|---|---|---|---|---|
+| `accelon26.exe`（app，非 adb） | `b8f6dca0becf` | 19,387,904 | 2026-11-13T03:50:39Z | 本區 | **圖版上的注號改用琥珀色**（厚觀法師 11-13：「我瀏覽器用黑底，藍色的腳注看不見」）。成因：`svg.figureSvg` 同時帶 `inlineSvg` 類 → 繼承 `fill: currentColor`，而 `.lineText .noteRef` 給 `<a>` 設了 `color: var(--link)`＝#7cc0ff；暗色系整張圖又過 `invert(1) hue-rotate(180deg)`，淺藍反轉成深藍 #0f5392，黑底對比只有 2.67。新增 `--note-mark`：暗色系給反轉前的深棕 `#402000`（螢幕上是淡琥珀 #f6d6b6、對比 15.2），三個淺色主題給 `var(--gold)`；hover／閃示不再換成 `--accent`（同樣會被反轉），改成加底線。`ts/src/accelon26/accelon26.template.html`。已發兩站（`versions.json` build `03:50:39Z`、exe sha256 兩站核過）。 |
+| `accelon26.exe`（app，非 adb） | `a702fa4dac1c` | 19,386,368 | 2026-11-13T02:55:07Z | 本區 | **移除內嵌字形庫 → exe 減量 2.32 MiB**（21,717,504→19,386,368；上一版含字形庫 sha `4ea1c745018a`）。<br>來源：11-06「罕用字改用 pinxing 畫成 SVG」（`b10422c`）把 `wails/assets/pinxing.bin.gz`（2,327,989 B、已 gzip）經 `//go:embed all:assets` 打進 exe，11/08 起下載 zip 8.77→11.03 MiB。<br>目前用不到，先移除：`pinxing.bin.gz` 已送資源桶（可還原）；`build-desktop.ts` 不會再生，要回來跑 `ts/tools/vendor-pinxing.ts`（源 `lib/lib-cjk-all.bin.gz`）。<br>`glyph.ts loadGlyphLib()` 抓不到 asset 即回 null，字形功能自動關閉、不 crash。<br>同批 exe 已含「已存輸入」＋通用節點錨點（含卷級 `W-V#值`）＋`<節聯>`／`<嵌 sub>`。**未發佈**：只本地重建 `D:\accelon3\accelon26.exe`，`versions.json`／www／官網未動；開著的 exe 先以備援名交付、關檔後才覆蓋正式名。 |
+
 ### 2026-11-12
 
 | adb | sha256（前 12） | 大小 | buildTime（UTC） | 工作區 | 說明 |
