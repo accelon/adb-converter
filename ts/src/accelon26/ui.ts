@@ -19,6 +19,7 @@ import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, r
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, repaintSummary, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 import { backendKind, goQueryCount, lastGoAnswer } from './backend';
 import { list as listSaved, add as addSaved, remove as removeSaved, clear as clearSaved, isPosition } from './saved-inputs';
+import { fusionViewEnabled, setFusionView, hasFusionTag, initFusion, disposeFusion } from './fusion-view';
 import { isDictDb } from './db-kind';
 import { BOOK_CATALOG, WORK_CATALOG, bookById, findBooks, resolveBook, findWorks, resolveWork, workById, worksOfBook } from './book-catalog';
 import { resolveDocCtx } from './doc-ctx';
@@ -2383,6 +2384,25 @@ function boot() {
   initTextPane();   // Ctrl+點樹節點／本文分頁 → 右欄文字內容
   initXref();       // <聯 i="db?anchor"> 跨庫錨點（本文 ⇄ 右欄）
   initEmbed();      // <嵌 i="db?anchor"> 文內嵌入（transclusion）
+  // 融視圖（R1 V6–V10）：boot 裝 observer，本文每次重畫自動補填；開關依本庫 <融> 數顯隱。
+  initFusion($('#docText') as HTMLElement | null);
+  {
+    const box = $('#fusionOn') as HTMLInputElement | null;
+    const wrap = $('#fusionWrap') as HTMLElement | null;
+    if (box) {
+      box.checked = fusionViewEnabled();
+      box.onchange = () => {
+        setFusionView(box.checked);
+        disposeFusion();
+        void rerenderDoc();                                        // 重畫本文（ON→殼 / OFF→透明）
+        initFusion($('#docText') as HTMLElement | null);
+      };
+    }
+    const syncFusionToggle = (): void => { if (wrap) wrap.hidden = !hasFusionTag(reader); };
+    syncFusionToggle();
+    const dtree = $('#dirTree');
+    if (dtree && wrap) new MutationObserver(syncFusionToggle).observe(dtree, { childList: true, subtree: true });  // 換庫→重估顯隱
+  }
   initHeatTab();    // 右欄「引紋」：反鏈的引用分布熱圖
   initMap();        // 左欄「對照」：高麗藏 ⇄ 大正藏 位置換算（goryeo_taisho.adb）
   initRevList();    // 反鏈清單抽屜

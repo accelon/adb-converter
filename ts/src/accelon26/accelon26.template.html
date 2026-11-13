@@ -1733,6 +1733,11 @@
   .cheatCard .ccItem > .ccDel { background: transparent; border: 0; color: var(--dim); padding: 0 6px; }
   .cheatCard .ccItem > .ccDel:hover { color: var(--err); }
   .cheatCard .ccFoot { flex-wrap: wrap; }
+  /* 融視圖（R1 V6）：整段重排的色帶，有別於速覽摺疊的 .embedDoc */
+  .fusionToggle { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--dim); margin: 0 0 6px; cursor: pointer; }
+  .fusionBlock { display: block; border-left: 3px solid var(--accent); background: var(--panel2); padding: 2px 8px; margin: 2px 0; border-radius: 0 5px 5px 0; }
+  .fusionSrc { display: block; font-size: 11px; color: var(--dim); }
+  .fusionBody .fusionLine { display: block; }
   .searchBar button {
     background: var(--panel); color: var(--fg); border: 1px solid var(--line);
     border-radius: 5px; cursor: pointer; font: inherit; padding: 0 10px;
@@ -2402,6 +2407,8 @@
         <div id="dirMeta" class="note"></div>
         <!-- 同一個庫宣告了兩棵 s="*" 樹（taisho：經目／分卷）時才出現 -->
         <div class="note" id="dirPickWrap" hidden><select id="dirPick" class="modeSel" title="這個庫宣告了多棵目錄樹"></select></div>
+        <!-- 融視圖開關（R1 V6）：本庫無 <融> 時 initFusion/ui 會把 #fusionWrap 設 hidden -->
+        <label id="fusionWrap" class="fusionToggle" hidden title="把 <融> 佔位以目標科文子樹重排顯示（本庫無可融合節點時不出現）"><input type="checkbox" id="fusionOn"> 以科文融合顯示</label>
         <div id="dirTree" class="scrollArea"><p class="dim">尚未開啟資料庫。</p></div>
       </div>
       <!-- 書籤（2026-10-28）：所有 adb 都有；存在這個瀏覽器 -->

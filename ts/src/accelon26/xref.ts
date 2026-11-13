@@ -234,7 +234,7 @@ function esc(s: string): string {
 }
 
 /** 一行 adb 文字（含標記）→ HTML；<聯> 變成可點的錨點，其餘標記去掉 */
-function lineHtml(s: string, markFrom = -1, markTo = -1): string {
+export function lineHtml(s: string, markFrom = -1, markTo = -1): string {
   s = s.replace(/^[^<>]*\/>/, ''); // 行首可能是上一個標籤的殘尾
   let out = '';
   let i = 0;

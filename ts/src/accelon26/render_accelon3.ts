@@ -856,9 +856,23 @@ export class Accelon3Renderer {
         this.sawHeading = true;
         continue;
       }
-      // `<融 i="db?page" j="0-N">經文…</融>`：透明容器，內容就是正文；
-      // 指針留在屬性裡，建置時可重新從母 adb 抽文。
-      if (name === '融' || name === '_融') continue;
+      // `<融 i="db?anchor">經文…</融>`：
+      //  OFF（預設）＝透明容器、內容即正文（taisho 舊用法、零影響）。
+      //  ON＝輸出 .fusionBlock 殼（data-i/n/max 留給 fusion-view.ts 非同步填 span），
+      //       殼內原佔位文字保留=回退，取不到就原樣顯示（絕不空白）。flag 直接讀
+      //       localStorage，不 import fusion-view，避免 render_accelon3↔xref import 循環。
+      if (name === '融' || name === '_融') {
+        let fusionOn = false;
+        try { fusionOn = localStorage.getItem('accelon26.fusionView') === '1'; } catch { fusionOn = false; }
+        if (!fusionOn) continue;
+        if (!closing) {
+          const fi = attrValue(attrs, 'i'), fn = attrValue(attrs, 'n') || '', fmx = attrValue(attrs, 'max');
+          html += '<span class="fusionBlock"' + (fi ? ` data-i="${esc(fi)}"` : '') + ` data-n="${esc(fn)}"`
+            + (fmx && /^[0-9]+$/.test(fmx) ? ` data-max="${esc(fmx)}"` : '') + '>';
+          this.sawText = true;
+        } else html += '</span>';
+        continue;
+      }
       // `<嵌始 i="db?page" j="12-34"/>`：段落起點零寬標記，展開時用它亮起正文。
       if (name === '嵌始' || name === '_嵌始') {
         const eid = attrValue(attrs, 'e');
