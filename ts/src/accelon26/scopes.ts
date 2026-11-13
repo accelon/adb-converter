@@ -66,6 +66,8 @@ interface DirTree {
   /** child VA -> parent VA, for lighting the ancestors of the scroll cursor */
   parentOf: Map<number, number>;
   loaded: boolean;
+  /** R5 惰性建：佔位槽「正在建」旗標，避免連點重入（roots 仍空時用） */
+  builting?: boolean;
   /** 這棵樹是哪一個庫建的（dbname）；換庫後絕不能拿上一庫的樹來畫（2026-11-06） */
   db: string;
 }
@@ -221,77 +223,15 @@ async function loadDirectoryTrees() {
     dirLoading = false;
     return;
   }
-  for (const t of wanted) {
-    if (!t.tiers.length) continue;
-    // The indexer may have stored the tier-1 names as a string table (`caches/書`
-    // for fgdict: 7 entries in instance order). When the table lines up with the
-    // instances exactly, use it — it is the same text nodeLabel hunts for, but one
-    // container parse instead of a source walk per node.
-    const firstTag = t.tiers[0] ?? '';
-    const firstVas = firstTag ? await tagVas(firstTag) : [];
-    const firstNames = firstTag ? await reader.cachedStrings(firstTag) : [];
-    const namesOk = firstNames.length > 0 && firstNames.length === firstVas.length;
-    const tLoad = performance.now();
-    const instances = await loadTree(reader, t, {
-      // Only the ENTRY tier is labelled here: yinshun's deeper tiers are ~20,000
-      // labels ≈ 2.7 s, and nobody sees them until a node is expanded. The renderer
-      // resolves a row's label when it draws it (and fills `d.labels` for the row).
-      entryLabelsOnly: true,
-      label: async (va, vaEnd, _attrs, tag) => {
-        if (namesOk) {
-          const i = lowerBound(firstVas, va);
-          if (firstVas[i] === va && firstNames[i]) return firstNames[i];
-        }
-        return labelFor(tag, va, vaEnd);
-      },
-    });
-    phase.load += performance.now() - tLoad;
-    phase.instances += instances.length;
-    if (gen !== scopesGen) { dirLoading = false; return; }   // 建到一半換庫了：丟掉
-    if (!instances.length) continue;
-    const tBuild = performance.now();
-    const roots = buildTree(instances);
-    // loadTree stops labelling after MAX_LABEL_NODES (fgdict has 29,614 instances,
-    // so its last two books lost their names). The cached string table is free, so
-    // fill the first-tier labels again from it.
-    if (namesOk) {
-      for (const node of iterNodes(roots)) {
-        if (node.tag !== firstTag) continue;
-        const i = lowerBound(firstVas, node.va);
-        if (firstVas[i] === node.va && firstNames[i]) node.label = firstNames[i];
-      }
-    }
-    // 更深層的名字：breadcrumb 與「同層」選單會用到**還沒畫到**的節點，空名字
-    // 會顯示成 `#136`（論語的 570 個「字」就是這樣）。`caches/<tag>` 是索引器
-    // 已經存好的字串表，一次容器解析就能補滿；沒有表（名稱要回讀內文）就跳過，
-    // 免得為了沒人看到的節點去解 source。上限 5000 筆，大庫不受影響。
-    await fillCachedLabels(roots);
-    // 2026-10-28：標籤階層救不回「甲、乙、丙、丁」時，按標題序重掛；
-    // 先把 章/節/項 的空標籤補齊（例如勝鬘經講記的乙一、丙一）。
-    try {
-      await resolveSemanticLabels(roots);
-      repairSemanticTree(roots);
-    } catch (e) {
-      console.warn('semantic tree repair failed', e);
-    }
-    // share the labels with the search grouping, so a book has one name
-    const byTag = new Map<string, string[]>();
-    for (const node of iterNodes(roots)) {
-      const list = byTag.get(node.tag) ?? [];
-      list.push(node.label || `#${node.index}`);
-      byTag.set(node.tag, list);
-    }
-    for (const [tag, labels] of byTag) mapper.treeLabels.set(tag, labels);
-    const parentOf = new Map<number, number>();
-    for (const n of iterNodes(roots)) for (const c of n.children) parentOf.set(c.va, n.va);
-    phase.build += performance.now() - tBuild;
-    if (gen !== scopesGen) { dirLoading = false; return; }   // 換庫了：這一棵也不要了
-    dirTrees.push({
-      tree: t, roots, nodes: countNodes(roots),
-      labels: new Map<number, string>(), open: new Set<number>(), loaded: false,
-      parentOf, db: reader?.header.dbname ?? '',
-    });
-  }
+  // R5（惰性建樹）：先為每棵 wanted 佔位一個 DirTree（roots 空、loaded=false），
+  // 於是 #dirPick 立刻列滿全部 s="*" 樹；只把「選中的第 0 棵」實際建好，
+  // 其餘等切到該棵時由 ensureDirTree(i) 惰性建（見 buildDirTreeSlot）。
+  dirTrees = wanted.map((t) => ({
+    tree: t, roots: [], nodes: 0, labels: new Map<number, string>(), open: new Set<number>(),
+    parentOf: new Map<number, number>(), loaded: false, db: reader?.header.dbname ?? '',
+  }));
+  dirActive = dirTrees.length ? 0 : -1;
+  await buildDirTreeSlot(0, phase);
   if (gen !== scopesGen) { dirLoading = false; return; }
   // Every entry built above IS a full-text (`s="*"`) tree: 頻次 and 西文 have their own
   // panes driven by their own scopes and never look at dirTrees.
@@ -312,6 +252,81 @@ async function loadDirectoryTrees() {
   phase.trees = performance.now() - tTree0;
   treePhases = phase;
   dirLoading = false;
+}
+
+/**
+ * R5：真正建 wanted[i] 這一棵，寫回 dirTrees[i] 佔位槽（roots 原本是空）。冪等：
+ * 已建（roots 非空）或正在建（builting）就直接返回。原本內嵌在 loadDirectoryTrees 的
+ * for 迴圈主體，抽出後「開庫建第 0 棵」與「切頁籤惰性建其餘」共用同一份。
+ */
+async function buildDirTreeSlot(i: number, phase: Record<string, number>): Promise<void> {
+  const slot = dirTrees[i];
+  if (!slot || slot.roots.length || slot.builting) return;
+  if (!slot.tree.tiers.length) return;
+  slot.builting = true;
+  const gen = scopesGen;
+  const t = slot.tree;
+  try {
+    const firstTag = t.tiers[0] ?? '';
+    const firstVas = firstTag ? await tagVas(firstTag) : [];
+    const firstNames = firstTag && reader ? await reader.cachedStrings(firstTag) : [];
+    const namesOk = firstNames.length > 0 && firstNames.length === firstVas.length;
+    const tLoad = performance.now();
+    const instances = await loadTree(reader!, t, {
+      entryLabelsOnly: true,
+      label: async (va, vaEnd, _attrs, tag) => {
+        if (namesOk) {
+          const k = lowerBound(firstVas, va);
+          if (firstVas[k] === va && firstNames[k]) return firstNames[k];
+        }
+        return labelFor(tag, va, vaEnd);
+      },
+    });
+    phase.load += performance.now() - tLoad;
+    phase.instances += instances.length;
+    if (gen !== scopesGen) return;                        // 建到一半換庫：丟掉
+    if (!instances.length) return;
+    const tBuild = performance.now();
+    const roots = buildTree(instances);
+    if (namesOk) {
+      for (const node of iterNodes(roots)) {
+        if (node.tag !== firstTag) continue;
+        const k = lowerBound(firstVas, node.va);
+        if (firstVas[k] === node.va && firstNames[k]) node.label = firstNames[k];
+      }
+    }
+    await fillCachedLabels(roots);
+    try {
+      await resolveSemanticLabels(roots);
+      repairSemanticTree(roots);
+    } catch (e) {
+      console.warn('semantic tree repair failed', e);
+    }
+    const byTag = new Map<string, string[]>();
+    for (const node of iterNodes(roots)) {
+      const list = byTag.get(node.tag) ?? [];
+      list.push(node.label || `#${node.index}`);
+      byTag.set(node.tag, list);
+    }
+    if (mapper) for (const [tag, labels] of byTag) mapper.treeLabels.set(tag, labels);
+    const parentOf = new Map<number, number>();
+    for (const n of iterNodes(roots)) for (const c of n.children) parentOf.set(c.va, n.va);
+    phase.build += performance.now() - tBuild;
+    if (gen !== scopesGen) return;                        // 換庫了：這一棵也不要
+    slot.roots = roots;
+    slot.nodes = countNodes(roots);
+    slot.parentOf = parentOf;
+    slot.loaded = false;
+  } finally {
+    slot.builting = false;
+  }
+}
+
+/** R5：惰性建某棵目錄樹（尚未建才建）。#dirPick 切樹、renderDirTree 之前調用。 */
+export async function ensureDirTree(i: number): Promise<void> {
+  const d = dirTrees[i];
+  if (!d || d.roots.length) return;
+  await buildDirTreeSlot(i, treePhases);
 }
 
 /**
@@ -482,10 +497,12 @@ function syncTreePickers(trees: SearchTree[]) {
 }
 
 /** 目錄 pane: switch to another `s="*"` tree of the same database（taisho 的 分卷） */
-export function selectDirTree(i: number) {
+export async function selectDirTree(i: number): Promise<void> {
   if (i < 0 || i >= dirTrees.length || i === dirActive) return;
-  dirActive = i;
+  await ensureDirTree(i);                                 // R5：佔位槽可能還沒建
+  if (i !== dirActive) dirActive = i;                     // ensure 期間可能已切過
   const d = dirTrees[i];
+  if (!d) return;
   setTierContext(computeTierContext(d.roots));
   dirOrder = [...iterNodes(d.roots)];
   void renderDirTree();
@@ -635,6 +652,7 @@ async function renderDirTree(): Promise<void> {
     if (head0) head0.textContent = '';
     return;
   }
+  await ensureDirTree(dirActive);                         // R5：佔位槽可能還沒建
   const d = dirTrees[dirActive];
   if (!d || !mapper) {
     if (reader && !dirLoading && !dirTrees.length) void loadDirectoryTrees();
