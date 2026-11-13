@@ -595,6 +595,10 @@ export async function loadTree(
       ? start.tiers.slice(0, start.terminalTier + 1)
       : [...start.tiers];
     const seen = new Set(frontier);
+    // R8（封閉詞彙）：鏈展開只認「本樹 t= 宣告的層級集合」。實例 t= 引用了
+    // 樹外標籤（如 `總目錄` 的 篇.t="章,科01…54"）一律忽略，不把它們拉進鏈 →
+    // 總目錄只載 篇,章、開庫即見；各頁籤詞彙互不串。taisho／13j 等無交叉引用＝no-op。
+    const allowed = new Set<string>(start.tiers);
     for (let level = 0; level < 12 && frontier.length; level++) {
       chain.push(...frontier);
       const next = new Set<string>();
@@ -603,6 +607,7 @@ export async function loadTree(
         for (let i = 0; i < va.length; i++) {
           const own = parseTiers(await tiersFor(tag, i));
           for (const t of own.tiers) {
+            if (!allowed.has(t)) continue;   // R8：樹外標籤不展開（封閉世界）
             // A declared tier that is already in the chain would make the tree
             // fold back on itself (yinshun declares 經/組/文/甲… which reappear
             // higher up), so such a declaration is ignored and the branch ends.
