@@ -1362,6 +1362,36 @@ function blockAt(
 
 const IMG_ONLY_RE = /^<(圖|嵌圖|圖片)(?=[\s/>])[^>]*\/>$/;
 
+/** 段首縮排的兩個全形空格（`<段/>` 的輸出） */
+const PARA_INDENT_HTML = '<span class="paraIndent">　　</span>';
+const TRAILING_INDENT_RE = /<span class="paraIndent">　　<\/span>$/;
+
+/**
+ * 行尾 `<段/>` 的縮排要挪到**下一塊**的開頭（陳裕文 2026-11-13：「請文章段落開頭空二格」）。
+ *
+ * `<段/>` 寫在行尾時（fuyan 有 7,192 個），渲染器照規矩把 `<br class="para">` 與縮排
+ * 放在本行末尾。可是本行常常是**標題塊**（`<目>…</目>　<聯>…</聯><段/>`），或本行之後
+ * 就結束了 —— 那兩個空格後面沒有字跟著，畫面上一點縮排都看不出來
+ * （38p35「《增支部》說到慈心的八功德」實測左緣與它的續行完全相同）。
+ *
+ * 這裡做一次後處理：把孤零零留在**塊尾**的縮排摘下來，掛到下一塊第一行的開頭。
+ * 塊內其他行不用管 —— 同一塊是連排，`<br class="para">` 之後接著就是下一行文字，
+ * 縮排本來就在正確位置。
+ */
+function shiftTrailingIndent(blocks: RenderBlock[]): void {
+  for (let i = 0; i < blocks.length - 1; i++) {
+    const a = blocks[i];
+    const last = a.lines[a.lines.length - 1];
+    if (!last || !TRAILING_INDENT_RE.test(last.html)) continue;
+    const next = blocks[i + 1];
+    const first = next.lines[0];
+    if (!first || (next.kind !== 'para' && next.kind !== 'line')) continue;
+    if (first.html.startsWith(PARA_INDENT_HTML)) continue;   // 下一行自己就是段首，不重複
+    last.html = last.html.replace(TRAILING_INDENT_RE, '');
+    first.html = PARA_INDENT_HTML + first.html;
+  }
+}
+
 /**
  * 表格前面「只有一張圖」的列：那是同一個表格的圖檔版本（作者 2026-11-06）。
  * 文字表都解析出來了，再把圖放在上面只是重複；純圖列才丟，夾著文字的一律不動。
@@ -1621,6 +1651,7 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
   // 表格已經把圖裡的文字轉出來了，緊接在前的「只有一張圖」那一列就是多餘的
   // （taixu：<表>圖說</表> → <圖/> → <圖文字>框線表）。只丟純圖列，不動別的。
   hoistImagesBeforeTables(out);
+  shiftTrailingIndent(out);
   return out;
 }
 

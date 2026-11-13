@@ -74,4 +74,31 @@ describe('<段> 的分段行為', () => {
     const blocks = renderPageBlocks(['<段 n="1"/>甲', '乙', '<段 n="2"/>丙'], [1, 2, 3], { hardBreaks: true }, ctx);
     expect(blocks.map((b) => b.kind)).toEqual(['line', 'line', 'line']);
   });
+
+  // 陳裕文 2026-11-13：「請文章段落開頭空二格，方便區分。」
+  // `<段/>` 寫在行尾時（fuyan 有 7,192 個），縮排在塊尾沒有字跟著 → 畫面上一點都看不到。
+  test('行尾 <段/>：縮排要落到下一塊的開頭，不能留在標題塊尾', () => {
+    const ctx3: RenderContext = { depthOf: new Map([['目', 3]]), levels: 5 };
+    const IND = '<span class="paraIndent">　　</span>';
+    const blocks = renderPageBlocks(
+      ['<目>（三）標題</目><段/>', '《增支部》說到慈心的八功德', '誦的。'],
+      [780, 781, 782],
+      { hardBreaks: false },
+      ctx3,
+    );
+    expect(blocks.map((b) => b.kind)).toEqual(['heading', 'para']);
+    expect(blocks[0].lines[0].html.includes('paraIndent')).toBe(false);
+    expect(blocks[1].lines[0].html.startsWith(IND)).toBe(true);
+    // 續行不能跟著縮
+    expect(blocks[1].lines[1].html.startsWith(IND)).toBe(false);
+  });
+
+  test('段內行尾 <段/>：下一行接在同一塊，不重複搬縮排', () => {
+    const IND = '<span class="paraIndent">　　</span>';
+    const blocks = renderPageBlocks(['甲句<段/>', '乙句'], [1, 2], { hardBreaks: false }, ctx);
+    expect(blocks.length).toBe(1);
+    // 同一塊是連排：<br> 之後接著就是下一行，縮排留在原處即可
+    expect(blocks[0].lines[0].html.endsWith(IND)).toBe(true);
+    expect(blocks[0].lines[1].html.startsWith(IND)).toBe(false);
+  });
 });
