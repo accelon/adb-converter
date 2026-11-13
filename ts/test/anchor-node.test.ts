@@ -18,13 +18,16 @@
 import { existsSync } from 'node:fs';
 import { AdbReader, SyncIO } from '../src/accelon26/adb';
 import { VaPaMapper } from '../src/accelon26/vapa';
-import { anchorVa, nodeAnchorInfo, nodeSpanText, nodeSubtreeEnd } from '../src/accelon26/page-text';
+import { anchorVa, nodeAnchorInfo, nodeSpanText, nodeSubtreeEnd, pageHanTextOf } from '../src/accelon26/page-text';
 
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
-const YBH = opt('ybh', 'D:/accelon3/ybh-v2.adb');
-const V3 = opt('v3', 'D:/accelon3/ybh-v3.adb');
-const V4 = opt('v4', 'D:/accelon3/ybh-v4.adb');
+// ybh／fuyan 錨點斷言改吃「固定 fixture」（作者備於 link-audit/fixtures），
+// 不再依賴會改版的 ybh.adb／fuyan.adb → 不會靜默 skip。
+const FIXTURE = opt('fixture', 'D:/2026/yogacarabhumi-dila/link-audit/fixtures/anchor-fixture.adb');
+const YBH = opt('ybh', FIXTURE);
+const V3 = opt('v3', FIXTURE);
+const V4 = opt('v4', FIXTURE);
 const TAISHO = opt('taisho', 'D:/accelon3/taisho.adb');
 const SA = opt('sa', 'D:/accelon3/sa.adb');
 
@@ -218,6 +221,10 @@ else {
   const r = await open(TAISHO);
   const va = await anchorVa(r, '30p328c');
   ok('頁 id 30p328c 仍可解析', va != null, String(va));
+  // R3（ybh 批次單）：j 口徑 pin —— pageHanTextOf 現行定義（頁標記→下一標記、isHan 計序）。
+  // 日後誰改頁切段／計序規則，這條先紅。ybh 實測值 38。
+  const han = await pageHanTextOf(r, '30p793a');
+  ok('j 口徑 pin：30p793a「復次嗢拕」索引＝38', han.indexOf('復次嗢拕') === 38, 'idx=' + han.indexOf('復次嗢拕'));
 }
 
 // ── 回歸：sa 塊.段 ──────────────────────────────────────────
