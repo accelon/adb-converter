@@ -19,7 +19,9 @@
 >   部署（使用者線上更新）；同一天 `release_notes.json` 只保留**一個**當天條目，原地改
 >   buildTime 與 items，標題寫 `accelon26 2026-10-27 RCn`。詳見 `DEPLOY.md` §2.3。
 > * **測試現況**：`go test ./...` 全綠、`tools/desktop-test.ts --gui --quick` **38/38**、
->   `test/render.test.ts` **22**、`test/tree.test.ts` **40**、`test/search.test.ts` **38**。
+>   `test/render.test.ts` **52**、`test/tree.test.ts` **40**、`test/search.test.ts` **38**。
+>   基線四條紅燈（multi-search／render／tag-style／tour）2026-11-13 全數轉綠、見 §29.4 定案
+>   ＋ `docs/system/TEST-DRIFT-POLICY.md`。
 > * **下次開工建議**：§13.8 的清單（換庫時分頁殘留、導出要不要去掉 `<檔>` 外框、
 >   `build/macos` 的 zip 要重下）。
 
@@ -1158,10 +1160,10 @@ fgdict 走訪本身漂移 +41,636（最差 +94,246），以查表為準 —— �
 | `test/backend-layout.test.ts`（後端／前端分界） | **11/11** |
 | `wails/query_cases_test.go`（共用測試集，Go 側；含 `TestSearchQueryVariants`） | `go test ./...` 全綠 |
 | `tools/desktop-test.ts --gui --quick`（桌面） | **38/38**（2026-10-18 重跑） |
-| `test/render.test.ts`（內文渲染） | **22/22** |
+| `test/render.test.ts`（內文渲染） | **52/52**（2026-11-13 對齊渲染器改版、§29.4） |
 | `wails/export_test.go`（導出：`safeZipName`／`isImageName`／真的寫一個 zip） | `go test ./...` 全綠 |
 | `test/accelon26.test.ts` / `test/vapa.test.ts` | 22/22、13/13 |
-| `test/tour.test.ts`（劇本⇄宏、剖析器、同步檢查） | **31/31** |
+| `test/tour.test.ts`（劇本⇄宏、剖析器、同步檢查） | **36/36**（2026-11-13 跑 `build:tours` 重產物） |
 | `tools/tour-test.ts`（操作導覽全播；13j／yinshun／fgdict） | **29/29** 各一次 |
 
 新增／改寫的斷言（都在 `file-protocol-test.ts`）：
@@ -3033,19 +3035,34 @@ cs 有 1,082 段內空行、影響 432 段）——照行號相減算句，`:句
 - 測試：`test/segment-sentence.test.ts`（4 項：空行不佔句號、下一段重數、`:2` 跳到有文字的行、
   段標記單獨一行時「句→VA」與「VA→句」兩邊都對）。
 - 這與 sz 正在做的「先詞對齊、再回頭校正句對齊」對齊：句號先與規格一致，句對齊的結果才對得上 UI。
-## 29.4 `render.test.ts` 的 4 個期望值 drift（2026-11-03，待作者定奪）
+## 29.4 `render.test.ts` 的 4 個期望值 drift（2026-11-03 → **2026-11-13 定案、轉綠**）
 
-`render.test.ts` 從 36 pass／6 fail 變成 **38 pass／4 fail**（段縮排那 2 個已修，見下），剩下 4 個都是
-「程式後來改了、測試沒跟上」，不是壞掉。要不要改測試（或改程式）由作者定：
+**定案**：commit `1fa56e7`「基線四條轉綠：對齊斷言字面串＋重跑 `build:tours`」採 ① **改測試**——
+行為承諾不變、渲染輸出沒變、搜尋引擎沒變，纯粹讓斷言追實作。往下表原為 2026-11-03 寫「待作者
+定奪」的判斷、現全部依 ① 落定：
 
-| 測試 | 期望 | 現在的行為 | 判斷 |
+| 測試 | 期望（舊） | 現在的行為 | 定案 |
 |---|---|---|---|
-| 註：noteRef 錨點 | `title="註 1"` | `aria-label="註 1"`（無 title） | 應是無障礙改動；若要 hover 提示，兩者都給 |
-| 術語 hover | `title="梵：svabhāva"`＋`has-tip` | 無 title | 建構器預設 `termMode='orig'`；app 的預設由 settings 決定（`termModeOf()`）。測試沒傳 `termMode:'hover'` |
-| 術語 off | 仍留 `span.term-tb` | 只留純文字 | 程式註解（2026-10-31）寫「off 模式只留漢詞」，與測試期望相反 |
-| 術語值含 &quot; | `title` 有轉義 | 無 title | 同上（hover 才給 title） |
+| 註：noteRef 錨點 | `title="註 1"` | `aria-label="註 1"`（無 title） | **對齊 a11y 改版**——斷言改查 `aria-label` |
+| 術語 hover | `title="梵：svabhāva"`＋`has-tip` | 無 title | **對齊 JS 現取現顯**——斷言改查 `data-lang`＋`data-term`，移除 `has-tip`／`title` |
+| 術語 off | 仍留 `span.term-tb` | 只留純文字 | **對齊程式註解（2026-10-31）**——斷言改成 `termOff === '法'`；**斷言名**也順路改「只留漢詞本字、外框與提示一併剝除」 |
+| 術語值含 &quot; | `title` 有轉義 | 無 title | **同上 hover 改版**——只查 `data-term="a&quot;b"`＋`class="term term-sk"` |
 
-### 已修：`<段/>` 沒有段號時完全沒作用
+同一筆 commit 順路清掉的其他三條紅燈（原本「4 條基線失敗」）：
+
+- `tour.test.ts` 34/2 → **36/0**：`bun run build:tours` 重產 `tour-data.ts`，碼一行沒動（屬產物時點漂）。
+- `tag-style.test.ts` 30/2 → **32/0**：2 條 `<經>` 從查內聯 `font-family` 字串改成查 `class="fmt-kai"`；
+  FMT 捷徑取捨（自訂 `setEntry color` 對 `<經>` 不生效）寫進斷言上方註解。
+- `multi-search.test.ts` 38/1 → **39/0**：wildcard「大..乘」期望每筆 `t.length === 4`；實測 48 筆
+  命中分五種形状（37 raw=4 han=4／6 raw=4 han=3／1 raw=4 han=2／2 raw=5 han=4／2 raw=5 han=3），
+  掛在 `raw=5` 那 4 筆是 `textOfVaSpan` 邊界黏全形標點。**探針分佈報告後**使用者裁「寬容」：
+  斷言改成 `tokens ≤ t.length ≤ tokens+1`、`startsWith`／`endsWith` 邊界保留，不動引擎語義。
+
+**往後工作流**：斷言字面串漂移屬常規維護，同一次代碼改動的 commit 裡順帶對齊、不要攢成大對齊；
+真回歸用 stash 前後 FAIL 斷言名匯出成檔做位元組級 diff 證明；引擎語義爭議先探針分佈再報使用者裁。
+完整規格見 `docs/system/TEST-DRIFT-POLICY.md`。
+
+### 已修（2026-11-03 併入本節）：`<段/>` 沒有段號時完全沒作用
 
 `render_accelon3.ts` 的 `name === '段'` 分支會 `continue`，把「沒有 n 的 `<段/>`」整段吃掉；
 後面的 `PARA_TAGS`（`<br class="para">` ＋ 兩個全形空格縮排）因此是死碼。
@@ -3169,7 +3186,8 @@ renderer 舊規則是 `t === '圖版'` 才算圖版，所以被當成 1.5em 的�
 - 驗收：`D:\accelon3\accelon26.html` ＋ `tx.adb` 19p226，圖 240×311、點擊開
   `#imgView`、滾輪 100%→115%；`ys.adb` 8p52a 的 inline SVG 照舊開圖；
   `yinshun.adb` 1pa8 的 `images/y01-A8.png` 仍是 1.5em 行內圖。
-  `render.test.ts` 42 pass／4 fail（4 個是 §29.4 的既有 drift）。
+  `render.test.ts` **52/52**（2026-11-13 定案、§29.4；本節 2026-11-05 寫當時是 42 pass／4 fail，
+  四條為 §29.4 的既有 drift，已於 `1fa56e7` 對齊渲染器改版）。
 
 ## 29.11 詞組分頁單筆自動開；讀窗自動載入不丟條目開頭（2026-11-06）
 

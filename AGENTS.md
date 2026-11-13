@@ -192,6 +192,12 @@ bun run tools/cbeta-base.ts --check
   - 官網／部署：`docs/system/DEPLOY.md`
   - adb 底座：`docs/adb/stable-adb.md`
   - 金剛／法華家族：`docs/adb/wittern-related-jingang-fahua.md` 等
+- **斷言字面串漂移屬常規維護**（2026-11-13 定案，首例 commit `1fa56e7`）：渲染器改版、
+  `textOfVaSpan` span 邊界變化、FMT 捷徑取代內聯 style、a11y 屬性換名等，只要行為不變、
+  測試掛在 HTML 字面串上，同一次代碼改動的 commit 裡順帶把 `ts/test/*.test.ts` 對齊、
+  並更新 `docs/system/ACCELON26-HANDOVER.md` §29.4 的表格與 pass 數。**未定案前不擅自**
+  「修」四條基線紅燈——先歸類（漂移／真回歸／引擎語義爭議）再辦：判斷標準、
+  stash 對照標準做法、首例明細見 `docs/system/TEST-DRIFT-POLICY.md`。
 - 回報時說清楚：改了什麼、跑了哪些測試、還有什麼沒驗證。
 - **代寫或改稿作者的文章（散文、發表稿、後記）之前**，先讀 canonical 文風規範
   `D:\2026\agent-norms\writing-skill.md`（§1 語域 D 抒情散文、§2.8 留白「畫公仔唔使畫出腸」、
