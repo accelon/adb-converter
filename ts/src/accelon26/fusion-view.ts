@@ -11,7 +11,7 @@
  * 向後兼容：`fusionViewEnabled()` 預設 off，`render_accelon3` 見 off 就走現行透明容器。
  * 為避免 import 循環，flag 由本模組掌管；`render_accelon3` 直接讀同一個 localStorage key。
  */
-import { readerFor, lineHtml } from './xref';
+import { readerFor, embedNodeBody } from './xref';
 import { anchorVa, nodeAnchorInfo, nodeSpanText, nodeSubtreeEnd } from './page-text';
 import { setStatus } from './viewer';
 
@@ -35,13 +35,10 @@ export function hasFusionTag(readerLike: unknown): boolean {
 }
 
 const plainLen = (el: HTMLElement): number => (el.textContent ?? '').replace(/[\s\u3000]/g, '').length;
-// 標記存在性（render_accelon3 用 a.noteRef；上標 sup；釋以 data-note 兜底）。
-// TODO(app)：護欄②的嚴格「逐項計數」需原 raw 與 span 用同一渲染器對照；此處先用
-// 「存在性 + 長度」做 fail-safe（只在明顯丟失時回退，不因渲染器差異誤判）。
-const markerKeys = ['a.noteRef', 'sup', 'a[data-note]'];
-const hasMarkers = (el: HTMLElement): boolean => markerKeys.some((s) => el.querySelector(s));
-const markersGone = (orig: HTMLElement, next: HTMLElement): boolean =>
-  hasMarkers(orig) && !markerKeys.some((s) => next.querySelector(s));
+// 護欄：只用「覆寫後純字數不得短於原佔位」這條（①，跨渲染器安全）。
+// TODO(app)：嚴格「註/釋/上標 逐項保真」要讓 span 走 doc 渲染器（render_accelon3，
+//   才會把 <註> 轉 noteRef）再與原佔位同渲染器對照；lineHtml/embedNodeBody 不產 noteRef，
+//   跨渲染器比計數會永遠誤判 → 暫不做②，改由 app 端校。
 
 async function fillOne(el: HTMLElement): Promise<void> {
   const i = el.dataset.i ?? '';
@@ -61,11 +58,10 @@ async function fillOne(el: HTMLElement): Promise<void> {
   try { end = await nodeSubtreeEnd(rd, info.va); } catch { /* 用 info.vaEnd */ }
   if (end == null) end = info.vaEnd;
   const raw = await nodeSpanText(rd, info.va, end, max);
-  const bodyHtml = raw.split('\n').map((ln) => `<div class="fusionLine">${lineHtml(ln)}</div>`).join('');   // 走 lineHtml：註/釋/上標/節聯 盡可能保留
+  const bodyHtml = embedNodeBody(raw);   // 與 <嵌 sub> 同一 body：科判 .embedTier 縮排、正文行
   const probe = document.createElement('div');
   probe.innerHTML = bodyHtml;
   if (plainLen(probe) < L0) { setStatus(`融視圖：${anchor} span 短於原文，保留原佔位`, 'warn'); el.dataset.done = '1'; return; }  // 護欄①
-  if (markersGone(el, probe)) { setStatus(`融視圖：${anchor} 註/釋/上標 消失，整段回退`, 'warn'); el.dataset.done = '1'; return; }  // 護欄②（fail-safe）
   const src = el.dataset.n ? `<span class="fusionSrc">${el.dataset.n}・${anchor}</span>` : '';
   el.innerHTML = src + `<div class="fusionBody">${bodyHtml}</div>`;
   el.dataset.done = '1';
