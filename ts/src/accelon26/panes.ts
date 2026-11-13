@@ -224,13 +224,29 @@ async function showImageUse(name: string): Promise<void> {
   if (!ok) setStatus(`「${name}」：正文沒有引用這張圖（可能是封面或未用的圖）`, 'err');
 }
 
+/**
+ * 上一次畫好的庫（2026-11-13，陳裕文：「看過 fuyan 之後直接開 ys，右側的圖片沒有變」）。
+ *
+ * 切庫走 `switchTo` → `refreshAll`，只重畫**當前**那個右欄分頁，`圖片` 沒有分支，
+ * 所以清單一直留著上一庫的縮圖。修法見 `showTab`；這裡加一道「同一庫不重畫」，
+ * 免得每次點回頁籤都重解 48 張 blob。
+ */
+let resourcesDrawnFor: AdbReader | null = null;
+
 async function renderResources() {
   // the reader is a GLOBAL: capturing it keeps a database switch that lands mid-render
   // from reading resources out of the wrong container ("no resources container")
   const r = reader;
   const c = r?.containers.get('resources');
   const box = $('#resources');
-  if (!r || !c || !c.count) { box.innerHTML = '<p class="dim">（此庫沒有 resources）</p>'; return; }
+  if (!box) return;
+  if (r && r === resourcesDrawnFor) return;   // 這個庫的縮圖已經畫好了
+  resourcesDrawnFor = null;                   // 開始重畫：先作廢，畫完才認
+  if (!r || !c || !c.count) {
+    box.innerHTML = '<p class="dim">（此庫沒有 resources）</p>';
+    resourcesDrawnFor = r;
+    return;
+  }
   const n = Math.min(c.count, THUMB_LIMIT);
   box.innerHTML = `<p class="note">${fmtInt(c.count)} 個資源，${fmtBytes(c.totalBlockSize)}（未壓縮，可直接讀單一資源）</p>
     <p class="note" id="thumbNote">載入前 ${n} 張縮圖…</p>`;
@@ -277,6 +293,7 @@ async function renderResources() {
   const note = $('#thumbNote');
   if (note) note.textContent = (c.count > n ? `已載入前 ${n} 張（共 ${c.count}）` : `已載入 ${n} 張`)
     + '；點縮圖看大圖，Ctrl+點跳到引用它的本文';
+  resourcesDrawnFor = r;         // 畫完才認：中途切庫（上面的 return）不會被記成已完成
 }
 
 /* ---------------------------------------------------------- 圖片放大（作者 2026-10-26）

@@ -14,7 +14,7 @@ import { formatAddress, parseAddress, type PosMap } from './posmap';
 import { addressAtLine, convertText, initMap, mapPosMap, mapState, renderMap } from './map-pane';
 import { initNoteLinks, notePagesOf } from './notes';
 import { PARALLEL_DBS, initParallelSegments, openSegment, segmentVa } from './parallel';
-import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
+import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderResources, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderGlossary, renderJump, jumpByQuery, jumpByTocPath, jumpByTocIndex, isTocPathQuery, isTocIndexQuery, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully, treeSnapshot } from './scopes';
 import { SNIPPET_LIMIT, lastQuery, lastResult, renderSnippets, repaintSummary, runSearch, searchSeq, showMoreSnippets, snippetScope, snippetShown } from './summary';
 import { backendKind, goQueryCount, lastGoAnswer } from './backend';
@@ -227,6 +227,9 @@ function showTab(name: string, col: 'left' | 'right' = 'left') {
   if (col === 'right' && name === 'text') void renderTextPane();
   if (col === 'right' && name === 'heat') void renderHeatTab();
   if (col === 'right' && name === 'revisions') void renderRevisions();
+  // 圖片清單跟著「當前庫」走（2026-11-13，陳裕文）：切庫時 refreshAll 只重畫當前分頁，
+  // 沒有這條就一直留著上一庫的縮圖。renderResources 內部有「同庫不重畫」的快取。
+  if (col === 'right' && name === 'images') void renderResources();
   // left panes are built on demand: each one walks its own tree/attribute table
   if (col === 'left') {
     if (name === 'freq') void renderFreq();
