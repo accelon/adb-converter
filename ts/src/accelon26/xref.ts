@@ -2186,16 +2186,33 @@ export async function renderEmbed(db: string, anchor: string, quote = '', range 
     }
   }
   // j 優先；但 q 必須大致對得上，否則 j 可能是舊資料
+  // 缺陷 1（ybh cooperation 單）：原本 `b <= pn.length` 使「je 超出頁長」整段跳過 →
+  //   from/to 留在預設 0/300 → 無聲回退成「頁首 300 字」，UI 看來像正常引文實為錯位文字。
+  //   ① je 越界：鉗製到頁尾（`bb = min(b, pn.length)`）照實回傳，mark 長度＝實際可取字數，
+  //     消費者據 `mark 字數 < je-js` 即知「窗尾被截短」。
+  //   ② js 已在頁長之外（`a >= pn.length`）：窗根本取不出來 → 給明確失敗態（jMiss），
+  //     不再偽造頁首內容；消費者見 `data-jmiss` 自行降級成純頁欄聯。
   const mm = /^(\d+)-(\d+)$/.exec(range);
+  let jMiss = false;
   if (mm) {
     const a = Number(mm[1]), b = Number(mm[2]);
-    if (a >= 0 && b > a && b <= pn.length) {
-      const piece = pn.slice(a, b);
+    if (a >= 0 && b > a && a < pn.length) {
+      const bb = Math.min(b, pn.length);
+      const piece = pn.slice(a, bb);
       const qn = foldVariants(Array.from(quote).filter((c) => HAN_RE.test(c)).join(''));
       if (!qn || piece.slice(0, Math.min(12, qn.length)) === qn.slice(0, Math.min(12, qn.length))) {
-        from = a; to = b;
+        from = a; to = bb;
       }
+    } else if (a >= pn.length) {
+      jMiss = true;
     }
+  }
+  if (jMiss) {
+    // ② 明確失敗態：起點落在頁長之外，照實回報取不到，別回傳頁首。
+    return {
+      html: '<p class="dim" data-jmiss="1">（引用位置超出本頁，無法取窗；請按頁欄連結查看整頁）</p>',
+      title: label || db,
+    };
   }
 
   // 擴到句子邊界（前後各找 60 字內的句號／分號），讓引文讀得通

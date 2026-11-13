@@ -514,7 +514,9 @@ export function blockOf(idx: AnchorIndex, va: number): number {
 /**
  * 目標頁的純漢字序列（`j`／`off` 的座標就是這個字串的索引）。
  *
- * - 從 `<頁 id="…">` 之後起算；
+ * - 從 `<頁 id="…">` **之後**起算（先把這一頁自己的開頭標記剝掉，
+ *   否則 `raw.indexOf('<頁 ')` 會指到自己 `0`、`cut>0` 判斷跳過切斷、
+ *   下一頁標記找不到 → 拼到 20,000 字元才停）；
  * - 讀到下一個 `<頁 ` 為止；
  * - 跳過 `<…>` 標籤，只留漢字（`hanChars`，逐 code point）。
  */
@@ -536,8 +538,15 @@ export async function pageHanTextOf(r: AdbReader, anchor: string): Promise<strin
     if (k >= 0) { blk = b; blockText = t; startAt = k; break; }
   }
   let raw = blockText.slice(startAt);
+  // 先把這一頁自己的 `<頁 id="anchor" …>` 標記剝掉（ybh cooperation 缺陷 2 修法，
+  // 與 renderEmbed 頁分支對齊）；`<頁 …>` 是 SKIP tag、本身不進 hanChars，但它的
+  // 存在讓 `raw.indexOf('<頁 ')===0`、`cut>0` 判斷失敗、切斷被跳過。
+  if (raw.startsWith('<頁')) {
+    const gt = raw.indexOf('>');
+    if (gt > 0) raw = raw.slice(gt + 1);
+  }
   for (let b = blk + 1; raw.length < 20000 && b < idx.bv.length; b++) raw += await r.sourceText(b);
   const cut = raw.indexOf('<頁 ');
-  if (cut > 0) raw = raw.slice(0, cut);
+  if (cut >= 0) raw = raw.slice(0, cut);
   return hanChars(raw).join('');
 }
