@@ -2231,8 +2231,14 @@ export async function renderEmbed(db: string, anchor: string, quote = '', range 
   const piece = raw.slice(a, b);
   const markFrom = hanCount(raw.slice(a, rawAt[from] ?? a));
   const markTo = markFrom + Math.max(0, to - from);
-  const book = await bookAt(r, idx, va).catch(() => ({ title: '', no: '' }));
-  const head = (label || book.title || db) + (book.title && label ? ' · ' + book.title : '');
+  // 缺陷 3（ybh cooperation 單）：卡頭書名改用「該 VA 所屬《書》區塊」——走 `idx.bookVas`
+  //   二分 + `caches/書` 名稱表（`sourceLabelAt`），不再用 `bookAt` 的「往回掃最多 8 個
+  //   block、取 `lastIndexOf('<書')`」文字標記法——書開頭第一頁的 `<頁>` 排在 `<書>`
+  //   之前時會抓到上一部（實測 30p279a 誤指「大乘掌珍論」）；查不到時留空白，不再把
+  //   adb 庫別名當書名顯示（實測 30p576b 顯示 "taisho"）。無《書》的庫仍由
+  //   `sourceLabelAt` 退到 `<編>/<集>/<篇>/<章>/<節>/<文>`。
+  const title = await sourceLabelAt(r, idx, va).catch(() => '');
+  const head = (label || title) + (label && title ? ' · ' + title : '');
   const body = lineHtml(piece, markFrom, markTo);
   if (bare) {
     return { html: '<div class="embedText reflow">' + body + '</div>', title: head };
