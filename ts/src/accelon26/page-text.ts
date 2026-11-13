@@ -145,6 +145,8 @@ interface NodeAnchorIndex {
   /** 所有錨點標籤實例的 VA（排序；用來算節點範圍） */
   endVas: number[];
   nsTag: string;
+  /** 標籤 → 樹層序（篇=0、章=1、科NN=1+NN；跨多條 `t=` 取最小）。給子樹界用。 */
+  rank: Map<string, number>;
 }
 const nodeAnchorCache = new WeakMap<AdbReader, Promise<NodeAnchorIndex | null>>();
 
@@ -196,6 +198,16 @@ async function buildNodeAnchorIndex(r: AdbReader): Promise<NodeAnchorIndex | nul
   // 命名空間標籤：層級最多那條 t= 的第一個（ybh 的 t= 有 56 層 → 篇）
   const nsList = [...lists].sort((a, b) => b.length - a.length)[0];
   const nsTag = nsList?.[0] ?? '';
+  // 標籤 → 樹層序（篇=0、章=1、科NN=1+NN；跨多條 t= 取最小）。`<嵌 sub="1">` 靠它定子樹界。
+  // 科判家族（科漢01、科基02…，多樹庫 ybh v5）一律按層號定序（100+NN）：
+  // 各家族自己的鏈索引都從 0 起，混鏈會把「章」（rank 1）誤排進 科X01（rank 0）之下，
+  // 子樹界就跨不出卷。層號定序後：任何家族的 01 都在 章 之下、NN 隨深度單調。
+  const rank = new Map<string, number>();
+  for (const L of lists) L.forEach((t, i) => { const c = rank.get(t); if (c === undefined || i < c) rank.set(t, i); });
+  for (const L of lists) for (const t of L) {
+    const km = /^科[一-鿿]?(\d\d)$/.exec(t);
+    if (km) rank.set(t, 100 + +km[1]!); // 覆寫：家族鏈自己的 01 是 index 0，不覆寫會排到 章 之上
+  }
 
   // 命名空間值（VA → 名稱）
   const nsValByVa = new Map<number, string>();
@@ -258,7 +270,7 @@ async function buildNodeAnchorIndex(r: AdbReader): Promise<NodeAnchorIndex | nul
       }
     }
   }
-  return { nsMap, bare: bareCand, vaInfo, endVas: [...endSet].sort((a, b) => a - b), nsTag };
+  return { nsMap, bare: bareCand, vaInfo, endVas: [...endSet].sort((a, b) => a - b), nsTag, rank };
 }
 
 /**
@@ -289,6 +301,27 @@ export async function nodeAnchorInfo(r: AdbReader, anchor: string): Promise<Node
   while (lo <= hi) { const md = (lo + hi) >> 1; if (idx.endVas[md] > va) { ans = md; hi = md - 1; } else lo = md + 1; }
   if (ans >= 0) vaEnd = idx.endVas[ans];
   return { va, vaEnd, tag: info?.tag ?? '', ns: info?.ns ?? ns, value: info?.value ?? value };
+}
+
+/**
+ * 節點的**子樹界**（`<嵌 sub="1">` 語義）：從 va 往後走 endVas，取第一個
+ * 「同層或更淺」的錨點 VA 為排他界；一路更深（全是子孫）直到檔尾時回 null。
+ * 層序來自樹 `t=` 的宣告次序（篇=0、章=1、科NN=1+NN）。
+ */
+export async function nodeSubtreeEnd(r: AdbReader, va: number): Promise<number | null> {
+  const idx = await nodeAnchorIndex(r);
+  if (!idx) return null;
+  const rankOf = (v: number): number => idx.rank.get(idx.vaInfo.get(v)?.tag ?? '') ?? Number.POSITIVE_INFINITY;
+  const me = rankOf(va);
+  if (!Number.isFinite(me)) return null;
+  let lo = 0, hi = idx.endVas.length; // 第一個 > va 的位置
+  while (lo < hi) { const md = (lo + hi) >> 1; if (idx.endVas[md]! <= va) lo = md + 1; else hi = md; }
+  for (let i = lo; i < idx.endVas.length; i++) {
+    const ev = idx.endVas[i]!;
+    const rk = idx.rank.get(idx.vaInfo.get(ev)?.tag ?? '');
+    if (rk !== undefined && rk <= me) return ev;
+  }
+  return null;
 }
 
 /** 節點範圍的原始文字（含標籤；給 `<嵌>` 用）。從節點 VA 的行讀到 vaEnd 前一行。 */

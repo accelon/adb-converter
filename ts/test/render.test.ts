@@ -292,5 +292,17 @@ const yinshunFig = yinshunR.line('<圖 f="images/y01-18.png"/>', 4);
 ok('yinshun 的 f= 行內插圖（沒有開啟相容）：維持 inlineImg',
   yinshunFig.includes('class="inlineImg"') && !yinshunFig.includes('figureImg'), yinshunFig);
 
+// `<節聯>`／`<嵌 sub|max>` 渲染（2026-11-13，ybh v4 需求）
+const nl = new Accelon3Renderer(ctx).line('詳見<節聯 n="T1579-1#kpD03-001">問答標列</節聯>一段。', 9);
+ok('節聯：長出 data-link="node" ＋ data-node ＋ nodeLink class',
+  nl.includes('data-link="node"') && nl.includes('data-node="T1579-1#kpD03-001"') && nl.includes('nodeLink'), nl);
+const nlx = new Accelon3Renderer(ctx).line('<節聯 i="other?PXJ-H-1#kpD02-001">它庫科判</節聯>', 9);
+ok('節聯 i=：拆出 data-nodedb', nlx.includes('data-nodedb="other"') && nlx.includes('data-node="PXJ-H-1#kpD02-001"'), nlx);
+const chipSub = new Accelon3Renderer(ctx).line('<嵌 i="ybh?T1579-1#kpD01-001" n="本地分" sub="1" max="6000"/>', 9);
+ok('嵌 sub/max：data-sub 與 data-max 直達晶片',
+  chipSub.includes('data-sub="1"') && chipSub.includes('data-max="6000"') && chipSub.includes('embedChip'), chipSub);
+const chipBadMax = new Accelon3Renderer(ctx).line('<嵌 i="ybh?kpD01-001" max="abc"/>', 9);
+ok('嵌 max 非數字：不輸出 data-max（舊行為穩健）', !chipBadMax.includes('data-max'), chipBadMax);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -75,7 +75,10 @@ async function openEmbed(btn: HTMLElement): Promise<void> {
   try {
     const res = targets
       ? await renderEmbedGroup(btn.dataset.q ?? '', targets, label)
-      : await renderEmbed(db, anchor, btn.dataset.q ?? '', btn.dataset.j ?? '', label);
+      : await renderEmbed(db, anchor, btn.dataset.q ?? '', btn.dataset.j ?? '', label, false, undefined, {
+          sub: btn.dataset.sub === '1',
+          max: btn.dataset.max ? Number(btn.dataset.max) : undefined,
+        });
     block.innerHTML = res.html;
     const key = btn.dataset.key || btn.dataset.eid || '';
     if (key) {

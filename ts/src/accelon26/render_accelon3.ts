@@ -889,9 +889,13 @@ export class Accelon3Renderer {
             + ` data-label="${esc(label)}" title="展開 ${esc(label)} 對這段經文的解釋">▸ ${esc(label)}</button>`;
           this.sawText = true;
         } else if (!closing && xref) {
+          const sub = attrValue(attrs, 'sub');
+          const mx = attrValue(attrs, 'max');
           html += `<button type="button" class="embedChip" data-embed="${esc(xref)}"`
             + (q ? ` data-q="${esc(q)}"` : '')
             + (j ? ` data-j="${esc(j)}"` : '')
+            + (sub === '1' || sub === 'true' ? ' data-sub="1"' : '')
+            + (mx && /^[0-9]+$/.test(mx) ? ` data-max="${esc(mx)}"` : '')
             + ` data-label="${esc(label)}" title="嵌入 ${esc(label)} 的引文">▸ ${esc(label)}</button>`;
           this.sawText = true;
         }
@@ -905,13 +909,19 @@ export class Accelon3Renderer {
           const top = this.linkStack[this.linkStack.length - 1];
           if (top?.tag === name) { html += '</a>'; this.linkStack.pop(); }
         } else if (!selfClose && spec) {
-          const cls = spec.kind === 'xref' ? 'entryLink xrefLink' : 'entryLink';
+          const cls = spec.kind === 'xref' ? 'entryLink xrefLink' : spec.kind === 'node' ? 'entryLink nodeLink' : 'entryLink';
           let a = `<a class="${cls}" href="#" data-link="${spec.kind}"`;
           if (spec.kind === 'entry') {
             if (spec.target) a += ` data-entry="${esc(spec.target)}"`;
             if (spec.homograph) a += ` data-homograph="${esc(spec.homograph)}"`;
             if (spec.newTab) a += ' data-newtab="1"';
             a += ` title="${spec.target ? esc(spec.target) : '開新分頁'}"`;
+          } else if (spec.kind === 'node') {
+            // `<節聯>`：跳到通用節點錨點（捲動＋高亮＋目錄游標；link.ts linkToNode 解析）
+            a += ` data-node="${esc(spec.target)}"`;
+            if (spec.db) a += ` data-nodedb="${esc(spec.db)}"`;
+            if (spec.newTab) a += ' data-newtab="1"';
+            a += ` title="跳到 ${esc(spec.target)}"`;
           } else {
             a += ` data-xref="${esc(spec.target)}"`;
             if (spec.quote) a += ` data-q="${esc(spec.quote)}"`;

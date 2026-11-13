@@ -12,8 +12,9 @@ import { type DocCtx, isActiveDocCtx } from './doc-ctx';
 import type { AdbReader } from './adb';
 import type { VaPaMapper } from './vapa';
 import { noteLink } from './engine-stats';
-import { activeSlot, dbShortName, switchTo } from './dbs';
+import { activeSlot, dbShortName, openDbs, switchTo } from './dbs';
 import { splitWordKey } from './word-hl';
+import { anchorVa } from './page-text';
 
 /** the hit the middle pane is currently showing (VA + its element text) */
 let pinnedHit: { va: number; text: string; token: string; units: number; line: number; exact?: boolean; phrase?: string; noMark?: boolean } | null = null;
@@ -551,6 +552,37 @@ export async function linkToEntry(word: string, ctxIn?: DocCtx | null, newTab = 
 
 let entryLinksBound = false;
 
+/**
+ * `<節聯>`：把通用節點錨點（`W-V#kp`／`W#kp`／頁 id／塊.段）解析成 VA，
+ * 捲動本文到該節點（linkTo 自帶行高亮＋目錄游標跟隨），**不嵌入、不佔面板**。
+ * `n=` 同庫；`i="db?anchor"` 跨庫——該庫已開在 slot 就切過去再跳，
+ * 沒開就提示（ybh 回函 §3：不靜默、不死按鈕）。查不到 → warn「不在庫內」。
+ */
+export async function linkToNode(anchor: string, dbName = '', newTab = false, label = ''): Promise<boolean> {
+  if (!anchor) return false;
+  let ctx = ctxOf(docSession()) ?? activeDocCtx();
+  const cur = (ctx?.reader ?? reader)?.header.dbname ?? '';
+  if (dbName && dbName.toLowerCase() !== cur.toLowerCase()) {
+    const want = dbName.toLowerCase();
+    const base = (n: string): string => n.replace(/\.adb$/i, '').toLowerCase();
+    const slot = openDbs.find((d) =>
+      String((d.core as { reader?: { header?: { dbname?: string } } } | undefined)?.reader?.header?.dbname ?? '').toLowerCase() === want
+      || base(String(d.file?.name ?? '')) === want);
+    if (!slot) { setStatus(`請先開啟 ${dbName}.adb（同一個瀏覽器工作階段），再點這條節聯。`, 'warn'); return false; }
+    switchTo(slot.id);
+    ctx = ctxOf(docSession()) ?? activeDocCtx();
+  }
+  const rd = ctx?.reader ?? null;
+  if (!ctx || !rd) return false;
+  const va = await anchorVa(rd, anchor);
+  if (va == null) {
+    setStatus(`「${anchor}」不在庫內（${cur || dbName || '本庫'}）`, 'warn');
+    return false;
+  }
+  await linkTo(va, label || anchor, 1, { mode: 'node', exact: true, ctx, newTab });
+  return true;
+}
+
 /** 文件區的委派監聽：`a[data-entry]` → linkToEntry（只綁一次） */
 export function initEntryLinks(): void {
   if (entryLinksBound) return;
@@ -559,6 +591,15 @@ export function initEntryLinks(): void {
     'click',
     (ev) => {
       const el = ev.target as Element | null;
+      // `<節聯>`：data-link="node"（renderer 長出），目标由 linkToNode 解析
+      const na = el?.closest?.('a[data-link="node"],a[data-node]') as HTMLElement | null;
+      if (na) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        void linkToNode(na.dataset.node ?? '', na.dataset.nodedb ?? '',
+          na.dataset.newtab === '1' || ev.ctrlKey || ev.metaKey, (na.textContent ?? '').trim());
+        return;
+      }
       const a = el?.closest?.('a[data-link="entry"],a[data-entry],a[data-entry-newtab]') as HTMLElement | null;
       if (!a) return;
       ev.preventDefault();

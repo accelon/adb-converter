@@ -30,7 +30,7 @@ import { openAdbStore } from './adb-store';
 import { hostState } from './host';
 import { bz2Decompress } from '../bzip2-wasm';
 import { HAN_RE, isHan, hanChars, hanCount } from './han';
-import { anchorIndex, anchorVa, blockOf, nodeAnchorInfo, nodeSpanText, pageHanTextOf, shortPageId, type AnchorIndex } from './page-text';
+import { anchorIndex, anchorVa, blockOf, nodeAnchorInfo, nodeSpanText, nodeSubtreeEnd, pageHanTextOf, shortPageId, type AnchorIndex } from './page-text';
 import { citationEntryTag, entryById, entryByName, entryLineOfHan } from './entry-anchor';
 import { splitPageCol, type PageCite } from './page-cite';
 import { splitWordKey } from './word-hl';
@@ -247,7 +247,20 @@ function lineHtml(s: string, markFrom = -1, markTo = -1): string {
       const tag = s.slice(i, gt + 1);
       i = gt + 1;
       if (tag.startsWith('</聯')) { out += '</a>'; continue; }
+      if (/^<\/_?節聯/.test(tag)) { out += '</a>'; continue; }
       if (tag.startsWith('</')) continue;
+      const mn = /^<(?:_?)節聯([^>]*)>/.exec(tag);
+      if (mn) {
+        // 節聯在嵌入內容裡也要可點（捲動語義，link.ts linkToNode 接手）
+        const ni = /\bi="([^"]*)"/.exec(mn[1]!)?.[1];
+        const nn = /\bn="([^"]*)"/.exec(mn[1]!)?.[1];
+        if (ni) {
+          const q0 = ni.indexOf('?');
+          out += `<a class="entryLink nodeLink" href="#" data-link="node" data-node="${esc(q0 >= 0 ? ni.slice(q0 + 1) : ni)}"`
+            + (q0 >= 0 ? ` data-nodedb="${esc(ni.slice(0, q0))}"` : '') + ` title="跳到 ${esc(ni)}">`;
+        } else if (nn) out += `<a class="entryLink nodeLink" href="#" data-link="node" data-node="${esc(nn)}" title="跳到 ${esc(nn)}">`;
+        continue;
+      }
       if (tag.startsWith('<融') || tag.startsWith('</融')) continue;
       const ms = /^<嵌始([^>]*)>/.exec(tag);
       if (ms) {
@@ -2044,7 +2057,32 @@ export async function pageHanText(db: string, anchor: string): Promise<string> {
  * `j` 是目標頁的漢字索引（0 起，end 不含）；和 `q` 對不上時退回 q 比對。
  * 回傳的 HTML 只包含一段 `.embedDoc`，由 embed.ts 插在晶片後面。
  */
-export async function renderEmbed(db: string, anchor: string, quote = '', range = '', label = '', bare = false, rIn?: AdbReader): Promise<{ html: string; title: string }> {
+/**
+ * `<嵌>` 節點分支的行渲染（2026-11-13，作者：「科判也要有樹，不能舖平」）。
+ * 行首的 `<科NN …>標題</科NN>` 依 tier 縮排成樹形 outline（每行一個 block div，
+ * 不再 <br> 平舖）；標題後的同行文字縮在同一層下。引文、內嵌的 <嵌> 晶片／
+ * <節聯> 照 lineHtml 走，單行多標籤逐段拆。
+ */
+export function embedNodeBody(raw: string): string {
+  const out: string[] = [];
+  for (const line of raw.split('\n')) {
+    let s = line;
+    let pad = '';
+    for (;;) {
+      const m = /^<(?:_?)科([一-鿿]?)(\d\d)(?:\s[^>]*)?>([^<]*)<\/(?:_?)科\1\2>/.exec(s);
+      if (!m) break;
+      const depth = Math.min(Math.max(+m[2]!, 1) - 1, 14);
+      pad = 'padding-left:' + (depth * 1.2).toFixed(1) + 'em;';
+      out.push('<div class="embedTier" style="' + pad + 'font-weight:600">▸ ' + lineHtml(m[3]!) + '</div>');
+      s = s.slice(m[0].length);
+    }
+    const rest = s.trim();
+    if (rest) out.push('<div class="embedBodyLine" style="' + pad + '">' + lineHtml(rest) + '</div>');
+  }
+  return out.join('');
+}
+
+export async function renderEmbed(db: string, anchor: string, quote = '', range = '', label = '', bare = false, rIn?: AdbReader, opts?: { sub?: boolean; max?: number }): Promise<{ html: string; title: string }> {
   const r = rIn ?? await readerFor(db);
   if (!r) return { html: '<p class="dim">請先開啟 ' + esc(db) + '.adb（同一個瀏覽器工作階段）。</p>', title: label || db };
   const va = await anchorVa(r, anchor);
@@ -2052,8 +2090,11 @@ export async function renderEmbed(db: string, anchor: string, quote = '', range 
   // 通用節點錨點（科判等結構節點，2026-11-13）：用節點範圍取文，不依賴 <頁>。
   const node = await nodeAnchorInfo(r, anchor);
   if (node && node.va === va) {
-    const raw = await nodeSpanText(r, node.va, node.vaEnd);
-    const body = raw.split('\n').map((line) => lineHtml(line)).join('<br>');
+    // sub="1"＝整棵子樹（到下一個同層或更淺節點為止，ybh 回函 §4）；max 覆寫行數上限。
+    const vaEnd = opts?.sub ? await nodeSubtreeEnd(r, node.va) : node.vaEnd;
+    const maxLines = opts?.max && opts.max > 0 ? opts.max : opts?.sub ? 200 : 60;
+    const raw = await nodeSpanText(r, node.va, vaEnd, maxLines);
+    const body = embedNodeBody(raw);
     const head = label || [node.ns, node.tag].filter(Boolean).join(' · ') || anchor;
     if (bare) return { html: '<div class="embedText reflow">' + body + '</div>', title: head };
     return {
