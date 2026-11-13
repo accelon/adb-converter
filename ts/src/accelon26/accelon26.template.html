@@ -995,8 +995,18 @@
   #docWelcome .welcomeBtns { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 12px; }
   #docWelcome .mini { font-size: 14px; padding: 6px 12px; }
   #docWelcome .mini.primary { border-color: var(--accent); color: var(--accent); }
-  .docLine { display: flex; gap: 10px; padding: 1px 3px; border-radius: 3px; }
+  .docLine { display: flex; gap: 10px; padding: 1px 3px; border-radius: 3px; position: relative; }
   .docLine:hover { background: var(--row-hover); }
+  /* 頁標記落在「圖版」那一行時，貼在圖的右下角。
+     厚觀法師 2026-11-13：「（38p107 的頁碼標記）再下移一點，放在〔圖表 HG02.106-2〕
+     表格的最後一行『赤銅鍱部』右邊」。圖版是整塊的圖，頁標記接在它後面，浮動元素
+     會落在這個行盒的**第一條基線**上 —— 看起來像頁碼在圖的開頭（量到 38p107 就浮在
+     「根本大眾部」那一列）。改成絕對定位貼行盒底端，就是紙本頁碼的位置。
+     瀏覽器不認得 :has() 時退回原樣（浮在行首），不影響閱讀。 */
+  .docLine:has(svg, img) .lineText > .pageBreak,
+  .docLine:has(svg, img) .lineText > .pageMark {
+    float: none; position: absolute; right: 6px; bottom: 2px; margin: 0;
+  }
   /* 目前釘住的那一行：淡淡一層就好，免得標題（現在是彩色字）看起來像有底色 */
   .docLine.hitLine { background: rgba(255, 212, 121, .10); }
   /* 載入更多：新塞進來的第一行閃 2 秒，告訴讀者從哪開始讀（作者 2026-11-06） */
