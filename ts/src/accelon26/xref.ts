@@ -1132,6 +1132,13 @@ export function relabelRevRows(): void {
 
 /** 一次顯示幾顆；超過就分批，按「＋N」再放一批（作者 2026-10-28） */
 const REV_BATCH = 10;
+/**
+ * R7（ybh batch-reply F）：單頁欄反鏈 >REV_INLINE_ALL 條時，一排不再逐批「＋N」，
+ * 只列前 REV_INLINE_TOP 顆＋一顆「顯示全部 N 條」直接開右欄完整清單抽屜。
+ * ≤REV_INLINE_ALL 條沿用上面 REV_BATCH 的分批；引紋熱圖與抽屜分頁不受影響。
+ */
+const REV_INLINE_ALL = 40;
+const REV_INLINE_TOP = 20;
 
 /** 一整組回連結按鈕（含分批的「＋N」） */
 export function revButtonsHtml(items: RevItem[]): string {
@@ -1140,6 +1147,19 @@ export function revButtonsHtml(items: RevItem[]): string {
   const more = rest > 0
     ? '<button class="mini xrefMore" type="button" data-revmore="' + rest + '" title="再顯示 ' + Math.min(rest, REV_BATCH) + ' 條">＋' + rest + '</button>'
     : '';
+  return btns + more;
+}
+
+/**
+ * 「反鏈那一排」的 chips（R7）：量大（>40 條）時只列前 20 顆＋「顯示全部 N 條」開抽屜；
+ * 否則沿用 `revButtonsHtml` 的逐批「＋N」。按鈕本身不帶 db/頁欄，委派由父 `.xrefRevBar`
+ * 提供 `data-revhost`/`data-revpage`（见 initXref 的 `[data-revall]` 分支）。
+ */
+export function revChipsHtml(items: RevItem[]): string {
+  if (items.length <= REV_INLINE_ALL) return revButtonsHtml(items);
+  const btns = items.slice(0, REV_INLINE_TOP).map((it) => revButtonHtml(it)).join('');
+  const more = '<button class="mini revShowAll" type="button" data-revall="' + items.length
+    + '" title="查看全部 ' + items.length + ' 條（含同書多次引用）">顯示全部 ' + items.length + ' 條</button>';
   return btns + more;
 }
 
@@ -1157,7 +1177,7 @@ async function revBarHtml(db: string, pageId: string): Promise<string> {
   const hostName = esc(tr?.header.dbcname || db);
   const total = items.reduce((n, it) => n + it.count, 0);
   const singleSrc = srcList.length === 1 ? srcList[0] : '';
-  return '<div class="xrefRevBar" data-revhost="' + esc(db) + '" data-revpage="' + esc(pageId) + '">'
+  return '<div class="xrefRevBar" data-revhost="' + esc(db) + '" data-revpage="' + esc(pageId) + '" data-revlistname="' + hostName + '">'
     + '<div class="revTop">'
     + '<span class="revTitle">反鏈 <b>' + total + '</b></span>'
     + '<span class="dim revFrom" title="' + srcs + ' → ' + hostName + '">' + srcs + ' → ' + hostName + '</span>'
@@ -1170,7 +1190,7 @@ async function revBarHtml(db: string, pageId: string): Promise<string> {
     + (singleSrc ? ' data-revsrc="' + esc(singleSrc) + '"' : '') + ' title="引用分布熱圖">分布</button>'
     + '<button type="button" class="mini revListBtn" data-revlisthost="' + esc(db) + '" data-revlistpage="' + esc(pageId) + '" data-revlistname="' + hostName + '" title="完整反鏈清單">清單</button>'
     + '</div>'
-    + '<div class="revChips">' + revButtonsHtml(items) + '</div></div>';
+    + '<div class="revChips">' + revChipsHtml(items) + '</div></div>';
 }
 
 /** 本文中間那一頁的頁 id（給中間的「回連結」用） */
@@ -2312,7 +2332,7 @@ async function resortRevBar(box: HTMLElement, mode: RevSort): Promise<void> {
   box.querySelectorAll<HTMLElement>('[data-revsort]').forEach((b) => b.classList.toggle('active', b.dataset.revsort === mode));
   const items = await reverseItemsForPage(host, page, mode);
   if (!items.length) return;
-  holder.innerHTML = revButtonsHtml(items);
+  holder.innerHTML = revChipsHtml(items);
   relabelRevRows();
 }
 
@@ -2366,6 +2386,18 @@ export function initXref(): void {
       ev.stopPropagation();
       const box = sortBtn.closest('.xrefRevBar') as HTMLElement | null;
       if (box) void resortRevBar(box, (sortBtn.dataset.revsort as RevSort) || 'freq');
+      return;
+    }
+    // R7：一排排到 20 顆後改「顯示全部 N 條」，點擊直接開右欄完整清單抽屜
+    const allBtn = (ev.target as Element | null)?.closest?.('[data-revall]') as HTMLElement | null;
+    if (allBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const box = allBtn.closest('.xrefRevBar') as HTMLElement | null;
+      if (!box) return;
+      document.dispatchEvent(new CustomEvent('accelon26:revlist', {
+        detail: { host: box.dataset.revhost ?? '', page: box.dataset.revpage ?? '', name: box.dataset.revlistname ?? '' },
+      }));
       return;
     }
     // 完整反鏈清單抽屜

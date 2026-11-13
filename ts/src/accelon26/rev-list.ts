@@ -15,7 +15,8 @@ let fixedItems: RevItem[] | null = null;
 let inited = false;
 let loading = false;
 // R7：抽屜一次全渲染 3.5 萬會卡 → 分頁，每頁 PAGE 筆、可「載入更多」。熱圖不受影響。
-const PAGE = 300;
+// 200/頁＝ybh batch-reply F 的閾值口徑。
+const PAGE = 200;
 let limit = PAGE;
 
 const $id = <T extends HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
