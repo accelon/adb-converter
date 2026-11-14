@@ -156,6 +156,31 @@ Notes and edge cases that `abx` reproduces deliberately:
   file names joined by `\n` is added.
 * `dumpAll` additionally writes every `resources` block.
 
+### 5.1 Zero-VA skip tags (authoring paragraph markers)
+
+Some tags exist only to guide the reader's **citation-copy** behaviour. They are **skip tags**: they
+cost **0 VA** and are excluded from the `tags` index, so `lines.virtual` and `maxVA` are byte-for-byte
+identical with or without them (measured on `fuyan.adb` `980397837db7`: 81,963 lines, `maxVA` 2,347,836,
+`lines.virtual` identical to the pre-marker build). They are registered in `ts/src/tokenize.ts`
+`SKIP_TAGS` and are invisible on screen — an unrecognised tag is dropped while its text is kept.
+
+| tag | meaning | reader action (`bookmarks.ts` → `selectedLines()`) |
+|-----|---------|-----------------------------------------------------|
+| `<段界/>` | start of a logical paragraph (placed before the paragraph's first paper line) | flush the current copy segment, begin a new one |
+| `<空格/>` | the original manuscript had a space at this line join | insert one space when appending a continuation line |
+
+Consecutive paper lines inside one `<段界/>` region are joined into a single copied paragraph: Chinese
+rejoins directly; the join space is added only where `<空格/>` marks it — so a word split across paper
+lines (Sanskrit `bhav` + `et /`) rejoins to `bhavet` **with no space**, while `其誰當往來` + `？` rejoins
+with `？` kept inline. Libraries that emit neither marker are unchanged (one line = one segment), so
+`ys` / `taisho` / `13j` behave exactly as before.
+
+Do **not** reuse `<段/>` for paragraph boundaries: `<段/>` is an ordinary tag costing **4 VA each**, so
+marking every boundary that way would shift `lines.virtual` (fuyan measured ≈ +78,752 VA), breaking
+bookmarks and "last read" positions that are stored by VA. The dedicated `段界` / `空格` skip tags
+avoid that entirely (0 VA). Any library wanting "paper-line display on screen, paragraph merge on copy"
+can adopt these two tag names.
+
 ## 6. Verification
 
 | check | result |
