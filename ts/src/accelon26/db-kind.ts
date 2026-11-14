@@ -1,5 +1,7 @@
 /**
- * 這是哪一種資料庫？（作者 2026-10）
+ * 這是哪一種資料庫、體例怎麼定？—— 都讀來源最前面的 `<集>`（作者 2026-10／11-14）
+ *
+ * 目前從 `<集 c="…">` 讀兩件事：`isdict`（詞典型）與 `noindent`（段首不縮排）。
  *
  * 詞典型 adb 的本文**不需要 `docHead`**：詞條名稱已經在分頁標題上，而且第一個詞條字串
  * 通常就是搜尋命中、會被塗紅 —— 再放一次標題就變成同一個詞顯示三次。
@@ -39,13 +41,24 @@ async function headText(m: VaPaMapper): Promise<string> {
   return head;
 }
 
-/** `<集 c="… isdict …">` 的 c 屬性裡有沒有獨立的 isdict 字（作者 2026-10 的標記） */
-function isdictInHead(head: string): boolean {
+/**
+ * `<集 c="…">` 的 c 旗標（空白分隔；沒有就回空陣列）。
+ *
+ * `c` 是既有的旗標位：taisho 用 `c="hidden"`、詞典型用 `c="isdict"`。
+ * 新的旗標往這裡加，不要另開屬性名。
+ */
+export function collectionFlags(head: string): string[] {
   // 注意：JS 的 `\b` 只認 ASCII 單字字元，`<集` 的 `集` 是非 ASCII → `<集\b` 永遠不匹配，
   // 所以這裡用「空白或 >」當邊界（作者 2026-10 踩過的坑）。
   const ji = /<集(?:\s[^>]*)?>/.exec(head);
-  const cAttr = ji ? /\sc\s*=\s*"([^"]*)"/.exec(ji[0]) : null;
-  return !!cAttr && /(^|\s)isdict(\s|$)/.test(cAttr[1].trim());
+  if (!ji) return [];
+  const cAttr = /(?:^|\s)c\s*=\s*"([^"]*)"/.exec(ji[0]);
+  return cAttr ? cAttr[1].trim().split(/\s+/).filter(Boolean) : [];
+}
+
+/** `<集 c="… isdict …">` 的 c 屬性裡有沒有獨立的 isdict 字（作者 2026-10 的標記） */
+function isdictInHead(head: string): boolean {
+  return collectionFlags(head).includes('isdict');
 }
 
 /**
@@ -93,4 +106,33 @@ export function isDictDb(m: VaPaMapper | null | undefined): boolean {
 /** 測試／診斷用：直接指定 */
 export function setDictDb(m: VaPaMapper, on: boolean): void {
   dictCache.set(m, !!on);
+}
+
+/**
+ * 段首要不要縮排 —— **由書稿自己的 `<集>` 標記決定，不看庫名**（作者 2026-11-14）。
+ *
+ * 同一個 exe 要服務好幾種書：《福嚴講義》紙本正文頂格（厚觀法師 2026-11-14），
+ * 《印順法師著作集》正文空兩格（陳裕文 2026-11-13）。這是**書稿的體例**，不是
+ * 閱讀器的偏好，所以寫在資料裡：
+ *
+ *     <集 c="noindent">福嚴講義</集>
+ *
+ * 沒宣告的庫照舊縮排（預設 true）。旗標放 `c`，與 `isdict` 同一套寫法。
+ */
+const noIndentCache = new WeakMap<VaPaMapper, boolean>();
+
+export async function detectNoIndent(m: VaPaMapper): Promise<boolean> {
+  const v = collectionFlags(await headText(m)).includes('noindent');
+  noIndentCache.set(m, v);
+  return v;
+}
+
+/** 這個庫宣告了 `c="noindent"` 嗎（沒偵測過 → false，之後會補上） */
+export function isNoIndent(m: VaPaMapper | null | undefined): boolean {
+  return !!m && noIndentCache.get(m) === true;
+}
+
+/** 測試／診斷用：直接指定 */
+export function setNoIndent(m: VaPaMapper, on: boolean): void {
+  noIndentCache.set(m, !!on);
 }

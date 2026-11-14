@@ -18,7 +18,7 @@ import { kwMarks } from './kw-marks';
 import { highlightWordIn } from './word-hl';
 import { getUserId } from './user-id';
 import { displayConverter, type SimMode } from './lossless';
-import { isDictDb } from './db-kind';
+import { isDictDb, isNoIndent } from './db-kind';
 import { diffPage, discardPage, hasEditsInRange, onEditsChange, pageEditAt, pageKey, sessionFor as editSessionFor, stagePage, type DbEditSession, type PageEdit } from './edit-session';
 import { SHORT_DB_NAMES } from './short-titles';
 import { charDiff } from './char-diff';
@@ -2274,9 +2274,9 @@ function renderDoc(s: DocSession): void {
       untaggedFigures: /^(tx|taixu)$/.test(ctx?.reader.header.dbname ?? ''),
       // 詞典型：`<字>`／`<詞>` 在連排模式要另起一段（作者 2026-11-06）
       dictEntries: isDictDb(ctx?.mapper ?? null),
-      // 段首縮排（厚觀法師 2026-11-14）：《福嚴講義》紙本正文頂格，段落開頭不空兩格；
-      // 《印順法師著作集》照陳裕文 2026-11-13 的要求保留。依庫別切換，不要全域關。
-      indent: (ctx?.reader.header.dbname ?? '') !== 'fuyan',
+      // 段首縮排：**由書稿的 `<集 c="noindent">` 決定，不看庫名**（作者 2026-11-14）。
+      // 《福嚴講義》紙本正文頂格（厚觀法師 2026-11-14）、其他書照舊空兩格（陳裕文 2026-11-13）。
+      indent: !isNoIndent(ctx?.mapper ?? null),
       termMode: termModeOf(),
     });
   const rows = renderBlocks(blocks, s);

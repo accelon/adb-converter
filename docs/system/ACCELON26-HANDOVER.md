@@ -780,7 +780,7 @@ Remove-Item -Recurse -Force D:\2026\adb-converter\build\.chrome-profile* -ErrorA
 | `ts/src/accelon26/vapa.ts` | **VA↔PA 映射器**。`init()`、`elementAt`、`lineSpans`、`phraseSpans`、`textOfVaSpan`、`nodeLabel`、`lineLengthPercentile`、**`lineLengthMaxUnder`**、**`edgeLine`**、`loadAnchors`、`validate` |
 | `ts/src/accelon26/search.ts` | 搜尋：`loadTrees`（`<樹>`）、`parseScope`／`parseTiers`、`loadInstanceAttrs`、`loadTree`、`buildTree`／`flattenTree`、`phraseMatch`、`searchSummary`、`SearchSession`（`clauseHits`／`singleResult`／`rankClauses`／`groupStats`／BM25／`segments()`） |
 | `ts/src/accelon26/backend.ts` | **後端分界**（作者 2026-10）：`ClauseHits` 契約、`backendKind()`、`queryBackend()`（唯一查詢入口，Go 或 TS）、`variantGroupsFor()`、`clauseHitsFor()`、`searchMultiVia()`／`searchAutoVia()`、`lastGoAnswer`／`goQueryCount()`。不 import 任何 UI 模組 |
-| `ts/src/accelon26/db-kind.ts` | **詞典型 adb 判定**（`detectDictDb()`／`isDictDb()`）：`<集 c="… isdict …">` 或 `$詞`／`$字` 樹 → 本文不顯示 docHead |
+| `ts/src/accelon26/db-kind.ts` | **資料庫體例判定**（都讀來源最前面的 `<集>`）：`detectDictDb()`／`isDictDb()`（`c="… isdict …"` 或 `$詞`／`$字` 樹 → 本文不顯示 docHead）、**`detectNoIndent()`／`isNoIndent()`**（`c="noindent"` → 段首不縮排，作者 2026-11-14；《福嚴講義》用）、`collectionFlags()`（`c` 旗標解析，新旗標一律往 `c` 加，不要另開屬性名） |
 | `ts/test/shared/search-cases.json` | **Go／TS 共用**的查詢測試集（3 庫 × 20 查詢 ＋ 18 個通檢案例）；`tools/make-search-cases.ts` 產生 |
 | `wails/query.go` | Go 後端（**唯一的宿主查詢入口**）：`parseQuery`／`queryTokens`／`phraseMatchPattern`／`unionPostings`（變體組 posting 聯集）、`AdbHost.SearchQuery(path, query, maxHits, groups)` |
 | `wails/query_cases_test.go` | Go 側跑共用測試集＋`TestSearchQueryVariants`（環境變數給 .adb，沒給就跳過） |

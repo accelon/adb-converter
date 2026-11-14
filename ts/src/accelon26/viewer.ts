@@ -10,7 +10,7 @@ import {
   AdbReader, BlobIO, CLASS_LABELS,
   type AdbHeader, type Container, type DocRow, type TokenRow, type AdbSource } from './adb';
 import { VaPaMapper, parseAttrs } from './vapa';
-import { detectDictDb } from './db-kind';
+import { detectDictDb, detectNoIndent } from './db-kind';
 import {
   SearchSession, searchSummary, loadTrees, loadTree, buildTree, flattenTree, parseScope, loadInstanceAttrs,
   type SearchResult, type TreeNode, type SearchTree,
@@ -218,6 +218,8 @@ export async function openFile(file: AdbSource): Promise<'opened' | 'existing' |
     const layoutMs = performance.now() - t2;
     // 詞典型 adb？本文不顯示 docHead（作者 2026-10：同一個詞不要顯示三次）
     await detectDictDb(mapper);
+    // 段首縮不縮排＝書稿 `<集 c="noindent">` 決定（作者 2026-11-14）
+    await detectNoIndent(mapper);
     const t2b = performance.now();
     const anchorCount = await mapper.loadAnchors();
     void anchorCount;                      // kept for the meta pane / diagnostics

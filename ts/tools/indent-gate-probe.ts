@@ -5,10 +5,12 @@
  *   bun run tools/indent-gate-probe.ts --adb ../accelon3/fuyan.adb     # 期望 0
  *   bun run tools/indent-gate-probe.ts --adb ../accelon3/ys.adb        # 期望 > 0
  *
- * 為什麼要這一支：`indent` 這個開關在 doc-pane 是**依庫名**給的
- * （`reader.header.dbname === 'fuyan'` 才關），單元測試只能證明渲染器聽話，
- * 證明不了「fuyan 這個庫真的走到那一支」。這裡直接開真的 adb、數畫面上的
- * `.paraIndent`，資料／設定／渲染三層一起驗。
+ * 為什麼要這一支：`indent` 由**書稿自己的 `<集 c="noindent">`** 決定（作者 2026-11-14），
+ * 不是閱讀器的偏好，也不是認庫名。單元測試只能證明渲染器聽話（見 test/db-kind.test.ts），
+ * 證明不了「這個庫真的走到那一支」。這裡直接開真的 adb、數畫面上的 `.paraIndent`。
+ *
+ * 反向對照（證明開關真的跟著資料走，不是跟著檔名走）：
+ *   拿**加旗標之前**的 fuyan.adb 配同一個 exe → `.paraIndent` 會回來的（> 0）。
  *
  * 另外回報 `.pageBreak` 的數量當對照：兩個數字一起看，才不會把「整頁沒渲染」
  * 誤讀成「縮排拿掉了」。
