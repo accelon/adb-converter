@@ -1737,6 +1737,9 @@
   .cheatCard .ccFoot { flex-wrap: wrap; }
   /* 融視圖（R1 V6）：整段重排的色帶，有別於速覽摺疊的 .embedDoc */
   .fusionToggle { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--dim); margin: 0 0 6px; cursor: pointer; }
+  /* 沒有 <融> 的庫要真的看不到：`display:inline-flex` 會蓋掉 hidden 屬性的 display:none
+     （作者樣式優先於 UA 樣式），所以補這一條。法師 2026-11-14 反映 fuyan 出現不該有的勾選框。 */
+  .fusionToggle[hidden] { display: none !important; }
   .fusionBlock { display: block; border-left: 3px solid var(--accent); background: var(--panel2); padding: 2px 8px; margin: 2px 0; border-radius: 0 5px 5px 0; }
   .fusionSrc { display: block; font-size: 11px; color: var(--dim); }
   .fusionBody .fusionLine { display: block; }

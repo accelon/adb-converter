@@ -39,6 +39,8 @@ interface SelInfo {
   raw: string;
   /** 逐行文字（已去掉夾在文中的頁碼標記）；「引用複製」要保留原書分行用。 */
   lines: string[];
+  /** 與 lines 對齊的 HTML 片段（保留楷體／粗體，貼進 Word 用）。 */
+  htmls: string[];
   va: number;
   pageId: string;
   book: string;
@@ -157,9 +159,32 @@ function normalizeLines(s: string): string {
 /**
  * 取選取範圍內每一行的文字（去掉 `.pageBreak` 裡的頁碼：那個頁碼是給人看的，
  * 選進引用會變成「5p8（1）略說」這種夾在文中的雜訊）。
+ *
+ * 同時回傳每一行的 HTML 片段（法師 2026-11-14 要求「引用複製依原格式，引文要
+ * 標楷體」）。畫面上的格式是 class（quote／fmt-kai／fmt-bold），貼到 Word 不認，
+ * 所以這裡直接改成**內聯樣式**，並把 class／id 全部拿掉。
  */
-function selectedLines(range: Range, startLine: number, endLine: number): string[] {
+const KAI_STACK = "'標楷體', KaiTi, 楷體, DFKai-SB, serif";
+
+function formatHtml(box: HTMLElement): string {
+  box.querySelectorAll<HTMLElement>('*').forEach((e) => {
+    const cls = e.className || '';
+    if (/\bquote\b|\bfmt-kai\b/.test(cls)) e.style.fontFamily = KAI_STACK;
+    if (/\bfmt-bold\b/.test(cls)) e.style.fontWeight = 'bold';
+    if (/\bfmt-sup\b/.test(cls)) {
+      e.style.verticalAlign = 'super';
+      e.style.fontSize = 'smaller';
+    }
+    for (const a of [...e.attributes]) {
+      if (a.name !== 'style') e.removeAttribute(a.name);
+    }
+  });
+  return box.innerHTML.replace(/<br\s*\/?>/gi, '');
+}
+
+function selectedLines(range: Range, startLine: number, endLine: number): { lines: string[]; htmls: string[] } {
   const out: string[] = [];
+  const htmls: string[] = [];
   for (let n = startLine; n <= endLine; n++) {
     const node = document.querySelector<HTMLElement>(`#docText .docLine[id="L${n}"]`)
       ?? document.querySelector<HTMLElement>(`#docText .docLine[id="L${n}a"]`);
@@ -172,9 +197,9 @@ function selectedLines(range: Range, startLine: number, endLine: number): string
     box.appendChild(r.cloneContents());
     box.querySelectorAll('.pageBreak').forEach((e) => e.remove());
     const t = (box.textContent || '').replace(/[ \t\u00a0]+/g, ' ').trim();
-    if (t) out.push(t);
+    if (t) { out.push(t); htmls.push(formatHtml(box)); }
   }
-  return out;
+  return { lines: out, htmls };
 }
 
 /** 取目前選取範圍（只接受中間本文的 .docLine，避免左右欄混在一起）。 */
@@ -230,8 +255,8 @@ async function selectionInfo(): Promise<SelInfo | null> {
     pre.setEnd(range.endContainer, range.endOffset);
     for (const ch of pre.toString()) if (HAN_RE.test(ch)) hanPrefixEnd++;
   } catch { hanPrefixEnd = hanPrefix; }
-  const lines = selectedLines(range, n, endLine);
-  return { text, raw, lines, va, pageId, endPageId, book, page: pageId, rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width }, searchable, pageMark, startLine: n, endLine, hanPrefix, hanPrefixEnd };
+  const { lines, htmls } = selectedLines(range, n, endLine);
+  return { text, raw, lines, htmls, va, pageId, endPageId, book, page: pageId, rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width }, searchable, pageMark, startLine: n, endLine, hanPrefix, hanPrefixEnd };
 }
 
 /**
@@ -549,6 +574,7 @@ function placeMenu(m: HTMLElement, info: SelInfo): void {
 async function copyText(text: string, message: string, html?: string): Promise<void> {
   // 測試／診斷：最近一次複製的字串（不管剪貼簿有沒有成功）
   (window as unknown as { __lastCopy?: string }).__lastCopy = text;
+  (window as unknown as { __lastCopyHtml?: string }).__lastCopyHtml = html ?? '';
   let ok = false;
   if (html && typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
     try {
@@ -612,6 +638,29 @@ function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+
+/**
+ * 「引用複製」的 HTML 版：逐行組，能與原書行對上的就用**帶格式的片段**
+ * （楷體 span、粗體 span 已轉成內聯樣式），模板補的字（書名、頁碼）照舊轉義。
+ * 法師 2026-11-14：「引用複製依原格式，引文標楷體要正確顯示」——先前這裡
+ * 是 `escHtml(out)`，貼到 Word 只剩純文字，楷體全丟。
+ */
+function quoteHtml(out: string, lines: string[], htmls: string[]): string {
+  if (!htmls || !htmls.length) return escHtml(out).replace(/\n/g, '<br>');
+  // 選取文字裡會夾著 pageBreak 的頁 id（「…此論是6p9《十地經》…」），而 lines 已經
+  // 把 pageBreak 拿掉了；比對前先把頁 id 去掉，否則永遠對不上、整段退回純文字。
+  const flat = out.replace(/\d+p\d+[a-z]?/gi, '');
+  let html = escHtml(flat);
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i];
+    if (!t) continue;
+    const pos = html.indexOf(escHtml(t));
+    if (pos < 0) continue;
+    html = html.slice(0, pos) + htmls[i] + html.slice(pos + escHtml(t).length);
+  }
+  return html.replace(/\n/g, '<br>');
+}
+
 async function buildCitation(info: SelInfo): Promise<{ text: string; html: string }> {
   const r = reader;
   if (!r) return { text: info.text, html: escHtml(info.text) };
@@ -658,7 +707,7 @@ async function buildCitation(info: SelInfo): Promise<{ text: string; html: strin
     if (url) out += '(' + url + ')';
   }
   // HTML 版（貼進 Word 用）也要分行，否則貼過去又擠成一團。
-  let html = escHtml(out).replace(/\n/g, '<br>');
+  let html = quoteHtml(out, info.lines, info.htmls);
   if ((hasRange || useLabel) && label && url && html.includes(escHtml(label))) {
     html = html.replace(escHtml(label), `<a href="${escHtml(url)}">${escHtml(label)}</a>`);
   }
@@ -986,6 +1035,20 @@ export function bookmarkState(): { count: number; db: string } {
 export async function citationForSelection(): Promise<string | null> {
   const info = await selectionInfo();
   return info ? citationFor(info) : null;
+}
+
+/** 同上，但回傳 HTML 版（診斷「貼到 Word 有沒有楷體」用）。 */
+export async function citationHtmlForSelection(): Promise<string | null> {
+  const info = await selectionInfo();
+  return info ? (await buildCitation(info)).html : null;
+}
+
+/** 診斷用：把選取的行、每行的 HTML 片段、套完模板的結果一起回傳。 */
+export async function citationDebug(): Promise<unknown> {
+  const info = await selectionInfo();
+  if (!info) return { error: 'no selection' };
+  const c = await buildCitation(info);
+  return { lines: info.lines, htmls: info.htmls, text: c.text, html: c.html };
 }
 
 /** 選單動作（第一層三組＋書籤）。動態產生的第二層項目也用同一個入口。 */

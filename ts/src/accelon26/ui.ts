@@ -2442,7 +2442,7 @@ async function posmapOf(): Promise<PosMap | null> {
 export function installDebugApi(): void {
 (window as unknown as Record<string, unknown>).__accelon26 = {
   openFile, showLine, showToken, revealHit, vapaProbe, showTab, toggleSide,
-  bookmarkState, citationForSelection,
+  bookmarkState, citationForSelection, citationHtmlForSelection, citationDebug,
   /** 打包進 app 的書目登錄（目標 id／別名；不是 xref 本身） */
   bookCatalog: BOOK_CATALOG,
   workCatalog: WORK_CATALOG,
@@ -2802,7 +2802,7 @@ import { initEmbed } from './embed';
 import { initHeatTab, renderHeatTab, syncHeatTab } from './heat-tab';
 import { initRevList } from './rev-list';
 import { initBookmarks, renderBookmarks } from './bookmarks';
-import { bookmarkState, citationForSelection } from './bookmarks';
+import { bookmarkState, citationForSelection, citationHtmlForSelection, citationDebug } from './bookmarks';
 import { initVaultImport, vaultImportState } from './vault-import';
 import { initAdbStore, openAdbStore } from './adb-store';
 import { initStudyIndex, refreshStudyIndexButton } from './study-index';
