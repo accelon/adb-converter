@@ -38,8 +38,10 @@ export function defaultFontOf(tag: string): string | null {
 }
 
 /** 本文的字型堆疊（與 doc-pane.ts 的 DOC_TEXT_FAMILY 一致）；
- *  最前面是內嵌梵字字型：只涵蓋 Unicode 第 16 平面私用區，不影響漢字（作者 2026-10-31） */
-const BODY_STACK = "'Accelon Siddham Uni', 'Accelon Siddham Extra', 'Accelon Ranjana', 'Microsoft JhengHei', 'Segoe UI', system-ui, sans-serif";
+ *  最前面是內嵌梵字字型：只涵蓋 Unicode 第 16 平面私用區，不影響漢字（作者 2026-10-31）。
+ *  拉丁字母與數字用 Times New Roman（厚觀法師 2026-11-14 16:32：先前梵文缺字回退到
+ *  Cambria，字距不均可見斷裂）；TNR 不含漢字，漢字與中文標點照舊回退到 JhengHei。 */
+const BODY_STACK = "'Accelon Box', 'Accelon Siddham Uni', 'Accelon Siddham Extra', 'Accelon Ranjana', 'Times New Roman', 'Microsoft JhengHei', 'Segoe UI', system-ui, sans-serif";
 /** 「楷體」不是一個每個系統都有的家族名：Windows 用標楷體／楷體，其他系統再退回本文 */
 const KAI_STACK = "'DFKai-SB', 'KaiTi', '楷體'";
 

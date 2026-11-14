@@ -3011,7 +3011,12 @@ const PROBE_FS = 100;
 /** the numbers behind the last auto-fit (diagnostics) */
 let lastFit: Record<string, number | boolean> | null = null;
 
-const DOC_TEXT_FAMILY = '"Accelon Siddham Uni", "Accelon Siddham Extra", "Accelon Ranjana", "Microsoft JhengHei", "Segoe UI", system-ui, sans-serif';
+// 拉丁字母與數字統一用 Times New Roman（厚觀法師 2026-11-14 16:32）：
+// 先前堆疊裡只有 JhengHei／Segoe UI，梵文的 ā ī ṃ ṣ ṭ 等字缺字→瀏覽器逐字
+// 回退到系統 serif（法師看到的是 Cambria），同一個詞裡的字來自兩套字型，
+// 字距不均、看起來斷斷續續。TNR 放在中文字型**前面**：TNR 不含漢字，
+// 漢字與中文標點仍回退到 JhengHei，只有拉丁／數字改用 TNR。
+const DOC_TEXT_FAMILY = '"Accelon Box", "Accelon Siddham Uni", "Accelon Siddham Extra", "Accelon Ranjana", "Times New Roman", "Microsoft JhengHei", "Segoe UI", system-ui, sans-serif';
 
 function autoFitFont(sample?: string[]): number {
   // The DOM only holds ONE page, so the numbers must come from the WHOLE document

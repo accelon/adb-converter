@@ -1618,11 +1618,11 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
           blanks = [];
         }
       } else if (softBreak) {
-        if (!prevHasFigure() && mergeIntoPrev(info)) {         // 前一行以 <頁> 結尾：這一行接上去
-          blanks = [];
-          softBreak = false;
-          continue;
-        }
+        // 2026-11-14（裕文居士 14:37／15:28 的「特別長的那一行」，1pa7a／1pa8a／1pa9a）：
+        // **頁碼收在行尾時，下一行不併進前一行**。原書的頁界必定是新的一行
+        // （yinshun-corpus 的 yNN.xml：17,402 個 `<pb>` 全部緊接 `<lb n="x.01"/>`），
+        // 併起來只會做出兩倍長的假長行，頁碼晶片就落在那一行的右緣。
+        // ys 有 15,631 個頁碼收在行尾，其中 11,544 個併完超過 60 字（最長 139 字）。
         flushBlanks();
       } else {
         flushBlanks();

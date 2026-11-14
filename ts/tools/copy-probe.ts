@@ -91,7 +91,7 @@ async function ev<T>(expression: string): Promise<T> {
   return r.result.value as T;
 }
 
-await ev(`(async () => { await window.__accelon26.openPage('fuyan','5p298',''); await new Promise(r=>setTimeout(r,700)); await window.__accelon26.showLine(31291); await new Promise(r=>setTimeout(r,600)); })()`);
+await ev(`(async () => { await window.__accelon26.openPage('fuyan','5p298',''); await new Promise(r=>setTimeout(r,700)); await window.__accelon26.showLine(31640); await new Promise(r=>setTimeout(r,600)); })()`);
 
 // 選一整條注（從「（1）《中論》卷3」到「長行例知。」）
 const sel = await ev<any>(`

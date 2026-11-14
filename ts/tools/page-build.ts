@@ -29,6 +29,11 @@ export function fontFaceCss(): string {
     ['Accelon Siddham Uni', 'accelon-siddham-unicode.woff2', 'U+11580-115FF'],
     ['Accelon Siddham Extra', 'accelon-siddham-extra.woff2', 'U+FA000-10AFFF'],
     ['Accelon Ranjana', 'accelon-ranjana.woff2', 'U+100000-10FFFD'],
+    // 製表符（U+2500–257F）：JhengHei／TNR 的框線字元只有 0.709em，漢字與全形
+    // 空格是 1em，用字元排的圖（《中觀論頌講記》5p34 的科判圖）每往右一格就少
+    // 4.66px，整張圖會散（厚觀法師 2026-11-14 20:07 回報）。這支只有 22 個
+    // 幾何字形、1em 寬，見 build-box-font.py。
+    ['Accelon Box', 'accelon-box.woff2', 'U+2500-257F'],
   ];
   const out: string[] = [];
   for (const [family, file, range] of fonts) {

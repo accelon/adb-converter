@@ -40,7 +40,9 @@
   /* 引文（CBETA <quote> → <引>）用楷體，和作者敘述分開（作者 2026-10-30）。
      字體依序找：Windows 標楷體／KaiTi、macOS Kaiti、Linux AR PL UKai；
      都沒有就退回襯線字體，至少不會變無襯線。 */
-  --kai: "Kaiti TC", "Kaiti SC", "KaiTi", "BiauKai", "標楷體", "DFKai-SB", "AR PL UKai CN", "Noto Serif CJK TC", serif;
+  /* 楷體堆疊最前面放 Times New Roman（厚觀法師 2026-11-14 16:32：梵文、英文、數字
+     一律用 Times New Roman）。引文裡的漢字仍回退到楷體，只有拉丁與數字換成 TNR。 */
+  --kai: "Times New Roman", "Kaiti TC", "Kaiti SC", "KaiTi", "BiauKai", "標楷體", "DFKai-SB", "AR PL UKai CN", "Noto Serif CJK TC", serif;
   /* 明體（新細明體）：科判用（厚觀法師 2026-11-12「科判應該用新細明體」）。
      紙本的科判是 11pt 新細明體加框，本文才是楷體；電子版先前科判跟著本文用黑體，
      法師一眼看出不同。Windows 新細明體＝PMingLiU（MingLiU 是細明體，先找 PMingLiU）。 */
@@ -172,7 +174,7 @@
   html, body { height: 100%; overflow: hidden; }
   body {
     margin: 0; background: var(--bg); color: var(--fg);
-    font: var(--fs)/1.6 "Accelon Siddham Uni", "Accelon Siddham Extra", "Accelon Ranjana", "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+    font: var(--fs)/1.6 "Accelon Box", "Accelon Siddham Uni", "Accelon Siddham Extra", "Accelon Ranjana", "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
     display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr);
   }
   body.dragging::after {
@@ -931,7 +933,7 @@
   /* 本文樣式（作者 2026-10-22）：只套在中欄，右欄「文字內容」沿用右欄自己的設定 */
   #docText .docBody {
     color: var(--doc-body-color, var(--fg));
-    font-family: var(--doc-body-font, "Accelon Siddham Uni", "Accelon Siddham Extra", "Accelon Ranjana", "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif);
+    font-family: var(--doc-body-font, "Accelon Box", "Accelon Siddham Uni", "Accelon Siddham Extra", "Accelon Ranjana", "Times New Roman", "Microsoft JhengHei", "Segoe UI", system-ui, sans-serif);
     font-size: var(--doc-body-size, var(--fsdoc, 16px));
   }
   /* the middle pane only ever scrolls its document body */
@@ -1427,9 +1429,9 @@
      一般還是用新細明體，引文才用標楷體」）。紙本的腳注是 11pt 新細明體，楷體只給引文；
      先前注文沒有自己的字體，跟著本文（讀者把本文設成楷體）一起變楷體，整片腳注都是楷體。
      寫在 `.quote`／`.fmt-kai` 之前，讓引文那兩條（同權重、後出）仍然蓋得過。 */
-  .lineText .noteBody { font-family: var(--ming); }
+  .lineText .noteBody { font-family: "Times New Roman", var(--ming); }
   /* 腳注裡的引文（<經>）用楷體；其餘注文維持本文（厚觀法師 2026-11-09：不是全部腳注都用楷體） */
-  .lineText .noteBody .h[data-tag="經"] { font-family: var(--kai) !important; }
+  .lineText .noteBody .h[data-tag="經"] { font-family: "Times New Roman", var(--kai) !important; }
   /* Word 的粗體、引文楷體、上標（2026-11-11）。
      這三個標籤以前**沒有渲染分支**：資料裡有 39,770 個 `<粗>`、5,646 個 `<經>`，
      但不在目錄樹的 `t=` 清單裡，被當成「不認識的標籤」整支丟掉——文字留著、樣式全無。

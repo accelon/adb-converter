@@ -744,7 +744,11 @@ async function buildCitation(info: SelInfo): Promise<{ text: string; html: strin
   const useLabel = /^\d+p\d+$/.test(info.pageId);
   // 「引用複製」要「保留原有的段落與格式，並隨原書分行」（厚觀法師 2026-11-12）：
   // 選到多段才插換行，單段／短句照舊，免得一句話被硬拆成兩行。
-  const quoted = info.lines && info.lines.length > 1 ? info.lines.join('\n') : info.text;
+  // 只有一段時也要用 selectedLines() 的結果：`info.text` 是 DOM 選取的字串，
+  // 跨行的西文會被 render 端的「英數邊界補空白」規則插一個空白，貼出來就變成
+  // 「puru ṣapudgalāḥ」（厚觀法師 2026-11-14 16:32 第二項）。lines 已經是照
+  // <段界/>／<空格/> 接好的段落，不會多也不會少。
+  const quoted = info.lines && info.lines.length ? info.lines.join('\n') : info.text;
   let out = tpl.replace(/\$(\*?)([^;]+);/g, (_all, _star, tag: string) => {
     if (tag === 'URL') return useLabel ? label : url;
     if (tag === '_') return quoted;
