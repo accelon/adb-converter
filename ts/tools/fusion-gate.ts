@@ -285,46 +285,67 @@ console.log('');
 // ── B. ybh.adb：V9/V10（僅 --ybh 時跑）
 if (wantYbh) {
   const ybhPath = resolve(YBH_DIR, YBH_FILE);
-  if (!existsSync(ybhPath)) { console.log('\n--- ybh.adb 不在 ' + ybhPath + '，V9/V10 GATED ---'); skipped('V9 視圖內連結點擊＝linkTo', '需 D:\\accelon3\\ybh.adb'); skipped('V10 分批 hydration（batch 50）', '需 D:\\accelon3\\ybh.adb'); }
-  else {
-    // ybh 的 <融> 在卷第一 body（L197514+，全庫 12,851 枚），但 97 萬行大章是虛擬化渲染：
-    // openPage 落卷首封面、需點主樹章節＋滾動才把 <融> 拉進 DOM。CDP 自動化這條時序敏感、
-    // 易 flaky。故 --ybh 走「尽力導航」：能摸到 ≥50 殼就實斷言 V9/V10，摸不到就誠實 GATE，
-    // 不假綠（資料填充路徑 ybh 端已有 250 抽樣 headless 覆蓋，交互/效能以一次手動點擊為準）。
-    console.log('\n--- ybh.adb (V9/V10 尽力) ---');
+  if (!existsSync(ybhPath)) {
+    console.log('\n--- ybh.adb 不在 ' + ybhPath + '，V9/V10 GATED ---');
+    skipped('V9 視圖內點科判＝節聯行為', '需 D:\\accelon3\\ybh.adb');
+    skipped('V10 分批 hydration（batch 50）', '需 D:\\accelon3\\ybh.adb');
+  } else {
+    console.log('\n--- ybh.adb (V9/V10) ---');
     const isoDir = isolateDir('ybh');
     placeAdb(ybhPath, isoDir);
     const gui = await startGui(STATE_DIR, PORT, isoDir);
     try {
       await openAndSettle(gui, ybhPath, 'ybh', 30000);
       await clickFusion(gui);
-      // 點主樹第一個章級 tRow、再把 docBody 滾到中段，盡量把 <融> 拉進 DOM
+      // 導航：openPage 到有 <融> 的科判（ybh 回信 §二 用 T1579-1#kpD02-001 拿到 4 殼＋141 字）
+      // #docBody 是唯一可滾容器（ybh 回信 §三實測）；滾動把帶窗聯拉進 DOM
       await gui.evalIn(`(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-        const row = document.querySelector('#dirTree .tRow');
-        if (row) row.click();
-        await sleep(1200);
-        const sc = document.querySelector('#docText .docScroll') || document.querySelector('#docText');
-        if (sc) { sc.scrollTop = 4000; }
-        document.querySelectorAll('#docText .pageView').forEach((p, i) => { if (i > 3 && i < 40) p.remove?.(); });
+        try { window.__accelon26.openPage('ybh', 'T1579-1#kpD02-001', ''); } catch { /* */ }
+        await sleep(2000);
+        const sc = document.querySelector('#docBody');
+        if (sc) sc.scrollTop = 2000;
         await sleep(1500);
         return 1;
       })()`);
-      const v = JSON.parse(await gui.evalIn<string>(`(() => {
+      // 等 hydration：重試迴圈（ybh §三「沒 hydrate 就沒鏈、整條斷在源頭」）
+      const hydStr = await gui.evalIn<string>(`(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        for (let i = 0; i < 30; i++) {
+          if (document.querySelectorAll('#docText .fusionBlock[data-done="1"]').length > 0) break;
+          await sleep(300);
+        }
         const blocks = [...document.querySelectorAll('#docText .fusionBlock')];
-        const done = blocks.filter((b) => b.dataset.done === '1');
-        const filled = done.filter((b) => (b.querySelector('.fusionBody')?.textContent ?? '').trim().length > 0);
-        const links = blocks.reduce((n, b) => n + b.querySelectorAll('a[data-link], a[data-xref], [data-rrev], .nodeLink, [data-node]').length, 0);
-        return JSON.stringify({ total: blocks.length, done: done.length, filled: filled.length, pending: blocks.length - done.length, links });
-      })()`) as string);
-      if (v.total >= 3 && v.filled >= 1) {
-        ok('V9 視圖內 body 有實連結／節聯可點（hydration 走 lineHtml、非純文字）',
-          v.links >= 0 && v.filled >= 1, JSON.stringify(v));   // fixture 無內鏈→ybh 有則計數斷言
-        ok('V10 分批 hydration：DOM 內 done ≤ batch、其餘 pending（延遲取段）',
-          v.done <= Math.max(50, v.total) && v.total > 0, JSON.stringify(v));
+        const done = blocks.filter(b => b.dataset.done === '1');
+        const filled = done.filter(b => (b.querySelector('.fusionBody')?.textContent ?? '').length > 0);
+        return JSON.stringify({ total: blocks.length, done: done.length, filled: filled.length });
+      })()`);
+      const h = JSON.parse(hydStr);
+      console.log('ybh hydration:', JSON.stringify(h));
+
+      if (h.done >= 1) {
+        // V10：done ≤ batch 50（不一次拉滿）
+        ok('V10 延遲取段：done ≤ batch 50（不一次拉滿）', h.done <= 50, JSON.stringify(h));
+        // V9：找 .nodeLink 點擊，量 #docBody.scrollTop 位移 + xrefHit 計數（ybh 配方 §三）
+        const v9Str = await gui.evalIn<string>(`(async () => {
+          const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+          const sc = document.querySelector('#docBody');
+          const link = document.querySelector('.fusionBlock[data-done="1"] .nodeLink')
+            || document.querySelector('.fusionBlock[data-done="1"] a[data-link]');
+          if (!link) return JSON.stringify({ link: false });
+          const before = sc ? sc.scrollTop : 0;
+          link.click();
+          await sleep(1500);
+          const after = sc ? sc.scrollTop : 0;
+          const hits = document.querySelectorAll('mark.xrefHit, .xrefHit').length;
+          return JSON.stringify({ link: true, delta: after - before, hits, before, after });
+        })()`);
+        const v9 = JSON.parse(v9Str);
+        ok('V9 視圖內點科判＝節聯行為（linkTo 捲動＋高亮）',
+          v9.link === true && (v9.delta !== 0 || v9.hits > 0), JSON.stringify(v9));
       } else {
-        skipped('V9 視圖內連結點擊＝linkTo', 'ybh 大章虛擬化、CDP 未穩定摸到 <融>（total=' + v.total + '），改手動一點');
-        skipped('V10 分批 hydration（batch 50）', '同上；資料填充由 ybh 250 抽樣 headless 已驗');
+        skipped('V9 視圖內點科判＝節聯行為', 'CDP 未摸到 .fusionBlock[data-done="1"]（ybh 大章虛擬化，total=' + h.total + '）');
+        skipped('V10 分批 hydration（batch 50）', '同上');
       }
     } catch (e) {
       skipped('V9/V10', 'ybh 導航異常：' + (e as Error).message);
@@ -333,10 +354,10 @@ if (wantYbh) {
     }
   }
 } else {
-  skipped('V9 視圖內 <聯>／<節聯> 點擊', '需 --ybh（且 ybh 大章虛擬化、CDP 時序敏感）');
+  skipped('V9 視圖內點科判＝節聯行為', '需 --ybh（且 ybh 大章虛擬化、CDP 時序敏感）');
   skipped('V10 分批 hydration（batch 50）', '需 --ybh（同上）；資料填充 ybh 端 250 抽樣 headless 已驗');
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed, ' + gated + ' gated');
-console.log('（V0/V6/V7/V8＝fixture 上真 exe 自動綠；V9/V10 見上方 GATE 說明）');
+console.log('（V0/V6/V7/V8＝fixture 上真 exe 自動綠；V9/V10＝--ybh 上真 exe 量測）');
 process.exit(fail ? 1 : 0);
