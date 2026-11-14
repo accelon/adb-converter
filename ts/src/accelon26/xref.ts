@@ -30,7 +30,7 @@ import { openAdbStore } from './adb-store';
 import { hostState } from './host';
 import { bz2Decompress } from '../bzip2-wasm';
 import { HAN_RE, isHan, hanChars, hanCount } from './han';
-import { anchorIndex, anchorVa, blockOf, nodeAnchorInfo, nodeSpanChunk, nodeSubtreeEnd, pageHanTextOf, shortPageId, type AnchorIndex } from './page-text';
+import { anchorIndex, anchorVa, blockOf, nodeAnchorInfo, nodeSpanChunk, nodeSubtreeEnd, pageHanTextOf, revPageKey, revPageWholeKey, type AnchorIndex } from './page-text';
 import { citationEntryTag, entryById, entryByName, entryLineOfHan } from './entry-anchor';
 import { splitPageCol, type PageCite } from './page-cite';
 import { splitWordKey } from './word-hl';
@@ -467,12 +467,15 @@ async function addReverseFrom(
       if (qm) entry.quote = qm[1].replace(/<[^>]*>/g, '').trim();
     } catch { /* 取不到就算了 */ }
     outAll.push(entry);
-    const key = db + '?' + shortPageId(anchor);
+    // 反鏈鍵必須剝掉 anchor 的 `#a-b` 窗綴（ybh v14+ 用 `i="taisho?頁欄#a-b"`，
+    //   shortPageId 的 $ 錨不吃帶 # 的串 → 建鍵與查表鍵不一致、反鏈恒為 0）。走 page-text 的
+    //   revPageKey／revPageWholeKey，與 reverseItemsForPage 查表側對稱。
+    const key = revPageKey(db, anchor);
     const arr = outIndex.get(key);
     if (arr) arr.push(entry); else outIndex.set(key, [entry]);
     // 大正藏一頁有三欄（a/b/c）：讀者在 a 欄時，連到 b、c 欄的引文也該看得到，
     // 所以另外用「頁」為鍵收一份（作者 2026-10-28）。
-    const pageKey = db + '?' + shortPageId(anchor.replace(/[a-z]$/, ''));
+    const pageKey = revPageWholeKey(db, anchor);
     if (pageKey !== key) {
       const parr = outIndex.get(pageKey);
       if (parr) parr.push(entry); else outIndex.set(pageKey, [entry]);
@@ -535,10 +538,11 @@ async function addReverseFromXrev(
       targetPage: String(targetPage),
     };
     outAll.push(entry);
-    const key = db + '?' + shortPageId(entry.targetPage);
+    // 同 :470：建鍵必須剝 `#a-b` 窗綴，與 reverseItemsForPage 查表側一致（xrev 快速反鏈路）
+    const key = revPageKey(db, entry.targetPage);
     const arr = outIndex.get(key);
     if (arr) arr.push(entry); else outIndex.set(key, [entry]);
-    const pageKey = db + '?' + shortPageId(entry.targetPage.replace(/[a-z]$/, ''));
+    const pageKey = revPageWholeKey(db, entry.targetPage);
     if (pageKey !== key) {
       const parr = outIndex.get(pageKey);
       if (parr) parr.push(entry); else outIndex.set(pageKey, [entry]);
@@ -1031,8 +1035,9 @@ export function sortRevItems(items: RevItem[], mode: RevSort): RevItem[] {
 export async function reverseItemsForPage(db: string, pageId: string, mode: RevSort = 'freq'): Promise<RevItem[]> {
   if (!revIndex.size || !pageId) return [];
   // 先看這一欄；整頁（a/b/c 三欄）如果還有別的欄被引用，就一併列出（作者 2026-10-28）
-  const colEntries = revIndex.get(db + '?' + shortPageId(pageId)) ?? [];
-  const pageEntries = revIndex.get(db + '?' + shortPageId(pageId.replace(/[a-z]$/, ''))) ?? [];
+  // 鍵走 revPageKey／revPageWholeKey（剝 `#a-b` 窗綴），與索引建鍵側對稱——否則 ybh 帶窗鏈查不中。
+  const colEntries = revIndex.get(revPageKey(db, pageId)) ?? [];
+  const pageEntries = revIndex.get(revPageWholeKey(db, pageId)) ?? [];
   const entries = pageEntries.length > colEntries.length ? pageEntries : colEntries;
   if (!entries.length) return [];
   const uniq = new Map<string, RevEntry>();

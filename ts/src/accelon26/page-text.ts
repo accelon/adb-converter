@@ -70,6 +70,26 @@ export function shortPageId(id: string): string {
   return short === id ? id : short;
 }
 
+/**
+ * 反鏈索引／查表的統一「頁欄鍵」：`db?頁欄`，先剝掉 anchor 的 `#a-b`／`#詞` 窗綴，
+ * 再走 shortPageId 歸一。
+ *
+ * 為何必須剝窗綴（2026-11-14，ybh 反鏈恒為 0 的根因）：ybh v14+ 把跨庫聯升級成
+ * `i="taisho?30p279a#34-40"`，`anchor` 帶著 `#34-40`；`shortPageId` 的正負有 `$` 錨，
+ * 帶 `#` 的串不匹配 → 原樣返回、也不做前導 0 歸一。於是索引鍵 = `taisho?30p279a#34-40`，
+ * 而查表是讀該頁時傳進的純頁欄 `taisho?30p279a` → 兩者永不相交，只有沒帶 `#a-b` 的舊鏈
+ * 進得了可查索引（實測 n=2,403 vs 全庫 49,749）。建鍵與查表兩側都改走這個函數即可對稱。
+ */
+export function revPageKey(db: string, anchorOrPage: string): string {
+  return db + '?' + shortPageId(anchorOrPage.split('#')[0]);
+}
+
+/** 整頁（去 a/b/c 欄）鍵：讀 a 欄時，連到同頁 b、c 欄的引用也列得出来（作者 2026-10-28）。
+ *  同樣要先剝 `#` 窗綴，否則 `replace(/[a-z]$/,'')` 落在 `…#34-40` 上不触发、整欄 fallback 失效。 */
+export function revPageWholeKey(db: string, anchorOrPage: string): string {
+  return db + '?' + shortPageId(anchorOrPage.split('#')[0].replace(/[a-z]$/, ''));
+}
+
 /** 頁 id → VA（走 accelon3 的 attributes/頁.id → pointer → tags/頁 鏈）；
  *  沒有頁 id 或頁 id 不中時，依序退回 `塊.段` 與「通用節點錨點」（科判等，見 nodeAnchorInfo）。 */
 export async function anchorVa(r: AdbReader, anchor: string): Promise<number | null> {
