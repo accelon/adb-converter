@@ -1,60 +1,60 @@
 {
-  "_comment": "研究用資料庫的狀態。status: available（可下載）／wip（施工中，不下載）／revision（整修中）。downloadable:false 的庫只記在 manifest 版本歷史裡，官網與桌面版都不提供下載。source／licenseNote 是給使用者看的出處與授權說明。official:true 是官方委託製作，公開頁會加醒目標記；exclusive:true 是本站獨家，公開頁加另一種醒目標記；pin 是置頂順序（1 最前，沒有的照 index.txt 的順序）。",
-  "fuyan.adb": {
-    "status": "available",
-    "official": true,
-    "pin": 1,
-    "label": "可下載",
-    "source": "釋厚觀《空之探究講義》（2004）Word 講稿，福嚴佛學院（官方委託製作）",
-    "licenseNote": "講義文字、圖表版權屬福嚴佛學院；內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。",
-    "note": "釋厚觀《十住毘婆沙論講義》全 705 頁、3,189 條註（2026-11-14 第二批：正文楷體恢復、標點不再拆散、引用複製帶格式）。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。",
-    "description": "收書（八本）：空之探究講義（349 頁）＋腳注（1,269 條）、中觀論頌講記 28 品＋腳注（2,173 條）、中觀今論講義 14 章 37 節＋腳注（1,097 條）、十住毘婆沙論講義 36 品 705 頁＋腳注（3,189 條）。",
-    "sourceUrl": "https://www.fuyan.org.tw/lecture.html",
-    "sourceUrlLabel": "福嚴佛學院講義下載"
-  },
-  "ys.adb": {
-    "status": "available",
-    "official": true,
-    "pin": 2
-  },
-  "tx.adb": {
-    "status": "available",
-    "official": true,
-    "pin": 3
-  },
-  "taisho.adb": {
-    "status": "available",
-    "label": "可下載",
-    "source": "T01–T55、T85：CBETA XML-P5 2026R2；T56–T84：SAT 2018",
-    "licenseNote": "T01–T55、T85 依 CBETA XML-P5 使用條款；T56–T84 文本與底本為 public domain，數位文字取自 SAT 2018 並依其授權標注。TEI 標記按 CBETA convention 整理。",
-    "note": "大正藏 1–85 冊純經文底座（314.7 MB）。2026-10-31 重建：CB 缺字換成 Unicode，SAT 2018 的 &SD-XXXX; 梵字換成內嵌字型（第 16 平面 PUA），&CB…;／&SD-…; 皆為 0。不含本專案加的連結／嵌入／經群。",
-    "crossCheck": "T2250《阿毘達磨俱舍論指要鈔》（T63，頁 807a）亦見 Kanseki Repository，可作獨立文字核對。"
-  },
-  "goryeo_taisho.adb": {
-    "status": "available",
-    "exclusive": true,
-    "label": "可下載",
-    "source": "對照表由 tripitaka-migrator 產生（posmap／juaninfo）；經文仍在 goryeo.adb 與 taisho.adb",
-    "licenseNote": "對照資料由 tripitaka-migrator 產生，見 https://shutonggui.cn/tripitaka-migrator/；本檔只做打包與閱讀器介面。",
-    "note": "高麗藏 ⇄ 大正藏逐字對照表（2.2 MB，6,357 卷），不含經文。開著它，左欄會多一個「高麗⇄大正」分頁：輸入經名／經號／位址或字元級位置，就能跳到另一藏的那一段。"
-  },
-  "wxzj.adb": {
-    "status": "available",
-    "label": "可下載",
-    "source": "CBETA XML-P5 2026R2（X 藏）",
-    "licenseNote": "文字依 CBETA XML-P5 的授權，供非營利使用。梵字字型（Siddam／Ranjana）由 CBETA 免費提供非營利及個人研究使用，著作權屬原作者。",
-    "note": "卍新纂續藏經（X 藏）純經文底座：86 冊、1,236 書、172,794 頁（全部唯一）。2026-10-31 重建：CB 缺字依 charDecl 換 Unicode（剩 1,772 碼沒有 Unicode，保留 &CB…;）；SD／RJ 梵字全部換成 Unicode 第 16 平面，由內嵌字型顯示。234.4 MB 大檔，整檔下載。"
-  },
-  "fgdict.adb": {
-    "status": "revision",
-    "label": "整修中",
-    "note": "作者要大修，先下架，暫不公開下載。"
-  },
-  "yl38.adb": {
-    "status": "revision",
-    "label": "已下架",
-    "source": "釋厚觀《空之探究講義》（2004）Word 講稿，福嚴佛學院講義（yl38：正文＋腳注釋群兩本書）",
-    "licenseNote": "講義文字、圖表版權屬福嚴佛學院；內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。",
-    "note": "作者 2026-11-05 指示下架：同一份講義以單本書版 fuyan.adb 為準，yl38（正文＋腳注釋群兩本書）不再公開；兩站的檔案已刪除（404），舊版本記錄仍留在 deploy/adb-history.json。"
-  }
+ "_comment": "研究用資料庫的狀態。status: available（可下載）／wip（施工中，不下載）／revision（整修中）。downloadable:false 的庫只記在 manifest 版本歷史裡，官網與桌面版都不提供下載。source／licenseNote 是給使用者看的出處與授權說明。official:true 是官方委託製作，公開頁會加醒目標記；exclusive:true 是本站獨家，公開頁加另一種醒目標記；pin 是置頂順序（1 最前，沒有的照 index.txt 的順序）。",
+ "fuyan.adb": {
+  "status": "available",
+  "official": true,
+  "pin": 1,
+  "label": "可下載",
+  "source": "釋厚觀《空之探究講義》（2004）Word 講稿，福嚴佛學院（官方委託製作）",
+  "licenseNote": "講義文字、圖表版權屬福嚴佛學院；內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。",
+  "note": "釋厚觀《十住毘婆沙論講義》全 705 頁、3,189 條註（2026-11-14 第五批：腳註加上段落界，複製引用不再被紙本行寬切斷；畫面照舊逐行，文字與書籤位址一字/一位未動）。內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。",
+  "description": "收書（八本）：空之探究講義（349 頁）＋腳注（1,269 條）、中觀論頌講記 28 品＋腳注（2,173 條）、中觀今論講義 14 章 37 節＋腳注（1,097 條）、十住毘婆沙論講義 36 品 705 頁＋腳注（3,189 條）。",
+  "sourceUrl": "https://www.fuyan.org.tw/lecture.html",
+  "sourceUrlLabel": "福嚴佛學院講義下載"
+ },
+ "ys.adb": {
+  "status": "available",
+  "official": true,
+  "pin": 2
+ },
+ "tx.adb": {
+  "status": "available",
+  "official": true,
+  "pin": 3
+ },
+ "taisho.adb": {
+  "status": "available",
+  "label": "可下載",
+  "source": "T01–T55、T85：CBETA XML-P5 2026R2；T56–T84：SAT 2018",
+  "licenseNote": "T01–T55、T85 依 CBETA XML-P5 使用條款；T56–T84 文本與底本為 public domain，數位文字取自 SAT 2018 並依其授權標注。TEI 標記按 CBETA convention 整理。",
+  "note": "大正藏 1–85 冊純經文底座（314.7 MB）。2026-10-31 重建：CB 缺字換成 Unicode，SAT 2018 的 &SD-XXXX; 梵字換成內嵌字型（第 16 平面 PUA），&CB…;／&SD-…; 皆為 0。不含本專案加的連結／嵌入／經群。",
+  "crossCheck": "T2250《阿毘達磨俱舍論指要鈔》（T63，頁 807a）亦見 Kanseki Repository，可作獨立文字核對。"
+ },
+ "goryeo_taisho.adb": {
+  "status": "available",
+  "exclusive": true,
+  "label": "可下載",
+  "source": "對照表由 tripitaka-migrator 產生（posmap／juaninfo）；經文仍在 goryeo.adb 與 taisho.adb",
+  "licenseNote": "對照資料由 tripitaka-migrator 產生，見 https://shutonggui.cn/tripitaka-migrator/；本檔只做打包與閱讀器介面。",
+  "note": "高麗藏 ⇄ 大正藏逐字對照表（2.2 MB，6,357 卷），不含經文。開著它，左欄會多一個「高麗⇄大正」分頁：輸入經名／經號／位址或字元級位置，就能跳到另一藏的那一段。"
+ },
+ "wxzj.adb": {
+  "status": "available",
+  "label": "可下載",
+  "source": "CBETA XML-P5 2026R2（X 藏）",
+  "licenseNote": "文字依 CBETA XML-P5 的授權，供非營利使用。梵字字型（Siddam／Ranjana）由 CBETA 免費提供非營利及個人研究使用，著作權屬原作者。",
+  "note": "卍新纂續藏經（X 藏）純經文底座：86 冊、1,236 書、172,794 頁（全部唯一）。2026-10-31 重建：CB 缺字依 charDecl 換 Unicode（剩 1,772 碼沒有 Unicode，保留 &CB…;）；SD／RJ 梵字全部換成 Unicode 第 16 平面，由內嵌字型顯示。234.4 MB 大檔，整檔下載。"
+ },
+ "fgdict.adb": {
+  "status": "revision",
+  "label": "整修中",
+  "note": "作者要大修，先下架，暫不公開下載。"
+ },
+ "yl38.adb": {
+  "status": "revision",
+  "label": "已下架",
+  "source": "釋厚觀《空之探究講義》（2004）Word 講稿，福嚴佛學院講義（yl38：正文＋腳注釋群兩本書）",
+  "licenseNote": "講義文字、圖表版權屬福嚴佛學院；內容如有出入，以福嚴佛學院講義網頁 https://www.fuyan.org.tw/lecture.html 為準。",
+  "note": "作者 2026-11-05 指示下架：同一份講義以單本書版 fuyan.adb 為準，yl38（正文＋腳注釋群兩本書）不再公開；兩站的檔案已刪除（404），舊版本記錄仍留在 deploy/adb-history.json。"
+ }
 }
