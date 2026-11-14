@@ -182,9 +182,35 @@ function formatHtml(box: HTMLElement): string {
   return box.innerHTML.replace(/<br\s*\/?>/gi, '');
 }
 
+/**
+ * 引用複製的「段界」標記（2026-11-14，厚觀法師 UID 208 第二項）。
+ *
+ * fuyan 的注文在資料層是**照紙本腳註逐行**存的（畫面才像紙本），所以單看
+ * `.docLine` 分不出「同一段被排版折行」與「真的換段」——複製出來就變成
+ * 「其誰當往來\n？」、梵文 `bhav｜et`、日文一段斷成四行。
+ *
+ * 轉檔端在每段的第一行前面加了 `<段界/>`（零 VA 的 skip tag，畫面看不到），
+ * 每行的原始標記都掛在 `data-src` 上，所以這裡不必改渲染：看到這一行
+ * 不是段首就接回上一段，是段首才另起一段。段內接行沿用 doc-pane.ts 的
+ * 「英數邊界才補空白、中文直接接」規則。
+ */
+const PARA_MARK = '<段界/>';
+const SPACE_MARK = '<空格/>';
+
 function selectedLines(range: Range, startLine: number, endLine: number): { lines: string[]; htmls: string[] } {
   const out: string[] = [];
   const htmls: string[] = [];
+  let cur = '';
+  let curHtml = '';
+  /** 目前這一段是不是「可以往下接」的段落（只有 <段界/> 開頭才算）。
+   *  其他庫沒有這個標記，行為與以前完全一樣：一行一段。 */
+  let mergeable = false;
+  const flush = (): void => {
+    if (cur) { out.push(cur); htmls.push(curHtml); }
+    cur = '';
+    curHtml = '';
+    mergeable = false;
+  };
   for (let n = startLine; n <= endLine; n++) {
     const node = document.querySelector<HTMLElement>(`#docText .docLine[id="L${n}"]`)
       ?? document.querySelector<HTMLElement>(`#docText .docLine[id="L${n}a"]`);
@@ -197,8 +223,38 @@ function selectedLines(range: Range, startLine: number, endLine: number): { line
     box.appendChild(r.cloneContents());
     box.querySelectorAll('.pageBreak').forEach((e) => e.remove());
     const t = (box.textContent || '').replace(/[ \t\u00a0]+/g, ' ').trim();
-    if (t) { out.push(t); htmls.push(formatHtml(box)); }
+    if (!t) continue;
+    const html = formatHtml(box);
+    const src = node.getAttribute('data-src') || '';
+    // 圖版文字（`.figText`）不成段：不併進前後文
+    const solo = !!node.closest('.figText');
+    const segStart = src.startsWith(PARA_MARK);
+    if (solo) {
+      flush();
+      cur = t;
+      curHtml = html;
+      flush();
+      continue;
+    }
+    if (segStart) {
+      flush();
+      cur = t;
+      curHtml = html;
+      mergeable = true;
+      continue;
+    }
+    if (!mergeable || !cur) {
+      flush();
+      cur = t;
+      curHtml = html;
+      continue;
+    }
+    // 接回上一行：只有資料標了 <空格/> 才補空白（梵文斷字如 bhav｜et 不能補）
+    const sep = src.startsWith(SPACE_MARK) ? ' ' : '';
+    cur += sep + t;
+    curHtml += sep + html;
   }
+  flush();
   return { lines: out, htmls };
 }
 

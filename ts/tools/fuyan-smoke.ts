@@ -33,34 +33,34 @@ const ANCHORS = ['38p0', '38p8', '38p35', '38p36', '38p40', '38p41', '38p107', '
 
 /** 頁面渲染（line ＝ out/fuyan.txt 的行號，實測與閱讀器行號相同） */
 const LINES: Array<{ page: string; line: number; must: string; note: string }> = [
-  { page: '38p8', line: 185, must: '空屋', note: '小目＋縮排' },
-  { page: '38p8', line: 210, must: '㝹', note: 'ExtA 罕用字（系統字）' },
-  { page: '38p34', line: 770, must: '𤛓', note: 'ExtB 罕用字（系統字）' },
-  { page: '38p35', line: 800, must: '慈', note: '圖表頁' },
-  { page: '38p55', line: 8346, must: '㝹', note: 'ExtA（釋文）' },
+  { page: '38p8', line: 194, must: '空屋', note: '小目＋縮排' },
+  { page: '38p8', line: 8344, must: '㝹', note: 'ExtA 罕用字（系統字）' },
+  { page: '38p34', line: 762, must: '𤛓', note: 'ExtB 罕用字（系統字）' },
+  { page: '38p35', line: 776, must: '慈', note: '圖表頁' },
+  { page: '38p55', line: 9159, must: '㝹', note: 'ExtA（釋文）' },
   { page: '38p56', line: 9174, must: '𨅖', note: 'ExtB 罕用字' },
   { page: '38p275', line: 12582, must: '𩜁', note: 'ExtB 罕用字' },
-  { page: '38p304', line: 31062, must: '𨅖', note: 'ExtB 罕用字' },
-  { page: '5p132', line: 26729, must: '𩑶', note: 'ExtB 罕用字' },
-  { page: '9p260', line: 53816, must: '㲲', note: 'ExtA 罕用字' },
-  { page: '9p294', line: 54227, must: '㲉', note: 'ExtA 罕用字' },
-  { page: '5p17', line: 30000, must: '', note: '科判（標題不以句號收尾）' },
+  { page: '38p304', line: 13117, must: '𨅖', note: 'ExtB 罕用字' },
+  { page: '5p132', line: 26721, must: '𩑶', note: 'ExtB 罕用字' },
+  { page: '9p260', line: 53808, must: '㲲', note: 'ExtA 罕用字' },
+  { page: '9p294', line: 54219, must: '㲉', note: 'ExtA 罕用字' },
+  { page: '5p17', line: 14217, must: '', note: '科判（標題不以句號收尾）' },
   // 附錄科判表的頌號（2026-11-13）：紙本是 `[NN]` 的字面文字，不是腳註。
   // 曾被 docx2zhonglun 當成註號（`<註 n="23"/>`），讀者看到一個點不動的藍上標，頌號反而不見。
-  { page: '5p189', line: 17072, must: '[23]', note: '附錄科判表頌號（7觀三相品）' },
-  { page: '5p353', line: 19241, must: '[02]', note: '附錄科判表頌號（17觀業品）' },
-  { page: '5p596', line: 22852, must: '[02]', note: '附錄科判表頌號（25觀涅槃品）' },
-  { page: '38p112', line: 15000, must: '', note: '正文空頁（紙本只有腳注續文）' },
-  { page: '38p348', line: 55000, must: '', note: '全書末頁' },
+  { page: '5p189', line: 17069, must: '[23]', note: '附錄科判表頌號（7觀三相品）' },
+  { page: '5p353', line: 19238, must: '[02]', note: '附錄科判表頌號（17觀業品）' },
+  { page: '5p596', line: 22845, must: '[02]', note: '附錄科判表頌號（25觀涅槃品）' },
+  { page: '38p112', line: 2632, must: '', note: '正文空頁（紙本只有腳注續文）' },
+  { page: '38p348', line: 8225, must: '', note: '全書末頁' },
   // 十住毘婆沙論講義（yl6，2026-11-14 加入）：正文 705 頁、36 品、3,189 條腳注
-  { page: '6p1', line: 55479, must: '福嚴推廣教育班', note: '十住：簡介首頁' },
-  { page: '6p4', line: 55547, must: '之科判', note: '十住：科判圖（HG06.004）' },
-  { page: '6p5', line: 55587, must: '關係表', note: '十住：十地經關係圖（HG06.005）' },
-  { page: '6p15', line: 55754, must: '福嚴推廣教育班', note: '十住：序品第一頁' },
-  { page: '6p133', line: 57467, must: '蘊處界', note: '十住：蘊處界對照表圖（HG06.133）' },
+  { page: '6p1', line: 55471, must: '福嚴推廣教育班', note: '十住：簡介首頁' },
+  { page: '6p4', line: 55539, must: '之科判', note: '十住：科判圖（HG06.004）' },
+  { page: '6p5', line: 55579, must: '關係表', note: '十住：十地經關係圖（HG06.005）' },
+  { page: '6p15', line: 55746, must: '福嚴推廣教育班', note: '十住：序品第一頁' },
+  { page: '6p133', line: 57459, must: '蘊處界', note: '十住：蘊處界對照表圖（HG06.133）' },
   // 2026-11-14（厚觀法師第六項）：6p631 兩張文字表格換回法師的 svg，表格文字不再存在
-  { page: '6p631', line: 65871, must: '', note: '十住：p631 兩張 svg（HG06.631-1/2）' },
-  { page: '6p705', line: 67112, must: '無歸作歸', note: '十住：全書末頁' },
+  { page: '6p631', line: 65861, must: '', note: '十住：p631 兩張 svg（HG06.631-1/2）' },
+  { page: '6p705', line: 67075, must: '無歸作歸', note: '十住：全書末頁' },
 ];
 
 const BROWSERS = [
