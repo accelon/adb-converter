@@ -28,7 +28,8 @@ const ADB = resolve(opt('adb', resolve(ROOT, 'accelon3/fuyan.adb')));
 
 /** 錨點解析（頁 id 一律要解析得到；null ＝ anchorVa 壞了） */
 const ANCHORS = ['38p0', '38p8', '38p35', '38p36', '38p40', '38p41', '38p107', '38p111', '38p112',
-  '38p275', '38p348', '5p1', '5p17', '5p132', '9p1', '9p260', '9p294'];
+  '38p275', '38p348', '5p1', '5p17', '5p132', '9p1', '9p260', '9p294',
+  '6p1', '6p4', '6p15', '6p133', '6p631', '6p705'];
 
 /** 頁面渲染（line ＝ out/fuyan.txt 的行號，實測與閱讀器行號相同） */
 const LINES: Array<{ page: string; line: number; must: string; note: string }> = [
@@ -51,6 +52,14 @@ const LINES: Array<{ page: string; line: number; must: string; note: string }> =
   { page: '5p596', line: 22852, must: '[02]', note: '附錄科判表頌號（25觀涅槃品）' },
   { page: '38p112', line: 15000, must: '', note: '正文空頁（紙本只有腳注續文）' },
   { page: '38p348', line: 55000, must: '', note: '全書末頁' },
+  // 十住毘婆沙論講義（yl6，2026-11-14 加入）：正文 705 頁、36 品、3,189 條腳注
+  { page: '6p1', line: 55479, must: '福嚴推廣教育班', note: '十住：簡介首頁' },
+  { page: '6p4', line: 55547, must: '之科判', note: '十住：科判圖（HG06.004）' },
+  { page: '6p5', line: 55587, must: '關係表', note: '十住：十地經關係圖（HG06.005）' },
+  { page: '6p15', line: 55754, must: '福嚴推廣教育班', note: '十住：序品第一頁' },
+  { page: '6p133', line: 57467, must: '蘊處界', note: '十住：蘊處界對照表圖（HG06.133）' },
+  { page: '6p631', line: 65874, must: '八十八使', note: '十住：88 使表（p631）' },
+  { page: '6p705', line: 67112, must: '無歸作歸', note: '十住：全書末頁' },
 ];
 
 const BROWSERS = [
