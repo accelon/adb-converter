@@ -56,6 +56,12 @@
 
 ## 紀錄
 
+### 2026-11-14
+
+| adb | sha256（前 12） | 大小 | buildTime（UTC） | 工作區 | 說明 |
+|---|---|---|---|---|---|
+| `accelon26.exe`（app，非 adb） | `39e9dcc88fb7` | 19,400,192 | 2026-11-14T01:39:49Z | 本區 | **本地重壓：融視圖 V6–V10 ＋ 嵌截斷「繼續展開」＋ 反鏈一排 cap ＋ loadTree 封閉詞彙 ＋ ybh cooperation 缺陷 1/2/3 全部進 exe**。舊 exe（11-13 05:03:37Z 那顆、sha `872819996c23`）內 `fusionWrap`／`fusionBlock`／`initFusion`／`setFusionView`／`hasFusionTag` 五個符號**一個都沒有**（ybh 11-14 催辦單 `prompt-adb-converter-drift-reply.md` §四1 實測；本輪 `grep -aoE` 對新 exe 五個全命中、對舊 exe 空），融視圖開關此前**只在 `accelon26.html` 存在**、exe 使用者按不到。本輪 `bun run tools/build-desktop.ts` 出 `wails/assets/index.html`（2391.6 KiB），`go build -ldflags "-X main.buildTime=2026-11-14T01:39:49Z -H windowsgui"` 壓回 exe、`-version` 自報建置時間正常，覆蓋 `D:\accelon3\accelon26.exe`（舊檔先備份到工作區 `out/accelon26-2026-11-13T1303-pre-drift.exe`，sha `872819996c23…`）。含代碼改動：`6e34bca`（R1 V6–V10 融視圖 OFF 預設）／`8cd2c37`（R6 繼續展開＋R7 反鏈抽屜分頁）／`f4b6104`（R7 一排 cap＋抽屜 200/頁）／`28b7671`（R8 封閉詞彙）／`b28d37f`（缺陷 3 嵌卡卡頭書名改走 `sourceLabelAt`）／`1fa56e7`（基線四條轉綠，測試端＋`tour-data.ts` 產物）。**未發佈**：`versions.json`／www／官網**未動**；提醒使用者**不要按 app 內「檢查更新」**，會被換回線上舊版（不含融視圖）。ybh v23 已帶 12,851 枚 `<融>`、`hasFusionTag()` 放行，等這顆 exe。 |
+
 ### 2026-11-13
 
 | adb | sha256（前 12） | 大小 | buildTime（UTC） | 工作區 | 說明 |
