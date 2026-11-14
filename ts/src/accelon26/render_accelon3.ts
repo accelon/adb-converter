@@ -417,6 +417,15 @@ export interface RenderOptions {
    */
   dictEntries?: boolean;
   /**
+   * 段首要不要空兩格（`<段/>` 的縮排）。預設 true。
+   *
+   * 厚觀法師 2026-11-14：《福嚴講義》紙本正文是**頂格**的，段落開頭向來不空兩格
+   * （只有《法華經講義》《維摩經講義》例外），所以 fuyan 關掉；《印順法師著作集》
+   * （ys）照陳裕文 2026-11-13 的要求保留縮排。**依庫別給，不要全域關**。
+   * false 時連行尾 `<段/>` 的縮排搬移（shiftTrailingIndent）也一併不做。
+   */
+  indent?: boolean;
+  /**
    * 「深度 → 本文上方幾級」（作者 2026-10-18）。`renderPageBlocks` 會依**這一頁**出現的
    * 標題深度算好：最深的那一層＝+1 級，往上一層再 +1 …… 所以同一個標題（例如「甲」）
    * 在不同頁面可以有不同大小，和本文之間是平緩的階梯，不會突然變成大字。
@@ -568,7 +577,7 @@ export class Accelon3Renderer {
   private sawSegMid = false;
   /** `<段 n>` 之前都是標題：切在這裡（見 RenderedLine.split） */
   private splitAt: number | null = null;
-  private readonly opts: Required<Pick<RenderOptions, 'hardBreaks' | 'headScale' | 'pageMarks'>> & {
+  private readonly opts: Required<Pick<RenderOptions, 'hardBreaks' | 'headScale' | 'pageMarks' | 'indent'>> & {
     marks: { text: string; hue: number }[];
     convert: ((s: string) => string) | null;
     primary: string;
@@ -585,6 +594,7 @@ export class Accelon3Renderer {
       hardBreaks: opts.hardBreaks !== false,
       headScale: opts.headScale !== false,
       pageMarks: opts.pageMarks !== false,
+      indent: opts.indent !== false,
       depthSteps: opts.depthSteps ?? null,
       // 長的關鍵字先比對，才不會被短的切碎
       marks: [...(opts.marks ?? [])].filter((m) => m.text).sort((a, b) => b.text.length - a.text.length),
@@ -961,7 +971,7 @@ export class Accelon3Renderer {
           // 行首只加縮排 span（不插 <br>，免得先空一行），行中才插 `<br class="para">`。
           // 2026-11-03 之前這個分支被上面的 `continue` 吃掉，`<段/>` 完全沒有作用。
           if (this.sawText) html += '<br class="para">';
-          html += '<span class="paraIndent">　　</span>';
+          if (this.opts.indent) html += '<span class="paraIndent">　　</span>';
           continue;
         }
         // 有段號：跨庫對齊鍵的小晶片
@@ -1038,7 +1048,7 @@ export class Accelon3Renderer {
         //（作者 2026-10-31：ys 的 <釋> 群多空一行）。
         if (!closing) {
           if (this.sawText) html += '<br class="para">';
-          html += '<span class="paraIndent">　　</span>';
+          if (this.opts.indent) html += '<span class="paraIndent">　　</span>';
         }
         continue;
       }
@@ -1665,7 +1675,7 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
   // 表格已經把圖裡的文字轉出來了，緊接在前的「只有一張圖」那一列就是多餘的
   // （taixu：<表>圖說</表> → <圖/> → <圖文字>框線表）。只丟純圖列，不動別的。
   hoistImagesBeforeTables(out);
-  shiftTrailingIndent(out);
+  if (opts.indent !== false) shiftTrailingIndent(out);
   return out;
 }
 

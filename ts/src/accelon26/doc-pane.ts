@@ -2274,6 +2274,9 @@ function renderDoc(s: DocSession): void {
       untaggedFigures: /^(tx|taixu)$/.test(ctx?.reader.header.dbname ?? ''),
       // 詞典型：`<字>`／`<詞>` 在連排模式要另起一段（作者 2026-11-06）
       dictEntries: isDictDb(ctx?.mapper ?? null),
+      // 段首縮排（厚觀法師 2026-11-14）：《福嚴講義》紙本正文頂格，段落開頭不空兩格；
+      // 《印順法師著作集》照陳裕文 2026-11-13 的要求保留。依庫別切換，不要全域關。
+      indent: (ctx?.reader.header.dbname ?? '') !== 'fuyan',
       termMode: termModeOf(),
     });
   const rows = renderBlocks(blocks, s);

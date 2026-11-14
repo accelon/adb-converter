@@ -61,6 +61,25 @@ const paraMid = r.line('何故<段/>禮拜', 6);
 ok('段：行中才插 <br class="para"> ＋ 縮排',
   paraMid === '何故<br class="para"><span class="paraIndent">　　</span>禮拜', paraMid);
 
+// 2026-11-14（厚觀法師）：《福嚴講義》紙本正文頂格 —— 段首不空兩格。
+// 只有 fuyan 關（doc-pane 依 dbname 傳 indent:false），ys 等其餘庫照舊縮排。
+const rFlat = new Accelon3Renderer(ctx, { indent: false });
+const flat1 = rFlat.line('<段/>何故禮拜', 5);
+ok('段（indent:false）：行首不長縮排 span，字直接頂格', flat1 === '何故禮拜', flat1);
+const flat2 = rFlat.line('何故<段/>禮拜', 6);
+ok('段（indent:false）：行中仍斷行，但不縮排',
+  flat2 === '何故<br class="para">禮拜', flat2);
+ok('段（預設）：其餘資料庫照舊縮排', r.line('<段/>何故禮拜', 5).includes('paraIndent'));
+
+// 行尾 `<段/>` 的縮排搬移：預設搬到下一段，indent:false 時整段不做（fuyan 沒有縮排可搬）
+const tail = ['甲<段/>', '', '乙'];
+const moved = renderPageBlocks(tail, [1, 2, 3], { hardBreaks: false }, ctx);
+ok('行尾 <段/>：預設把縮排搬到下一段開頭',
+  moved.length === 2 && moved[1].lines[0].html.startsWith('<span class="paraIndent">'), JSON.stringify(moved.map((b) => b.lines.map((l) => l.html))));
+const kept = renderPageBlocks(tail, [1, 2, 3], { hardBreaks: false, indent: false }, ctx);
+ok('行尾 <段/>（indent:false）：不搬、也不留縮排',
+  kept.length === 2 && !kept.some((b) => b.lines.some((l) => l.html.includes('paraIndent'))), JSON.stringify(kept.map((b) => b.lines.map((l) => l.html))));
+
 // 2026-10：`<聯 i="…">` 已經是跨庫錨點，不再算「未知標籤」；用真的未知標籤測。
 const unknown = r.line('<未知 i="taisho">參考</未知>正文', 6);
 ok('沒有 t= 的標籤：標籤丟掉、文字留著', unknown === '參考正文', unknown);
