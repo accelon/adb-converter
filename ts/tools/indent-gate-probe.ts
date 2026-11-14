@@ -132,7 +132,7 @@ if (LINE > 0) {
   await Bun.sleep(1200);
 }
 
-const res = await cdp.eval<{ db: string; indent: number; page: number; chars: number }>(`
+const res = await cdp.eval<{ db: string; indent: number; page: number; chars: number; figures: number }>(`
 (() => {
   const pane = document.querySelector('#docText');
   const text = (pane ? pane.innerText : '').replace(/\\s/g, '');
@@ -141,6 +141,7 @@ const res = await cdp.eval<{ db: string; indent: number; page: number; chars: nu
     indent: pane ? pane.querySelectorAll('.paraIndent').length : -1,
     page: pane ? pane.querySelectorAll('.pageBreak').length : -1,
     chars: text.length,
+    figures: pane ? pane.querySelectorAll('svg, img').length : -1,
   };
 })()`);
 
@@ -149,6 +150,7 @@ console.log(JSON.stringify({
   head: res.db,
   paraIndent: res.indent,
   pageMarks: res.page,
+  figures: res.figures,
   chars: res.chars,
   jsErrors: cdp.errors,
 }, null, 2));
