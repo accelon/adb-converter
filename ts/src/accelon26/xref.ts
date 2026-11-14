@@ -406,24 +406,37 @@ async function addReverseFrom(
   outLinked: Set<string>,
   outLabels: Map<string, string>,
 ): Promise<void> {
+  // 無 <頁> 的庫（ybh 漢文集成，`頁.id` 不存在）→ anchorIndex() 回 null；
+  // 舊碼在此整庫早退 → 該庫全部 <聯> 從未進反鏈索引（ybh revindex-empty 報告 §一）。
+  // 反鏈真正需要的只有 tags 名稱表與 lianVas，兩者都可從 tags 容器直接取——
+  // 故 idx=null 時降級續跑（頁相關 pageByVa 為空 → entry.pageId=''／bookVa=-1 自然降級）。
   const idx = await anchorIndex(r);
-  if (!idx) return;
+  const tagsC = r.containers.get('tags');
+  if (!tagsC) return;
   const av = await r.attributeValues('聯.i');
   if (!av || !av.pointers) return;
+  const tagNames = idx?.tags ?? tagsC.names;
+  const listTag = async (name: string): Promise<number[]> => {
+    const i = tagsC.names.indexOf(name);
+    return i < 0 ? [] : await r.decodeBlockList('tags', i);
+  };
+  const lianVas = idx?.lianVas ?? await listTag('聯');
+  if (!lianVas.length) return;                       // 真一條聯都沒有才退
+  const bookVas = idx?.bookVas ?? await listTag('書');
   // 同一批 <聯> 的 q 屬性（大正藏原文），用來把按鈕嵌到經文那一行（作者 2026-10-28）
   const avq = await r.attributeValues('聯.q');
-  const lianTag = idx.tags[(av.pointers[0] >>> 24) & 0xff];
+  const lianTag = tagNames[(av.pointers[0] >>> 24) & 0xff];
   const qByInst = new Map<number, string>();
   if (avq?.pointers) {
     for (let k = 0; k < avq.values.length; k++) {
       const p = avq.pointers[k];
-      if (idx.tags[(p >>> 24) & 0xff] !== lianTag) continue;
+      if (tagNames[(p >>> 24) & 0xff] !== lianTag) continue;
       qByInst.set((p & 0xffffff) - 1, avq.values[k]);
     }
   }
-  // 頁 VA → 頁碼
+  // 頁 VA → 頁碼（無頁庫 idx=null → 空表，pageId 降級為 ''）
   const pageByVa = new Map<number, string>();
-  for (let k = 0; k < idx.values.length; k++) pageByVa.set(idx.vas[(idx.pointers[k] & 0xffffff) - 1], idx.values[k]);
+  if (idx) for (let k = 0; k < idx.values.length; k++) pageByVa.set(idx.vas[(idx.pointers[k] & 0xffffff) - 1], idx.values[k]);
   const pageVas = [...pageByVa.keys()].sort((a, b) => a - b);
   const lastLE = (arr: number[], v: number): number => {
     let lo = 0, hi = arr.length - 1, ans = -1;
@@ -437,18 +450,18 @@ async function addReverseFrom(
     const db = val.slice(0, q);
     const anchor = val.slice(q + 1);
     const ptr = av.pointers[k];
-    if (idx.tags[(ptr >>> 24) & 0xff] !== '聯') continue;
+    if (tagNames[(ptr >>> 24) & 0xff] !== '聯') continue;
     const inst = (ptr & 0xffffff) - 1;
-    const va = idx.lianVas[inst];
+    const va = lianVas[inst];
     if (va == null) continue;
     outLinked.add(db);
     outLabels.set(r.header.dbname, r.header.dbcname || r.header.dbname);
     const pi = lastLE(pageVas, va);
-    const bi = lastLE(idx.bookVas, va);
+    const bi = lastLE(bookVas, va);
     const entry: RevEntry = {
       src: r.header.dbname, db, va,
       pageId: pi >= 0 ? pageByVa.get(pageVas[pi]) ?? '' : '',
-      bookVa: bi >= 0 ? idx.bookVas[bi] : -1,
+      bookVa: bi >= 0 ? bookVas[bi] : -1,
       cite: '',
       quote: '',
       tq: qByInst.get(inst) ?? '',
@@ -512,8 +525,14 @@ async function addReverseFromXrev(
   outLinked: Set<string>,
   outLabels: Map<string, string>,
 ): Promise<void> {
+  // 同 addReverseFrom：無 <頁> 的庫 idx=null 不再整庫早退（bookVas 從 tags 容器直取），
+  // 否則改點 2（建置端發 xrev）對無頁庫上不了線。
   const idx = await anchorIndex(r);
-  if (!idx) return;
+  const tagsC = r.containers.get('tags');
+  const bookVas = idx?.bookVas ?? await (async (): Promise<number[]> => {
+    const i = tagsC?.names.indexOf('書') ?? -1;
+    return i < 0 ? [] : await r.decodeBlockList('tags', i);
+  })();
   const block = await r.readBlock('xrev', 0);
   const raw = block[0] === 0x42 && block[1] === 0x5a ? await bunzipAll(block) : block;
   const text = new TextDecoder().decode(raw);
@@ -528,11 +547,11 @@ async function addReverseFromXrev(
     if (!db || !targetPage || typeof va !== 'number') continue;
     outLinked.add(db);
     outLabels.set(r.header.dbname, r.header.dbcname || r.header.dbname);
-    const bi = lastLEof(idx.bookVas, va);
+    const bi = lastLEof(bookVas, va);
     const entry: RevEntry = {
       src: srcDb || r.header.dbname, db, va,
       pageId: String(srcPage ?? ''),
-      bookVa: bi >= 0 ? idx.bookVas[bi] : -1,
+      bookVa: bi >= 0 ? bookVas[bi] : -1,
       cite: '', quote: '',
       tq: typeof quote === 'string' ? quote : '',
       targetPage: String(targetPage),
