@@ -597,8 +597,17 @@ export async function loadTree(
     const seen = new Set(frontier);
     // R8（封閉詞彙）：鏈展開只認「本樹 t= 宣告的層級集合」。實例 t= 引用了
     // 樹外標籤（如 `總目錄` 的 篇.t="章,科01…54"）一律忽略，不把它們拉進鏈 →
-    // 總目錄只載 篇,章、開庫即見；各頁籤詞彙互不串。taisho／13j 等無交叉引用＝no-op。
-    const allowed = new Set<string>(start.tiers);
+    // 總目錄只載 篇,章、開庫即見；各頁籤詞彙互不串。
+    //
+    // 2026-11-14（陳裕文回報 ys 的標題、科判沒有樣式）：R8 對「只宣告入口一層」的
+    // 樹是致命的。yinshun／13j／ys 的檔頭都是 `<樹 s="*" t="書">`，往下幾層全靠
+    // 每個 `<書 t="部,章,節,…">` 自己宣告（13j：`<書 t="章,節,項.">`）；封閉之後
+    // 鏈永遠只有 書 一層 → 目錄只剩書名，內文 部/章/節 因為不在 depthOf 裡
+    // 被當成「不認識的標籤」整支丟掉（文字照留、樣式全無）。
+    // 規則收窄為：**宣告兩層以上的樹才封閉**（ybh 的主樹 t="篇,章,科01…54."、
+    // taisho 的 t="冊,書,品"、jc 的 t="書名,章,…"）；只宣告一層的樹，實例自己的
+    // t= 就是唯一的階層來源，不封閉。
+    const allowed = start.tiers.length > 1 ? new Set<string>(start.tiers) : null;
     for (let level = 0; level < 12 && frontier.length; level++) {
       chain.push(...frontier);
       const next = new Set<string>();
@@ -607,7 +616,7 @@ export async function loadTree(
         for (let i = 0; i < va.length; i++) {
           const own = parseTiers(await tiersFor(tag, i));
           for (const t of own.tiers) {
-            if (!allowed.has(t)) continue;   // R8：樹外標籤不展開（封閉世界）
+            if (allowed && !allowed.has(t)) continue;   // R8：樹外標籤不展開（封閉世界）
             // A declared tier that is already in the chain would make the tree
             // fold back on itself (yinshun declares 經/組/文/甲… which reappear
             // higher up), so such a declaration is ignored and the branch ends.
