@@ -58,7 +58,8 @@ const LINES: Array<{ page: string; line: number; must: string; note: string }> =
   { page: '6p5', line: 55587, must: '關係表', note: '十住：十地經關係圖（HG06.005）' },
   { page: '6p15', line: 55754, must: '福嚴推廣教育班', note: '十住：序品第一頁' },
   { page: '6p133', line: 57467, must: '蘊處界', note: '十住：蘊處界對照表圖（HG06.133）' },
-  { page: '6p631', line: 65874, must: '八十八使', note: '十住：88 使表（p631）' },
+  // 2026-11-14（厚觀法師第六項）：6p631 兩張文字表格換回法師的 svg，表格文字不再存在
+  { page: '6p631', line: 65871, must: '', note: '十住：p631 兩張 svg（HG06.631-1/2）' },
   { page: '6p705', line: 67112, must: '無歸作歸', note: '十住：全書末頁' },
 ];
 

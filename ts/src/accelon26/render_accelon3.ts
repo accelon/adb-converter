@@ -355,6 +355,11 @@ export function labelDepthIndex(label?: string): number | null {
  * 直接依那個序換色。
  */
 export function tagChromaIndex(tag: string, depth: number, ctx: RenderContext = current, label?: string): number {
+  // 厚觀法師 2026-11-14：「我講義中的『※因論生論』也算是科判，應獨立一行，並反顏色。
+  // （『※因論生論』甚多，可考慮用同樣的顏色）」。這類插論沒有「一、」「（一）」那種編號，
+  // 靠編號比對的語意染色抓不到它；改成看標題開頭的字——以「※」帶頭的一律固定色號 5（紫），
+  // 於是全書十幾處同一個顏色，且與章／節／小節／項 的色都不同。
+  if (label && label.trimStart().startsWith('※')) return 5;
   // 天干／地支序的語意染色只適用於「章／節／項」——這是 repairSemanticTree /
   // resolveSemanticLabels 重掛的範圍（ys 的甲一、乙一…）。`書` 這一層的標題
   // （如「丁玲《…》」的「丁」）是普通書名，不該被當成語意層級而染成別的顏色。
@@ -1582,7 +1587,12 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
         // 2026-11-12（厚觀法師第八項）：後面接的是**圖表標題**時同理 —— `38p93`
         // 的頁碼就擺在〔圖表 HG02.093〕之前，接上前一行會讓 93 頁第一行變成
         // 上一頁那句「…總列如下：〔圖表 …〕」，而紙本是表格直接開頭。
-        const headingNext = /^\s*<(章|節|項|目|小目|細目|釋)[\s>]/.test(lines[i])
+        // 2026-11-14（厚觀法師第五項「有許多科判你沒有換行」）：原先只認
+        // 章／節／項／目／小目／細目／釋，那是 ys 用的層級。fuyan 的《十住毘婆沙論講義》
+        // 用的是 小章／小節／小項／孫項，全不在這份清單裡，於是頁首的科判被
+        // `mergeIntoPrev()` 併進上一頁最後一行（6p165 的「（六）釋『具足此五法…』」
+        // 就黏在「…等無有異。」後面）。層級一次補齊，以後新增層級不會再漏。
+        const headingNext = /^\s*<(?:品|章|小章|節|小節|項|小項|子項|孫項|曾項|玄項|來項|晜項|仍孫|雲孫|耳孫|目|小目|細目|釋)[\s>]/.test(lines[i])
           || /^\s*〔圖表/.test(lines[i])
           || /^\s*<圖[\s>]/.test(lines[i]);
         if (headingNext) {
