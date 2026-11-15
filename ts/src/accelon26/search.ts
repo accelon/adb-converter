@@ -498,6 +498,12 @@ export interface TreeNode {
   label: string;
   /** 1-based occurrence of this instance among the same tag, in VA order */
   index: number;
+  /**
+   * 科判層號（`<項 lv="1..19">`）。同一個標籤裝多層時，樹要按這個號碼疊起來；
+   * 沒有 `lv` 的標籤照原本的層級走（作者 2026-11-15 傍晚：法華的目錄把 19 層
+   * 科判攤成同一層，顏色不同卻擠在一起）。
+   */
+  lv?: number;
   children: TreeNode[];
 }
 
@@ -514,6 +520,8 @@ export interface TreeInstance {
   childTerminal: boolean;
   /** 0-based instance index within its tag's list (matches the attribute pointers) */
   index: number;
+  /** 科判層號（`lv=` 屬性），沒有就是 undefined */
+  lv?: number;
 }
 
 /** Per-instance attribute lookup: `<tag>.<attr>` values keyed by instance index. */
@@ -582,6 +590,21 @@ export async function loadTree(
     if (!table) { table = await loadInstanceAttrs(reader, tag, 't'); tierAttrs.set(tag, table); }
     return table.get(index) ?? '';
   };
+  /**
+   * per-instance `lv=`（科判層號）。只有寫了 `lv` 的標籤才有這張表；讀不到就是
+   * 沒有——沒有 lv 的庫完全走原本的路（一次容器查詢，不掃原文）。
+   */
+  const lvAttrs = new Map<string, Map<number, string>>();
+  const lvFor = async (tag: string): Promise<Map<number, string>> => {
+    let table = lvAttrs.get(tag);
+    if (!table) { table = await loadInstanceAttrs(reader, tag, 'lv'); lvAttrs.set(tag, table); }
+    return table;
+  };
+  const parseLv = (raw: string | undefined): number | undefined => {
+    if (!raw) return undefined;
+    const v = Number(raw.trim());
+    return Number.isInteger(v) && v >= 1 && v <= 30 ? v : undefined;
+  };
 
   /**
    * Walk the tier chain. **Every instance may declare its own `t=`** — if it does
@@ -634,11 +657,14 @@ export async function loadTree(
   chain.forEach((tag, i) => { if (!chainLevel.has(tag)) chainLevel.set(tag, i); });
   for (const [tag, depth] of chainLevel) {
     const va = await tagVas(tag);
+    if (!va.length) continue;
+    const lvTable = await lvFor(tag);
     for (let i = 0; i < va.length; i++) {
       out.push({
         tag, depth, va: va[i],
         vaEnd: i + 1 < va.length ? va[i + 1] : maxVa,
         label: '', children: [], childTerminal: false, index: i,
+        lv: parseLv(lvTable.get(i)),
       });
     }
   }
@@ -747,7 +773,7 @@ export function buildTree(instances: TreeInstance[]): TreeNode[] {
     counters.set(inst.tag, index);
     const node: TreeNode = {
       depth, tag: inst.tag, va: inst.va, vaEnd: inst.vaEnd,
-      label: inst.label, index, children: [],
+      label: inst.label, index, children: [], lv: inst.lv,
     };
     const isLastOfTag = ownIdx + 1 >= ownList.length;
     const ownEnd = Math.min(isLastOfTag ? maxVa : ownList[ownIdx + 1].va, parentLimit);
@@ -759,6 +785,29 @@ export function buildTree(instances: TreeInstance[]): TreeNode[] {
     const descend = inst.children.length ? inst.children : inherited;
     if (descend.length) {
       const slots = descend.slice(1);
+      /**
+       * 這個孩子到哪裡為止：**不能越過一個「不比他更深」的同族標題**。
+       *
+       * 原本一律給 `node.vaEnd`（父節點的右界），於是「同標籤的最後一個實例」
+       * 會一路吞到父節點結尾。法華就是這樣壞的：第三個 `<章>`（主要架構）是最後
+       * 一個章，它的右界吃到整本書的尾端，後面 28 個 `<品>` 全被它圈進去；
+       * 而 `章` 的下一層清單（chain）裡沒有 `品`，所以目錄裡一個品都看不到
+       * （作者 2026-11-15 晚：目錄不對、不同顏色的混在同一層）。
+       *
+       * 邊界只看 `descend` 裡 **index 不比它大** 的標籤：對 `章` 而言，後面的
+       * `品`（更前面）與下一個 `章` 都是邊界，但它自己底下的 `節`／`項` 不是。
+       */
+      const boundaryAfter = (fromVa: number, uptoIdx: number): number => {
+        let b = node.vaEnd;
+        for (let k = 0; k <= uptoIdx && k < descend.length; k++) {
+          const list = byTag.get(descend[k]!);
+          if (!list) continue;
+          const idx = lowerBoundVa(list, fromVa);
+          const cand = idx < list.length ? list[idx] : null;
+          if (cand && cand.va < b) b = cand.va;
+        }
+        return b;
+      };
       let cur = inst.va + 1;
       const guard = 1_000_000;
       for (let n = 0; n < guard; n++) {
@@ -771,9 +820,16 @@ export function buildTree(instances: TreeInstance[]): TreeNode[] {
           if (!cand || cand.va >= node.vaEnd) continue;
           if (!best || cand.va < best.child.va) best = { child: cand, list, idx };
         }
-        if (!best) break;
-        node.children.push(materialize(best.child, depth + 1, node.vaEnd, best.list, best.idx, descend));
-        cur = Math.max(best.child.va + 1, best.child.vaEnd);
+        if (!best) {
+          break;
+        }
+        const k = descend.indexOf(best.child.tag);
+        const stop = k < 0 ? node.vaEnd : boundaryAfter(best.child.va + 1, k);
+        const kid = materialize(best.child, depth + 1, stop, best.list, best.idx, descend);
+        node.children.push(kid);
+        // 前進要用「截斷後」的右界，不是實例自己的 vaEnd：最後一個章／項的
+        // vaEnd 是整個檔的結尾，用它會一步跳出父節點的範圍（28 個品因此消失）。
+        cur = Math.max(best.child.va + 1, kid.vaEnd);
       }
     }
     if (node.children.length) {
@@ -795,6 +851,52 @@ export function buildTree(instances: TreeInstance[]): TreeNode[] {
     for (const [tag, list] of byTag) {
       for (let i = 0; i < list.length; i++) roots.push(materialize(list[i], list[i].depth, maxVa, list, i, []));
     }
+  }
+  /**
+   * 按 `lv` 疊科判層（作者 2026-11-15 晚）。
+   *
+   * `<項 lv="1..19">` 是「同一個標籤裝 19 層」的寫法：materialize 只認標籤，
+   * 於是 19 層全被排成同一個父節點底下的**兄弟**——目錄看起來是平的（顏色
+   * 卻按天干地支換，於是「不同顏色混在同一層」）。這裡把相鄰的兄弟按 lv 疊成
+   * 父子：lv 比前面大就當前一顆的孩子，lv 往回走就退回那一層的兄弟位置。
+   *
+   * 只處理帶 lv 的節點；沒有 lv 的庫（其餘每一本書）路徑完全不變。
+   */
+  if (instances.some((i) => i.lv !== undefined)) {
+    const regroup = (ns: TreeNode[]): TreeNode[] => {
+      for (const n of ns) if (n.children.length) n.children = regroup(n.children);
+      const out: TreeNode[] = [];
+      const stack: TreeNode[] = [];
+      for (const n of ns) {
+        if (n.lv === undefined) { out.push(n); stack.length = 0; continue; }
+        while (stack.length && (stack[stack.length - 1].lv as number) >= n.lv) stack.pop();
+        const parent = stack[stack.length - 1];
+        if (parent) {
+          parent.children.push(n);
+          n.depth = parent.depth + 1;          // 疊進去之後層級才是真的
+        } else out.push(n);
+        stack.push(n);
+      }
+      for (const n of out) {
+        if (!n.children.length) continue;
+        n.children.sort((a, b) => a.va - b.va);
+        n.va = Math.min(n.va, n.children[0].va);
+        n.vaEnd = Math.max(n.vaEnd, n.children[n.children.length - 1].vaEnd);
+      }
+      return out;
+    };
+    const clamped = regroup(roots);
+    roots.length = 0;
+    roots.push(...clamped);
+    // 孩子的範圍不能超過父親（lv 往回走時，前一層的 vaEnd 是到「下一個同 lv」，
+    // 會跨出父節點）
+    const clampKids = (n: TreeNode): void => {
+      for (const c of n.children) {
+        clampKids(c);
+        c.vaEnd = Math.max(c.va, Math.min(c.vaEnd, n.vaEnd));
+      }
+    };
+    for (const r of roots) clampKids(r);
   }
   // siblings may touch at the edges but must not swallow each other
   const fixRange = (ns: TreeNode[]): void => {

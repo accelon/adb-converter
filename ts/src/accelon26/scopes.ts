@@ -702,9 +702,13 @@ async function renderDirTree(): Promise<void> {
         badge = `<span class="tCount">${fmtInt(n.children.length)}</span>`;
       }
       const edited = editedSet.has(n.va);
+      // 目錄的縮進（作者 2026-11-15 晚）：19 層科判疊好之後，光靠色點看不出
+      // 誰是誰的孩子——每一層縮 5px（最多 16 層，免得把目錄擠成一條窄縫）。
+      // 只有一兩層的庫幾乎看不出差別。
+      const indent = 4 + Math.min(n.depth, 16) * 5;
       // 游標的 current／ancestor 直接長進列裡（作者 2026-11-05）：目錄是虛擬捲動，
       // 捲動後重掛的列若只靠 paintTreeActive() 事後補 class，捲過去就掉了。
-      return `<div class="tRow${edited ? ' edited' : ''}${open ? ' open' : ''}${treeRowClasses(n.va)}" data-va="${n.va}">
+      return `<div class="tRow${edited ? ' edited' : ''}${open ? ' open' : ''}${treeRowClasses(n.va)}" data-va="${n.va}" style="padding-left:${indent}px">
       <span class="${twistyCls}">${twisty}</span>
       <span class="tDot" style="background:${depthColor(n.depth, n.tag, d.labels.get(n.va) || '')}"></span>
       <span class="tTag">${escapeHtml(n.tag)}</span>
