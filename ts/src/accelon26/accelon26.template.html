@@ -1639,6 +1639,23 @@
   mark.docHit { box-shadow: 0 0 0 1px hsl(var(--hue, 32) 95% 62%); }
   mark.kw { padding: 0 1px; }
   mark.kw.cur { box-shadow: 0 0 0 1px var(--fg); }
+  /* 搜尋命中落在圖版（藏在 svg 後面的那份文字）時，在**圖上**反白
+     （厚觀法師 2026-11-15：「能否讓它反顏色？」）。
+     底色用一個 rect（`.svgHitBox`，由 paint.ts 依 getBBox 畫），字填米白——
+     與正文的 mark.docHit 同一個配色。!important 是要蓋過 svg 自己內嵌的
+     `<style>`（Visio 匯出的 .st2 之類會指定 fill）。 */
+  #docText svg .svgHitBox { fill: hsl(var(--hue, 32) 90% 38%) !important; }
+  #docText svg .svgHit { fill: var(--mark-fg) !important; }
+  /* 暗色系整張圖版會過 `invert(1) hue-rotate(180deg)`（上面 html.svg-invert 那條），
+     底色與字也會被反掉（深紅變粉紅、米白變深色）。這裡對這兩個標記再套一次同樣的
+     濾鏡，等於抵銷：畫面上仍是深紅底、米白字，與正文的 mark.docHit 一致。 */
+  html.svg-invert #docText svg .svgHitBox,
+  html.svg-invert #docText svg .svgHit { filter: invert(1) hue-rotate(180deg); }
+  /* 圖上找不到那幾個字（點陣圖、或字被拆散）：退一步框住整張圖 */
+  #docText svg.hitFigure {
+    outline: 2px solid hsl(var(--hue, 32) 92% 60%);
+    outline-offset: 4px;
+  }
   /* 摘要上方的詞組徽章（idf 旁邊那個） */
   .kwTag {
     display: inline-block; padding: 0 5px; border-radius: 4px; font-size: 12px;

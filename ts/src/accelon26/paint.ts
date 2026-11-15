@@ -262,6 +262,90 @@ function paintKeywordMarks(): void {
   }
 }
 
+/** 圖版的命中標記（每次重塗前先清掉，否則翻頁後會留在別張圖上） */
+function clearFigureHit(): void {
+  document.querySelectorAll('#docText .svgHit, #docText svg.hitFigure')
+    .forEach((el) => el.classList.remove('svgHit', 'hitFigure'));
+  document.querySelectorAll('#docText .svgHitBox').forEach((el) => el.remove());
+}
+
+/**
+ * 搜尋命中落在「圖版後面那份被 `<隱>` 藏起來的文字」時，改在**圖上**標色
+ * （厚觀法師 2026-11-15：「雖然可以跳到那一頁，但不會反顏色是嗎？能否讓它反顏色？」）。
+ *
+ * 福嚴的圖版（2p312 三假說對照、5p34 大科分判、5p627／6p631 的附表）畫面上只畫圖，
+ * 原本的文字留在圖後面供檢索。命中的時候 DOM 裡沒有字可以包 `<mark>`，法師看到的
+ * 就是「跳到那一頁，但那一處不會反顏色」。
+ *
+ * 這裡先在同一頁的圖裡找含這個詞的 `<tspan>`／`<text>`——圖上的字本身也是文字，
+ * 標一條色帶（CSS 用 `paint-order` 畫在字下面）就像螢光筆畫過。找不到（圖是點陣、
+ * 或字被拆成很多段）就退回框住那一張圖，至少告訴讀者「是這一張」。
+ */
+function paintFigureHit(phrase: string | undefined, fromLine: number, hue = 0, noScroll = false): boolean {
+  const needle = (phrase ?? '').replace(/\s+/g, '');
+  if (!needle) return false;
+  const body = document.querySelector<HTMLElement>('#docText .docBody');
+  if (!body) return false;
+  const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, '');
+  const rowOf = (el: Element): number => {
+    const row = el.closest('.docLine');
+    const n = Number((row?.id || '').replace(/^L/, '').replace(/-h$/, ''));
+    return Number.isFinite(n) ? n : Number.NaN;
+  };
+  const ranked = [...body.querySelectorAll<SVGSVGElement>('svg')]
+    .map((el) => ({ el, d: Math.abs(rowOf(el) - fromLine) }))
+    .sort((a, b) => (Number.isFinite(a.d) ? a.d : 1e6) - (Number.isFinite(b.d) ? b.d : 1e6))
+    .slice(0, 3);
+  if (!ranked.length) return false;
+  for (const { el } of ranked) {
+    const hits = [...el.querySelectorAll<SVGElement>('tspan, text')]
+      .filter((n) => norm(n.textContent).includes(needle));
+    if (!hits.length) continue;
+    // 取字數最少的：外層 <text> 通常含整格兩三行，內層 <tspan> 才是那一行
+    hits.sort((a, b) => norm(a.textContent).length - norm(b.textContent).length);
+    const best = hits[0];
+    // Visio 匯出的 svg 常用 `x="0.296em 2.355em 4.414em 6.473em"` 一個字一個 tab 位置，
+    // 每個字的 stroke 會各自成一塊。補一個底色矩形墊在後面，看起來才是連續的反白。
+    try {
+      // rect 只能放在 <text> 的**父層**（text 的子元素只能是字）：命中若是 tspan，
+      // 就用它所屬的那個 text 取邊界，底色才會跟整行一樣寬。
+      const anchor = (best.tagName.toLowerCase() === 'tspan'
+        ? (best.closest('text') as SVGGraphicsElement | null)
+        : (best as unknown as SVGGraphicsElement));
+      const bb = anchor?.getBBox();
+      if (anchor && bb && bb.width > 0 && bb.height > 0) {
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        const pad = bb.height * 0.12;
+        rect.setAttribute('x', String(bb.x - pad));
+        rect.setAttribute('y', String(bb.y - pad));
+        rect.setAttribute('width', String(bb.width + pad * 2));
+        rect.setAttribute('height', String(bb.height + pad * 2));
+        rect.setAttribute('rx', String(bb.height * 0.15));
+        rect.setAttribute('class', 'svgHitBox');
+        rect.style.setProperty('--hue', String(hue));
+        anchor.parentNode?.insertBefore(rect, anchor);
+      }
+    } catch { /* getBBox 在未渲染時會拋錯，沒有底色也還有 stroke */ }
+    best.classList.add('svgHit');
+    best.style.setProperty('--hue', String(hue));
+    if (!noScroll) best.scrollIntoView({ block: 'center' });
+    return true;
+  }
+  const near = ranked[0].el;
+  near.classList.add('hitFigure');
+  near.style.setProperty('--hue', String(hue));
+  if (!noScroll) near.scrollIntoView({ block: 'center' });
+  return true;
+}
+
+/** 這一行的 DOM 是不是「有列、但一個字也沒有」（＝被 `<隱>` 藏起來的行） */
+function isEmptyRenderedLine(line: number | undefined): boolean {
+  if (line === undefined) return false;
+  const row = document.getElementById('L' + line);
+  if (!row) return true;                       // 這一頁根本沒有這一列
+  return (row.textContent || '').trim() === ''; // 有列但是空的（<隱> 包住的內容）
+}
+
 /**
  * `opts.noScroll`（作者 2026-11-01）：不要自己捲到釘選的那一行。
  * 由 `renderDoc` 在「還原上次看的捲動位置／選取區」時傳入，否則還原好的位置
@@ -281,6 +365,7 @@ async function paintHit(ctx: DocCtx | null, va: number, units?: number, opts: { 
   // 原書分頁 only jumps: the `<頁>` marker is a milestone, not a hit, so nothing is
   // painted (linkTo has already scrolled its line into view).
   if (s.pinned?.noMark) return;
+  clearFigureHit();
   const hue = kwHue(s.pinned?.phrase ?? s.pinned?.token);
   if (s.pinned?.exact) {
     const phrase = s.pinned.phrase ?? s.pinned.token;
@@ -297,6 +382,13 @@ async function paintHit(ctx: DocCtx | null, va: number, units?: number, opts: { 
     const done = !!markPhraseInLine(s.pinned.line, s.pinned.token, va, hue, true, noScroll)
       || markPhraseAcrossLines(s.pinned.line, s.pinned.token, va, hue, noScroll);
     if (done) { paintKeywordMarks(); return; }
+    // 命中落在圖版後面那份被 <隱> 藏起來的文字：畫面沒有字可塗，改在圖上標
+    // （厚觀法師 2026-11-15）。只在「那一列確實是空的」時才動手，免得頁面還沒
+    // 渲染好就被誤標成圖版命中。
+    if (isEmptyRenderedLine(s.pinned.line) && paintFigureHit(s.pinned.token, s.pinned.line, hue, noScroll)) {
+      paintKeywordMarks();
+      return;
+    }
   }
   let spans = units && units > 1 ? await mp.phraseSpans(va, units) : await mp.lineSpans(va);
   if (!spans.length) {
