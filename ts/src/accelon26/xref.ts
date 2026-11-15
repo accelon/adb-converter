@@ -1803,6 +1803,10 @@ async function pagesOfBook(r: AdbReader, book?: number): Promise<{
   for (let i = 0; i < idx.values.length; i++) {
     const va = idx.vas[(((idx.pointers[i] >>> 0) & 0xffffff) as number) - 1];
     if (va === undefined || va < bva || va >= bend) continue;
+    // 前置頁（`(1)`、`(2)`…：紙本頁腳印的就是括號，厚觀法師 2026-11-15）**不佔「第 N 頁」的序號**。
+    // 否則法華前面多 11 頁，(1) 之後的 `7p87` 會變成紙本第 76 頁——全部頁行引用一起錯位。
+    // 這些頁照樣在正文裡（右緣有頁碼晶片、可以用 `7p(3)` 跳），只是不進這個序號表。
+    if (!/^\d/.test(idx.values[i])) continue;
     const { key, col } = splitPageCol(idx.values[i]);
     list.push({ id: idx.values[i], va, key, col });
   }
