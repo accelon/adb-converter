@@ -717,7 +717,7 @@ export class Accelon3Renderer {
     return out + esc(this.conv(decoded.slice(i)));
   }
 
-  private openSpan(tag: string, depth: number, colorOverride?: string): string {
+  private openSpan(tag: string, depth: number, colorOverride?: string, lvl?: number): string {
     // 本文（不在標題堆疊裡）永遠 1em；「往上一層」＋2px，最多 180%（作者 2026-10-18）。
     // 有 depthSteps（renderPageBlocks 依本頁算的相對層級）就用它 —— 這才是使用者看到的
     // 「和本文平緩過渡」；沒有就退回舊的絕對深度算法（直接 new 這支類別的場合）。
@@ -730,12 +730,21 @@ export class Accelon3Renderer {
     let size = !this.opts.headScale ? '' : n > 0 ? `font-size:min(calc(1em + ${n * LEVEL_STEP_PX}px), ${LEVEL_MAX_SCALE}em);` : 'font-size:1em;';
     if (this.opts.headScale && custom?.size != null) size = `font-size:${custom.size}%;`;
     const color = custom?.color || colorOverride || `var(--tag-text-${tagChromaIndex(tag, depth, this.ctx)})`;
+    // `lv` 的兩件事：左縮進（每層 0.9em，最多 12em，19 層也不會把版面擠爆）與色號。
+    const lvColor = lvl ? (custom?.color || `var(--tag-text-${(lvl - 1) % 8})`) : color;
+    const indent = lvl && lvl > 1 ? `padding-left:${Math.min(12, (lvl - 1) * 0.9).toFixed(1)}em;` : '';
+    const lvAttr = lvl ? ` data-lv="${lvl}"` : '';
+    // 作者 2026-11-15（方案丙）：科判層號 `lv="1..19"`。
+    // 《法華經講義》的科判是「甲一、乙一…子一、丑一…」共 19 層，比資料庫的標籤層級
+    // 多得多；同一個 `<項>` 裝 19 層時，字級一樣、顏色只靠天干地支首字換（8 色會撞），
+    // 畫面看不出深淺。層號**只做兩件事**：左縮進與色號（字級不動，紙本上科判本來就
+    // 與正文同級、靠位置分辨）。沒有 `lv` 的標題完全不受影響。
     // 作者 2026-10-22：<經> 沒有自訂字型時預設楷體；自訂字型（含空字串＝本文）優先。
     const fontName = custom ? (custom.font ?? defaultFontOf(tag)) : defaultFontOf(tag);
     const font = (fontName || custom?.font2)
       ? `font-family:${fontFamilyOf({ font: fontName, font2: custom?.font2 })};`
       : '';
-    return `<span class="h" data-tag="${esc(tag)}" data-up="${up}" data-depth="${depth}" style="${size}${font}--tagtext:${color}">`;
+    return `<span class="h" data-tag="${esc(tag)}" data-up="${up}" data-depth="${depth}"${lvAttr} style="${size}${font}${indent}--tagtext:${lvColor}">`;
   }
 
   /** `<釋 n="X">` 的注文外框（notes.ts 靠 `data-note` 找它） */
@@ -994,6 +1003,18 @@ export class Accelon3Renderer {
         this.sawText = true;
         continue;
       }
+      // `<縮/>`：**無條件**的段首空兩格（作者 2026-11-15）。
+      // `<段/>` 的縮排要看整個庫的 `<集 c="noindent">`，可是合訂庫裡各本書的體例不同：
+      // 《福嚴講義》四本紙本正文頂格、《法華經講義》解說段要空兩格，而旗標只有一個。
+      // 所以讓書稿自己說「這一段要空兩格」—— 與 `<集>` 同一個原則：體例寫在資料裡。
+      // 縮排放自己的 span（paint.ts／mark-dom.ts 都跳過它），塗紅與複製的字序不受影響。
+      if (name === '縮' || name === '_縮') {
+        if (!closing) {
+          if (this.sawText) html += '<br class="para">';
+          html += '<span class="paraIndent">　　</span>';
+        }
+        continue;
+      }
       // `<圖 n="x.png"/>`：正文裡的插圖（字形、圖版）。圖檔在 `resources` 容器，
       // URL 由呼叫端先解好 —— 渲染本身是同步的。讀不到就畫一個小方塊：字形圖
       // 常常嵌在句子中間，整行消失會讓句子讀不通。
@@ -1186,8 +1207,11 @@ export class Accelon3Renderer {
         const upcoming = text.slice(i).replace(/<[^>]*>/g, '');
         const color = tagStyleOf(name)?.color
           || `var(--tag-text-${tagChromaIndex(name, depth, this.ctx, upcoming)})`;
+        // 科判層號（方案丙，作者 2026-11-15）：`<項 lv="12">` 的 lv 只給縮進與色號
+        const lvRaw = attrValue(attrs, 'lv');
+        const lvl = lvRaw && /^\d{1,2}$/.test(lvRaw.trim()) ? Math.min(30, Math.max(1, Number(lvRaw))) : undefined;
         this.stack.push({ tag: name, depth, color });
-        html += this.openSpan(name, depth, color);
+        html += this.openSpan(name, depth, color, lvl);
       }
     }
 
@@ -1685,7 +1709,9 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
   // 表格已經把圖裡的文字轉出來了，緊接在前的「只有一張圖」那一列就是多餘的
   // （taixu：<表>圖說</表> → <圖/> → <圖文字>框線表）。只丟純圖列，不動別的。
   hoistImagesBeforeTables(out);
-  if (opts.indent !== false) shiftTrailingIndent(out);
+  // 縮排的搬移不再看庫的旗標：`<縮/>`（2026-11-15）在 noindent 的庫裡也會長出縮排，
+  // 行尾孤零零的縮排照樣要挪到下一塊開頭。沒有縮排 span 時整個函式是空轉。
+  shiftTrailingIndent(out);
   return out;
 }
 

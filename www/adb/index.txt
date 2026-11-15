@@ -3,6 +3,7 @@ swjzz.adb	swjzz.html
 tx.adb	tx.html
 yulinpo.adb
 ys.adb	ys.html
+ybh.adb	ybh.html
 taisho.adb	taisho.html
 wxzj.adb	wxzj.html
 goryeo_taisho.adb	goryeo_taisho.html
