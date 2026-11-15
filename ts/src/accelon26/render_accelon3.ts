@@ -1537,9 +1537,18 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
     for (const b of blanks) out.push({ kind: 'line', lines: [b] });
     blanks = [];
   };
+  /** 前一行已經有頁碼晶片了嗎（2026-11-15：有就不再把頁碼或文字往裡塞） */
+  const prevHasPage = (): boolean => {
+    const prev = out[out.length - 1];
+    if (!prev || prev.kind !== 'line' || !prev.lines.length) return false;
+    return /class="pageBreak"/.test(prev.lines[prev.lines.length - 1].html);
+  };
   const mergeIntoPrev = (info: RenderedLine, prefix = ''): boolean => {
     const prev = out[out.length - 1];
     if (!prev || prev.kind !== 'line' || !prev.lines.length) return false;
+    // 2026-11-15（陳裕文 259）：前一行已經是「空頁的頁碼行」時不能再往裡塞。
+    // 否則 43p153a／154a／155a 這種連續空頁又夾一個 `<卷>` 的段落，三頁頁碼會疊在同一行。
+    if (/class="pageBreak"/.test(prev.lines[prev.lines.length - 1].html)) return false;
     const last = prev.lines[prev.lines.length - 1];
     last.html += prefix
       + `<span class="lineText contLine" id="L${info.no}${info.idSuffix ?? ''}" data-src="${esc(info.raw)}">${info.html}</span>`;
@@ -1555,6 +1564,8 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
   const appendToPrev = (html: string): boolean => {
     const prev = out[out.length - 1];
     if (!prev || prev.kind !== 'line' || !prev.lines.length) return false;
+    // 前一行已經有頁碼 → 這裡再接就是兩頁的頁碼疊在同一行（陳裕文 259，26p40a／41a）
+    if (/class="pageBreak"/.test(prev.lines[prev.lines.length - 1].html)) return false;
     prev.lines[prev.lines.length - 1].html += html;
     return true;
   };
@@ -1603,7 +1614,21 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
       const hasPage = /class="pageBreak"/.test(info.html);
       // 只有圖、沒有文字的一行不是空行（作者 2026-11-01：圖版會被當成空行丟掉）
       const hasFigure = /<svg\b|class="[^"]*inlineImg|figureImg/.test(info.html);
-      if (hasPage && !rest) { pageOnly += info.html; softBreak = true; continue; }   // 這一行只有頁碼
+      if (hasPage && !rest) {
+        // 這一行只有頁碼。若**已經有頁碼在等**，表示中間那一頁從頭到尾沒有一個字
+        // （例：ys 的 37p38a–37p42a，紙本整頁只有注文、注文收在注文書，正文書這一頁是空的）。
+        // 2026-11-15（陳裕文 259：「頁碼二個以上擠在同一行」）：原先把累積的頁碼一次接到
+        // 下一個有內容的行尾，六頁的頁碼就全掛在「第2章…」那一行右緣。這裡讓每一頁的
+        // 頁碼**各自成一行**（他選的 (a) 案），翻頁才停得住、頁碼也不會疊在一起。
+        if (pageOnly) {
+          out.push({ kind: 'line', lines: [{ no: 0, html: pageOnly, raw: '', visible: true, heading: false }] });
+          pageOnly = '';
+          cur = null;
+          sawBlank = false;
+          lastPage = true;
+        }
+        pageOnly += info.html; softBreak = true; continue;
+      }
       if (!rest && !hasFigure) { blanks.push(info); continue; }                       // 空行先留著
       if (pageOnly) {
         // 作者 2026-11-01：`<頁>` 後面接的是標題時，標題要從頁首獨立一行，
@@ -1620,13 +1645,19 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
           || /^\s*〔圖表/.test(lines[i])
           || /^\s*<圖[\s>]/.test(lines[i]);
         if (headingNext) {
-          appendToPrev(pageOnly);                              // 頁碼留在前一行尾端
+          // 頁碼留在前一行尾端。若前一行已經是空頁的頁碼行，就讓它自己一行
+          // （2026-11-15 陳裕文 259：26p40a／41a 兩頁相連又接標題，原本疊成一行）。
+          if (!appendToPrev(pageOnly)) {
+            out.push({ kind: 'line', lines: [{ no: 0, html: pageOnly, raw: '', visible: true, heading: false }] });
+          }
           pageOnly = '';
           blanks = [];
           softBreak = false;
           // 不 continue：這一行（標題）照下面的流程自成一個 block
         } else if (prevHasFigure()) {                          // 圖版：只接頁碼，文字自成一行
-          appendToPrev(pageOnly);
+          if (!appendToPrev(pageOnly)) {
+            out.push({ kind: 'line', lines: [{ no: 0, html: pageOnly, raw: '', visible: true, heading: false }] });
+          }
           pageOnly = '';
           blanks = [];
           softBreak = false;
