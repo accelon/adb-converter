@@ -85,6 +85,21 @@ try {
     await Bun.sleep(2000);   // 等一排 chips 都畫完
     await shot(cdp, 'revlink.jpg');
   }
+
+  if (which === '3b') {
+    // 右欄完整反鏈一排：main 必須是 ybh，跳 taisho 才落右欄（taisho 當主庫會開進主欄）
+    console.log('[1a+] 右欄反鏈一排・ybh 主 → 跳 taisho?30p279a#34-40…');
+    await loadAdb(cdp, taisho);              // 讓 taisho 成 readerFor 可解析
+    await useDb(cdp, '瑜伽師地論漢文集成');   // 切回 ybh 當 main
+    await cdp.eval(`(async () => {
+      await window.__accelon26.xrefJump('taisho?30p279a#34-40', false, false, '');
+      await new Promise(r => setTimeout(r, 1500));
+      return 1;
+    })()`);
+    await cdp.waitFor('document.querySelector("#colRight .xrefRevBar, .xrefRevBar") !== null', 45000);
+    await Bun.sleep(2500);   // 等右欄 foreign 頁 + 反鏈一排 chips 畫完
+    await shot(cdp, 'revlink2.jpg');
+  }
 } finally {
   await close();
 }
