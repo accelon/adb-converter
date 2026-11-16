@@ -146,6 +146,22 @@ function liVars(hue: number, scheme: LiScheme): { color: string; bg: string; var
   };
 }
 
+/**
+ * 依 `<集 scheme="…">` 順序表算某個體例標籤的色相。
+ * 抽成函式是因為現在有兩個消費端：`<例 t="…"/>`（分區標題）與 `<詞 t="…">`（詞頭小色塊）。
+ * 兩邊共用同一個 hue 與同一份 liHueByLabel 動態補色，類別顏色才會一致、且順序穩定。
+ */
+function liHueFor(label: string, pal: LiScheme): number {
+  const at = pal.labels.indexOf(label);
+  let hue = at >= 0 ? pal.h + at * pal.step : liHueByLabel.get(label);
+  if (hue == null) {
+    hue = pal.h + (pal.labels.length + liHueNext) * pal.step;
+    liHueByLabel.set(label, hue);
+    liHueNext++;
+  }
+  return hue;
+}
+
 /** 正文插圖（Accelon3：`圖` 是單張圖，`嵌圖`／`圖片` 是其他寫法的別名） */
 export const IMAGE_TAGS = new Set(['圖', '嵌圖', '圖片']);
 
@@ -865,14 +881,7 @@ export class Accelon3Renderer {
         if (closing) continue;
         const label = attrValue(attrs, 't') || '體例';
         const pal = this.liPalette;
-        const at = pal.labels.indexOf(label);
-        let hue = at >= 0 ? pal.h + at * pal.step : liHueByLabel.get(label);
-        if (hue == null) {
-          hue = pal.h + (pal.labels.length + liHueNext) * pal.step;
-          liHueByLabel.set(label, hue);
-          liHueNext++;
-        }
-        const v = liVars(hue, pal);
+        const v = liVars(liHueFor(label, pal), pal);
         this.lineCls = 'liHeadLine';
         this.lineStyle = v.vars;
         html += `<span class="liHead">${esc(label)}</span>`;
@@ -1170,6 +1179,12 @@ export class Accelon3Renderer {
         }
         if (word.dictHead) {
           html += '<span class="dictHead">';
+          // 詞頭前的小色塊（`<詞 t="術語">`）。色相與 `<例 t>` 走同一張 scheme 順序表，
+          // 所以同一類別在分區標題與詞頭色塊上顏色一致。旧库无 t → 空串 → 不渲染，行为不变。
+          if (word.liLabel) {
+            const v = liVars(liHueFor(word.liLabel, this.liPalette));
+            html += `<span class="dictLi" style="${v.vars}">${esc(word.liLabel)}</span>`;
+          }
           if (word.homograph) this.homographPending = word.homograph;
         } else if (word.wordSpan) {
           // 詞譜 `b` 只有在「看起來是 IAST 詞件」時才放進 title。

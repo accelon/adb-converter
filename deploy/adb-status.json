@@ -1,5 +1,5 @@
 {
-  "_comment": "研究用資料庫的狀態。status: available（可下載）／wip（施工中，不下載）／revision（整修中）。downloadable:false 的庫只記在 manifest 版本歷史裡，官網與桌面版都不提供下載。source／licenseNote 是給使用者看的出處與授權說明。official:true 是官方委託製作，公開頁會加醒目標記；exclusive:true 是本站獨家，公開頁加另一種醒目標記；pin 是置頂順序（1 最前，沒有的照 index.txt 的順序）。",
+  "_comment": "研究用資料庫的狀態。status: available（可下載）／wip（施工中，不下載）／revision（整修中）。downloadable:false 的庫只記在 manifest 版本歷史裡，官網與桌面版都不提供下載。source／licenseNote 是給使用者看的出處與授權說明。official:true 是官方委託製作，公開頁會加醒目標記；exclusive:true 是本站獨家，公開頁加另一種醒目標記；pin 是置頂順序（1 最前，沒有的照 index.txt 的順序）。section 是把該庫列到公開頁下方的獨立分區（現開「工具書」與「辭典」），沒填的留在全文庫表格。",
   "fuyan.adb": {
     "status": "available",
     "official": true,
@@ -52,6 +52,15 @@
     "source": "CBETA XML-P5 2026R2（X 藏）",
     "licenseNote": "文字依 CBETA XML-P5 的授權，供非營利使用。梵字字型（Siddam／Ranjana）由 CBETA 免費提供非營利及個人研究使用，著作權屬原作者。",
     "note": "卍新纂續藏經（X 藏）純經文底座：86 冊、1,236 書、172,794 頁（全部唯一）。2026-10-31 重建：CB 缺字依 charDecl 換 Unicode（剩 1,772 碼沒有 Unicode，保留 &CB…;）；SD／RJ 梵字全部換成 Unicode 第 16 平面，由內嵌字型顯示。234.4 MB 大檔，整檔下載。"
+  },
+  "dfb.adb": {
+    "status": "available",
+    "label": "可下載",
+    "section": "辭典",
+    "source": "資料來源：中華電子佛典協會（CBETA／DILA）BAUS 線上佛學辭典 dictid=1；缺字與異體以 CBETA 鏡像及 DDBC TEI 作第二來源核對",
+    "licenseNote": "Creative Commons Zero（CC0）。丁福保（1874–1952）逝世已逾 50 年，原書屬公有領域。",
+    "description": "丁福保《佛學大辭典》31,585 條：87 類體例作詞頭色塊、同形詞頭帶序號、(參見：X) 轉詞條互鏈 5,891 條（死鏈留原文，不造空鏈）、引文帶字元級大正藏連結 10,577 條（先用引文查頁、再用經名核對本經，含簡稱與「同經」這類回指）。組字式缺字改正字、羅馬轉寫記號改 Unicode。詳見改版說明。",
+    "note": "2026-11-16 v5：新增注家·省稱對照表（22 條）與異寫表（4 對），「語料有沒有這本書」的判尺拆掉跳字子序列，只准連字與表內證據——經名核對多認出 1,101 條指名一致，鏈路 10,469→10,577。v4 修回指全型（光杆一字「偈／中／註／品」、「同經＋品名」）並停止攔腰截斷書名（2,140 條不再被鋦開）。v2 起義項序號前分段 <段/> 137 處。仍缺 entryid 16755（站端 ASP 0113 逾時）；卍續藏尚未發鏈；大正連結是查出處，不保證與辭典引文同文，詞典本文不按大正擅改。"
   },
   "fgdict.adb": {
     "status": "revision",

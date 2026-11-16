@@ -36,6 +36,12 @@ export interface WordSpec {
   homograph: string;
   /** 注音／拼音（可選） */
   pron: WordPron | null;
+  /**
+   * 體例類別（`<詞 t="術語">`）。給詞頭前的小色塊用。
+   * hue 依 `<集 scheme="…">` 的順序表算，與 `<例 t="…"/>` 共用同一來源，
+   * 所以同一類別在「詞頭色塊」與「分區標題」兩處顏色一致。
+   */
+  liLabel: string;
 }
 
 /**
@@ -66,5 +72,8 @@ export function parseWordSpec(
   const pyText = py || (zy ? bpmf2pinyin(zy) : zyRaw);
   const pron = zy || pyText ? { zy, py: pyText } : null;
 
-  return { tag, zeroVa, dictHead, wordSpan, b, j, w, homograph, pron };
+  // t 是體例类别（新）。旧库的 `<詞>` 不带 t，取到空串即不渲染色块，行为不变。
+  const liLabel = get('t').trim();
+
+  return { tag, zeroVa, dictHead, wordSpan, b, j, w, homograph, pron, liLabel };
 }

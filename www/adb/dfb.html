@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dfb.adb 製作說明（丁福保《佛學大辭典》）</title>
+<meta name="theme-color" content="#f7f7f8" id="themeColor">
+<link rel="icon" type="image/png" href="../img/appicon.png">
+<script>
+  // 亮底／暗底（作者 2026-10-18）：**預設亮底**（軟件的截圖是暗色的，亮底才有對比）。
+  // 選過的記在 localStorage；在畫面出現前就套上，免得先閃一下另一種底色。
+  (function () {
+    var t = 'light';
+    try { t = localStorage.getItem('accelon26.site.theme') === 'dark' ? 'dark' : 'light'; } catch (e) { /* 無痕模式 */ }
+    document.documentElement.setAttribute('data-theme', t);
+  }());
+</script>
+<style>
+  /* 亮底（預設） */
+  :root {
+    color-scheme: light;
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --panel2: #f1f3f6;
+    --line: #e2e5ea;
+    --fg: #17181c;
+    --dim: #6b7280;
+    --muted: #444a54;
+    --muted2: #454b55;
+    --accent: #2f6fd0;
+    --gold: #a9720a;
+    --btn-fg: #ffffff;
+    --btn-shadow: 0 6px 22px rgba(47,111,208,.20);
+    --msg-shadow: 0 4px 14px rgba(47,111,208,.18);
+    --code-bg: #f1f3f6;
+    --screen-bg: #eceef2;
+    --header-bg: rgba(247,247,248,.92);
+    --dot-off: rgba(0,0,0,.22);
+    --dot-off-border: rgba(0,0,0,.32);
+    --dot-hover: rgba(0,0,0,.45);
+    --dot-on: #1a1c20;
+    --dot-ring: rgba(0,0,0,.12);
+    --max: 960px;
+  }
+  /* 暗底 */
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #16171a;
+    --panel: #1e2024;
+    --panel2: #24272c;
+    --line: #2e3238;
+    --fg: #dcdee3;
+    --dim: #8f959e;
+    --muted: #c3c7ce;
+    --muted2: #b9bec6;
+    --accent: #6cb0ff;
+    --gold: #ffd479;
+    --btn-fg: #0a2338;
+    --btn-shadow: 0 6px 22px rgba(108,176,255,.22);
+    --msg-shadow: 0 4px 14px rgba(108,176,255,.18);
+    --code-bg: #26292f;
+    --screen-bg: #101113;
+    --header-bg: rgba(22,23,26,.92);
+    --dot-off: rgba(255,255,255,.28);
+    --dot-off-border: rgba(255,255,255,.40);
+    --dot-hover: rgba(255,255,255,.55);
+    --dot-on: #ffffff;
+    --dot-ring: rgba(255,255,255,.14);
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.75 system-ui, "Segoe UI", "Microsoft JhengHei", "PingFang TC",
+      "Noto Sans CJK TC", sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+  code {
+    font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+    font-size: .9em; background: var(--code-bg); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 5px;
+  }
+
+  /* ---------------------------------------------------------------- 頂端 */
+  header.top {
+    border-bottom: 1px solid var(--line);
+    background: var(--header-bg);
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(6px);
+  }
+  header.top .wrap {
+    display: flex; align-items: center; gap: 20px; height: 62px;
+  }
+  .brand { font-size: 20px; font-weight: 700; letter-spacing: .01em; color: var(--fg); }
+  .brand b { color: var(--gold); font-weight: 700; }
+  .brand span { color: var(--dim); font-weight: 400; font-size: 14px; margin-left: 10px; }
+  nav { margin-left: auto; display: flex; gap: 18px; font-size: 14px; align-items: center; }
+  nav a { color: var(--dim); }
+  nav a:hover { color: var(--fg); text-decoration: none; }
+  /* 亮底／暗底切換（作者 2026-10-18）：右上角，圖示＋tooltip */
+  .themeBtn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+    border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px;
+    cursor: pointer; line-height: 1.2;
+  }
+  .themeBtn:hover { color: var(--fg); border-color: var(--dim); }
+  .themeBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .themeBtn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+  /* GitHub 圖示（作者 2026-10-22）：右上角，點一下開原始碼庫 */
+  .ghLink {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 50%;
+    color: var(--muted); border: 1px solid var(--line); background: var(--panel);
+  }
+  .ghLink:hover { color: var(--fg); border-color: var(--dim); text-decoration: none; }
+  .ghLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ghLink svg { width: 17px; height: 17px; fill: currentColor; }
+
+  /* ---------------------------------------------------------------- 主視覺 */
+  /* 錨點捲動時不要被上面那條 sticky 標頭蓋住（作者 2026-10-18）。 */
+  section, #shots { scroll-margin-top: 78px; }
+  /* 作者 2026-10-18：一進站就要看到軟件畫面 —— 主視覺分成左右兩欄，
+     左邊文字＋下載按鈕，右邊是圖庫（約 54%）。 */
+  .hero { padding: 46px 0 54px; }
+  .heroGrid {
+    max-width: 1120px; margin: 0 auto; padding: 0 24px;
+    display: grid; grid-template-columns: minmax(0, 46fr) minmax(0, 54fr);
+    gap: 46px; align-items: center;
+  }
+  .heroText { min-width: 0; }
+  .heroArt { min-width: 0; }
+  .hero h1 {
+    font-size: clamp(24px, 2.9vw, 34px); line-height: 1.35; margin: 0 0 16px;
+    font-weight: 700; letter-spacing: .01em;
+  }
+  .hero h1 em { font-style: normal; color: var(--gold); }
+  .lead { font-size: 17px; color: var(--muted); margin: 0 0 30px; max-width: 42em; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: var(--btn-fg);
+    font-weight: 700; font-size: 15.5px; padding: 10px 22px; border-radius: 9px;
+    box-shadow: var(--btn-shadow);
+  }
+  /* 按鈕上的 OS 標誌（2026-10-18）：跟著字色，大小固定，不要被壓縮。 */
+  .btn svg { width: 16px; height: 16px; fill: currentColor; flex: none; opacity: .95; }
+  .btn .bTxt { display: flex; flex-direction: column; line-height: 1.18; text-align: left; }
+  .btn .bMeta { font-size: 11.5px; font-weight: 400; opacity: .82; letter-spacing: .01em; }
+  .btn:hover { text-decoration: none; filter: brightness(1.08); }
+  /* 兩個下載按鈕並排（macOS 版 2026-10-18）；窄螢幕自動換行。 */
+  .btnRow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn.alt {
+    background: transparent; color: var(--fg);
+    border: 1px solid var(--line); box-shadow: none;
+  }
+  .btn.alt:hover { border-color: var(--gold); color: var(--gold); filter: none; }
+  .fine { margin: 14px 0 0; color: var(--dim); font-size: 13px; }
+  .fine b { color: var(--fg); font-weight: 600; }
+
+  /* ---------------------------------------------------------------- 特色 */
+  section { padding: 54px 0; border-top: 1px solid var(--line); }
+  h2 {
+    font-size: 13px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--dim); font-weight: 600; margin: 0 0 26px;
+  }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px 22px 20px; }
+  .card svg { width: 26px; height: 26px; stroke: var(--gold); fill: none; stroke-width: 1.6; }
+  .card h3 { font-size: 17px; margin: 12px 0 8px; font-weight: 700; }
+  .card p { margin: 0; color: var(--muted2); font-size: 14.5px; line-height: 1.7; }
+  .card p b { color: var(--fg); font-weight: 600; }
+
+  /* ---------------------------------------------------------------- 截圖（圖庫） */
+  /* 四張畫面輪播：3 秒換一張，小白點可切換（作者 2026-10-18：首頁太長）。 */
+  /* 說明在圖**上方**（作者 2026-10-18），字比圖說大一點。 */
+  .installBody { max-width: 780px; }
+  #install h2 { margin-bottom: 18px; }
+  .gallery { position: relative; }
+  .slides {
+    position: relative; aspect-ratio: 16 / 9;
+    background: var(--screen-bg); border: 1px solid var(--line); border-radius: 10px;
+    overflow: hidden;
+  }
+  .slide { position: absolute; inset: 0; margin: 0; opacity: 0; transition: opacity .55s ease; }
+  .slide.on { opacity: 1; }
+  .slide img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .gcap {
+    color: var(--muted); font-size: 15px; line-height: 1.7;
+    margin: 0 0 14px; min-height: 3.5em;
+  }
+  .gcap p { margin: 0; display: none; }
+  .gcap p.on { display: block; }
+  .gcap b { color: var(--fg); font-weight: 700; }
+  .dots { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
+  .dots button {
+    width: 10px; height: 10px; padding: 0; border-radius: 50%; cursor: pointer;
+    background: var(--dot-off); border: 1px solid var(--dot-off-border);
+    transition: background .2s ease, box-shadow .2s ease;
+  }
+  .dots button:hover { background: var(--dot-hover); }
+  .dots button[aria-selected="true"] {
+    background: var(--dot-on); border-color: var(--dot-on); box-shadow: 0 0 0 3px var(--dot-ring);
+  }
+  .dots button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) {
+    .slide { transition: none; }
+  }
+
+  /* ---------------------------------------------------------------- 安裝 */
+  ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: step; }
+  ol.steps li {
+    counter-increment: step; position: relative; padding: 0 0 26px 52px;
+    border-left: 1px solid var(--line); margin-left: 15px;
+  }
+  ol.steps li:last-child { border-left: 1px solid transparent; padding-bottom: 0; }
+  ol.steps li::before {
+    content: counter(step); position: absolute; left: -16px; top: -2px;
+    width: 31px; height: 31px; border-radius: 50%;
+    background: var(--panel2); border: 1px solid var(--line); color: var(--gold);
+    font-size: 14px; font-weight: 700; display: grid; place-items: center;
+  }
+  ol.steps h3 { margin: 0 0 4px; font-size: 16px; }
+  ol.steps p { margin: 0; color: var(--muted2); font-size: 14.5px; }
+
+  .note {
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--gold);
+    border-radius: 8px; padding: 14px 18px; color: var(--muted2); font-size: 14.5px; margin-top: 26px;
+  }
+  .note b { color: var(--fg); }
+
+  /* ---------------------------------------------------------------- 聯絡 */
+  .contact { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .contact .k { color: var(--dim); font-size: 14px; }
+  .contact .v {
+    font-size: 17px; font-weight: 700; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 7px; padding: 5px 14px; user-select: all;
+  }
+  .contact small { color: var(--dim); font-size: 13px; }
+  /* 留言給作者（作者 2026-10-18）：開新視窗到 message.html */
+  .msgBtn {
+    display: inline-block; font-size: 14px; font-weight: 700; color: var(--btn-fg);
+    background: var(--accent); border-radius: 8px; padding: 6px 14px;
+    box-shadow: var(--msg-shadow);
+  }
+  .msgBtn:hover { text-decoration: none; filter: brightness(1.08); }
+
+  footer {
+    border-top: 1px solid var(--line); padding: 30px 0 46px;
+    color: var(--dim); font-size: 13px;
+  }
+  footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; }
+  footer .right { margin-left: auto; }
+
+  @media (max-width: 900px) {
+    /* 窄螢幕：文字在上、畫面在下（作者 2026-10-18） */
+    .heroGrid { grid-template-columns: 1fr; gap: 28px; }
+    .hero { padding: 34px 0 40px; }
+  }
+  @media (max-width: 780px) {
+    .cards { grid-template-columns: 1fr; }
+    .gcap { min-height: 0; }
+    header.top .wrap { height: 54px; gap: 10px; }
+    nav { gap: 10px; font-size: 12.5px; white-space: nowrap; }
+    .brand { font-size: 18px; }
+    .brand span { display: none; }
+    section { padding: 40px 0; }
+    .btn { font-size: 16px; padding: 12px 22px; }
+  }
+  /* 窄螢幕：右上角的主題與 GitHub 不能超出畫面（作者 2026-10-22） */
+  @media (max-width: 640px) {
+    header.top .wrap { height: auto; min-height: 54px; flex-wrap: wrap; padding: 7px 24px; }
+    nav {
+      flex: 1 1 100%; width: 100%; min-width: 0;
+      flex-wrap: wrap; justify-content: flex-end; gap: 6px 10px; white-space: normal;
+    }
+    .themeBtn { padding: 5px 9px; }
+    .themeBtn #themeLabel { display: none; }
+    .ghLink { width: 28px; height: 28px; }
+  }
+
+  .doc { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; }
+  .doc h1 { font-size: 1.6em; margin: .2em 0 .8em; }
+  .doc h2 { font-size: 1.2em; margin: 1.6em 0 .6em; }
+  .doc h3 { font-size: 1.05em; margin: 1.2em 0 .4em; }
+  .doc p { line-height: 1.9; margin: .7em 0; color: var(--muted); }
+  .doc li { line-height: 1.85; color: var(--muted); }
+  .doc code { background: var(--code-bg); border-radius: 4px; padding: 1px 5px; font-size: .92em; }
+  .doc pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow: auto; }
+  .doc pre code { background: none; padding: 0; }
+  .doc blockquote { margin: 1em 0; padding: .4em 1em; border-left: 3px solid var(--line); color: var(--dim); }
+  .tableWrap { overflow-x: auto; margin: 1em 0; }
+  .doc table { border-collapse: collapse; width: 100%; font-size: .94em; }
+  .doc th, .doc td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+  .doc th { background: var(--panel2); font-weight: 600; }
+  .doc a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">accelon<b>26</b><span>古籍資料庫閱讀器</span></div>
+    <nav>
+      <a href="../index.html">首頁</a>
+      <a href="index.html">研究用數據庫</a>
+      <a href="../changelog.html">更新說明</a>
+    </nav>
+  </div>
+</header>
+<main class="doc">
+<h1>dfb.adb 製作說明（丁福保《佛學大辭典》）</h1>
+
+<p>丁福保編《佛學大辭典》（1922 年初版）的 adb 版，<b>31,585 條</b>。詞頭按「詞條查詢」直接跳，
+詞頭前有彩色小色塊標示該條的體類（術語、名數、雜語、經名、人名、書名…共 87 類）；
+引文帶<b>字元級的大正藏連結</b>，點一個字就能落到《大正藏》那一頁那一句。</p>
+
+<div class="tableWrap"><table>
+<thead><tr><th>項目</th><th>內容</th></tr></thead>
+<tbody>
+<tr><td>詞條</td><td>31,585 條（抓取範圍 entryid 1–31,586，仍缺 1 條，見〈六、已知缺口〉）</td></tr>
+<tr><td>資料來源</td><td>中華電子佛典協會（CBETA／DILA）<b>BAUS 線上佛學辭典</b>
+  <a href="https://www.baus-ebs.org/fodict_online/" target="_blank" rel="noopener">dictid=1</a>，2026-11-15 全量抓取</td></tr>
+<tr><td>核對用第二來源</td><td>CBETA 鏡像 <code>buddhaspace.org/dict/dfb/</code>（全量詞頭 31,377；頁內 <code>des/nor/uni/code</code> 四元屬性是缺字正解的橋）；DDBC TEI <code>github.com/myhpwa/dfb-dict</code></td></tr>
+<tr><td>授權</td><td><b>Creative Commons Zero（CC0）</b>。丁福保（1874–1952）逝世已逾 50 年，原書屬公有領域；轉寫與正規化不另創著作，故本庫整份放棄權利。</td></tr>
+<tr><td>搭配使用</td><td>同頁的 <b>taisho.adb</b>（大正藏）是本庫所有經文鏈的目標；<b>wxzj.adb</b>（卍續藏）可用來續查同一部書的別譯與輯佚。三個庫放進同一資料夾即可互點。</td></tr>
+<tr><td>檔案</td><td><code>dfb.adb</code>，11.1 MiB（本機 <code>D:\accelon3</code> 那份为准，線上以清單顯示的大小／日期為準）</td></tr>
+</tbody></table></div>
+
+<h2>一、體例怎麼進 adb</h2>
+
+<p>BAUS 的原文把體例寫在釋文開頭，例如「　（雜語）猶言逐一也。…」。這些標記不是內文，
+所以一律改成結構，不在詞條裡顯示成方括號：</p>
+
+<ul>
+<li><b>87 種體類</b>「（術語）（名數）…」→ 詞頭屬性 <code>&lt;詞 t="術語"&gt;</code>，閱讀端在詞頭前長出一個小色塊，
+色相依 <code>&lt;集 scheme&gt;</code> 的順序表分配（表内容由頻次排，同一類別全庫同色）。</li>
+<li><b>同形詞頭</b> 592 種（如兩個「阿彌陀經」）以 <code>a="2"</code> 序號區分，序號照 entryid 先後編，連續無跳。</li>
+<li><b>交叉引用</b> <code>(參見：X)</code> → <code>&lt;聯 n="X"&gt;</code>：<b>只有 X 確實在詞頭表裡才成鏈</b>，
+成鏈 5,891 條；查無此條的 400 條保留原文，<b>不造點了會落空的死鏈</b>。</li>
+<li><b>義項分段</b>「（一）…（二）…」前插 <code>&lt;段/&gt;</code>，共 137 處／66 行。
+帶段號的 <code>&lt;段 n=…&gt;</code> 是巴利藏幾庫的跨庫對齊鍵（會長出一顆 <code>¶N</code> 的對讀晶片），
+本庫沒有對讀對象，所以只發不帶 n 的形式——它是單純的段落分隔，落在同一個源碼行內，不影響全文檢索。</li>
+</ul>
+
+<h2>二、字：缺字與梵文轉寫</h2>
+
+<p>辭典裡有兩類「顯示不出來」的字，處理方式完全不同，混在一起就會把正字當成缺字：</p>
+
+<ul>
+<li><b>組字式</b>（如 <code>[口*縛]</code>）是 CBETA 用來表示一個漢字缺字的構成描述，共 964 處，
+其中 <b>919 處</b>依 165 種構成對照表直接換成正確漢字（<code>[口*縛] → 嚩</code>），剩 45 種構成查無對應正字，維持原樣並在表裡標「未決」。</li>
+<li><b>CBDIA 羅馬轉寫記號</b>（<code>a%</code>、<code>n%</code>、<code>i^</code>、<code>v!</code> 等）是「記號＋基字」的組合，
+<b>同一記號隨基字改變讀法</b>：<code>%</code> 在母音上是長音（ā）、在子音上是點上（ṁ/ṅ）；<code>^</code> 在母音上是長音、在 <code>n</code> 上變波浪（ñ）。
+所以對照表必須以 (記號, 基字) 為鍵；6,936 處轉了 <b>6,890 處（99.34%）</b>為 Unicode 拼音字元。</li>
+<li>悉曇／種子字用 <b>Unicode 悉曇段（U+11580–U+115BF）</b>，這是閱讀器認得的位置；
+U+87xx 一類是借來當容器的碼位，<b>同一碼位在大正語料與丁福保語料所指不同</b>，故絕不按碼位無差別替換。</li>
+</ul>
+
+<p class="fine">留在表裡沒轉的 46 處不是偷工：或兩版連基字都不同（BAUS 寫 <code>N!a</code>、鏡像作 <code>Ḍa</code>），
+或鏡像自己以缺字圖片代 é/è，機械無從判定，一律不硬湊規則，逐條列在轉寫殘留清單裡。</p>
+
+<h2>三、修復的引用錯誤（附校勘表）</h2>
+
+<p>經文出處的鏈路是兩段式做的，這是作者定的方法：<b>先拿引文去大正藏查候選頁，再用經名核對它挑的本經對不對</b>。
+核對這一環前後修掉五類錯誤，每一類都留下可覆核的表：</p>
+
+<div class="tableWrap"><table>
+<thead><tr><th>修掉的問題</th><th>說明</th><th>影響量</th></tr></thead>
+<tbody>
+<tr><td>回指分支形同虛設</td><td>題面「同經」「又」「本經」這類回指，程式先把引導字洗掉再判是否回指，
+於是「同經」變成裸字「經」，回指分支永遠進不去——作者舉的例
+「佛說阿彌陀經之異名。…同經曰：『汝等眾生…』」就一直在這種狀態。</td><td>以回指字起頭 1,424 條，此前走回指 0 條；現判為回指 929 條（正文回溯 764、順序繼承 149）</td></tr>
+<tr><td>單字經名造成的假通過</td><td>「經」是任何書名的子串，舊比對讓它配上《佛說阿彌陀經》判成「一致」；
+這是<b>看起來對、其實沒核</b>的那類。</td><td>已規定兩邊少於兩字一律標「題名過短不可比」，單列不計功（26 條）</td></tr>
+<tr><td>品名剝離攔腰截斷書名</td><td>剝「法華經譬喻品→法華經」的規則尾巴是選填，結果凡含體裁字的長書名都從第一個體裁字鋦斷：
+「法華經玄義」→法華經、「四分律刪繁補闕行事鈔」→四分律、「四十二章經」→四十二章。</td><td>全庫 22,652 條題面，舊式剝 4,412 條、新式剝 2,272 條，<b>2,140 條不再被截斷</b></td></tr>
+<tr><td>注家代稱污染上下文</td><td>「同天台疏」這類代稱被寫進「前文經名」，後面整串回指一起錯到一個語料裡沒有的書名上。</td><td>受污染的繼承 301 行（帶錨點 111 個）；已拆開計數，閘門待作者定案後再開</td></tr>
+<tr><td>異體字認不出</td><td>丁福保寫「增<b>一</b>阿含經」，大正題「增<b>壹</b>阿含經」；「<b>秘</b>藏寶鑰」對「<b>祕</b>藏寶鑰」。
+這類不是簡繁轉換，是逐對異體。</td><td>異寫表 4 對；注家·省稱對照 22 條（止觀→摩訶止觀、輔行→止觀輔行傳弘決、玄應音義→一切經音義…）</td></tr>
+<tr><td>簡稱展開</td><td>「法華經」是「妙法蓮華經」的<b>跳字</b>子序列，不是連續子串，用子串比會把正確鏈判成不符；
+一对多的（如「智度論」）標為歧義，不硬選一部。</td><td>題名對照 4,628 條；書名底表 4,108 部</td></tr>
+</tbody></table></div>
+
+<p>鏈路總量與去留：<b>引文 27,024 筆 → 大正候選錨點 14,235 個 → 經名核對剔除 3,158（經名不符 2,824、候選超過 100 家的短通用引文等）
+→ 保留 11,077 → 實際發射字元級錨點 10,577 個</b>（其餘是同一行內兩段引文重疊，共用一個錨點）。
+「候選 &gt; 100」這一刀是刻意留的：一句「一切眾生悉有佛性」在藏裡到處都是，位置基本靠猜，寧可不鏈。</p>
+
+<h3>隨庫附帶的校勘表</h3>
+
+<p>全部在兩個原料倉（<code>github.com/accelon/fodict</code>、<code>github.com/accelon/dfbdict</code>），
+每張都可逐條覆核、可用同目錄的腳本重跑：</p>
+
+<div class="tableWrap"><table>
+<thead><tr><th>表</th><th>內容</th><th>條目</th></tr></thead>
+<tbody>
+<tr><td><code>gaiji-bracket-map.tsv</code></td><td>組字式構成 → 正字</td><td>165 種</td></tr>
+<tr><td><code>translit-cbdia-map.csv</code></td><td>CBDIA 轉寫（記號＋基字）→ Unicode</td><td>25 規則／6,890 處套用</td></tr>
+<tr><td><code>variant-map.csv</code>／<code>punct-width-map.csv</code></td><td>異體字對照、標點寬窄</td><td>51／3</td></tr>
+<tr><td><code>corpus-titles.tsv</code></td><td>大正＋卍續藏書名底表</td><td>4,108 部</td></tr>
+<tr><td><code>title-map.tsv</code></td><td>丁福保題面 → 語料書名（含歧義標記）</td><td>4,628 條</td></tr>
+<tr><td><code>title-master.tsv</code>／<code>title-variant.tsv</code></td><td>注家·省稱對照、異寫</td><td>22／4</td></tr>
+<tr><td><code>title-verdicts-dfb-v3.tsv</code></td><td><b>逐條判定</b>：候選錨點的期望經名、命中書名、判定、解析方式</td><td>14,235 條</td></tr>
+<tr><td><code>seg-review.md</code></td><td>每一處 <code>&lt;段/&gt;</code> 的分段前後對照（可打勾複核）</td><td>66 行／137 段</td></tr>
+<tr><td><code>lost-pages.csv</code></td><td>被重疊去重吃掉的頁，兩方判定並排（供判斷該不該改取勝規則）</td><td>31 頁／36 段</td></tr>
+<tr><td><code>second-source-ledger.md</code></td><td>缺條的第二來源補録</td><td>4 補／1 仍缺</td></tr>
+</tbody></table></div>
+
+<h2>四、驗收與對賬</h2>
+
+<p>每次建置都跑同一組硬檢查，<b>任何一項的樣本數為零即視為失敗</b>（這個坑踩過：拿掉標籤後的純文字去數詞條行，數到 0 卻報「通過」）：</p>
+
+<ul>
+<li>詞條實數 31,585 ＝ <code>&lt;詞&gt;</code> 行 ＝ 詞條索引實例，且<b>逐位對齊 0 偏移</b>——這三者不對齊時閱讀器會<b>靜默退化</b>成全文搜尋，表面看不出問題。</li>
+<li><code>&lt;聯 n=&gt;</code> 2,724 種目標，不在詞條索引者 0（零死鏈）；同形詞頭序號連續。</li>
+<li>31,585 條逐條回讀比對內容（兩側套同一張正規化規則）：不符 0；詞頭與源逐條相等。</li>
+<li>版面：詞條必在行首、<code>&lt;段/&gt;</code> 不落行首／不嵌在標記內／後面必接義項序號、標記成對——六項皆 0。</li>
+<li>母區閱讀端測試 17 項通過（詞頭色塊走的是既有 <code>&lt;例&gt;</code> 配色通道，不影響既有庫）。</li>
+</ul>
+
+<p>另外做一層<b>獨立對賬</b>，不只引用打包工具的自報數：實讀行數＝庫總行數、庫內錨點數＝打包驗收、
+保留集＝由逐條判定檔重算、501 個重疊丟棄按「段自身性質」重分類、照發射邏輯模擬一遍得 10,576＋跨標記重發 1＝庫內 10,577、
+開閉標記配對。六項互相咬合才算數。</p>
+
+<h2>五、版本記錄</h2>
+
+<div class="tableWrap"><table>
+<thead><tr><th>版</th><th>日期</th><th>sha256（前 12）</th><th>重點</th></tr></thead>
+<tbody>
+<tr><td>v5</td><td>2026-11-16</td><td><code>6b4c7b4798d9</code></td><td>異寫與注家·省稱對照表上線；「是否真有這本書」的判尺拆掉跳字子序列（只准連字與表內證據）；經名核對多認出 1,101 條指名一致，鏈路 10,469→10,577</td></tr>
+<tr><td>v4</td><td>2026-11-16</td><td><code>66690bfe9916</code></td><td>回指再掃全型（光杆一字「偈／中／註／品」、同經＋品名、裸字表補全）；封堵第二條單字假途徑；品名剝離不再攔腰截斷書名（2,140 條）</td></tr>
+<tr><td>v3</td><td>2026-11-15</td><td><code>401eb937cc96</code></td><td>「同經」這類回指真的接上（先回溯正文、再退回首條經名）；作者點名的「一切諸佛所護念經」條從無鏈到字元級鏈入《佛說阿彌陀經》</td></tr>
+<tr><td>v2</td><td>2026-11-15</td><td><code>21fcc7496740</code></td><td>義項序號前插 <code>&lt;段/&gt;</code> 137 處；證明改動是純增量（去標記後與上版逐位元組相同）</td></tr>
+<tr><td>v1</td><td>2026-11-15</td><td><code>9d28917d55ea</code></td><td>首次建庫：31,585 條；轉寫改 Unicode、87 類體例併入詞頭色塊、字元級大正藏鏈 10,622 個</td></tr>
+</tbody></table></div>
+
+<h2>六、已知缺口（不藏）</h2>
+
+<ul>
+<li><b>entryid 16755 仍缺</b>（悉曇／種子條）。根因是站端 IIS 腳本逾時 <code>ASP 0113 Script timed out</code>，
+把逾時放到 300 秒會回 HTTP 500 錯誤頁，與網路無關；同一批另四條已從 CBETA 系來源補齊並記在補錄表。</li>
+<li><b>45 個組字式、46 處轉寫</b>無法機械判定，維持原樣並列在表內。</li>
+<li><b>卍續藏尚未發鏈</b>：本版所有字元級連結只指向大正藏（taisho.adb）。查卍續藏請另開 wxzj.adb 的全文檢索。</li>
+<li>「同天台疏」這類<b>引導詞＋注家專名</b>仍當書名處理，未收進對照表——它隨前文所論經而指不同書，靜態映射必錯。</li>
+<li>玄應《一切經音義》與慧琳《一切經音義》<b>在大正書名層同名</b>，靠書名無法區分兩家（實測受影響 1 條）。</li>
+<li>大正連結是「查得到出處」，<b>不保證與丁福保引文同文</b>：辭典常有節錄、改字與異文。詞典本文一律照 BAUS 原樣，
+不按大正擅改；要校異文請查 CBETA 的 P5 校勘記。</li>
+</ul>
+
+<p class="fine">原料與建置腳本、逐條校勘表與可重跑的驗收／對賬腳本，都在
+<a href="https://github.com/accelon/dfbdict" target="_blank" rel="noopener">dfbdict（建庫端）</a>與
+<a href="https://github.com/accelon/fodict" target="_blank" rel="noopener">fodict（抓取端與校勘表）</a>。
+發現錯字、漏條或鏈錯本經，歡迎到<a href="../index.html#contact">聯絡頁</a>留言，請附詞條名與頁碼，便於逐條覆核。</p>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>accelon26 · Accelon3 跨平台平替 · <a href="index.html">研究用數據庫</a></span>
+    <span class="right">授權：Apache-2.0</span>
+  </div>
+</footer>
+</body>
+</html>

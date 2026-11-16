@@ -21,9 +21,10 @@
  * 「官方委託製作」與置頂（作者 2026-11-05）：看 deploy/adb-status.json 的 official／pin。
  * 有 official 的列在題名旁加醒目標記，pin 小的排最前面（其餘照 index.txt 的順序）。
  *
- * 分區「工具書」（作者 2026-11-06）：deploy/adb-status.json 填 section: "工具書" 的庫，
- * 列在頁面下方獨立的「工具書」區（字典、辭典、對照表）；沒填的留在上面的全文庫表格。
- * 目前沒有庫登記，先顯示「尚無工具書」。
+ * 分區（作者 2026-11-06，2026-11-16 起可多區）：deploy/adb-status.json 填 section 的庫，
+ * 列在頁面下方對應的獨立區（現開「工具書」與「辭典」兩區）；沒填的留在上面的全文庫表格。
+ * 新增一區只要在 SECTION_TITLES 登記區名＋一句介紹；該區沒有庫時，除非寫了 empty 提示，
+ * 否則整節不渲染。「工具書」保留「尚無工具書」佔位，「辭典」目前已有《佛學大辭典》。
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -177,10 +178,16 @@ const isExclusive = (file: string) => !!pins.get(file.toLowerCase())?.exclusive;
 rows.sort((a, b) => pinOf(a.fileName) - pinOf(b.fileName));
 const officialNames = rows.filter((r) => isOfficial(r.fileName)).map((r) => r.name);
 
-// 分區（作者 2026-11-06）：工具書另立一區；目前沒有庫登記，先留空。
-const isTool = (r: { fileName: string }) => sections.get(r.fileName.toLowerCase()) === '工具書';
-const mainRows = rows.filter((r) => !isTool(r));
-const toolRows = rows.filter(isTool);
+// 分區（作者 2026-11-06 開「工具書」；2026-11-16 加「辭典」）：
+// adb-status.json 的 section 決定這個庫列在哪個區，沒填的留在上面的全文庫表格。
+// 要再加一區，只在 SECTION_TITLES 登記檔名＋在這裡補一句介紹，不需改渲染逻辑。
+const SECTION_TITLES: { name: string; intro: string; empty: string }[] = [
+  { name: '工具書', intro: '字典、辭典、對照表這類查檢用的資料庫，跟上面的全文庫分開。', empty: '尚無工具書。' },
+  { name: '辭典', intro: '佛學辭書類：按詞條查檢，詞頭可直接跳「詞條查詢」。', empty: '' },
+];
+const sectionNames = new Set(SECTION_TITLES.map((s) => s.name));
+const sectionOf = (r: { fileName: string }) => sections.get(r.fileName.toLowerCase()) ?? '';
+const mainRows = rows.filter((r) => !sectionNames.has(sectionOf(r)));
 
 const totalChars = rows.reduce((a, r) => a + (r.chars ?? 0), 0);
 const totalSize = rows.reduce((a, r) => a + r.size, 0);
@@ -204,14 +211,25 @@ const renderRows = (list: typeof rows) => list.map((r) => {
 }).join('\n');
 
 const body = renderRows(mainRows);
-const toolsTable = toolRows.length ? `<table class="dbTable">
+/** 一個分區一節：有庫就出表格；沒庫時只有登記了提示語的區（工具書）留佔位，
+ *  其余（如剛加的「辭典」）整節不渲染，免得頁面上掛個空標題。 */
+const sectionHtml = SECTION_TITLES.map((sec) => {
+  const list = rows.filter((r) => sectionOf(r) === sec.name);
+  if (!list.length && !sec.empty) return '';
+  const table = list.length ? `<table class="dbTable">
     <thead>
       <tr><th>資料庫</th><th class="num">字數（約）</th><th class="num">建置日期</th><th class="num">檔案大小</th><th class="dl">下載</th></tr>
     </thead>
     <tbody>
-${renderRows(toolRows)}
+${renderRows(list)}
     </tbody>
-  </table>` : '<p class="toolsEmpty">尚無工具書。</p>';
+  </table>` : `<p class="toolsEmpty">${esc(sec.empty)}</p>`;
+  return `  <section class="toolsSection">
+    <h2>${esc(sec.name)}</h2>
+    <p>${esc(sec.intro)}</p>
+    ${table}
+  </section>`;
+}).join('\n\n');
 
 const html = `<!DOCTYPE html>
 <html lang="zh-Hant">
@@ -329,11 +347,7 @@ ${body}
 
   ${wipNotes.map((d) => `<p class="dbWarn"><b>《${esc(d.name || d.file)}》${esc(d.statusLabel || '')}</b>${esc(d.statusNote)}</p>`).join('')}
 
-  <section class="toolsSection">
-    <h2>工具書</h2>
-    <p>字典、辭典、對照表這類查檢用的資料庫，跟上面的全文庫分開。</p>
-    ${toolsTable}
-  </section>
+${sectionHtml}
 
   ${wip.length ? `<section class="wipSection">
     <h2>施工中</h2>
