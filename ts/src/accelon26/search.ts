@@ -600,6 +600,24 @@ export async function loadTree(
     if (!table) { table = await loadInstanceAttrs(reader, tag, 'lv'); lvAttrs.set(tag, table); }
     return table;
   };
+  /**
+   * per-instance `nav="0"`：**不進目錄樹**的項。
+   *
+   * 《法華經講義》的科判稿（2026-11-16，厚觀法師）把「丙二　正說」這類天干地支科判
+   * 與「（一）總述」這類中文數字小標題**寫在同一個 Word 縮進樣式**（03丙），程式照
+   * 樣式取 lv，兩者就混在同一層：品底下先冒出「前言／一、釋品名／二、明方便義」，
+   * 天干科判被塞進「二」的子項裡，點開一品只看得到一行「前言」。
+   *
+   * 紙本總目錄 1,344 條全是天干地支，沒有一條數字小標題。所以數字項照舊留在正文、
+   * 縮進照紙本（render 仍讀 lv），只是不當目錄節點——標 `nav="0"` 即可。
+   * 讀不到這張表的庫完全走原路，不受影響。
+   */
+  const navAttrs = new Map<string, Map<number, string>>();
+  const navFor = async (tag: string): Promise<Map<number, string>> => {
+    let table = navAttrs.get(tag);
+    if (!table) { table = await loadInstanceAttrs(reader, tag, 'nav'); navAttrs.set(tag, table); }
+    return table;
+  };
   const parseLv = (raw: string | undefined): number | undefined => {
     if (!raw) return undefined;
     const v = Number(raw.trim());
@@ -659,10 +677,15 @@ export async function loadTree(
     const va = await tagVas(tag);
     if (!va.length) continue;
     const lvTable = await lvFor(tag);
-    for (let i = 0; i < va.length; i++) {
+    const navTable = await navFor(tag);
+    // `nav="0"` 的實例不進樹；vaEnd 要接「下一個留下來的實例」，不是下一個實例。
+    const keep: number[] = [];
+    for (let i = 0; i < va.length; i++) if (navTable.get(i) !== '0') keep.push(i);
+    for (let k = 0; k < keep.length; k++) {
+      const i = keep[k];
       out.push({
         tag, depth, va: va[i],
-        vaEnd: i + 1 < va.length ? va[i + 1] : maxVa,
+        vaEnd: k + 1 < keep.length ? va[keep[k + 1]] : maxVa,
         label: '', children: [], childTerminal: false, index: i,
         lv: parseLv(lvTable.get(i)),
       });

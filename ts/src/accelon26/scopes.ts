@@ -2345,6 +2345,16 @@ function repairSemanticTree(roots: TreeNode[]): void {
     const stack: (TreeNode | undefined)[] = [];
     let base: TreeNode = book;
     for (const node of all) {
+      /**
+       * 帶 `lv=` 的節點不參加語意重掛（《法華經講義》2026-11-16）。
+       *
+       * `lv` 是作者／編者在 Word 裡就編好的科判層號，`buildTree` 的 regroup 已按它
+       * 疊好父子；再按「天干地支序」重掛一次會**跨品錯掛**：方便品的「丙二　正說」
+       * 認到 lvl=2，就被掛回**序品**最後一個「乙x」底下（stack 只在甲層重置），
+       * 於是品底下只剩「※前言」，天干科判全跑到上一品去 —— 厚觀法師看到的
+       * 「點開一品只有前言」正是這個。ys 沒有 lv，照舊走這條路。
+       */
+      if (node.lv !== undefined) continue;
       const lvl = semanticLevel(node.label);
       if (lvl == null) continue;
       let parent: TreeNode;
