@@ -349,17 +349,23 @@ function paintCardMarks(card: HTMLElement, marks: { text: string; hue: number; o
   if (!text) return;
   type Sp = { start: number; end: number; hue: number; own: boolean };
   const spans: Sp[] = [];
+  // 卡片正文是用 `convert: simConverter()` 渲染的（見 `snippetHtml`）：無損／強制簡體
+  // 模式下畫面上已是簡體，但 `marks` 是繁體查詢字，直接 `indexOf` 永遠找不到 → 不塗紅。
+  // 與 `paint.ts` 的 `markPhraseInLine` 同一個修法：比對的字串跟著轉成顯示模式。
+  // 轉換逐字一对一、長度不變，所以算出的位移仍能餵給 `markSpan`。
+  const conv = simConverter();
   for (const m of marks) {
     if (!m.text) continue;
+    const needle = conv ? conv(m.text) : m.text;
     let at = 0;
     let hit = false;
-    while ((at = text.indexOf(m.text, at)) >= 0) {
-      spans.push({ start: at, end: at + m.text.length, hue: m.hue, own: m.own });
-      at += m.text.length;
+    while ((at = text.indexOf(needle, at)) >= 0) {
+      spans.push({ start: at, end: at + needle.length, hue: m.hue, own: m.own });
+      at += needle.length;
       hit = true;
     }
     if (!hit) {
-      for (const r of findPunctLoose(text, m.text, true)) {
+      for (const r of findPunctLoose(text, needle, true)) {
         spans.push({ start: r.start, end: r.end, hue: m.hue, own: m.own });
       }
     }
