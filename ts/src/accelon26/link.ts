@@ -172,22 +172,46 @@ async function linkTo(va: number, token: string, units: number | undefined, opts
   // target can sit below the fold (the 原書分頁 marker is the common case).
   // 頁跳轉要讓那一行**貼齊頂端**（厚觀法師 2026-11-12：「107 頁的第一行應該是（圖二）」）：
   // 原本一律 block:'center'，目標行落在視窗中央，上方就看得到前一頁的圖，讀者以為跳錯頁。
-  let scrollEl: HTMLElement | null = document.getElementById('L' + s.pinned.line);
-  if (opts.alignTop && scrollEl) {
-    // 頁標記本身不帶文字，而且常常落在上一塊的尾巴（空行、圖、段落末）：
-    // 往下找「第一個真正有字、又不是圖」的那一行，那才是使用者眼中的頁首。
-    let n: Element | null = scrollEl;
-    for (let k = 0; k < 12 && n; k++) {
-      const t = (n.textContent || '').replace(/\s/g, '');
-      if (t && !n.querySelector('svg')) break;
-      n = n.nextElementSibling;
+  const scrollNow = (): boolean => {
+    let scrollEl: HTMLElement | null = document.getElementById('L' + s.pinned!.line);
+    if (!scrollEl) {
+      // 頁標記行可能被上一行整行「借走」渲染（docText 的 endsInsideTag 合併會吃掉
+      // 被借行的 id），DOM 裡沒有那個 id → 原本無聲失敗、停在塊首
+      // （厚觀法師 2026-11-16：跳 9p116 停在 109）。往下找第一個有 id 的行，
+      // 那正是使用者要的頁首；最多十二行，找不到就交給外層重試。
+      for (let k = 1; k <= 12 && !scrollEl; k++) scrollEl = document.getElementById('L' + (s.pinned!.line + k));
+      if (scrollEl) s.pinned!.line = Number((scrollEl.id || '').replace(/^L/, '')) || s.pinned!.line;
     }
-    if (n instanceof HTMLElement) {
-      scrollEl = n;
-      s.pinned.line = Number((n.id || '').replace(/^L/, '')) || s.pinned.line;
+    if (opts.alignTop && scrollEl) {
+      // 頁標記本身不帶文字，而且常常落在上一塊的尾巴（空行、圖、段落末）：
+      // 往下找「第一個真正有字、又不是圖」的那一行，那才是使用者眼中的頁首。
+      let n: Element | null = scrollEl;
+      for (let k = 0; k < 12 && n; k++) {
+        const t = (n.textContent || '').replace(/\s/g, '');
+        if (t && !n.querySelector('svg')) break;
+        n = n.nextElementSibling;
+      }
+      if (n instanceof HTMLElement) {
+        scrollEl = n;
+        s.pinned!.line = Number((n.id || '').replace(/^L/, '')) || s.pinned!.line;
+      }
     }
+    if (!scrollEl) return false;
+    scrollEl.scrollIntoView({ block: opts.alignTop ? 'start' : 'center' });
+    return true;
+  };
+  // 新分頁競態（厚觀法師 2026-11-16：跳 9p116 停在塊首 109）：`ensurePage` 回傳時，
+  // 畫面上可能還是上一個分頁的 DOM（新頁的渲染排在其後，慢檔可延到約一秒）。
+  // 查元素落空就按 30/120/300/700/1300ms 補捲，條件是分頁仍是目前這一個；
+  // 元素已在時第一次就捲好，行為與原本完全相同。
+  if (!scrollNow()) {
+    let scrolled = false;
+    const retry = () => {
+      if (scrolled || docTabs[docActive] !== s || !s.pinned) return;
+      if (scrollNow()) scrolled = true;
+    };
+    for (const d of [30, 120, 300, 700, 1300]) window.setTimeout(retry, d);
   }
-  scrollEl?.scrollIntoView({ block: opts.alignTop ? 'start' : 'center' });
   // 目錄游標只跟「左欄那一庫」的本文連動。跳過來的那一節要**立刻**亮（作者 2026-11-06）：
   // 以前只等本文捲動後的 syncCursorFromScroll，沒有捲動時要等尾端「載入更多」的 2 秒計時器，
   // 短節點還會亮成下一個節點。
