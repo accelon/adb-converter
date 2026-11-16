@@ -9,3 +9,4 @@ wxzj.adb	wxzj.html
 goryeo_taisho.adb	goryeo_taisho.html
 fuyan.adb	fuyan.html
 dfb.adb	dfb.html
+fgdict.adb	fgdict.html

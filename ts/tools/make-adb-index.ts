@@ -22,9 +22,9 @@
  * 有 official 的列在題名旁加醒目標記，pin 小的排最前面（其餘照 index.txt 的順序）。
  *
  * 分區（作者 2026-11-06，2026-11-16 起可多區）：deploy/adb-status.json 填 section 的庫，
- * 列在頁面下方對應的獨立區（現開「工具書」與「辭典」兩區）；沒填的留在上面的全文庫表格。
+ * 列在頁面下方對應的獨立區；沒填的留在上面的全文庫表格。
  * 新增一區只要在 SECTION_TITLES 登記區名＋一句介紹；該區沒有庫時，除非寫了 empty 提示，
- * 否則整節不渲染。「工具書」保留「尚無工具書」佔位，「辭典」目前已有《佛學大辭典》。
+ * 否則整節不渲染。字典、辭典、對照表統一放在「工具書」區（作者 2026-11-16：辭典併入工具書）。
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -178,12 +178,11 @@ const isExclusive = (file: string) => !!pins.get(file.toLowerCase())?.exclusive;
 rows.sort((a, b) => pinOf(a.fileName) - pinOf(b.fileName));
 const officialNames = rows.filter((r) => isOfficial(r.fileName)).map((r) => r.name);
 
-// 分區（作者 2026-11-06 開「工具書」；2026-11-16 加「辭典」）：
+// 分區（作者 2026-11-06 開「工具書」；2026-11-16 使用者指示：「辭典」併入「工具書」）：
 // adb-status.json 的 section 決定這個庫列在哪個區，沒填的留在上面的全文庫表格。
-// 要再加一區，只在 SECTION_TITLES 登記檔名＋在這裡補一句介紹，不需改渲染逻辑。
+// 要再加一區，只在 SECTION_TITLES 登記區名＋一句介紹，不需改渲染逻辑。
 const SECTION_TITLES: { name: string; intro: string; empty: string }[] = [
   { name: '工具書', intro: '字典、辭典、對照表這類查檢用的資料庫，跟上面的全文庫分開。', empty: '尚無工具書。' },
-  { name: '辭典', intro: '佛學辭書類：按詞條查檢，詞頭可直接跳「詞條查詢」。', empty: '' },
 ];
 const sectionNames = new Set(SECTION_TITLES.map((s) => s.name));
 const sectionOf = (r: { fileName: string }) => sections.get(r.fileName.toLowerCase()) ?? '';
