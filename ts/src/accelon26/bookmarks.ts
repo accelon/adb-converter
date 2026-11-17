@@ -647,17 +647,76 @@ async function copyText(text: string, message: string, html?: string): Promise<v
       await navigator.clipboard.writeText(text);
       ok = true;
     } catch {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.left = '-100000px';
-      document.body.appendChild(ta);
-      ta.select();
-      try { ok = document.execCommand('copy'); } catch { ok = false; }
-      ta.remove();
+      ok = legacyCopy(text, html);
     }
   }
+  if (!ok) {
+    // Safari 等嚴格要求「使用者動作」的瀏覽器：前面的 await 已把動作消耗掉，
+    // 三個寫入路徑都會被擋（蔣先生 2026-11-17 回報 macOS Safari「複製失敗（瀏覽器阻擋）」）。
+    // 最後一招：把內容放進看得見的浮層並已全選，請讀者按 ⌘C／Ctrl+C——任何瀏覽器都可行。
+    manualCopy(text, html);
+    setStatus('剪貼簿被瀏覽器擋住：內容已幫您選好，請按 ⌘C（Windows 按 Ctrl+C）複製', 'warn');
+    return;
+  }
   setStatus(ok ? message : '複製失敗（瀏覽器阻擋）', ok ? 'info' : 'err');
+}
+
+/** execCommand 後備：contenteditable 選取後 copy，HTML 版也能帶格式（Safari／file:// 可用）。 */
+function legacyCopy(text: string, html?: string): boolean {
+  const box = document.createElement(html ? 'div' : 'textarea') as HTMLElement;
+  if (html) {
+    (box as HTMLDivElement).contentEditable = 'true';
+    (box as HTMLDivElement).innerHTML = html;
+  } else {
+    (box as HTMLTextAreaElement).value = text;
+  }
+  box.style.cssText = 'position:fixed;left:-100000px;top:0;white-space:pre-wrap;';
+  document.body.appendChild(box);
+  const range = document.createRange();
+  range.selectNodeContents(box);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  sel?.removeAllRanges();
+  box.remove();
+  return ok;
+}
+
+/** 手動複製浮層：內容已全選，讀者按 ⌘C／Ctrl+C 即可；關閉時移除。 */
+function manualCopy(text: string, html?: string): void {
+  const old = document.getElementById('manualCopyLayer');
+  old?.remove();
+  const layer = document.createElement('div');
+  layer.id = 'manualCopyLayer';
+  layer.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);'
+    + 'display:flex;align-items:center;justify-content:center;';
+  const panel = document.createElement('div');
+  panel.style.cssText = 'background:var(--panel,#fff);color:var(--fg,#000);max-width:720px;width:86vw;'
+    + 'max-height:70vh;border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;'
+    + 'box-shadow:0 8px 30px rgba(0,0,0,.35);';
+  const tip = document.createElement('div');
+  tip.textContent = '瀏覽器擋住自動複製。內容已選好，請按 ⌘C（Windows 按 Ctrl+C），再按「關閉」。';
+  const box = document.createElement('div');
+  box.contentEditable = 'true';
+  box.style.cssText = 'overflow:auto;border:1px solid var(--line,#ccc);border-radius:4px;'
+    + 'padding:8px;white-space:pre-wrap;font-family:inherit;font-size:14px;max-height:46vh;';
+  if (html) box.innerHTML = html;
+  else box.textContent = text;
+  const close = document.createElement('button');
+  close.textContent = '關閉';
+  close.style.cssText = 'align-self:flex-end;padding:4px 14px;cursor:pointer;';
+  close.onclick = () => layer.remove();
+  panel.append(tip, box, close);
+  layer.appendChild(panel);
+  document.body.appendChild(layer);
+  const range = document.createRange();
+  range.selectNodeContents(box);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+  box.focus();
 }
 
 /** 引用／跳至 URL 的頁 id：fuyan 的 `yl38p107` 與 ys 同步後寫成 `38p107`。 */
