@@ -1418,6 +1418,13 @@
     vertical-align: super; padding: 0 1px; cursor: pointer;
   }
   .lineText .noteRef:hover { color: var(--accent); text-decoration: underline; }
+  /* 表頭列（淡色底）上的注號反差加強（厚觀法師 2026-11-17 UID 297 第七項：
+     7p891 表頭「智顗[127]、窺基[128]、吉藏[129]、印順法師[130]」的淺藍注號看不清楚）。
+     表頭底色是 panel2 淡灰藍，--link 同色系反差不足 → 表頭內注號一律深色＋粗體＋下劃線底。 */
+  .docTable thead th .noteRef {
+    color: #0b3d91; font-weight: 700; text-decoration: underline;
+  }
+  .docTable thead th .noteRef:hover { color: var(--accent); }
   /* 圖上自己畫了注號之後（厚觀法師 2026-11-12），圖前那一行 `[13][14]…` 就多餘了：
      注號已經長在圖上，這一列整個收起來（元素留著，`.docLine` 的 id 還在，
      釋文點回本文時 notes.ts 會改捲到下面那一張圖）。 */

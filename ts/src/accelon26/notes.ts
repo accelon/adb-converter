@@ -41,17 +41,9 @@ function plain(s: string): string {
 }
 
 /** 這一行裡找 `<tag … n="n" …>`；回傳標籤結束位置與是否自閉合 */
-function noteTagAt(line: string, tag: string, n: string): { end: number; selfClose: boolean } | null {
-  const re = new RegExp('<' + tag + '(\\s[^>]*)?>', 'g');
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(line))) {
-    const attrs = m[1] ?? '';
-    const nm = /\bn\s*=\s*"([^"]*)"/.exec(attrs) ?? /\bn\s*=\s*'([^']*)'/.exec(attrs);
-    if (!nm || decodeXmlEntities(nm[1]) !== n) continue;
-    return { end: m.index + m[0].length, selfClose: /\/\s*$/.test(attrs) };
-  }
-  return null;
-}
+// noteTagAt 抽到純模組（可被 bun 直接單測）；此處再匯出保持既有引用路徑。
+export { noteTagAt } from './note-tag';
+import { noteTagAt } from './note-tag';
 
 function cacheOf(r: AdbReader): Map<string, NoteHit | null> {
   let m = cache.get(r);
@@ -186,7 +178,9 @@ function pgAtLine(
     if (d < bestD) { bestD = d; best = p; }
     if (d === 0) break;
   }
-  return bestD <= 1 ? best : '';
+  // ±8（原 ±1）：表格／圖那一行的 VA 會把同列幾個注號全吸到同一行，
+  // 差 2～8 行取不到 pg 就會掉進「同號別品」的退路（厚觀法師 2026-11-17 UID 299）。
+  return bestD <= 8 ? best : '';
 }
 
 /** 快取 key 用的「這一頁」：優先用資料自己的 pg，沒有才用 `<頁>` 推出來的頁 id */
@@ -288,10 +282,10 @@ async function findBody(n: string, fromLine: number): Promise<NoteHit | null> {
   if (memo.has(key)) return memo.get(key)!;
   const last = r.header.lineCount - 1;
 
-  const check = async (i: number): Promise<NoteHit | null> => {
+  const check = async (i: number, wantPg: string): Promise<NoteHit | null> => {
     const line = await m.lineText(i);
     if (!line || line.indexOf('<釋') < 0) return null;
-    const t = noteTagAt(line, '釋', n);
+    const t = noteTagAt(line, '釋', n, wantPg);
     if (!t) return null;
     let text = line.slice(t.end);
     if (!t.selfClose) {
@@ -308,6 +302,8 @@ async function findBody(n: string, fromLine: number): Promise<NoteHit | null> {
 
   // 有 tags/attributes 就查表（O(log n)），不必掃原文
   if (idx) {
+    // 引用端自己的 pg（法華每品重起注號：n 相同、pg 相同才是同一條）
+    const wantPg = pgAtLine(idx.refs.get(n), idx.refPg, fromLine);
     let hit: NoteHit | null = null;
     const pick = pickNote(idx, 'body', n, vaOfLine(fromLine), fromLine);
     if (pick) {
@@ -316,11 +312,30 @@ async function findBody(n: string, fromLine: number): Promise<NoteHit | null> {
       for (const d of [0, 1, -1, 2, -2]) {
         const l = line + d;
         if (l < 0 || l > last) continue;
-        hit = await check(l);
+        hit = await check(l, wantPg);
         if (hit) break;
       }
+      // 有 pg 就放大找（±40 行）：法華的注文常排在整塊表格／圖之後，±2 內只有別品的同号
+      if (!hit && wantPg) {
+        for (let d = 3; !hit && d <= 40; d++) {
+          for (const l of [line + d, line - d]) {
+            if (l < 0 || l > last) continue;
+            hit = await check(l, wantPg);
+            if (hit) break;
+          }
+        }
+      }
       // `<釋 n="1"/>` 標籤自成一行、注文在後面幾行：再往後找幾行
-      for (let l = line + 3; !hit && l <= Math.min(last, line + 8); l++) hit = await check(l);
+      for (let l = line + 3; !hit && l <= Math.min(last, line + 8); l++) hit = await check(l, wantPg);
+      // 全落空：退回不看 pg 的近鄰（舊行為）
+      if (!hit) {
+        for (const d of [0, 1, -1, 2, -2]) {
+          const l = line + d;
+          if (l < 0 || l > last) continue;
+          hit = await check(l, '');
+          if (hit) break;
+        }
+      }
     }
     memo.set(key, hit);
     return hit;
@@ -328,11 +343,11 @@ async function findBody(n: string, fromLine: number): Promise<NoteHit | null> {
 
   let hit: NoteHit | null = null;
   for (let i = fromLine; i <= Math.min(last, fromLine + SCAN_MAX) && !hit; i++) {
-    hit = await check(i);
+    hit = await check(i, '');
     if ((i - fromLine) % 1000 === 999) await tick();
   }
   for (let i = fromLine - 1; i >= Math.max(0, fromLine - SCAN_MAX) && !hit; i--) {
-    hit = await check(i);
+    hit = await check(i, '');
     if ((fromLine - 1 - i) % 1000 === 999) await tick();
   }
   memo.set(key, hit);
@@ -351,16 +366,17 @@ async function findRef(n: string, fromLine: number): Promise<number> {
   if (cached) return cached.line;
   const last = r.header.lineCount - 1;
 
-  const check = async (i: number): Promise<boolean> => {
+  const check = async (i: number, wantPg: string): Promise<boolean> => {
     const line = await m.lineText(i);
     if (!line || line.indexOf('<' + '註') < 0) return false;
-    return !!noteTagAt(line, '註', n);
+    return !!noteTagAt(line, '註', n, wantPg);
   };
 
   // 有 tags/attributes 就查表（2026-10-31）：不必掃原文
   // 與 findBody 共用同一套配對（第 k 條釋 ↔ 第 k 條註；同頁優先）
   if (idx) {
     let found = -1;
+    const wantPg = pgAtLine(idx.bodies.get(n), idx.bodyPg, fromLine);
     const pick = pickNote(idx, 'ref', n, vaOfLine(fromLine), fromLine);
     if (pick) {
       const line = lineOfVa(pick.va);
@@ -370,7 +386,23 @@ async function findRef(n: string, fromLine: number): Promise<number> {
       for (const d of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8]) {
         const l = line + d;
         if (l < 0 || l > last) continue;
-        if (await check(l)) { found = l; break; }
+        if (await check(l, wantPg)) { found = l; break; }
+      }
+      // 有 pg 且近鄰全落空：放大 ±40 找同 pg 的那條（別品的同号不要撿）
+      if (found < 0 && wantPg) {
+        for (let d = 9; found < 0 && d <= 40; d++) {
+          for (const l of [line + d, line - d]) {
+            if (l < 0 || l > last) continue;
+            if (await check(l, wantPg)) { found = l; break; }
+          }
+        }
+      }
+      if (found < 0) {
+        for (const d of [0, 1, -1, 2, -2]) {
+          const l = line + d;
+          if (l < 0 || l > last) continue;
+          if (await check(l, '')) { found = l; break; }
+        }
       }
     }
     if (found >= 0) memo.set(key, { line: found, text: '' });
@@ -379,11 +411,11 @@ async function findRef(n: string, fromLine: number): Promise<number> {
 
   let found = -1;
   for (let i = fromLine; i >= Math.max(0, fromLine - SCAN_MAX) && found < 0; i--) {
-    if (await check(i)) found = i;
+    if (await check(i, '')) found = i;
     if ((fromLine - i) % 1000 === 999) await tick();
   }
   for (let i = fromLine + 1; i <= Math.min(last, fromLine + SCAN_MAX) && found < 0; i++) {
-    if (await check(i)) found = i;
+    if (await check(i, '')) found = i;
     if ((i - fromLine) % 1000 === 999) await tick();
   }
   if (found >= 0) memo.set(key, { line: found, text: '' });
