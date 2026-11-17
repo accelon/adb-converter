@@ -250,8 +250,16 @@ function svgStyleRules(src: string): Record<string, string> {
 }
 
 export function inlineSvgHtml(src: string, label: string, figure = false): string {
-  const m = /<svg\b([^>]*)>([\s\S]*?)<\/svg>/i.exec(src);
-  if (!m) return `<span class="inlineImgMissing" title="${esc(label)}">▢</span>`;
+  // 不能用非貪婪的 `([\s\S]*?)<\/svg>`：Visio 匯出的 SVG 內有 `<switch>` 巢狀
+  // `<svg>` 備援块，非貪婪會切在**內層**第一個 `</svg>`，外層尾部的内容整段丟失
+  // （HG05.058 的右括弧 st4 path 與虛線 st5 path 就這樣消失——厚觀法師 2026-11-17 UID 293）。
+  // 改取「第一個 `<svg…>` 開標籤 → 最後一個 `</svg>`」，巢狀部分原樣保留在 inner 裡。
+  const open = /<svg\b([^>]*)>/i.exec(src);
+  const lastClose = src.lastIndexOf('</svg>');
+  if (!open || lastClose < open.index + open[0].length) {
+    return `<span class="inlineImgMissing" title="${esc(label)}">▢</span>`;
+  }
+  const m = [open[0], open[1], src.slice(open.index + open[0].length, lastClose)];
   const vb = /\bviewBox\s*=\s*"([^"]*)"/i.exec(m[1])?.[1] ?? '0 0 1000 1000';
   const rootClass = /\bclass\s*=\s*"([^"]*)"/i.exec(m[1])?.[1]?.trim() ?? '';
   const clean = m[2].replace(/<!\[CDATA\[/g, '').replace(/\]\]>/g, '')
