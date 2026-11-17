@@ -540,6 +540,8 @@ export interface RenderTableRow {
 
 export interface RenderTable {
   cols: number;
+  /** 表頭列空欄併入左鄰成 colspan（`<表 t="橫跨">`，厚觀法師 2026-11-17 UID 294：咒語對照表「漢譯」橫蓋兩欄、「梵語」橫蓋三欄） */
+  headMerge?: boolean;
   caption?: string;
   head: RenderTableRow | null;
   rows: RenderTableRow[];
@@ -1362,7 +1364,21 @@ export function tableHtml(t: RenderTable, rowCls?: (no: number) => string): stri
   const cap = t.caption ? `<caption class="tCap">${esc(t.caption)}</caption>` : '';
   const head = t.head
     ? `<thead><tr class="${cls('docLine tHead', t.head.no)}" id="L${t.head.no}" data-src="${esc(t.head.raw)}">`
-      + t.head.cells.map((c) => `<th><span class="lineText">${c}</span></th>`).join('')
+      + (t.headMerge
+        ? (() => {
+            // 空欄併入左鄰（colspan）；只有 <表 t="橫跨"> 走這條，其他表一字不動
+            const cells = t.head!.cells;
+            const ths: string[] = [];
+            for (let c = 0; c < cells.length; c++) {
+              if (!cells[c].trim()) continue;
+              let span = 1;
+              while (c + span < cells.length && !cells[c + span].trim()) span++;
+              ths.push(`<th${span > 1 ? ` colspan="${span}"` : ''}><span class="lineText">${cells[c]}</span></th>`);
+              c += span - 1;
+            }
+            return ths.join('');
+          })()
+        : t.head.cells.map((c) => `<th><span class="lineText">${c}</span></th>`).join(''))
       + '</tr></thead>'
     : '';
   const body = t.rows.map((r) => (r.page
@@ -1396,6 +1412,7 @@ function blockAt(
     });
     const table: RenderTable = {
       cols: data.cols,
+      headMerge: /t="橫跨"/.test(lines[i] ?? ''),
       caption: data.caption?.text,
       head: data.header ? rowOf({ cells: data.header.cells, at: data.header.at }) : null,
       rows: data.rows.map(rowOf),

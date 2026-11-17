@@ -9,7 +9,7 @@
  *   * 沒有 `t=` 定義的標籤只丟標籤、文字照留；`樹`／`隱` 連內容一起隱藏
  *   * 跨行的標題在每一行都重新開／收（HTML 平衡）
  */
-import { Accelon3Renderer, computeTierContext, LEVEL_MAX_SCALE, LEVEL_STEP_PX, renderPageBlocks, setTierContext, tierContext } from '../src/accelon26/render_accelon3';
+import { Accelon3Renderer, computeTierContext, LEVEL_MAX_SCALE, LEVEL_STEP_PX, renderPageBlocks, setTierContext, tableHtml, tierContext } from '../src/accelon26/render_accelon3';
 import type { TreeNode } from '../src/accelon26/search';
 
 let pass = 0, fail = 0;
@@ -199,6 +199,19 @@ ok('圖版後面的頁碼／文字不擠進圖那一行',
   && !figBlock.lines.some((l) => l.html.includes('後面的文字'))
   && figBlocks.some((b) => b !== figBlock && b.lines.some((l) => l.html.includes('後面的文字'))),
   figHtml.slice(0, 200));
+
+// `<表 t="橫跨">`：表頭空欄併入左鄰成 colspan（厚觀法師 2026-11-17 UID 294：
+// 咒語對照表「漢譯」橫蓋羅什譯／竺法護譯、「梵語」橫蓋荻原雲來刊本／字義／備註）
+const spanHead = { no: 2, raw: '| 序號 | 漢譯 |  | 梵語 |  |  |', cells: ['序號', '漢譯', '', '梵語', '', ''] };
+const spanHtml = tableHtml({ cols: 6, headMerge: true, head: spanHead, rows: [] });
+ok('橫跨表頭：漢譯 colspan=2、梵語 colspan=3',
+  spanHtml.includes('<th colspan="2"><span class="lineText">漢譯</span></th>')
+  && spanHtml.includes('<th colspan="3"><span class="lineText">梵語</span></th>')
+  && (spanHtml.match(/<th[ >]/g) || []).length === 3, spanHtml.slice(0, 260));
+const plainHead = tableHtml({ cols: 6, head: spanHead, rows: [] });
+ok('沒點名橫跨的表：表頭六格照舊、不長 colspan',
+  !(plainHead.match(/<th/g) || []).some(() => false) && (plainHead.match(/<th>/g) || []).length === 6
+  && !plainHead.includes('colspan="2"'), plainHead.slice(0, 200));
 
 const blocksHard = renderPageBlocks(['<章>標題', '第一行', '第二行'], [1, 2, 3], { hardBreaks: true }, ctx);
 ok('原書分行（預設）：每一行都是自己的版面塊',
