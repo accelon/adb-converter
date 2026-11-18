@@ -11,3 +11,4 @@ fuyan.adb	fuyan.html
 dfb.adb	dfb.html
 fgdict.adb	fgdict.html
 vmtd.adb	vmtd.html
+chanyao.adb	chanyao.html
