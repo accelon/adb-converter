@@ -323,7 +323,7 @@ export function lineHtml(s: string, markFrom = -1, markTo = -1): string {
 
 // ---------------------------------------------------------------- 逆鏈結表
 
-interface RevEntry { src: string; db: string; va: number; pageId: string; bookVa: number; cite: string; quote: string; tq: string; targetPage: string; citeTried?: boolean }
+interface RevEntry { src: string; db: string; va: number; pageId: string; bookVa: number; cite: string; quote: string; tq: string; targetPage: string; entry: string; citeTried?: boolean }
 let revKey = '';
 let revIndex: Map<string, RevEntry[]> = new Map();
 /** 全部 <聯> 的扁平清單（給「引用分布」熱圖用；每個聯只收一次） */
@@ -398,6 +398,30 @@ async function ensureReverse(): Promise<void> {
   }
 }
 
+/**
+ * 反鏈來源若是詞典，取 `<聯>` 所屬的詞條（最近的 `<詞>` 實例）。
+ *
+ * 2026-11-15 使用者：從 taisho 反鏈回 fgdict 時應顯示「詞條」，頁碼沒有意義。
+ * `caches/詞` 與 `tags/詞` 的實例一一對應（fgdict 22,648），只要二分找最後一個
+ * VA <= 聯 VA 即可；沒有 `<詞>` 的庫回空字串，顯示端自然退回頁碼。
+ */
+const entryLabelTables = new WeakMap<AdbReader, { vas: number[]; names: string[] }>();
+async function entryLabelAt(r: AdbReader, va: number): Promise<string> {
+  let t = entryLabelTables.get(r);
+  if (!t) {
+    const tc = r.containers.get('tags');
+    const i = tc?.names.indexOf('詞') ?? -1;
+    const vas = i < 0 ? [] : await r.decodeBlockList('tags', i);
+    const names = i < 0 ? [] : await r.cachedStrings('詞').catch(() => [] as string[]);
+    t = { vas, names };
+    entryLabelTables.set(r, t);
+  }
+  if (!t.vas.length || t.names.length !== t.vas.length) return '';
+  let lo = 0, hi = t.vas.length - 1, ans = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (t.vas[m] <= va) { ans = m; lo = m + 1; } else hi = m - 1; }
+  return ans >= 0 ? (t.names[ans] ?? '') : '';
+}
+
 /** 把一個庫的 `聯.i` 併進反連表：目標頁碼 → 來源的書／頁。只讀屬性，不讀全文。 */
 async function addReverseFrom(
   r: AdbReader,
@@ -466,6 +490,7 @@ async function addReverseFrom(
       quote: '',
       tq: qByInst.get(inst) ?? '',
       targetPage: anchor,
+      entry: await entryLabelAt(r, va),
     };
     // 這一聯的顯示文字（例「五一‧一八五中」），回印順時用來塗紅
     try {
@@ -555,6 +580,7 @@ async function addReverseFromXrev(
       cite: '', quote: '',
       tq: typeof quote === 'string' ? quote : '',
       targetPage: String(targetPage),
+      entry: '',
     };
     outAll.push(entry);
     // 同 :470：建鍵必須剝 `#a-b` 窗綴，與 reverseItemsForPage 查表側一致（xrev 快速反鏈路）
@@ -1021,6 +1047,8 @@ function shortTitle(name: string): string {
 /** 反鏈按鈕上要顯示的東西（書名短名＋頁碼＋大正原文 tq，給中間本文定位用） */
 export interface RevItem {
   src: string; va: number; pageId: string;
+  /** 來源若是詞典，顯示該聯所屬詞條；空字串表示退回頁碼 */
+  entry: string;
   label: string; book: string; page: string;
   full: string; tq: string; cite: string; quote: string;
   /** 同一來源頁對這一頁的引用次數（跨行引文只算一筆） */
@@ -1070,7 +1098,14 @@ export async function reverseItemsForPage(db: string, pageId: string, mode: RevS
   interface Group { e: RevEntry; count: number; firstVa: number; tqs: Set<string> }
   const groups = new Map<string, Group>();
   for (const e of uniq.values()) {
-    const gk = e.src + '\u0000' + e.pageId;
+    // xrev 建置時沒存詞條：真的要看這一頁才補（同 cite／quote 的延遲策略）。
+    if (!e.entry) {
+      const srcR = await readerFor(e.src);
+      if (srcR) e.entry = await entryLabelAt(srcR, e.va);
+    }
+    // 有詞條就按詞條分組：同一頁可能有多個詞條各自引用同一頁，按頁分組會把
+    // 不同詞條併成一條、只顯示其中一個（2026-11-15）。
+    const gk = e.src + '\u0000' + (e.entry ? 'entry:' + e.entry : 'page:' + e.pageId);
     let g = groups.get(gk);
     if (!g) { g = { e, count: 0, firstVa: e.va, tqs: new Set() }; groups.set(gk, g); }
     if (e.va < g.firstVa) { g.e = e; g.firstVa = e.va; }
@@ -1098,18 +1133,19 @@ export async function reverseItemsForPage(db: string, pageId: string, mode: RevS
       || (cached.srcR ? cached.srcR.header.dbcname : '') || e.src;
     const page = shortPage(e.pageId);
     temp.push({
-      src: e.src, va: e.va, pageId: e.pageId, label: '', book: shortTitle(name), page,
+      src: e.src, va: e.va, pageId: e.pageId, entry: e.entry, label: '', book: shortTitle(name), page,
       full: name, tq: e.tq, cite: e.cite, quote: e.quote,
       count: g.count, srcVa: g.firstVa, hostVa, hostPage: pageId,
     });
   }
 
   const out = sortRevItems(temp, mode);
-  // 同一本書的連續幾條只寫頁碼，讓按鈕群短一些（作者 2026-10-28）
+  // 同一本書的連續幾條只寫詞條（沒有詞條才寫頁碼），讓按鈕群短一些。
   let lastBook = '';
   for (const it of out) {
     const bkey = it.src + '|' + it.book;
-    it.label = bkey === lastBook ? it.page : it.book + ' ' + it.page;
+    const shown = it.entry || it.page;
+    it.label = bkey === lastBook ? shown : it.book + ' ' + shown;
     lastBook = bkey;
   }
   return out;
@@ -1123,8 +1159,10 @@ function shortPage(id: string): string {
 /** 一顆反鏈按鈕（按鈕上文字很短，完整書名與頁碼放 title／data） */
 export function revButtonHtml(it: RevItem, hidden = false): string {
   const badge = it.count > 1 ? '<span class="xrefRevN">×' + it.count + '</span>' : '';
-  const title = '《' + it.full + '》 ' + it.pageId + (it.count > 1 ? ' · ' + it.count + ' 次' : '');
-  return '<button class="mini xrefRev' + (hidden ? ' is-hidden' : '') + '" type="button" title="' + esc(title) + '" data-rrev="' + esc(it.src + '|' + it.va) + '" data-rrev-label="' + esc(it.full + ' ' + it.pageId) + '" data-rpage="' + esc(it.pageId) + '" data-rcite="' + esc(it.cite) + '" data-rquote="' + esc(it.quote) + '"'
+  const shown = it.entry || it.pageId;
+  const where = it.entry ? it.entry + '（頁 ' + it.pageId + '）' : it.pageId;
+  const title = '《' + it.full + '》 ' + where + (it.count > 1 ? ' · ' + it.count + ' 次' : '');
+  return '<button class="mini xrefRev' + (hidden ? ' is-hidden' : '') + '" type="button" title="' + esc(title) + '" data-rrev="' + esc(it.src + '|' + it.va) + '" data-rrev-label="' + esc(it.full + ' ' + shown) + '" data-rpage="' + esc(it.pageId) + '" data-rentry="' + esc(it.entry) + '" data-rcite="' + esc(it.cite) + '" data-rquote="' + esc(it.quote) + '"'
     + ' data-rbook="' + esc(it.book) + '" data-rp="' + esc(it.page) + '"'
     + ' data-count="' + it.count + '" data-srcva="' + it.srcVa + '" data-hostva="' + it.hostVa + '"'
     + '><span class="revLabel">' + esc(it.label) + '</span>' + badge + '</button>';
@@ -1143,8 +1181,9 @@ export function relabelRevRows(): void {
       if (top !== lastTop) {
         const book = btn.dataset.rbook;
         const page = btn.dataset.rp;
-        if (book && page) {
-          const want = book + ' ' + page;
+        const entry = btn.dataset.rentry;
+        if (book && (page || entry)) {
+          const want = book + ' ' + (entry || page);
           const label = btn.querySelector<HTMLElement>('.revLabel');
           if (label && label.textContent !== want) label.textContent = want;
         }
@@ -1625,6 +1664,21 @@ export async function xrefJump(value: string, fromRight = false, newTab = false,
  * 冊號有時寫成國字（大正二），所以數字兩種都吃。
  * 頁 id 在 taisho.adb 就是 `2p206a`，a 欄的行號 1..N 對應 `<頁 id="2p206a">` 那一行起算的 N 行。
  */
+
+/**
+ * 頁標（`<頁 id>`）→ taisho.adb 的頁 id。
+ *
+ * DILA 的《成唯識論》會注本頁 id：`T43p0736c`（冊 43／頁 0736／欄 c），
+ * taisho.adb 認的是 `43p736c`（頁碼去前導零）。舊式 `T43n1830_0229a` 也相容。
+ * 只認這兩種形狀；一般庫的 `38p93`、`1p1a` 原樣放行。
+ */
+export function taishoAnchorOfPageId(id: string): string {
+  const v = (id ?? '').trim();
+  const m = /^T(\d+)p(\d+)([a-c])$/i.exec(v)
+    ?? /^T(\d+)n\d+_(\d+)([a-c])$/i.exec(v);
+  if (!m) return '';
+  return `${Number(m[1])}p${Number(m[2])}${m[3].toLowerCase()}`;
+}
 export interface TaishoCite {
   vol: number;
   page: string;
@@ -2506,6 +2560,18 @@ export function initXref(): void {
       ensureRightPane();
       openForeignTab(db, va, rev.dataset.rrevLabel ?? db, ev.ctrlKey || ev.metaKey, rev.dataset.rpage || undefined, rev.dataset.rcite || rev.dataset.rquote || undefined);
       return;
+    }
+    // 頁標（`<頁 id="T43p0736c">`）：點一下在右欄開大正藏同一頁。
+    // 只認 DILA 那種大正座標頁 id；一般書的頁碼不攔，保留原本的選字／查詞手勢。
+    const pm = (ev.target as Element | null)?.closest?.('.pageBreak[data-page],.pageMark[data-page]') as HTMLElement | null;
+    if (pm) {
+      const anchor = taishoAnchorOfPageId(pm.dataset.page ?? '');
+      if (anchor) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        void openTaishoAt('taisho', anchor, 'T' + anchor);
+        return;
+      }
     }
     const a = (ev.target as Element | null)?.closest?.('a[data-link="xref"],a[data-xref]') as HTMLElement | null;
     if (!a) return;

@@ -29,11 +29,14 @@ export function revRowHtml(it: RevItem): string {
     .replace(/<[^>]*>/g, '')
     .replace(/[<>]/g, '')
     .trim();
+  const shown = it.entry || it.pageId;
+  const pageTitle = it.entry ? ' title="頁 ' + esc(it.pageId) + '"' : '';
   return '<button class="revListRow" type="button" data-rrev="' + esc(it.src + '|' + it.va) + '"'
-    + ' data-rrev-label="' + esc(it.full + ' ' + it.pageId) + '" data-rpage="' + esc(it.pageId) + '"'
+    + ' data-rrev-label="' + esc(it.full + ' ' + shown) + '" data-rpage="' + esc(it.pageId) + '"'
+    + ' data-rentry="' + esc(it.entry) + '"'
     + ' data-rcite="' + esc(it.cite) + '" data-rquote="' + esc(it.quote) + '">'
     + '<span class="revListBook">' + esc(it.full) + '</span>'
-    + '<span class="revListPage">' + esc(it.pageId) + '</span>'
+    + '<span class="revListPage"' + pageTitle + '>' + esc(shown) + '</span>'
     + (it.count > 1 ? '<span class="revListN">×' + it.count + '</span>' : '')
     + (quote ? '<span class="revListQuote">' + esc(quote.slice(0, 90)) + '</span>' : '')
     + '</button>';
@@ -46,7 +49,7 @@ function paint(): void {
   if (sub) sub.textContent = (hostName || hostDb) + (pageId ? ' ' + pageId : '') + ' · ' + items.length + ' 筆';
   const q = ($id<HTMLInputElement>('revListFilter')?.value ?? '').trim();
   const shown = q
-    ? items.filter((it) => (it.full + ' ' + it.pageId + ' ' + (it.quote || '') + ' ' + (it.cite || '')).includes(q))
+    ? items.filter((it) => (it.full + ' ' + it.entry + ' ' + it.pageId + ' ' + (it.quote || '') + ' ' + (it.cite || '')).includes(q))
     : items;
   const view = shown.slice(0, limit);
   let last = '';
