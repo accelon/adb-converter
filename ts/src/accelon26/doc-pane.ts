@@ -403,11 +403,33 @@ function serializeSvgElement(svg: SVGSVGElement): string {
   if (open && !/\bxmlns=/.test(open[1])) {
     const vb = (svg.getAttribute('viewBox') || '').trim().split(/\s+/).map(Number);
     let extra = ' xmlns="http://www.w3.org/2000/svg"';
-    if (!/\bxmlns:xlink=/.test(open[1])) extra += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
+    if (!/\bxmlns:xlink=/.test(open[1])) {
+      extra += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
+    }
     if (vb.length === 4 && !/\bwidth=/.test(open[1])) {
       extra += ` width="${vb[2]}" height="${vb[3]}"`;
     }
     text = text.replace(open[0], `<svg${open[1]}${extra}>`);
+  }
+  // 2026-11-18（法師 312 一）：Visio 導出的 svg 用到 `inkscape:`／`sodipodi:` 前綴，
+  // innerHTML 往返後 `xmlns:inkscape` 声明會丟，XMLSerializer 產出非法 XML，
+  // imgView 的 <img> 拒載 → 「點圖，圖就沒了」；這裡把用到的 namespace 補回根元素。
+  const used = new Set<string>();
+  for (const m of text.matchAll(/\b(inkscape|sodipodi):[\w-]+/g)) used.add(m[1]);
+  if (used.size) {
+    const NS = 'http://www.inkscape.org/namespaces/inkscape';
+    const NS2 = 'http://sodipodi.sourceforge.net/DTD/sodipodi-0.0.dtd';
+    const open2 = text.match(/^<svg\b([^>]*)>/i);
+    if (open2) {
+      let extra = '';
+      if (used.has('inkscape') && !/xmlns:inkscape=/.test(open2[1])) {
+        extra += ` xmlns:inkscape="${NS}"`;
+      }
+      if (used.has('sodipodi') && !/xmlns:sodipodi=/.test(open2[1])) {
+        extra += ` xmlns:sodipodi="${NS2}"`;
+      }
+      if (extra) text = text.replace(open2[0], `<svg${open2[1]}${extra}>`);
+    }
   }
   return text;
 }

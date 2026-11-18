@@ -445,6 +445,11 @@ function placeTip(ref: HTMLElement, tip: HTMLElement): void {
   const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
   let top = r.top - h - 8;
   if (top < 8) top = r.bottom + 8;
+  // 2026-11-18（法師 312 二）：ref 在視窗下緣時提示框放下方會整個被視窗底裁掉
+  // （hover 長樹狀注只見一塊黑）。CSS 的 max-height:45vh 只限自身高度，防不了 top 放太低；
+  // 這裡把 top 貼齊視窗底（tip 高度由 CSS 45vh＋捲動承接），不再溢出。
+  const maxTop = window.innerHeight - Math.min(h, window.innerHeight * 0.45) - 8;
+  if (top > maxTop) top = Math.max(8, maxTop);
   tip.style.left = left + 'px';
   tip.style.top = top + 'px';
 }
