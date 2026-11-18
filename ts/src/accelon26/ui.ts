@@ -300,6 +300,25 @@ function toggleVariants(): boolean {
   return variantSearchOn();
 }
 
+// -------------------------------------------------- 查不到時自動通檢（設置）
+const VAR_AUTO_KEY = 'accelon26.variantAuto';
+
+/** 預設開：localStorage 沒寫過就是開（只有明確存 '0' 才關） */
+function readVariantAuto(): boolean {
+  return localStorage.getItem(VAR_AUTO_KEY) !== '0';
+}
+
+function applyVariantAuto(on: boolean) {
+  setVariantAuto(on);
+  localStorage.setItem(VAR_AUTO_KEY, on ? '1' : '0');
+  updateSettingsUi();
+}
+
+/** 開機還原自動通檢設定 */
+function initVariantAuto(): void {
+  setVariantAuto(readVariantAuto());
+}
+
 // ---------------------------------------------------------------- 設置（齒輪）
 /**
  * 設置彈窗（作者 2026-10）：原本的 🧑‍💻 與「繁簡」按鈕都收進來。
@@ -310,8 +329,8 @@ function toggleVariants(): boolean {
  */
 let settingsOpen = false;
 
-export function settingsState(): { open: boolean; advanced: boolean; variants: boolean; simMode: number } {
-  return { open: settingsOpen, advanced, variants: variantSearchOn(), simMode: simModeOf() };
+export function settingsState(): { open: boolean; advanced: boolean; variants: boolean; variantAuto: boolean; simMode: number } {
+  return { open: settingsOpen, advanced, variants: variantSearchOn(), variantAuto: variantAutoOn(), simMode: simModeOf() };
 }
 
 /**
@@ -344,6 +363,8 @@ function updateSettingsUi(): void {
   if (adv) adv.checked = advanced;
   const v = $('#setVariants') as HTMLInputElement | null;
   if (v) v.checked = variantSearchOn();
+  const va = $('#setVariantAuto') as HTMLInputElement | null;
+  if (va) va.checked = variantAutoOn();
   const pm = $('#setPageMarks') as HTMLInputElement | null;
   if (pm) pm.checked = pageMarksOn();
   const si = $('#setSvgInvert') as HTMLInputElement | null;
@@ -451,6 +472,10 @@ function initSettings(): void {
   });
   ($('#setVariants') as HTMLInputElement | null)?.addEventListener('change', (ev) => {
     setVariants((ev.target as HTMLInputElement).checked);
+  });
+  // 查不到時自動繁簡通檢（作者 2026-11-17）
+  ($('#setVariantAuto') as HTMLInputElement | null)?.addEventListener('change', (ev) => {
+    applyVariantAuto((ev.target as HTMLInputElement).checked);
   });
   // 顯示原書頁碼（作者 2026-10）：`<頁>`／`<_頁>` 要不要渲染
   ($('#setPageMarks') as HTMLInputElement | null)?.addEventListener('change', (ev) => {
@@ -1724,6 +1749,7 @@ function boot() {
   $('#toggleRight').onclick = () => toggleSide('right');
   // 設置（齒輪）：主題、進階模式、繁簡通檢、文字顯示
   initVariants();
+  initVariantAuto();
   initSettings();
   // 更新鏡像（作者 2026-10-29）：設定頁的選項＋自動探測；選好後 adb 清單重新讀
   initUpdateMirrorUi();
@@ -2506,6 +2532,7 @@ export function installDebugApi(): void {
   setCols: (left: number, right: number) => saveCols(left, right),
   /** 繁簡通檢：回傳切換後的值 */
   setVariants, toggleVariants, variantsOn: () => variantSearchOn(),
+  variantAutoOn: () => variantAutoOn(), setVariantAuto: applyVariantAuto,
   /** 顯示原始文件（不渲染）：測試／指令用 */
   setRenderRaw, renderRawOn, rerenderDoc,
   /** 原書分行（保留硬換行／連著排） */
@@ -2808,7 +2835,7 @@ import { initAdbStore, openAdbStore } from './adb-store';
 import { initStudyIndex, refreshStudyIndexButton } from './study-index';
 import { hasLogoResource, hideDocLogo, logoState, updateDocLogo } from './logo';
 import { hostState } from './host';
-import { setVariantSearch, variantSearchOn } from './variants';
+import { setVariantSearch, variantSearchOn, setVariantAuto, variantAutoOn } from './variants';
 import { aboutState, closeAbout, initAbout, openAbout, showAboutOnStartup } from './about';
 import { initShortcuts, openShortcuts, closeShortcuts, shortcutCount, shortcutsOpen } from './shortcuts';
 import { initTheme, setSvgInvert, svgInvertOn, THEME_LABEL, themeOf } from './theme';

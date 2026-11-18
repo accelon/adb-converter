@@ -64,6 +64,29 @@ export function setVariantSearch(on: boolean): void {
   enabled = !!on;
 }
 
+// ------------------------------------------------------ 查不到時自動通檢
+/**
+ * 「查不到時自動繁簡通檢」（作者 2026-11-17）：通檢預設可以關著，但讀者打的字
+ * （例如簡體「唯识」）在库里**一筆都找不到**時，自動開一次通檢再查（找到「唯識」）。
+ * 這是系統級開關，存在 localStorage（`accelon26.variantAuto`），預設開。
+ * 與上面的「輸入通檢」是兩回事：那個是每筆查詢都展開；這個只在「0 筆」時兜底。
+ */
+let autoEnabled = true;
+
+export function variantAutoOn(): boolean {
+  return autoEnabled;
+}
+
+export function setVariantAuto(on: boolean): void {
+  autoEnabled = !!on;
+}
+
+/** 查詢裡有沒有「可繁簡展開」的漢字——沒有就別白跑一次通檢 */
+export function queryHasVariants(text: string): boolean {
+  for (const ch of text) if (variantGroupOf(ch).length > 1) return true;
+  return false;
+}
+
 /** 名詞分頁用：把查詢字串換成「同組任一字」的樣式（`.` 仍是任一字元） */
 export function variantNamePattern(text: string): RegExp | null {
   const chars = [...text];

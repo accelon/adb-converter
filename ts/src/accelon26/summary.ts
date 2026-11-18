@@ -18,6 +18,7 @@ import { foldGlossary, loadGlossary } from './glossary';
 import { findPunctLoose } from './loose-match';
 import { decodeXmlEntities } from '../xml-entities';
 import { joinedText, markSpan, textNodesOf } from './mark-dom';
+import { queryHasVariants, setVariantSearch, variantAutoOn, variantSearchOn } from './variants';
 
 /** search state */
 let lastResult: SearchResult | null = null;
@@ -170,6 +171,17 @@ async function runSearch(query: string, opts: { subtoken?: boolean } = {}) {
     if (!res.missing.length) break;
     const r2 = await searchAutoVia(session, reader?.io ?? null, h);
     if (!r2.missing.length) { res = r2; break; }
+  }
+  // 查不到時自動繁簡通檢（作者 2026-11-17）：通檢預設可以關著，但讀者打的字一筆都
+  // 找不到、而這個字有繁簡異體時，自動開一次通檢再查——打簡體「唯识」也找得到繁體「唯識」。
+  // 找到就讓通檢保持開啟（下次開設置會看到「輸入通檢」已勾選，讀者可自己關）；
+  // 找不到就關回去，不留副作用。
+  if (!res.hits.length && session && !variantSearchOn() && variantAutoOn() && queryHasVariants(qq)) {
+    setVariantSearch(true);
+    const vr = await searchAutoVia(session, reader?.io ?? null, qq);
+    if (seq !== searchSeq) { setVariantSearch(false); return; }   // 較新的按鍵已接管
+    if (vr.hits.length) { res = vr; searchMode = '繁簡'; }
+    else setVariantSearch(false);
   }
   // 詞內回退（作者 2026-11-03）：**只有 Enter 才做**。輸入時不回退，免得打一個字就爆量；
   // 輸入時只提示（見下面）。例：kmj 搜「題」不是獨立 token，Enter 時改成「含題的詞」。
