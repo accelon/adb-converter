@@ -266,8 +266,12 @@ export function inlineSvgHtml(src: string, label: string, figure = false): strin
     // Visio 的 <v:documentProperties>／<v:pageProps> 是看不見的檔案屬性；
     // 內嵌時根標籤的 xmlns:v 被丟掉，存成 .svg 再開就會報
     // 「Element v:documentproperties prefix is unbound」（hunxian 2026-11-09 回報）。
-    .replace(/<v:[a-zA-Z][\s\S]*?<\/v:[a-zA-Z]+>/gi, '')
+    // 2026-11-18（厚觀法師 312 二/五：HG03.033 註19、HG03.280 註19 等六張圖文字整段消失）：
+    // 舊寫法 `<v:開頭…</v:任意>` 不要求開閉同名——033/280 這類檔裡有非自閉的
+    // <v:userDefs>…</v:userDefs>，正則會從前面的 <v:documentProperties/> 一路吞到
+    // 第一個 </v:...>，把中間的 style＋text 整段刪掉。改成：先删自閉，再只删**同名**配對。
     .replace(/<v:[a-zA-Z][^>]*\/>/gi, '')
+    .replace(/<v:([a-zA-Z]+)[^>]*>[\s\S]*?<\/v:\1>/gi, '')
     // 元素屬性上的 `v:` 前綴（Visio 的 v:mid、v:ext…）也要拿掉，否則序列化成 .svg
     // 會是「Namespace prefix v for mid on g is not defined」，圖根本載不出來。
     .replace(/\sv:[a-zA-Z-]+\s*=\s*"[^"]*"/g, '')
