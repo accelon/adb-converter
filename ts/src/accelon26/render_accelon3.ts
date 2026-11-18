@@ -1289,9 +1289,20 @@ export class Accelon3Renderer {
       this.lineCls = (this.lineCls ? this.lineCls + ' ' : '') + 'figArt';
       // 線條字元（┌│└├┤─…）在部分字型裡是「半寬」，一列幾十個就會把後面的欄位推歪。
       // 包一層定寬 span（1em），不管字型怎麼畫都佔一個全形字的位置（只換標籤外的字）。
-      html = html.split(/(<[^>]*>)/).map((seg) =>
-        seg.startsWith('<') ? seg : seg.replace(/[\u2500-\u257F]/g, (c) => `<span class="boxd">${c}</span>`)
-      ).join('');
+      // 但 `<圖 t="圖版"/>` 渲染出的 `<svg>…</svg>` 內部（Visio 的 `<desc>`／`<text>`）也有
+      // ─ 這類字元：把 HTML `<span>` 注進 SVG 命名空間會被瀏覽器解析截斷，圖的後半整段丟失
+      // （厚觀法師 2026-11-18：HG03.338 註 20 十一條樹狀連線全沒、HG03.033 註 19 同類）。
+      // 所以先把整段 `<svg>…</svg>` 抽出來用佔位符保護，只包裝 svg 外的文字，最後原樣放回。
+      const svgStash: string[] = [];
+      const guarded = html.replace(/<svg[\s\S]*?<\/svg>/gi, (m) => {
+        svgStash.push(m);
+        return `\u0000SVG${svgStash.length - 1}\u0000`;
+      });
+      html = guarded
+        .split(/(<[^>]*>)/)
+        .map((seg) => (seg.startsWith('<') ? seg : seg.replace(/[\u2500-\u257F]/g, (c) => `<span class="boxd">${c}</span>`)))
+        .join('')
+        .replace(/\u0000SVG(\d+)\u0000/g, (_m, i) => svgStash[Number(i)] ?? '');
     }
     return {
       no: lineNo, html, raw: text, visible: this.sawText, heading: this.sawHeading,

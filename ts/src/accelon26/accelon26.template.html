@@ -1043,6 +1043,10 @@
   .docTable caption.tCap { caption-side: top; text-align: left; color: var(--dim); font-size: .9em; padding: 0 2px 6px; }
   .docTable th, .docTable td { border: 1px solid var(--line); padding: 5px 10px; text-align: left; vertical-align: top; min-width: 4.2em; }
   .docTable thead th { background: color-mix(in srgb, var(--panel2) 70%, transparent); font-weight: 600; white-space: nowrap; }
+  /* 橫跨表頭（`<表 t="橫跨">` 的 colspan 合併格）：文字要居中於合併後的整格寬度正中，
+     否則「漢譯」（跨 2 欄）「梵語」（跨 3 欄）偏左／偏右（厚觀法師 2026-11-18 p.1147~1150）。
+     帶 colspan 的 th 才置中，一般表頭仍靠左。 */
+  .docTable thead th[colspan] { text-align: center; }
   .docTable tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--panel2) 32%, transparent); }
   /* 空白格就是空白（作者 2026-11-06）：不放符號，但保留列底色 */
   .docTable tr.tPage td { border-left: 0; border-right: 0; background: transparent; padding: 1px 10px;
@@ -1159,6 +1163,25 @@
     border-radius: 2px;
     -webkit-box-decoration-break: clone;
     box-decoration-break: clone;
+  }
+  /* 反白科判條上的可點注號（厚觀法師 2026-11-18 p.891 注 127~130「淡顏色色差太相近」）：
+     預設 `.lineText .noteRef` 用 --note-mark（深棕／琥珀），落在該層標籤底色上反差不足。
+     改成與科判字同色（--bg）、加粗、加下劃線——比照表頭 `th .noteRef` 的力度，
+     讓反白條上的注號既看得清、又一眼知道可點。hover 保持同色只補底線。 */
+  .lineText .h[data-tag="項"] .noteRef,
+  .lineText .h[data-tag="目"] .noteRef,
+  .lineText .h[data-tag="小目"] .noteRef,
+  .lineText .h[data-tag="細目"] .noteRef {
+    color: var(--bg);
+    font-weight: 700;
+    text-decoration: underline;
+  }
+  .lineText .h[data-tag="項"] .noteRef:hover,
+  .lineText .h[data-tag="目"] .noteRef:hover,
+  .lineText .h[data-tag="小目"] .noteRef:hover,
+  .lineText .h[data-tag="細目"] .noteRef:hover {
+    color: var(--bg);
+    text-decoration: underline;
   }
   /* 原書頁 <頁>：頁碼一律靠右（厚觀法師 2026-11-10「錯誤02」）。
      2026-10-31 原本是 inline，理由是「block 會把後文擠到下一行」；但 inline 的結果是
