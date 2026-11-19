@@ -7,6 +7,7 @@
  *   - 產生的引用含頁 id，貼到「跳至」即可跳到那一頁（見 scopes.ts 的 embedded 頁 id）。
  */
 import { mapper, reader, setStatus } from './viewer';
+import { anchorIndex } from './page-text';
 import { lookupBook, openTaishoAt, pageHanText, pageIdAtVa, type BookHit } from './xref';
 import { formatCharPosition } from './char-position';
 import { HAN_RE } from './han';
@@ -274,7 +275,14 @@ async function selectionInfo(): Promise<SelInfo | null> {
   if (!Number.isFinite(n)) return null;
   const va = mapper?.linesVirtual?.[n];
   if (va == null) return null;
-  const pageId = (await pageIdAtVa(va)) || '';
+  let pageId = (await pageIdAtVa(va)) || '';
+  // 卷首兜底（任玄 2026-11-19：taisho 卷首「引用複製」缺頁碼 → `taisho?#181-199` 少了 `1p1a`）：
+  // 選區落在第一個 <頁> 標記之前（<冊>/<書>/譯者行那段），pageIdAtVa 二分 k<0 回空 →
+  // 這段文字其實歸屬第一頁，取錨點索引的第一個頁 id，別讓引用串的 `?` 與 `#` 之間空著。
+  if (!pageId && reader) {
+    const idx = await anchorIndex(reader);
+    if (idx?.values.length) pageId = idx.values[0];
+  }
   const book = await bookAt(va);
   const rects = range.getClientRects();
   const rect = rects.length ? rects[0] : range.getBoundingClientRect();
