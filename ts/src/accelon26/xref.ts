@@ -19,7 +19,6 @@ import { activeSlot, catalog, openCatalogEntry, openDbs, switchTo } from './dbs'
 import { mapper, reader, setStatus } from './viewer';
 import { ensureRightPane, openForeignTab, setForeignNeighbor, setForeignRender } from './text-pane';
 import { taishoPlateUrl } from './plates';
-import { decodeXmlEntities } from '../xml-entities';
 import { linkTo, revealHit } from './link';
 import { highlightCharBand, markLineRange } from './doc-pane';
 import { setJumpRange } from './jump-band';
@@ -1020,29 +1019,31 @@ export async function renderForeign(db: string, va: number, anchor?: string, quo
       }
     }
   }
-  // 掃描／圖庫（作 2026-11-19）：目標頁是「整頁掃描圖」（有 resources 圖檔、內文幾乎沒有字）
-  // 時，右欄直接顯示該頁掃描圖，取代引文截圖（lineHtml 會丟掉 <圖>）。
-  // 文字庫頁面有幾百字，不會進這裡，引文行為不變；句中夾小圖的字形頁同理不受影響。
-  // 圖點一下走 #imgView 縮放（見 doc-pane bindInlineImageZoom 對 #textBody img.inlineImg）。
-  if (r.containers.has('resources') && hanCount(raw.replace(/<[^>]*>/g, '')) < 8) {
-    const figNames = [...raw.matchAll(/<圖[^>]*?\b(?:n|id|f)\s*=\s*"([^"]*)"/g)]
-      .map((m) => decodeXmlEntities(m[1]!));
-    if (figNames.length) {
-      const resC = r.containers.get('resources')!;
-      const ridx = new Map<string, number>();
-      for (let i = 0; i < (resC.count ?? 0); i++) ridx.set(resC.names[i], i);
-      let imgs = '';
-      for (const name of figNames) {
-        const ri = ridx.get(name);
-        if (ri === undefined) continue;
-        const { bytes } = await r.resourceBytes(ri);
-        const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
-        const type = ext === 'jpg' ? 'image/jpeg' : `image/${ext || 'png'}`;
-        const url = URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type }));
-        imgs += `<img class="inlineImg figureImg" style="max-width:100%;height:auto" src="${url}" alt="${esc(name)}" title="${esc(name)}">`;
-      }
-      if (imgs) bodyHtml = imgs;
+  // 掃描／圖庫（作 2026-11-19，改用錨點直查 resources、不再靠 raw 切片）：目標庫有 resources
+  // 容器、且錨點 id 直接對應到一個圖檔資源（檔名＝錨點＋副檔名）時，右欄顯示該頁掃描圖。
+  // 不用 renderForeign 的 raw：掃描庫分塊的位元組座標與解碼字元偏移不一致，raw 會只剩回連
+  // 標籤「文字」、抓不到 <圖>（實測 01d0579）。文字庫錨點（如 51p185b）對不上 resources 檔名，
+  // 故不受影響、引文行為不變。圖點一下走 #imgView（見 doc-pane bindInlineImageZoom）。
+  if (r.containers.has('resources') && anchor) {
+    const base = anchor.split('#')[0]!;
+    const resC = r.containers.get('resources')!;
+    const ridx = new Map<string, number>();
+    for (let i = 0; i < (resC.count ?? 0); i++) ridx.set(resC.names[i], i);
+    let imgs = '';
+    for (const ext of ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp']) {
+      const name = `${base}.${ext}`;
+      const ri = ridx.get(name);
+      if (ri === undefined) continue;
+      const { bytes } = await r.resourceBytes(ri);
+      const type = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
+        : ext === 'gif' ? 'image/gif'
+        : ext === 'svg' ? 'image/svg+xml'
+        : ext === 'webp' ? 'image/webp' : 'image/png';
+      const url = URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type }));
+      imgs += `<img class="inlineImg figureImg" style="max-width:100%;height:auto" src="${url}" alt="${esc(name)}" title="${esc(name)}">`;
+      break;
     }
+    if (imgs) bodyHtml = imgs;
   }
   const html = head + rev + '<div class="docBody reflow"><p class="docPara">' + bodyHtml + '</p></div>';
   const tEnd = performance.now();
