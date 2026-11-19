@@ -344,7 +344,12 @@ ${body}
     </tbody>
   </table>
 
-  ${wipNotes.map((d) => `<p class="dbWarn"><b>《${esc(d.name || d.file)}》${esc(d.statusLabel || '')}</b>${esc(d.statusNote)}</p>`).join('')}
+  ${wipNotes
+    // 若這個庫在下方表格已有 description 行（details），限制／說明已經講過，
+    // 上方這段 dbWarn 就重複了（使用者 2026-11-16：「這一段是多餘的，下方已有」）；
+    // 只有沒有行內說明的庫才保留這段獨立提示。
+    .filter((d) => !details.has(d.file.toLowerCase()))
+    .map((d) => `<p class="dbWarn"><b>《${esc(d.name || d.file)}》${esc(d.statusLabel || '')}</b>${esc(d.statusNote)}</p>`).join('')}
 
 ${sectionHtml}
 
