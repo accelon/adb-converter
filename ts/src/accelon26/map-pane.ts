@@ -14,8 +14,9 @@
  * 換址本身不需要經文：位址 → 行 → 漢字位移 → 對應段 → 另一側位移 → 位址
  * （posmap.ts）。經文只在「在大正藏／高麗藏開啟」時才需要。
  */
-import { AdbReader, BlobIO } from './adb';
+import { AdbReader, BlobIO, type AdbSource } from './adb';
 import { catalog, openDbs } from './dbs';
+import { desktopSources } from './host';
 import { $, escapeHtml, mapper, reader, session, setStatus } from './viewer';
 import {
   addressOfSeq, formatAddress, loadPosMap, parseLooseAddress, type Address, type PosMap, type Side,
@@ -40,6 +41,34 @@ export function mapSideOf(r: AdbReader | null): Side | null {
 // ---------------------------------------------------------------- 對照表的來源
 
 let fileCache: { key: string; r: AdbReader } | null = null;
+// 宿主 ListAdbs 找到的對照庫來源（成功才記；undefined=還沒掃、null=掃過沒有）
+let hostSrcMemo: AdbSource | null | undefined;
+// 宿主工作目錄的 adb 清單快取（選單每次選取都可能查，避免反覆掃資料夾；
+// 沒命中時用 force 重掃一次，讓中途補進資料夾的 adb 也能被發現）
+let hostListMemo: AdbSource[] | null = null;
+const baseName = (n: string): string => n.replace(/\.adb$/i, '').toLowerCase();
+
+async function cachedHostSources(force = false): Promise<AdbSource[]> {
+  if (force || !hostListMemo) hostListMemo = await desktopSources().catch(() => [] as AdbSource[]);
+  return hostListMemo;
+}
+
+/**
+ * 某個 adb 在本機可用嗎（已開的、catalog、或宿主工作目錄 ListAdbs）——不需要先開它，
+ * 只要「檔在」就好（作者 2026-11-19：找不到 goryeo.adb 時不能跳高麗藏經文，只能看圖版）。
+ */
+export async function adbAvailable(dbname: string): Promise<boolean> {
+  const want = dbname.toLowerCase();
+  if (!dbname) return false;
+  if (reader?.header.dbname?.toLowerCase() === want) return true;
+  if (openDbs.some((d) => d.name === dbname || baseName(d.file.name) === want
+    || (d.core as { reader?: AdbReader } | undefined)?.reader?.header.dbname?.toLowerCase() === want)) return true;
+  if (catalog.some((x) => x.name === dbname || baseName(x.file.name) === want
+    || (x.dbname ?? '').toLowerCase() === want)) return true;
+  if ((await cachedHostSources()).some((s) => baseName(s.name) === want || (s.dbname ?? '').toLowerCase() === want)) return true;
+  // 快取清單裡沒有 → 重掃一次（可能剛補進資料夾）
+  return (await cachedHostSources(true)).some((s) => baseName(s.name) === want || (s.dbname ?? '').toLowerCase() === want);
+}
 
 /**
  * 對照表所在的 adb：先看目前這個庫（舊 goryeo.adb 仍有 align），再看開著的
@@ -50,14 +79,34 @@ export async function mapReader(): Promise<AdbReader | null> {
   const live = await readerFor(MAP_DB).catch(() => null);
   if (live?.containers.get('align')) return live;
   const base = (n: string) => n.replace(/\.adb$/i, '').toLowerCase();
-  const slot = openDbs.find((d) => d.name === MAP_DB || base(d.file.name) === MAP_DB);
+  // 桌面版 catalog 條目的 name 常是中文庫名、dbname 才是 `goryeo_taisho`（同 activateDb 的教訓
+  // 2026-11-04）；只比 name／檔名會漏，所以三個都比（name／檔名 base／dbname）。
+  const slot = openDbs.find((d) => d.name === MAP_DB || base(d.file.name) === MAP_DB
+    || (d.core as { reader?: AdbReader } | undefined)?.reader?.header.dbname === MAP_DB);
   const slotReader = (slot?.core as { reader?: AdbReader } | undefined)?.reader;
   if (slotReader?.containers.get('align')) return slotReader;
-  const e = catalog.find((x) => x.name === MAP_DB || base(x.file.name) === MAP_DB);
-  if (!e) return null;
-  if (fileCache?.key === e.key) return fileCache.r;
-  const r = await AdbReader.open(new BlobIO(e.file));
-  fileCache = { key: e.key, r };
+  const e = catalog.find((x) => x.name === MAP_DB || base(x.file.name) === MAP_DB
+    || (x.dbname ?? '').toLowerCase() === MAP_DB);
+  if (e) {
+    if (fileCache?.key === e.key) return fileCache.r;
+    const r = await AdbReader.open(new BlobIO(e.file));
+    fileCache = { key: e.key, r };
+    return r;
+  }
+  // catalog 裡也沒有（這個對照庫讀者從沒開過、也没被列進 catalog）→ 直接問宿主工作目錄
+  // （exe 旁／啟動檔所在資料夾）的 ListAdbs，找到 goryeo_taisho.adb 就地開。與 parallel.ts
+  // 找平行庫同一條路，省得讀者要手動開對照表才能看高麗藏圖版／經文（作者 2026-11-18）。
+  // 找到就記住來源（省得每次選取都重新掃資料夾）；沒找到不記，之後補進資料夾也還能發現。
+  if (!hostSrcMemo) {
+    const host = await desktopSources().catch(() => [] as AdbSource[]);
+    hostSrcMemo = host.find((s) => base(s.name) === MAP_DB || (s.dbname ?? '').toLowerCase() === MAP_DB) ?? null;
+  }
+  const src = hostSrcMemo;
+  if (!src) return null;
+  const ck = 'host:' + base(src.name);
+  if (fileCache?.key === ck) return fileCache.r;
+  const r = await AdbReader.open(new BlobIO(src));
+  fileCache = { key: ck, r };
   return r;
 }
 
@@ -553,6 +602,23 @@ async function applyBand(band?: LineBand): Promise<void> {
     await new Promise((r) => setTimeout(r, 50));
   }
   markLineRange(band.from, band.to);
+}
+
+/**
+ * 給選取選單「開另一藏經文」（2026-11-18，作者需求）：
+ * 拿目前選取的起訖位址（同一側），換到**另一藏**、在中間開該頁並把對應那幾行塗色帶。
+ * 讀大正藏 → 開高麗藏經文；讀高麗藏 → 開大正藏經文。找不到對照回 ok:false＋原因。
+ * 復用 positionHits（換址＋算 band）與 openHit（開庫＋標段），與左欄「對照」分頁同一條路。
+ */
+export async function openOtherTextFromRange(
+  startAddr: Address, endAddr: Address | null,
+): Promise<{ ok: boolean; note?: string }> {
+  const other = otherSide(startAddr.side);
+  const hits = await positionHits(startAddr, undefined, endAddr);
+  const h = hits.find((x) => x.openSide === other);
+  if (!h) return { ok: false, note: '此位置不在對照範圍內（或找不到 goryeo_taisho.adb 對照表）。' };
+  await openHit(h, 'open');
+  return { ok: true };
 }
 
 const MAP_HELP = '<div class="mapHelp">'

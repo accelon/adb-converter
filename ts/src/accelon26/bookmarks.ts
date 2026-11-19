@@ -16,9 +16,9 @@ import { openDictLookup } from './dict-pane';
 import { openLexPaneForHan } from './lex-pane';
 import { openForeignTab } from './text-pane';
 import {
-  addressAtLine, mapPosMap, mapSideOf, plateLinksAtLine, taishoPlateForPageId, type PlateLinks,
+  addressAtLine, adbAvailable, mapPosMap, mapSideOf, openOtherTextFromRange, plateLinksAtLine, taishoPlateForPageId, type PlateLinks,
 } from './map-pane';
-import { formatAddress } from './posmap';
+import { formatAddress, type Address } from './posmap';
 import { openExternalUrl } from './plates';
 import { GLOSS_LANG_NAME, foldGlossary, loadGlossary } from './glossary';
 import { add as addSaved } from './saved-inputs';
@@ -532,6 +532,31 @@ async function fillPlates(info: SelInfo): Promise<void> {
   if (m && !m.hidden) placeMenu(m, info);
 }
 
+/**
+ * 「開另一藏經文」項（2026-11-18，作者需求）：讀大正藏時在「看高麗藏圖版」前給
+ * 「開高麗藏經文」，讀高麗藏時在「看大正藏圖版」前給「開大正藏經文」。需要對照表
+ * （goryeo_taisho.adb——mapReader 會自動從資料夾開檔，讀者不必先自己開）。
+ * 只在「另一藏」那一顆顯示（T 側給 textK、K 側給 textT），另一顆保持隱藏。
+ */
+async function fillOtherText(info: SelInfo): Promise<void> {
+  const m = $id('selMenu');
+  if (!m) return;
+  const tBtn = actOf(m, 'textT');
+  const kBtn = actOf(m, 'textK');
+  if (tBtn) tBtn.hidden = true;
+  if (kBtn) kBtn.hidden = true;
+  const side = mapSideOf(reader);
+  if (!side) return;                       // 不是大正／高麗，沒有互跳
+  if (!(await mapPosMap())) return;        // 沒有對照表（含自動開檔失敗）→ 不顯示
+  // 作者 2026-11-19：對方 adb 必須在本機資料夾找得到（不必先開），才能「跳經文」；
+  // 找不到就只給外部「看圖版」，不顯示「開…經文」（否則 openInMain 會報「請先開啟」）。
+  const target = side === 'T' ? 'goryeo' : 'taisho';
+  if (!(await adbAvailable(target))) return;
+  if (pending !== info) return;            // 選取已換人
+  const btn = side === 'T' ? kBtn : tBtn;  // 大正→開高麗；高麗→開大正
+  if (btn) btn.hidden = false;
+}
+
 function showMenu(info: SelInfo): void {
   const m = $id('selMenu');
   if (!m) return;
@@ -551,7 +576,7 @@ function showMenu(info: SelInfo): void {
   m.querySelectorAll<HTMLButtonElement>('[data-sel]').forEach((b) => { b.hidden = false; });
   const minor = m.querySelector<HTMLButtonElement>('.selMinor');
   if (minor) minor.hidden = false;
-  for (const sel of ['plateT', 'plateK', 'sutra', 'addr', 'gloss', 'lexHan']) {
+  for (const sel of ['plateT', 'plateK', 'textT', 'textK', 'sutra', 'addr', 'gloss', 'lexHan']) {
     const b = actOf(m, sel);
     if (b) b.hidden = true;
   }
@@ -616,6 +641,7 @@ function showMenu(info: SelInfo): void {
   }
   void fillSutra(info);
   void fillPlates(info);
+  void fillOtherText(info);
   void fillAddress(info);
   void fillGlossary(info);
 }
@@ -1213,6 +1239,17 @@ async function runAction(action: string): Promise<void> {
   else if (action === 'gloss' && glossQuery) await openDictLookup(glossQuery);
   else if (action === 'plateT' && plateUrls.taisho) await openExternalUrl(plateUrls.taisho);
   else if (action === 'plateK' && plateUrls.goryeo) await openExternalUrl(plateUrls.goryeo);
+  else if (action === 'textT' || action === 'textK') {
+    // 開另一藏經文並選同段：讀大正藏→開高麗藏經文；讀高麗藏→開大正藏經文。
+    const startAddr = await addressAtLine(info.startLine, info.hanPrefix);
+    const endAddr = await addressAtLine(info.endLine, info.hanPrefixEnd);
+    if (!startAddr) setStatus('取不到這個選取的對照位址', 'warn');
+    else {
+      const r = await openOtherTextFromRange(startAddr, endAddr);
+      if (!r.ok) setStatus(r.note ?? '開另一藏經文失敗', 'warn');
+      else setStatus(mapSideOf(reader) === 'T' ? '已在中間開啟高麗藏經文（同段已標示）' : '已在中間開啟大正藏經文（同段已標示）', 'info');
+    }
+  }
   else if (action === 'sutra') {
     if (pendingRef) {
       await openTaishoAt('taisho', pendingRef, '大正 ' + pendingRef);
