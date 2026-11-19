@@ -870,6 +870,17 @@ export class Accelon3Renderer {
       }
       if (this.hidden) continue;
 
+      if (name === '段界') {
+        // 2026-11-19（厚觀法師 330（一）：《中論》p.97 本文直接接在科判標題行尾）：
+        // `<段界/>` 是 fuyan 轉檔端的**段首標記**，原被當無所作為的 skip tag。現在照
+        // `<段/>`（無段號）同一規則：行中（前面已有可見文字，例如同行尾端的 `<章>` 科判）
+        // 補 `<br class="para">` 換行；行首不插（免得整行先空一行）。
+        // ⚠ 開放項給母區：縮排**故意不加**——fuyan 在 indent:false 下靠本標記保持頂格；
+        //   若日後要 indent:true 書自己縮排，需帶「不縮排」選項再啟用 paraIndent。
+        // 只有行內位置會多一個 <br>；copyOut／引用複製讀 data-src 原始行，不受影響。
+        if (!closing && this.sawText) html += '<br class="para">';
+        continue;
+      }
       if (PAGE_TAGS.has(name)) {
         // 作者 2026-10：「顯示原書頁碼」關閉時，頁標籤整個不渲染（不留空行、不留頁碼）
         if (!closing && this.opts.pageMarks) { html += this.pageMark(attrs); this.sawText = true; }
@@ -1654,6 +1665,19 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
       cur = null;
       sawBlank = false;
       lastPage = false;
+      // 2026-11-19（厚觀法師 330（一））：剩下的部分若以段首標記 `<段界/>`／`<段/>` 開頭，
+      // 等於本行「標題＋新段落」兩塊——新段落要另起一行，縮排照 `<段/>` 行首規則補上。
+      if (/^\s*<(?:段界|段)(?![^>]*\bn\s*=)[^>]*>/.test(info.split.after)) {
+        info = {
+          ...info,
+          html: (this.opts.indent ? '<span class="paraIndent">　　</span>' : '')
+            + info.split.after,
+          segStart: true, segMid: false, split: undefined, idSuffix: '',
+        };
+        out.push({ kind: hard ? 'line' : 'para', lines: [info] });
+        cur = null;
+        continue;
+      }
       info = {
         ...info, html: info.split.after, heading: false,
         segStart: true, segMid: false, split: undefined, idSuffix: '',
