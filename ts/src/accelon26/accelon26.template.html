@@ -1193,6 +1193,12 @@
     float: right; margin: 0 0 0 6px; color: var(--pageMark, #d99a2b); font-size: .8em; font-weight: 400;
     white-space: nowrap;
   }
+  /* 頁碼本身是跨庫連結時（<a class="xrefLink"><span class="pageBreak">…）：連結是行內元素，
+     內層 .pageBreak 的 float:right 會把頁碼浮出連結框，造成「可點框」與「頁碼字」分離
+     （厚觀法師 2026-11-19 回報）。改成「連結本身靠右、內層不再 float」，框就緊緊包住字，
+     仍維持該行右端的小字頁碼樣式。 */
+  .lineText a:has(> .pageBreak) { float: right; margin: 0 0 0 6px; white-space: nowrap; }
+  .lineText a:has(> .pageBreak) > .pageBreak { float: none; margin: 0; }
   /* 不保留硬換行（「原書分行」取消）時：整頁連著排 */
   .docBody.reflow .docLine { display: inline; }
   .docBody.reflow .lineText { white-space: normal; overflow-wrap: break-word; }

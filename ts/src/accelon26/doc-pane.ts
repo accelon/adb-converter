@@ -455,7 +455,7 @@ function bindInlineImageZoom(): void {
       openImageView(name, url, bytes);
       return;
     }
-    const img = el?.closest?.('#docText img.inlineImg') as HTMLImageElement | null;
+    const img = el?.closest?.('#docText img.inlineImg, #textBody img.inlineImg') as HTMLImageElement | null;
     if (!img) return;
     ev.preventDefault();
     ev.stopPropagation();

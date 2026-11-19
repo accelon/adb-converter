@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ybh.adb 製作說明（瑜伽師地論漢文集成）</title>
+<meta name="theme-color" content="#f7f7f8" id="themeColor">
+<link rel="icon" type="image/png" href="../img/appicon.png">
+<script>
+  // 亮底／暗底（作者 2026-10-18）：**預設亮底**（軟件的截圖是暗色的，亮底才有對比）。
+  // 選過的記在 localStorage；在畫面出現前就套上，免得先閃一下另一種底色。
+  (function () {
+    var t = 'light';
+    try { t = localStorage.getItem('accelon26.site.theme') === 'dark' ? 'dark' : 'light'; } catch (e) { /* 無痕模式 */ }
+    document.documentElement.setAttribute('data-theme', t);
+  }());
+</script>
+<style>
+  /* 亮底（預設） */
+  :root {
+    color-scheme: light;
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --panel2: #f1f3f6;
+    --line: #e2e5ea;
+    --fg: #17181c;
+    --dim: #6b7280;
+    --muted: #444a54;
+    --muted2: #454b55;
+    --accent: #2f6fd0;
+    --gold: #a9720a;
+    --btn-fg: #ffffff;
+    --btn-shadow: 0 6px 22px rgba(47,111,208,.20);
+    --msg-shadow: 0 4px 14px rgba(47,111,208,.18);
+    --code-bg: #f1f3f6;
+    --screen-bg: #eceef2;
+    --header-bg: rgba(247,247,248,.92);
+    --dot-off: rgba(0,0,0,.22);
+    --dot-off-border: rgba(0,0,0,.32);
+    --dot-hover: rgba(0,0,0,.45);
+    --dot-on: #1a1c20;
+    --dot-ring: rgba(0,0,0,.12);
+    --max: 960px;
+  }
+  /* 暗底 */
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #16171a;
+    --panel: #1e2024;
+    --panel2: #24272c;
+    --line: #2e3238;
+    --fg: #dcdee3;
+    --dim: #8f959e;
+    --muted: #c3c7ce;
+    --muted2: #b9bec6;
+    --accent: #6cb0ff;
+    --gold: #ffd479;
+    --btn-fg: #0a2338;
+    --btn-shadow: 0 6px 22px rgba(108,176,255,.22);
+    --msg-shadow: 0 4px 14px rgba(108,176,255,.18);
+    --code-bg: #26292f;
+    --screen-bg: #101113;
+    --header-bg: rgba(22,23,26,.92);
+    --dot-off: rgba(255,255,255,.28);
+    --dot-off-border: rgba(255,255,255,.40);
+    --dot-hover: rgba(255,255,255,.55);
+    --dot-on: #ffffff;
+    --dot-ring: rgba(255,255,255,.14);
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.75 system-ui, "Segoe UI", "Microsoft JhengHei", "PingFang TC",
+      "Noto Sans CJK TC", sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+  code {
+    font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+    font-size: .9em; background: var(--code-bg); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 5px;
+  }
+
+  /* ---------------------------------------------------------------- 頂端 */
+  header.top {
+    border-bottom: 1px solid var(--line);
+    background: var(--header-bg);
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(6px);
+  }
+  header.top .wrap {
+    display: flex; align-items: center; gap: 20px; height: 62px;
+  }
+  .brand { font-size: 20px; font-weight: 700; letter-spacing: .01em; color: var(--fg); }
+  .brand b { color: var(--gold); font-weight: 700; }
+  .brand span { color: var(--dim); font-weight: 400; font-size: 14px; margin-left: 10px; }
+  nav { margin-left: auto; display: flex; gap: 18px; font-size: 14px; align-items: center; }
+  nav a { color: var(--dim); }
+  nav a:hover { color: var(--fg); text-decoration: none; }
+  /* 亮底／暗底切換（作者 2026-10-18）：右上角，圖示＋tooltip */
+  .themeBtn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+    border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px;
+    cursor: pointer; line-height: 1.2;
+  }
+  .themeBtn:hover { color: var(--fg); border-color: var(--dim); }
+  .themeBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .themeBtn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+  /* GitHub 圖示（作者 2026-10-22）：右上角，點一下開原始碼庫 */
+  .ghLink {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 50%;
+    color: var(--muted); border: 1px solid var(--line); background: var(--panel);
+  }
+  .ghLink:hover { color: var(--fg); border-color: var(--dim); text-decoration: none; }
+  .ghLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ghLink svg { width: 17px; height: 17px; fill: currentColor; }
+
+  /* ---------------------------------------------------------------- 主視覺 */
+  /* 錨點捲動時不要被上面那條 sticky 標頭蓋住（作者 2026-10-18）。 */
+  section, #shots { scroll-margin-top: 78px; }
+  /* 作者 2026-10-18：一進站就要看到軟件畫面 —— 主視覺分成左右兩欄，
+     左邊文字＋下載按鈕，右邊是圖庫（約 54%）。 */
+  .hero { padding: 46px 0 54px; }
+  .heroGrid {
+    max-width: 1120px; margin: 0 auto; padding: 0 24px;
+    display: grid; grid-template-columns: minmax(0, 46fr) minmax(0, 54fr);
+    gap: 46px; align-items: center;
+  }
+  .heroText { min-width: 0; }
+  .heroArt { min-width: 0; }
+  .hero h1 {
+    font-size: clamp(24px, 2.9vw, 34px); line-height: 1.35; margin: 0 0 16px;
+    font-weight: 700; letter-spacing: .01em;
+  }
+  .hero h1 em { font-style: normal; color: var(--gold); }
+  .lead { font-size: 17px; color: var(--muted); margin: 0 0 30px; max-width: 42em; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: var(--btn-fg);
+    font-weight: 700; font-size: 15.5px; padding: 10px 22px; border-radius: 9px;
+    box-shadow: var(--btn-shadow);
+  }
+  /* 按鈕上的 OS 標誌（2026-10-18）：跟著字色，大小固定，不要被壓縮。 */
+  .btn svg { width: 16px; height: 16px; fill: currentColor; flex: none; opacity: .95; }
+  .btn .bTxt { display: flex; flex-direction: column; line-height: 1.18; text-align: left; }
+  .btn .bMeta { font-size: 11.5px; font-weight: 400; opacity: .82; letter-spacing: .01em; }
+  .btn:hover { text-decoration: none; filter: brightness(1.08); }
+  /* 兩個下載按鈕並排（macOS 版 2026-10-18）；窄螢幕自動換行。 */
+  .btnRow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn.alt {
+    background: transparent; color: var(--fg);
+    border: 1px solid var(--line); box-shadow: none;
+  }
+  .btn.alt:hover { border-color: var(--gold); color: var(--gold); filter: none; }
+  .fine { margin: 14px 0 0; color: var(--dim); font-size: 13px; }
+  .fine b { color: var(--fg); font-weight: 600; }
+
+  /* ---------------------------------------------------------------- 特色 */
+  section { padding: 54px 0; border-top: 1px solid var(--line); }
+  h2 {
+    font-size: 13px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--dim); font-weight: 600; margin: 0 0 26px;
+  }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px 22px 20px; }
+  .card svg { width: 26px; height: 26px; stroke: var(--gold); fill: none; stroke-width: 1.6; }
+  .card h3 { font-size: 17px; margin: 12px 0 8px; font-weight: 700; }
+  .card p { margin: 0; color: var(--muted2); font-size: 14.5px; line-height: 1.7; }
+  .card p b { color: var(--fg); font-weight: 600; }
+
+  /* ---------------------------------------------------------------- 截圖（圖庫） */
+  /* 四張畫面輪播：3 秒換一張，小白點可切換（作者 2026-10-18：首頁太長）。 */
+  /* 說明在圖**上方**（作者 2026-10-18），字比圖說大一點。 */
+  .installBody { max-width: 780px; }
+  #install h2 { margin-bottom: 18px; }
+  .gallery { position: relative; }
+  .slides {
+    position: relative; aspect-ratio: 16 / 9;
+    background: var(--screen-bg); border: 1px solid var(--line); border-radius: 10px;
+    overflow: hidden;
+  }
+  .slide { position: absolute; inset: 0; margin: 0; opacity: 0; transition: opacity .55s ease; }
+  .slide.on { opacity: 1; }
+  .slide img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .gcap {
+    color: var(--muted); font-size: 15px; line-height: 1.7;
+    margin: 0 0 14px; min-height: 3.5em;
+  }
+  .gcap p { margin: 0; display: none; }
+  .gcap p.on { display: block; }
+  .gcap b { color: var(--fg); font-weight: 700; }
+  .dots { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
+  .dots button {
+    width: 10px; height: 10px; padding: 0; border-radius: 50%; cursor: pointer;
+    background: var(--dot-off); border: 1px solid var(--dot-off-border);
+    transition: background .2s ease, box-shadow .2s ease;
+  }
+  .dots button:hover { background: var(--dot-hover); }
+  .dots button[aria-selected="true"] {
+    background: var(--dot-on); border-color: var(--dot-on); box-shadow: 0 0 0 3px var(--dot-ring);
+  }
+  .dots button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) {
+    .slide { transition: none; }
+  }
+
+  /* ---------------------------------------------------------------- 安裝 */
+  ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: step; }
+  ol.steps li {
+    counter-increment: step; position: relative; padding: 0 0 26px 52px;
+    border-left: 1px solid var(--line); margin-left: 15px;
+  }
+  ol.steps li:last-child { border-left: 1px solid transparent; padding-bottom: 0; }
+  ol.steps li::before {
+    content: counter(step); position: absolute; left: -16px; top: -2px;
+    width: 31px; height: 31px; border-radius: 50%;
+    background: var(--panel2); border: 1px solid var(--line); color: var(--gold);
+    font-size: 14px; font-weight: 700; display: grid; place-items: center;
+  }
+  ol.steps h3 { margin: 0 0 4px; font-size: 16px; }
+  ol.steps p { margin: 0; color: var(--muted2); font-size: 14.5px; }
+
+  .note {
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--gold);
+    border-radius: 8px; padding: 14px 18px; color: var(--muted2); font-size: 14.5px; margin-top: 26px;
+  }
+  .note b { color: var(--fg); }
+
+  /* ---------------------------------------------------------------- 聯絡 */
+  .contact { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .contact .k { color: var(--dim); font-size: 14px; }
+  .contact .v {
+    font-size: 17px; font-weight: 700; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 7px; padding: 5px 14px; user-select: all;
+  }
+  .contact small { color: var(--dim); font-size: 13px; }
+  /* 留言給作者（作者 2026-10-18）：開新視窗到 message.html */
+  .msgBtn {
+    display: inline-block; font-size: 14px; font-weight: 700; color: var(--btn-fg);
+    background: var(--accent); border-radius: 8px; padding: 6px 14px;
+    box-shadow: var(--msg-shadow);
+  }
+  .msgBtn:hover { text-decoration: none; filter: brightness(1.08); }
+
+  footer {
+    border-top: 1px solid var(--line); padding: 30px 0 46px;
+    color: var(--dim); font-size: 13px;
+  }
+  footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; }
+  footer .right { margin-left: auto; }
+
+  @media (max-width: 900px) {
+    /* 窄螢幕：文字在上、畫面在下（作者 2026-10-18） */
+    .heroGrid { grid-template-columns: 1fr; gap: 28px; }
+    .hero { padding: 34px 0 40px; }
+  }
+  @media (max-width: 780px) {
+    .cards { grid-template-columns: 1fr; }
+    .gcap { min-height: 0; }
+    header.top .wrap { height: 54px; gap: 10px; }
+    nav { gap: 10px; font-size: 12.5px; white-space: nowrap; }
+    .brand { font-size: 18px; }
+    .brand span { display: none; }
+    section { padding: 40px 0; }
+    .btn { font-size: 16px; padding: 12px 22px; }
+  }
+  /* 窄螢幕：右上角的主題與 GitHub 不能超出畫面（作者 2026-10-22） */
+  @media (max-width: 640px) {
+    header.top .wrap { height: auto; min-height: 54px; flex-wrap: wrap; padding: 7px 24px; }
+    nav {
+      flex: 1 1 100%; width: 100%; min-width: 0;
+      flex-wrap: wrap; justify-content: flex-end; gap: 6px 10px; white-space: normal;
+    }
+    .themeBtn { padding: 5px 9px; }
+    .themeBtn #themeLabel { display: none; }
+    .ghLink { width: 28px; height: 28px; }
+  }
+
+  .doc { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; }
+  .doc h1 { font-size: 1.6em; margin: .2em 0 .8em; }
+  .doc h2 { font-size: 1.2em; margin: 1.6em 0 .6em; }
+  .doc h3 { font-size: 1.05em; margin: 1.2em 0 .4em; }
+  .doc p { line-height: 1.9; margin: .7em 0; color: var(--muted); }
+  .doc li { line-height: 1.85; color: var(--muted); }
+  .doc code { background: var(--code-bg); border-radius: 4px; padding: 1px 5px; font-size: .92em; }
+  .doc pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow: auto; }
+  .doc pre code { background: none; padding: 0; }
+  .doc blockquote { margin: 1em 0; padding: .4em 1em; border-left: 3px solid var(--line); color: var(--dim); }
+  .tableWrap { overflow-x: auto; margin: 1em 0; }
+  .doc table { border-collapse: collapse; width: 100%; font-size: .94em; }
+  .doc th, .doc td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+  .doc th { background: var(--panel2); font-weight: 600; }
+  .doc a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">accelon<b>26</b><span>古籍資料庫閱讀器</span></div>
+    <nav>
+      <a href="../index.html">首頁</a>
+      <a href="index.html">研究用數據庫</a>
+      <a href="../changelog.html">更新說明</a>
+    </nav>
+  </div>
+</header>
+<main class="doc">
+<h1>ybh.adb 製作說明（瑜伽師地論漢文集成）</h1>
+
+<p><code>ybh.adb</code> 把<b>十七部漢譯瑜伽系論書</b>合成一顆資料庫：《瑜伽師地論》本論一百卷為中心，
+周邊的釋、記、科判、隨論一起放進來，並把每一處科判與注文<b>用座標指回《大正藏》冊 30 的原文那一行</b>。
+它的原料不是 XML，而是法鼓文理學院（DILA）的<b>校勘注記 Markdown</b>——一份放進 <code>raw/</code>
+就可以用 Obsidian／Docsify 雙鏈瀏覽的檔案庫。本文記錄從那些 md 到一顆 <code>.adb</code> 中間的幾步關鍵加工，
+以及這一版<b>做不到</b>的地方。</p>
+
+<p class="note"><b>數據提供者：耀悟法師、法鼓文理學院（DILA）。</b>
+本檔以 <b>CC0（Creative Commons Zero）</b>釋出，可自由使用、改作、再散布，不需授權登記。
+本庫<b>不含大正藏文字</b>：跨庫連結只存「頁欄＋行窗」座標，實際經文由讀者自行下載 <code>taisho.adb</code>
+（依 CBETA 授權）；兩者放在同一資料夾時連結才會生效。</p>
+
+<h2>一、這一版收的十七部</h2>
+<div class="tableWrap"><table>
+<thead><tr><th>編號</th><th>書名</th><th>主卷（檔）</th><th>含大綱／附編之總檔數</th></tr></thead>
+<tbody>
+<tr><td>T1579</td><td>瑜伽師地論（本論）</td><td>100</td><td>102</td></tr>
+<tr><td>PXJ-H</td><td>瑜伽師地論科句披尋記</td><td>100</td><td>101</td></tr>
+<tr><td>T1828</td><td>瑜伽論記</td><td>24</td><td>26</td></tr>
+<tr><td>T1602</td><td>顯揚聖教論</td><td>20</td><td>22</td></tr>
+<tr><td>T1606</td><td>大乘阿毘達磨雜集論</td><td>16</td><td>18</td></tr>
+<tr><td>T1829</td><td>瑜伽師地論略纂</td><td>16</td><td>18</td></tr>
+<tr><td>T1604</td><td>大乘莊嚴經論</td><td>13</td><td>15</td></tr>
+<tr><td>T1581</td><td>菩薩地持經</td><td>10</td><td>12</td></tr>
+<tr><td>T1582</td><td>菩薩善戒經</td><td>9</td><td>11</td></tr>
+<tr><td>T2259</td><td>瑜伽論問答</td><td>7</td><td>8</td></tr>
+<tr><td>T2802</td><td>瑜伽論手記</td><td>4</td><td>6</td></tr>
+<tr><td>T1580</td><td>瑜伽師地論釋</td><td>1</td><td>3</td></tr>
+<tr><td>T2801</td><td>瑜伽論分門記</td><td>2</td><td>3</td></tr>
+<tr><td>T1583</td><td>菩薩受戒法</td><td>1</td><td>2</td></tr>
+<tr><td>T1584</td><td>決定藏論</td><td>1</td><td>2</td></tr>
+<tr><td>X0794</td><td>劫章頌</td><td>1</td><td>2</td></tr>
+<tr><td>T1605</td><td>大乘阿毘達磨集論</td><td>7</td><td>9</td></tr>
+</tbody></table></div>
+
+<p>原料檔庫共 515 個 md，其中<b>漢文 17 部 360 檔入庫</b>；其餘 155 檔屬梵本
+（<code>AS-sP</code>／<code>AS-sG</code>／<code>ASBhT</code> 等）、藏譯（<code>CT…</code> 丹珠爾）
+與《雜阿含經》（T0099，屬獨立阿含部、非本地分引文範圍，2026-11-12 定案不收）。</p>
+
+<div class="tableWrap"><table>
+<thead><tr><th>規模（v26）</th><th>數值</th></tr></thead>
+<tbody>
+<tr><td>檔案大小／約略字數</td><td>48.0 MiB（50,335,640 bytes）／約 10,854,989 字</td></tr>
+<tr><td>行數／詞元數／標籤種數</td><td>973,924 行／9,971 個 token／1,379 種標籤</td></tr>
+<tr><td>跨庫連結（<code>聯</code>→大正藏）</td><td>49,749 條，其中 41,254 條帶行窗（<code>#a-b</code>）</td></tr>
+<tr><td>行內速覽（<code>嵌 j=</code>）</td><td>41,254 枚</td></tr>
+<tr><td>庫內科判跳轉（<code>節聯</code>）</td><td>181,878 條</td></tr>
+<tr><td>科文融合殼（<code>融</code>）</td><td>21,975 枚（全部成對、內容留空）</td></tr>
+<tr><td>本論科判（T1579 的 <code>kpD</code> 定義）</td><td>11,671 條，其中 4,967 條已有逐字窗</td></tr>
+<tr><td>目錄樹</td><td>35 個頁籤（十七部各一棵科判樹＋各部的平列大綱）</td></tr>
+</tbody></table></div>
+
+<h2>二、從 GitHub 的 md 到 adb：幾步關鍵加工</h2>
+
+<h3>1. 文獻身分先鑑定，不信現成清單</h3>
+<p>原料的 README 有一份 38 條的系列對照表，實測<b>其中 23 條是錯的</b>——例如 <code>T1604</code> 被標成別部、
+<code>AS-sP</code>／<code>AS-sG</code>／<code>ASBhT</code> 被標成「藏文」其實是<b>梵本</b>，
+真正藏譯丹珠爾的是 <code>CT…</code> 那個前綴。所以系列歸屬一律改以
+DILA 自己的<a href="https://ybh.dila.edu.tw/pages/abbr?locale=zh">權威略符表</a>為準
+（已存檔比對），README 不作為任何 metadata 來源。<b>這一步決定後面所有的書名、語言與連結是否對。</b></p>
+
+<h3>2. 選檔與語言覆核</h3>
+<p>只收漢文十七部；每檔另算 CJK／梵文（Tibetan、Roman）字元佔比做語言覆核，
+漢文檔的 CJK 比例應壓倒性——偏低的會被點出來人工看，避免把梵藏本誤混進漢文庫。</p>
+
+<h3>3. 把 Markdown 的隱含結構變成標籤</h3>
+<p>DILA 檔裡的结构是「標題行 + <code>^kpD…</code> 區塊錨 + Obsidian 雙鏈 + <code>[^n]</code> 腳註」。轉檔時：
+著作成<code>篇</code>、卷成<code>章</code>、科判依<b>每部一個字族</b>標記（本論 <code>科NN</code>、論釋 <code>科釋NN</code>、
+披尋記 <code>科漢NN</code>…共十六個家族），腳註成 <code>註</code>／<code>釋</code>，校勘附編行尾的
+<code>^appID</code> 在行首補一個 <code>&lt;錨 n/&gt;</code> 讓校注引用有落點。</p>
+<p>有一個計數規則踩過坑：<b>只認「標題行定義」的 <code>kpD</code>，文內引用行不算定義</b>。
+早期用寬鬆比對時，「跨卷撞號」被誇大成十萬條，實際只有千分之幾。</p>
+
+<h3>4. 目錄樹要餵給「產品真正走的那條碼路」</h3>
+<p>閱讀器有兩條建樹路：命令列的 <code>loadTree</code> 與介面實際用的 <code>buildTree</code>，
+後者的規則是<b>「父節點用自己實例上的 <code>t=</code> 宣告子鏈；沒被任何父宣告的標籤一律當根」</b>。
+所以光靠 <code>&lt;篇 t="章"&gt;</code> 不夠，必須 <code>&lt;章 id="T1579-1" t="科01,…,科54."&gt;</code> 自宣告——
+否則十六萬科判在介面裡會全成根節點平鋪。另外總目錄另設一組<b>零寬小詞彙</b>（<code>書目</code>／<code>卷次</code>）
+藏在篇、章行內，避免 <code>篇.t</code> 那條五十六層大鏈跨樹污染——總目錄因此從 24,213 行／75 ms 縮回 377 行／3 ms。</p>
+
+<h3>5. 互鏈分四層，各管一件事</h3>
+<div class="tableWrap"><table>
+<thead><tr><th>標記</th><th>做什麼</th><th>讀者的感受</th></tr></thead>
+<tbody>
+<tr><td><code>&lt;聯 i="taisho?30p279a#34-40"&gt;</code></td><td>跳到另一庫的精確位置</td><td>點「CBETA」翻到大正那一欄，該句被塗紅</td></tr>
+<tr><td><code>&lt;嵌 i="taisho?…" j="34-40" n="原文"/&gt;</code></td><td>不離卷的行內速覽</td><td>原句就在注文旁邊展開，不用跳走</td></tr>
+<tr><td><code>&lt;節聯 n="T1579-51#kpD51-003"&gt;</code></td><td>庫內科判節點定位</td><td>點目錄與點正文游標同步</td></tr>
+<tr><td><code>&lt;融 i="ybh?…" max="24"&gt;&lt;/融&gt;</code></td><td>把同一份論本就地填進任何科判</td><td>勾「以科文融合顯示」即見論文；論本<b>只有一份</b>，文字不被複製</td></tr>
+</tbody></table></div>
+<p class="fine"><code>max</code> 的單位是 adb 的「行」而非字元（實測 <code>max=200</code> 會拉出一萬七千字的大殼），
+24 是經過分佈取樣的防呆值，搭配閱讀器的「繼續展開」使用。</p>
+
+<h3>6. 行窗從哪來：引擎檢索，再用產品自己把關</h3>
+<p>窗（<code>j="起-迄"</code>）不是猜的，流程是：</p>
+<ul>
+<li>取該科判的正文起句，用<b>連寫階梯</b>（先 10 個漢字，不中就 7、5）送進閱讀器的<b>檢索引擎</b>定位——
+    全程不把大正藏全文抽出來，避免把另一份版权文本帶進建置管線。</li>
+<li>命中後 greedy 延伸成最長一致片段，再換算成該頁的<b>漢字偏移</b>。</li>
+<li><b>最後一道閘門是產品自己的渲染器</b>：逐條呼叫 <code>renderEmbed</code>，
+    要求回傳的 <code>&lt;mark class="xrefHit"&gt;</code> 漢字數<b>恰好等於</b> <code>迄−起</code>，且窗首六字與引文相符；
+    不符合者<b>就地剝窗</b>（降級為純頁欄連結）。所以本庫寧可少給窗，也不發一個「點開是別句話」的錯位窗。</li>
+</ul>
+<p>這一版（v26）就是沿這條閘門把 483 條候選裡過閘的 <b>468</b> 條重新算成逐字窗，
+行內速覽由 40,786 增至 41,254 條。剩下的候選分成「唯一性太短」「靠較寬鬆的片段邻近法救回」
+「同一句在大正出現多處需人工消歧」三類，逐條清單另附在原料倉庫的複核檔裡。</p>
+
+<h3>7. 兩套科判制式不同，不能硬對</h3>
+<p>《披尋記》用天干地支層級（甲、乙…子、丑…），其序號是<b>父內編號</b>（換父即復位）；
+DILA 的 <code>kpD</code> 是<b>卷內流水</b>。兩套數值直接互查只有約兩成對得上，必須按縮排重算父內序、
+再比標題前綴與行距。另有一類大綱檔（<code>-k</code>）其實是<b>拍平清單</b>——父層資訊在源檔已失。
+處理規則是：節點數與主卷逐部一比一鏡像、正規化標題吻合達九十五％以上者才還原父層；
+<b>不合格者（如本論、瑜伽論記）如實標為「平列」，絕不硬掛成一棵樹去虛構層次。</b></p>
+
+<h3>8. 驗收：六節全綠才算這一版做完</h3>
+<ul>
+<li><b>庫內錨點</b>：94,632 種目標逐條解析，FAIL 0。</li>
+<li><b>跨庫頁欄</b>：29,612 種 <code>taisho?…</code> 座標全部能在 <code>taisho.adb</code> 解析出 VA，FAIL 0
+（頁欄鍵一律含冊號並轉成數字比對——大正有 85.8％ 的「頁號＋欄」組合跨冊重複，丟冊號會靜默查到別冊）。</li>
+<li><b>段落窗</b>：10,200 條注文段落 ref 從<b>已部署的 adb 位元組</b>回讀，而不是從中間檔。</li>
+<li><b>目錄樹回歸</b>：走介面那條碼路，35 頁籤／17 根／377 節。</li>
+<li><b>融合殼</b>：21,975 枚成對、無自閉合，抽樣取段全部可填。</li>
+</ul>
+
+<h2>三、目前做不到與已知缺口</h2>
+<ul>
+<li><b>死錨 273 種、涉及引用 1,475 條</b>（本檔隨附複核清單，本版重算數字不變）。其中約 96％ 集中在
+T1584《決定藏論》與 T2801《瑜伽論分門記》——這兩部的科判 DILA 自己也標注<b>尚未編完</b>，
+屬於源頭缺口而非轉檔錯誤；等 DILA 補編後重建即自動癒合，本庫<b>不把它們硬改成「最近的一個科」</b>。</li>
+<li><b>反鏈（「這一頁被誰引用」）對本庫目前恒為空</b>：閱讀器建反鏈索引時要求來源庫有「頁」層，
+而集成式文獻沒有這一層（本庫只有集／篇／章／卷次／科）。已連同重現數據回報閱讀器端，待其放開該條件。</li>
+<li>梵本與藏譯不入庫，故無法在本檔內做漢梵、漢藏對照。</li>
+<li>科判「逐字窗」目前覆蓋本論科判的約四成；其餘屬義引（注文並非逐字抄錄論文），本質上無法用逐字窗定位。</li>
+</ul>
+
+<h2>四、版本記錄</h2>
+<div class="tableWrap"><table>
+<thead><tr><th>版本</th><th>日期</th><th>做了什麼</th></tr></thead>
+<tbody>
+<tr><td>v26</td><td>2026-11-15</td><td>科判逐字窗 +468 條（40,786 → 41,254）；六節驗收全綠後上架兩站。</td></tr>
+<tr><td>v25</td><td>2026-11-14</td><td>《瑜伽論問答》問答體改寬窗重掃（段落 ref 10,162 → 10,200），採納率 3％ → 5.9％。</td></tr>
+<tr><td>v24</td><td>2026-11-13</td><td>平列大綱也能融合論本（借用鏡像同位節點）；<code>融</code> 增至 21,975 枚。</td></tr>
+<tr><td>v23</td><td>2026-11-13</td><td>科文融合視圖落地（standoff 填入，論本文字不複製）。</td></tr>
+<tr><td>v19–v21</td><td>2026-11-13</td><td>其餘十四部的科判補掛 CBETA 連結；粗窗逐字化精修（過閘者才換）。</td></tr>
+<tr><td>v14–v16</td><td>2026-11-13</td><td>有窗者升級 <code>#a-b</code> 精確定位；CBETA 連結改獨立行；鏡像還原大綱父層。</td></tr>
+</tbody></table></div>
+
+<p class="fine">原料與建置腳本、逐條複核清單（死錨、待消歧窗、行窗審計）都在
+<a href="https://github.com/accelon/yogacarabhumi">原料倉庫</a>的 <code>link-audit/</code> 下，
+可逐條覆核與重跑。發現錯誤或想增補，請到<a href="../index.html#contact">聯絡頁</a>留言。</p>
+</main>
+<footer>
+  <div class="wrap">
+    <span>accelon26 · Accelon3 跨平台平替 · <a href="index.html">研究用數據庫</a></span>
+    <span class="right">授權：Apache-2.0</span>
+  </div>
+</footer>
+</body>
+</html>

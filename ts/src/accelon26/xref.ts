@@ -19,6 +19,7 @@ import { activeSlot, catalog, openCatalogEntry, openDbs, switchTo } from './dbs'
 import { mapper, reader, setStatus } from './viewer';
 import { ensureRightPane, openForeignTab, setForeignNeighbor, setForeignRender } from './text-pane';
 import { taishoPlateUrl } from './plates';
+import { decodeXmlEntities } from '../xml-entities';
 import { linkTo, revealHit } from './link';
 import { highlightCharBand, markLineRange } from './doc-pane';
 import { setJumpRange } from './jump-band';
@@ -1017,6 +1018,30 @@ export async function renderForeign(db: string, va: number, anchor?: string, quo
         satUrl = 'https://21dzk.l.u-tokyo.ac.jp/SAT2018/satdb2018pre.php?ob=1&mode2=2&mode=detail&nonum=&kaeri=&useid='
           + no + '_.' + String(vol).padStart(2, '0') + '.' + String(pageN).padStart(4, '0') + pm[3] + '01';
       }
+    }
+  }
+  // 掃描／圖庫（作 2026-11-19）：目標頁是「整頁掃描圖」（有 resources 圖檔、內文幾乎沒有字）
+  // 時，右欄直接顯示該頁掃描圖，取代引文截圖（lineHtml 會丟掉 <圖>）。
+  // 文字庫頁面有幾百字，不會進這裡，引文行為不變；句中夾小圖的字形頁同理不受影響。
+  // 圖點一下走 #imgView 縮放（見 doc-pane bindInlineImageZoom 對 #textBody img.inlineImg）。
+  if (r.containers.has('resources') && hanCount(raw.replace(/<[^>]*>/g, '')) < 8) {
+    const figNames = [...raw.matchAll(/<圖[^>]*?\b(?:n|id|f)\s*=\s*"([^"]*)"/g)]
+      .map((m) => decodeXmlEntities(m[1]!));
+    if (figNames.length) {
+      const resC = r.containers.get('resources')!;
+      const ridx = new Map<string, number>();
+      for (let i = 0; i < (resC.count ?? 0); i++) ridx.set(resC.names[i], i);
+      let imgs = '';
+      for (const name of figNames) {
+        const ri = ridx.get(name);
+        if (ri === undefined) continue;
+        const { bytes } = await r.resourceBytes(ri);
+        const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
+        const type = ext === 'jpg' ? 'image/jpeg' : `image/${ext || 'png'}`;
+        const url = URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type }));
+        imgs += `<img class="inlineImg figureImg" style="max-width:100%;height:auto" src="${url}" alt="${esc(name)}" title="${esc(name)}">`;
+      }
+      if (imgs) bodyHtml = imgs;
     }
   }
   const html = head + rev + '<div class="docBody reflow"><p class="docPara">' + bodyHtml + '</p></div>';
