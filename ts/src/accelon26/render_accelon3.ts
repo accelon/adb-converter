@@ -1727,7 +1727,16 @@ export function renderPageBlocks(lines: string[], lineNumbers: number[], opts: R
           // `<段界/>` 是**新段落**的第一行（fuyan 轉檔端標記；ys／空之探究等不用，零影響）。
           // 頁標獨立成行、後面接的是新段落時，頁碼晶片留在前一行尾端，新段落自己成行——
           // 只有「同段被頁界切開的續行」（行首沒有 `<段界/>`）才允許接回前一行。
-          || /^\s*<段界\/>/.test(lines[i]);
+          || /^\s*<段界\/>/.test(lines[i])
+          // 2026-11-20（厚觀法師 331-①：《空之探究》p.24-25「3、無常 苦 空 無我」黏在
+          // 「2、…」行尾）：本庫系以行尾 `<段/>` 作段落界（無 `<段界/>`）。頁標獨立成行、
+          // 而它與前一行之間夾著 `<段/>`（空行槽或前行行尾）時＝新段落，不許併進前一行。
+          || blanks.some((b) => /<段\s*\/?>/.test(b.raw ?? ''))
+          || (() => {
+               const prev = out[out.length - 1];
+               return !!prev && prev.kind === 'line' && prev.lines.length > 0
+                 && /<段\s*\/?>\s*$/.test(prev.lines[prev.lines.length - 1].raw ?? '');
+             })();
         if (headingNext) {
           // 頁碼留在前一行尾端。若前一行已經是空頁的頁碼行，就讓它自己一行
           // （2026-11-15 陳裕文 259：26p40a／41a 兩頁相連又接標題，原本疊成一行）。

@@ -20,10 +20,10 @@ for (const line of readFileSync(resolve(LOCAL, 'server.env'), 'utf8').split(/\r?
 }
 if (!env.HOST || !env.USER || !env.PASS) { console.error('server.env 缺 HOST/USER/PASS'); process.exit(2); }
 
-const SHA = 'f52c07a33b86e7fe2522c612c8891e44efb3c0c176f5cbd5cf4daca640118fcc';
-const SIZE = 26563928;
-const BT = '2026-11-19T11:23:04Z';
-const DATE = '2026-11-19';
+const SHA = process.env.ADB_SHA ?? 'f52c07a33b86e7fe2522c612c8891e44efb3c0c176f5cbd5cf4daca640118fcc';
+const SIZE = Number(process.env.ADB_SIZE ?? 26563928);
+const BT = process.env.ADB_BT ?? '2026-11-19T11:23:04Z';
+const DATE = process.env.ADB_DATE ?? '2026-11-19';
 const NOTES = JSON.parse(readFileSync(resolve(ROOT, 'deploy/adb-notes.json'), 'utf8'))['fuyan.adb'].notes as string[];
 
 const MP = resolve(ROOT, 'www/adb/manifest.json');
