@@ -2089,7 +2089,10 @@
   /* hidden 屬性要贏過 body.advanced .advOnly 的 display（歷史版本要真的看不到鉛筆） */
   #editBtn[hidden] { display: none !important; }
   #readingBtn[hidden] { display: none !important; }
-  /* 精讀中：🙏 要看得出來（作者 2026-11-03） */`n  body.reading #readingBtn { border-color: var(--accent); background: var(--hl-bg); box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }`n  .editBtn.on { border-color: var(--accent); background: var(--hl-bg); box-shadow: inset 0 0 0 1px var(--accent); }
+  /* 精讀中：🙏 要看得出來（作者 2026-11-03） */
+  body.reading #readingBtn { border-color: var(--accent); background: var(--hl-bg); box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }
+  /* 編輯態：鉛筆要明顯看得出「正在編輯」（作者 2026-11-19：#editBtn 要有視覺差異） */
+  .editBtn.on { border-color: var(--accent); background: var(--hl-bg); box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); font-weight: 700; }
   #docEditor { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
   #docEditor .cmHost { flex: 1 1 auto; min-height: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--bg); }
   #docEditor .cm-editor { height: 100%; }
