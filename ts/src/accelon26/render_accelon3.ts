@@ -249,7 +249,7 @@ function svgStyleRules(src: string): Record<string, string> {
   return rules;
 }
 
-export function inlineSvgHtml(src: string, label: string, figure = false): string {
+export function inlineSvgHtml(src: string, label: string, figure = false, lineNo = 0): string {
   // 不能用非貪婪的 `([\s\S]*?)<\/svg>`：Visio 匯出的 SVG 內有 `<switch>` 巢狀
   // `<svg>` 備援块，非貪婪會切在**內層**第一個 `</svg>`，外層尾部的内容整段丟失
   // （HG05.058 的右括弧 st4 path 與虛線 st5 path 就這樣消失——厚觀法師 2026-11-17 UID 293）。
@@ -290,7 +290,12 @@ export function inlineSvgHtml(src: string, label: string, figure = false): strin
   const rootDecl = rootClass.split(/\s+/).map((c) => rules[c] ?? '').filter(Boolean).join(';');
   const style = [size, rootDecl, 'overflow:hidden'].filter(Boolean).join(';');
   const cls = ['inlineSvg', figure ? 'figureSvg' : ''].filter(Boolean).join(' ');
+  // 2026-11-20（厚觀法師 340-二：點 hg08-0986 圖內注號 194 跳到第十二品）：
+  // SVG 子元素不在 HTML 樹裡，closest('.docLine') 找不到本行 → lineOf 回 -1，
+  // 注號配對退化成「取第一條同號」。在 svg 根日記本行行號（data-line），
+  // lineOf 改由最近 svg 讀。
   return `<svg class="${esc(cls)}" viewBox="${esc(vb)}" role="img" aria-label="${esc(label)}"`
+    + ` data-line="${lineNo > 0 ? lineNo : ''}"`
     + ` title="${esc(label)}"`
     + ` style="${style}"`
     + ` preserveAspectRatio="xMidYMid meet">${inner}</svg>`;
@@ -1066,7 +1071,7 @@ export class Accelon3Renderer {
           const t = attrValue(attrs, 't');
           const figure = t === '圖版'
             || (this.opts.untaggedFigures && !svg && !t && !!attrValue(attrs, 'f'));
-          if (svg) html += inlineSvgHtml(svg, src, figure);
+          if (svg) html += inlineSvgHtml(svg, src, figure, lineNo);
           else if (url) html += `<img class="inlineImg${figure ? ' figureImg' : ''}" src="${esc(url)}" alt="${esc(src)}" title="${esc(src)}">`;
           else html += `<span class="inlineImgMissing" title="${esc(src || '圖')}">▢</span>`;
           this.sawText = true;

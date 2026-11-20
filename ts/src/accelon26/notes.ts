@@ -211,6 +211,7 @@ function pageKeyOf(
  */
 function pickNote(
   idx: NoteIndex, dir: 'body' | 'ref', n: string, fromVa: number, fromLine: number,
+  pgHint = '',
 ): { va: number; how: 'pg' | 'page' | 'pageNear' | 'nearest' } | null {
   const target = dir === 'body' ? idx.bodies.get(n) : idx.refs.get(n);
   const own = dir === 'body' ? idx.refs.get(n) : idx.bodies.get(n);
@@ -227,7 +228,9 @@ function pickNote(
     return at >= 0 ? list[at] : list[0];
   };
   // (1) 資料自己的 pg（yl38：`<註 n="45" pg="yl38p24"/>` ↔ `<釋 n="45" pg="yl38p24">`）
-  const fromPg = pgAtLine(own, ownPg, fromLine);
+  // 2026-11-20（厚觀法師 340-二）：pgHint＝圖版 svg 注號自帶的 data-pg——圖在 p.986、
+  // 注號芯片在 21 行外的 p.985 表內，pgAtLine 的 ±8 行窗口夠不到，必須由圖直接聲明。
+  const fromPg = pgHint || pgAtLine(own, ownPg, fromLine);
   if (fromPg) {
     const samePg = target.filter((v) => targetPg.get(v) === fromPg);
     if (samePg.length) return { va: nearestIn(samePg, fromVa, dir === 'body'), how: 'pg' };
@@ -271,14 +274,14 @@ function lineOfVa(va: number): number {
 }
 
 /** 找 `n` 對應的 `<釋>`：先往後（注文通常在引用之後），再往前 */
-async function findBody(n: string, fromLine: number): Promise<NoteHit | null> {
+async function findBody(n: string, fromLine: number, pgHint = ''): Promise<NoteHit | null> {
   const r = reader;
   const m = mapper;
   if (!r || !m || fromLine < 0) return null;
   const memo = cacheOf(r);
   const idx = await noteIndexOf(r);
   // 快取 key 要含頁 id：同一個 n 在不同節是不同的釋，只靠行號會跨節誤用（作者 2026-11-01）
-  const key = 'b:' + n + ':' + (idx ? pageKeyOf(idx, 'body', n, vaOfLine(fromLine), fromLine) : '') + ':' + fromLine;
+  const key = 'b:' + n + ':' + (idx ? (pgHint || pageKeyOf(idx, 'body', n, vaOfLine(fromLine), fromLine)) : '') + ':' + fromLine;
   if (memo.has(key)) return memo.get(key)!;
   const last = r.header.lineCount - 1;
 
@@ -303,9 +306,9 @@ async function findBody(n: string, fromLine: number): Promise<NoteHit | null> {
   // 有 tags/attributes 就查表（O(log n)），不必掃原文
   if (idx) {
     // 引用端自己的 pg（法華每品重起注號：n 相同、pg 相同才是同一條）
-    const wantPg = pgAtLine(idx.refs.get(n), idx.refPg, fromLine);
+    const wantPg = pgHint || pgAtLine(idx.refs.get(n), idx.refPg, fromLine);
     let hit: NoteHit | null = null;
-    const pick = pickNote(idx, 'body', n, vaOfLine(fromLine), fromLine);
+    const pick = pickNote(idx, 'body', n, vaOfLine(fromLine), fromLine, pgHint);
     if (pick) {
       const line = lineOfVa(pick.va);
       // tags 的 VA 與 linesVirtual 的行首 VA 可能差一兩行：在附近幾行找一次
@@ -355,7 +358,7 @@ async function findBody(n: string, fromLine: number): Promise<NoteHit | null> {
 }
 
 /** 找 `n` 對應的 `<註>`：先往前（引用在注文之前），再往後；找不到回 -1 */
-async function findRef(n: string, fromLine: number): Promise<number> {
+async function findRef(n: string, fromLine: number, pgHint = ''): Promise<number> {
   const r = reader;
   const m = mapper;
   if (!r || !m || fromLine < 0) return -1;
@@ -377,7 +380,7 @@ async function findRef(n: string, fromLine: number): Promise<number> {
   if (idx) {
     let found = -1;
     const wantPg = pgAtLine(idx.bodies.get(n), idx.bodyPg, fromLine);
-    const pick = pickNote(idx, 'ref', n, vaOfLine(fromLine), fromLine);
+    const pick = pickNote(idx, 'ref', n, vaOfLine(fromLine), fromLine, pgHint);
     if (pick) {
       const line = lineOfVa(pick.va);
       // 窗口 ±8：圖表裡好幾個注號會排成一列（05B 的 p35–36 表有五個），
@@ -424,6 +427,14 @@ async function findRef(n: string, fromLine: number): Promise<number> {
 
 /** 元素在本文的哪一行（`L123`）；不在本文（例如摘要卡）回 -1 */
 function lineOf(el: Element): number {
+  // 2026-11-20（厚觀法師 340-二：點 hg08-0986 圖內注號 194 跳到第十二品）：
+  // SVG 子元素不在 HTML 樹裡，closest('.docLine') 找不到本行 → lineOf 回 -1，
+  // 注號配對退化成「取第一條同號」。改讀 inlineSvgHtml 記在 <svg data-line> 的行號。
+  const svg = el.closest('svg[data-line]') as HTMLElement | null;
+  if (svg?.dataset.line) {
+    const k = Number(svg.dataset.line);
+    if (Number.isFinite(k) && k > 0) return k;
+  }
   const row = el.closest('.docLine') as HTMLElement | null;
   if (!row) return -1;
   const n = Number(row.id.replace(/^L/, ''));
@@ -637,6 +648,7 @@ async function showTip(ref: HTMLElement): Promise<void> {
   const n = ref.dataset.note;
   const tip = tipEl();
   const from = lineOf(ref);
+  const hint = ref.getAttribute('data-pg') ?? '';
   if (!n || !tip || from < 0) return;
   if (tipFor === ref && !tip.hidden) return;   // 在同一个註裡移動：不要重設
   tipFor = ref;
@@ -644,7 +656,7 @@ async function showTip(ref: HTMLElement): Promise<void> {
   tip.hidden = false;
   tip.textContent = '讀取中…';
   placeTip(ref, tip);
-  const hit = await findBody(n, from);
+  const hit = await findBody(n, from, hint);
   if (tipFor !== ref || tip.hidden) return;
   tip.textContent = hit?.text || `找不到 <釋 n="${noteLabel(n)}">`;
   placeTip(ref, tip);
@@ -719,7 +731,7 @@ async function jumpToBody(ref: HTMLElement): Promise<void> {
   const from = lineOf(ref);
   hideTip();
   if (!n || from < 0 || !mapper) return;
-  const hit = await findBody(n, from);
+  const hit = await findBody(n, from, ref.getAttribute('data-pg') ?? '');
   if (!hit) { setStatus(`找不到 <釋 n="${noteLabel(n)}">`, 'warn'); return; }
   await revealDocLine(hit.line);
   flashTarget(hit.line, null, n);
