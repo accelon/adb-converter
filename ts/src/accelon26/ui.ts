@@ -13,6 +13,7 @@ import { cursorNode, initEntryLinks, lastReveal, nodeLabelOf, pinnedHit, revealC
 import { formatAddress, parseAddress, type PosMap } from './posmap';
 import { addressAtLine, convertText, initMap, mapPosMap, mapState, renderMap } from './map-pane';
 import { initNoteLinks, notePagesOf } from './notes';
+import { initTableDownload } from './tbl-download';
 import { PARALLEL_DBS, initParallelSegments, openSegment, segmentVa } from './parallel';
 import { appendTokenRows, renderDocs, renderHeader, renderMeta, renderResources, renderRevisions, renderTokens, showToken, tokenList, tokenOffset, vapaProbe } from './panes';
 import { collapseDirTree, dirActive, dirError, dirLoading, dirTrees, hitTotal, renderDirTree, renderFolio, renderFreq, renderGlossary, renderJump, jumpByQuery, jumpByTocPath, jumpByTocIndex, isTocPathQuery, isTocIndexQuery, renderLatin, renderTerms, selectDirTree, selectFreqTree, syncTreeTabs, treePhases, growTreeFully, treeSnapshot } from './scopes';
@@ -1765,6 +1766,8 @@ function boot() {
   initEntryLinks();
   // 本文的 `<註 n>` ↔ `<釋 n>` 腳注連動（作者 2026-10-26）
   initNoteLinks();
+  // `<表>` 區塊的「下載」按鈕（厚觀法師 354 二，2026-11-21）
+  initTableDownload();
   initParallelSegments();
   setDictHooks.current = () => { setSide('right', true); showTab('dict', 'right'); };
   // 詞卡（lex-pane）也是右欄分頁，不再用浮動 drawer（作者 2026-11-03）。

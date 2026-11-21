@@ -1423,7 +1423,10 @@ export function tableHtml(t: RenderTable, rowCls?: (no: number) => string): stri
     ? `<details class="tblSrc" id="L${t.source.no}" data-src="${esc(t.source.raw)}">`
       + '<summary>看原圖</summary><div class="tblSrcImg">' + t.source.html + '</div></details>'
     : '';
-  return `<div class="docTable" style="--cols:${t.cols}"><table>${cap}${head}<tbody>${body}</tbody></table>${src}</div>`;
+  // 下載鈕（厚觀法師 354 二）：click 由 tbl-download.ts 文件級委派處理
+  const dl = '<button class="tblDl" type="button" style="float:right;font-size:.8em;padding:2px 8px;margin:0 0 4px 6px"'
+    + ' title="下載此表（HTML，Word／瀏覽器可直接開啟）">下載</button>';
+  return `<div class="docTable" style="--cols:${t.cols}">${dl}<table>${cap}${head}<tbody>${body}</tbody></table>${src}</div>`;
 }
 
 /** 一個區塊 → 版面塊；不是可解析的表格就回 null（呼叫端照舊逐行渲染） */
