@@ -13,7 +13,7 @@
  *
  * 目標庫必須已在同一工作階段開過（file:// 不能自己讀硬碟）。
  */
-import { AdbReader, BlobIO } from './adb';
+import { AdbReader, BlobIO, type AdbSource } from './adb';
 import { parseCharPosition } from './char-position';
 import { activeSlot, catalog, openCatalogEntry, openDbs, switchTo } from './dbs';
 import { mapper, reader, setStatus } from './viewer';
@@ -27,7 +27,7 @@ import { variantGroupOf } from './variants';
 import { SHORT_TITLES } from './short-titles';
 import { bookById, resolveWork } from './book-catalog';
 import { openAdbStore } from './adb-store';
-import { hostState } from './host';
+import { hostState, desktopSources } from './host';
 import { bz2Decompress } from '../bzip2-wasm';
 import { HAN_RE, isHan, hanChars, hanCount } from './han';
 import { anchorIndex, anchorVa, blockOf, nodeAnchorInfo, nodeSpanChunk, nodeSubtreeEnd, pageHanTextOf, revPageKey, revPageWholeKey, type AnchorIndex } from './page-text';
@@ -101,7 +101,7 @@ export async function readerFor(db: string): Promise<AdbReader | null> {
   const slot = openDbs.find((s) => s.file.name.replace(/\.adb$/i, '').toLowerCase() === db.toLowerCase()
     || s.name === db
     || (s.core as { reader?: AdbReader } | undefined)?.reader?.header.dbname === db);
-  if (!slot) return null;
+  if (!slot) return autoOpenAdb(db);
   // 這個庫已經在分頁裡開著就直接用它（作者 2026-10-29）：重新 AdbReader.open 一次
   // 會再解析容器，而且桌面版會失去宿主的 Go 解壓／查詢，第一次點聯會慢好幾秒。
   const live = (slot.core as { reader?: AdbReader } | undefined)?.reader;
@@ -109,6 +109,41 @@ export async function readerFor(db: string): Promise<AdbReader | null> {
   const r = await AdbReader.open(new BlobIO(slot.file));
   foreignReaders.set(db, r);
   return r;
+}
+
+// 依 dbname 自動開啟「沒被開進工作階段」的庫（圖版掃描庫 chanyaoN 等）：
+// catalog →（桌面）宿主資料夾 desktopSources →（瀏覽器）fetch /adb/<db>.adb。
+// 與 mapReader 找對照庫同一條路，省得讀者要手動開掃描庫才能點頁碼出圖（作者 2026-11-20）。
+const hostDbMemo = new Map<string, AdbSource | null>();
+async function autoOpenAdb(db: string): Promise<AdbReader | null> {
+  const base = (n: string) => n.replace(/\.adb$/i, '').toLowerCase();
+  const b = db.toLowerCase();
+  // 1) catalog（已列進目錄、可能握著 File/Blob）
+  const e = catalog.find((x) => x.name === db || base(x.file.name) === b || (x.dbname ?? '').toLowerCase() === b);
+  if (e) {
+    try { const r = await AdbReader.open(new BlobIO(e.file)); foreignReaders.set(db, r); return r; } catch { /* 繼續找 */ }
+  }
+  // 2) 桌面版宿主目錄（exe 旁 *.adb）
+  if (!hostDbMemo.has(db)) {
+    const host = await desktopSources().catch(() => [] as AdbSource[]);
+    hostDbMemo.set(db, host.find((s) => base(s.name) === b || (s.dbname ?? '').toLowerCase() === b) ?? null);
+  }
+  const src = hostDbMemo.get(db);
+  if (src) {
+    try { const r = await AdbReader.open(new BlobIO(src)); foreignReaders.set(db, r); return r; } catch { return null; }
+  }
+  // 3) 瀏覽器/dev server：從 /adb/<db>.adb 抓（本地快、免線上）
+  try {
+    const resp = await fetch('/adb/' + encodeURIComponent(db) + '.adb');
+    if (resp.ok) {
+      const buf = await resp.arrayBuffer();
+      const file = new File([buf], db + '.adb', { type: 'application/octet-stream' });
+      const r = await AdbReader.open(new BlobIO(file));
+      foreignReaders.set(db, r);
+      return r;
+    }
+  } catch { /* 非 dev server 環境 */ }
+  return null;
 }
 
 export interface BookHit { db: string; va: number; title: string; pageVa?: number; pageId?: string }
@@ -830,7 +865,7 @@ function lcsSpan(a: string, b: string): { count: number; bFirst: number; bLast: 
   return { count, bFirst, bLast };
 }
 
-export async function renderForeign(db: string, va: number, anchor?: string, quote?: string, range?: string): Promise<{ html: string; title: string }> {
+export async function renderForeign(db: string, va: number, anchor?: string, quote?: string, range?: string, overlay?: { x: number; y: number; w: number; h: number }[]): Promise<{ html: string; title: string }> {
   const tA = performance.now();
   const r = await readerFor(db);
   if (!r) return { html: '<p class="dim">請先把 ' + esc(db) + '.adb 開起來（同一個瀏覽器工作階段）。</p>', title: db };
@@ -1040,7 +1075,13 @@ export async function renderForeign(db: string, va: number, anchor?: string, quo
         : ext === 'svg' ? 'image/svg+xml'
         : ext === 'webp' ? 'image/webp' : 'image/png';
       const url = URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type }));
-      imgs += `<img class="inlineImg figureImg" style="max-width:100%;height:auto" src="${url}" alt="${esc(name)}" title="${esc(name)}">`;
+      const imgHtml = `<img class="inlineImg figureImg scanPlate" data-scandb="${esc(db)}" data-scananchor="${esc(anchor)}" style="max-width:100%;height:auto" src="${url}" alt="${esc(name)}" title="${esc(name)}">`;
+      if (overlay && overlay.length) {
+        const rects = overlay.map((r) => `<span class="scanRect" style="left:${(r.x * 100).toFixed(3)}%;top:${(r.y * 100).toFixed(3)}%;width:${(r.w * 100).toFixed(3)}%;height:${(r.h * 100).toFixed(3)}%"></span>`).join('');
+        imgs += `<span class="scanPlateWrap">${imgHtml}<span class="scanOverlay">${rects}</span></span>`;
+      } else {
+        imgs += imgHtml;
+      }
       break;
     }
     if (imgs) bodyHtml = imgs;

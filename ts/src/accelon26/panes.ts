@@ -308,6 +308,15 @@ let ivUrl = '';
 let ivBytes: Uint8Array | null = null;
 /** 這一張是 SVG（向量）：可以放大到超過 100% 而不失真（作者 2026-10-29） */
 let ivSvg = false;
+/** 選取區→圖版疊加：每一直欄一個矩形，座標是圖的 0..1 比例（作 2026-11-19）。overlay 鋪滿 .ivWrap＝圖的大小，縮放時自動跟圖走。 */
+let ivOverlay: { x: number; y: number; w: number; h: number }[] | null = null;
+function ivDrawOverlay(): void {
+  const ov = $('#imgOverlay') as HTMLElement | null;
+  if (!ov) return;
+  ov.innerHTML = (ivOverlay ?? [])
+    .map((r) => `<div class="imgRect" style="left:${(r.x * 100).toFixed(3)}%;top:${(r.y * 100).toFixed(3)}%;width:${(r.w * 100).toFixed(3)}%;height:${(r.h * 100).toFixed(3)}%"></div>`)
+    .join('');
+}
 
 function ivImg(): HTMLImageElement | null { return $('#imgViewImg') as HTMLImageElement | null; }
 function ivStage(): HTMLElement | null { return $('#imgStage') as HTMLElement | null; }
@@ -351,7 +360,7 @@ function ivFit(): void {
   ivApplyScale(Math.min(ivSvg ? 8 : 1, sw / w, sh / h));
 }
 
-export function openImageView(name: string, url: string, bytes: Uint8Array): void {
+export function openImageView(name: string, url: string, bytes: Uint8Array, overlay?: { x: number; y: number; w: number; h: number }[] | null): void {
   const box = $('#imgView') as HTMLElement | null;
   const back = $('#imgViewBackdrop') as HTMLElement | null;
   const img = ivImg();
@@ -361,6 +370,7 @@ export function openImageView(name: string, url: string, bytes: Uint8Array): voi
   ivUrl = url;
   ivBytes = bytes;
   ivSvg = /\.svg$/i.test(name);
+  ivOverlay = overlay ?? null;
   // ys 的 PNG／GIF 圖版放在 `png/`、`svg/` 下；看圖視窗也要跟 SVG 一樣可反轉。
   const rasterFigure = !ivSvg && /^(png|svg)\//i.test(name);
   img.classList.toggle('svg', ivSvg);
@@ -383,6 +393,7 @@ export function openImageView(name: string, url: string, bytes: Uint8Array): voi
   }
   box.hidden = false;
   back.hidden = false;
+  ivDrawOverlay();
   if (img.complete && img.naturalWidth) ivFit();
   else ivApplyScale(1);
   ($('#imgViewClose') as HTMLElement | null)?.focus();
@@ -399,6 +410,9 @@ function closeImageView(): void {
   ivBytes = null;
   ivUrl = '';
   ivName = '';
+  ivOverlay = null;
+  const ov = $('#imgOverlay') as HTMLElement | null;
+  if (ov) ov.innerHTML = '';
 }
 
 /** 存檔：檔名用 adb 裡的資源名（去掉目錄，瀏覽器不接受路徑） */

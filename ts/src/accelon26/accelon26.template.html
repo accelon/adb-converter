@@ -1738,6 +1738,14 @@
   .ivStage.dragging { cursor: grabbing; }
   .ivCanvas { min-width: 100%; min-height: 100%; display: flex; align-items: center; justify-content: center; }
   #imgViewImg { display: block; max-width: none; user-select: none; -webkit-user-drag: none; }
+  /* 選取區→圖版疊加（作 2026-11-19）：ivWrap 收到圖的大小，overlay 鋪滿圖、每直欄一個半透明矩形。 */
+  .ivWrap { position: relative; line-height: 0; }
+  .imgOverlay { position: absolute; inset: 0; pointer-events: none; }
+  .imgRect { position: absolute; box-sizing: border-box; background: rgba(217, 154, 43, .26); outline: 1px solid rgba(217, 154, 43, .6); }
+  /* 選取區→圖版疊加在右欄（作 2026-11-19）：掃描圖包在 scanPlateWrap，overlay 鋪滿圖、每選取行一段半透明。 */
+  .scanPlateWrap { position: relative; display: inline-block; line-height: 0; max-width: 100%; }
+  .scanOverlay { position: absolute; inset: 0; pointer-events: none; }
+  .scanRect { position: absolute; box-sizing: border-box; background: rgba(217, 154, 43, .28); outline: 1px solid rgba(217, 154, 43, .65); }
 
   /* full text search */
   .searchBar { display: flex; gap: 6px; margin-bottom: 8px; position: relative; }
@@ -2994,7 +3002,7 @@
       <button type="button" class="aboutClose" id="imgViewClose" title="關閉（Esc）">✕</button>
     </span>
   </div>
-  <div class="ivStage" id="imgStage"><div class="ivCanvas"><img id="imgViewImg" alt=""></div></div>
+  <div class="ivStage" id="imgStage"><div class="ivCanvas"><div class="ivWrap" id="imgWrap"><img id="imgViewImg" alt=""><div class="imgOverlay" id="imgOverlay"></div></div></div></div>
 </div>
 <!-- 腳注提示（作者 2026-10-26）：hover <註> 時顯示對應 <釋> 的文字 -->
 <div id="noteTip" hidden></div>
@@ -3023,6 +3031,7 @@
     <button type="button" class="selGroupBtn">查看<span class="selCaret">▸</span></button>
     <div class="selSub" data-sub="view">
       <button type="button" data-sel="dict">查字典</button>
+      <button type="button" data-sel="scanplate" hidden title="開啟選取處對應的原書掃描圖，並把選取到的行疊成半透明直欄">查看圖版</button>
       <button type="button" data-sel="lexHan" hidden title="用 lex.adb 反向查選取漢詞對應的巴利詞">查詞</button>
       <button type="button" data-sel="gloss" hidden></button>
       <button type="button" data-sel="sutra" hidden></button>

@@ -7,8 +7,8 @@
  *   - 產生的引用含頁 id，貼到「跳至」即可跳到那一頁（見 scopes.ts 的 embedded 頁 id）。
  */
 import { mapper, reader, setStatus } from './viewer';
-import { anchorIndex } from './page-text';
-import { lookupBook, openTaishoAt, pageHanText, pageIdAtVa, type BookHit } from './xref';
+import { anchorIndex, anchorVa } from './page-text';
+import { lookupBook, openTaishoAt, pageHanText, pageIdAtVa, readerFor, openCharPosition, type BookHit } from './xref';
 import { formatCharPosition } from './char-position';
 import { HAN_RE } from './han';
 import { citationEntryTag, entryAt, entryHanOffset } from './entry-anchor';
@@ -16,6 +16,7 @@ import { cursorNode, focusTreeNode, revealCursorInTree, revealHit } from './link
 import { openDictLookup } from './dict-pane';
 import { openLexPaneForHan } from './lex-pane';
 import { openForeignTab } from './text-pane';
+import { openImageView } from './panes';
 import {
   addressAtLine, adbAvailable, mapPosMap, mapSideOf, openOtherTextFromRange, plateLinksAtLine, taishoPlateForPageId, type PlateLinks,
 } from './map-pane';
@@ -347,21 +348,50 @@ function rawMarkFor(info: SelInfo): string {
   return `${head}\n${lines.join('\n')}`;
 }
 
+/**
+ * 用 DOM 行序估計「選取某一行內第 prefix 個漢字」在本頁的漢字偏移：本頁內、line 之前
+ * 各行的漢字數累加 + prefix。回傳 null 表示無法用 DOM 定位（找不到頁 VA 等）。
+ */
+async function pageHanOffsetAt(info: SelInfo, line: number, prefix: number): Promise<number | null> {
+  try {
+    const r = reader, mp = mapper;
+    if (!r || !mp) return null;
+    const pageVa = await anchorVa(r, info.pageId);
+    if (pageVa == null) return null;
+    let acc = prefix;
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>('#docText .docLine'))) {
+      const ln = Number((el.id || '').slice(1));
+      if (!Number.isFinite(ln) || ln >= line) continue;
+      const v = mp.linesVirtual?.[ln];
+      if (v == null || v < pageVa) continue;
+      acc += (el.textContent || '').match(/\p{Script=Han}/gu)?.length || 0;
+    }
+    return acc;
+  } catch { return null; }
+}
+
+/** 選取起點在本頁第幾個漢字（DOM 定位）。 */
+async function pageHanOffsetFromDom(info: SelInfo): Promise<number | null> {
+  return pageHanOffsetAt(info, info.startLine, info.hanPrefix);
+}
+
 async function hanRange(info: SelInfo): Promise<[number, number]> {
+  // 優先用 DOM 行序定位起訖偏移（pageHanOffsetAt）：重複句用 indexOf 只會命中第一次，不準。
+  const a = await pageHanOffsetAt(info, info.startLine, info.hanPrefix);
+  const bEx = await pageHanOffsetAt(info, info.endLine, info.hanPrefixEnd);
+  if (a != null && bEx != null && bEx >= a) return [a, bEx];
+  // 退回舊的 indexOf 路徑（DOM 定位失敗時）。
   const db = reader?.header.dbname ?? '';
   const page = await pageHanText(db, info.pageId);
-  // 座標是「這一頁第幾個漢字」（code point），不是 UTF-16 位移：擴充 B 區的字
-  // 是代理對，用 string index 會少算（han.ts 的同一套規則）。
   const pageChars = [...page];
   const needleChars = [...info.raw].filter((c) => HAN_RE.test(c));
   if (!needleChars.length) return [0, 0];
   const needle = needleChars.join('');
   const cpAt = (unitAt: number): number => [...page.slice(0, unitAt)].length;
+  let at = -1;
   let atUnit = page.indexOf(needle);
-  let at = atUnit >= 0 ? cpAt(atUnit) : -1;
+  at = atUnit >= 0 ? cpAt(atUnit) : -1;
   if (at < 0) {
-    // 區段跨頁時整段不在這一頁：用開頭的一段去對（越長越準），
-    // 才不會退成 0-N 指到頁首。
     for (let n = Math.min(needleChars.length, 24); n >= 4; n--) {
       atUnit = page.indexOf(needleChars.slice(0, n).join(''));
       if (atUnit >= 0) { at = cpAt(atUnit); break; }
@@ -584,10 +614,13 @@ function showMenu(info: SelInfo): void {
   m.querySelectorAll<HTMLButtonElement>('[data-sel]').forEach((b) => { b.hidden = false; });
   const minor = m.querySelector<HTMLButtonElement>('.selMinor');
   if (minor) minor.hidden = false;
-  for (const sel of ['plateT', 'plateK', 'textT', 'textK', 'sutra', 'addr', 'gloss', 'lexHan']) {
+  for (const sel of ['plateT', 'plateK', 'textT', 'textK', 'sutra', 'addr', 'gloss', 'lexHan', 'scanplate']) {
     const b = actOf(m, sel);
     if (b) b.hidden = true;
   }
+  // 選取處所在頁若連結到一個內嵌掃描庫（該庫 resources 含 scanplate.json 自宣告），給「查看圖版」。
+  // 異步判定（要開掃描庫讀宣告），不再硬編碼「chanyaoscan」。
+  if (!info.pageMark) void resolveScanPlateButton(info);
 
   // 雙擊原書頁 <頁>：只留「複製文字」（作者 2026-10-31）；
   // 頁碼不是可搜尋／可加書籤／可查字典的文字。
@@ -769,8 +802,11 @@ function pageRangeLabel(info: SelInfo): string {
   const a = pageNumberOf(info.pageId);
   const b = pageNumberOf(info.endPageId || info.pageId);
   if (!a) return info.pageId;
-  if (!b || b === a) return `p.${a}`;
-  return `pp.${a}-${b}`;
+  // 藏要 pageId 形如「{冊}p{印刷頁}」；第2冊起帶上冊號，避免「p.4」與第1冊同頁碼混淆（作者 2026-11-20）。
+  const vol = /^(\d+)p/.exec(info.pageId)?.[1];
+  const vp = vol && vol !== '1' ? `冊${vol} ` : '';
+  if (!b || b === a) return `${vp}p.${a}`;
+  return `${vp}pp.${a}-${b}`;
 }
 
 /** 依檔頭的 <引> 展開引用文字；`$URL;` ＝ db?頁#起-止。找不到 <引> 用預設樣板。 */
@@ -835,6 +871,9 @@ async function buildCitation(info: SelInfo): Promise<{ text: string; html: strin
   // 網址只留在 HTML 版的連結裡（厚觀法師 2026-11-08）。其他庫照舊顯示網址。
   const label = pageRangeLabel(info);
   const useLabel = /^\d+p\d+$/.test(info.pageId);
+  // 一) 引用複製要帶字元級定位：useLabel 時把 url 的字元範圍（#a-b）附在紙本頁碼後。
+  const charSuffix = url.includes('#') ? url.slice(url.indexOf('#')) : '';
+  const urlOut = useLabel ? label + charSuffix : url;
   // 「引用複製」要「保留原有的段落與格式，並隨原書分行」（厚觀法師 2026-11-12）：
   // 選到多段才插換行，單段／短句照舊，免得一句話被硬拆成兩行。
   // 只有一段時也要用 selectedLines() 的結果：`info.text` 是 DOM 選取的字串，
@@ -843,7 +882,7 @@ async function buildCitation(info: SelInfo): Promise<{ text: string; html: strin
   // <段界/>／<空格/> 接好的段落，不會多也不會少。
   const quoted = info.lines && info.lines.length ? info.lines.join('\n') : info.text;
   let out = tpl.replace(/\$(\*?)([^;]+);/g, (_all, _star, tag: string) => {
-    if (tag === 'URL') return useLabel ? label : url;
+    if (tag === 'URL') return urlOut;
     if (tag === '_') return quoted;
     if (tag === '頁') return info.pageId;
     if (tag === '頁範圍') return label;
@@ -861,8 +900,8 @@ async function buildCitation(info: SelInfo): Promise<{ text: string; html: strin
   }
   // HTML 版（貼進 Word 用）也要分行，否則貼過去又擠成一團。
   let html = quoteHtml(out, info.lines, info.htmls);
-  if ((hasRange || useLabel) && label && url && html.includes(escHtml(label))) {
-    html = html.replace(escHtml(label), `<a href="${escHtml(url)}">${escHtml(label)}</a>`);
+  if ((hasRange || useLabel) && urlOut && url && html.includes(escHtml(urlOut))) {
+    html = html.replace(escHtml(urlOut), `<a href="${escHtml(url)}">${escHtml(urlOut)}</a>`);
   }
   return { text: out, html };
 }
@@ -1204,6 +1243,261 @@ export async function citationDebug(): Promise<unknown> {
   return { lines: info.lines, htmls: info.htmls, text: c.text, html: c.html };
 }
 
+/** 掃描疊加參數（各掃描庫以 resources/scanplate.json 自宣告；缺欄位退回通用預設）。 */
+interface ScanPlateCfg { cells: number; mt: number; mb: number; ml: number; mr: number; }
+const scanPlateCache = new Map<string, ScanPlateCfg | null>();
+
+/**
+ * 讀某庫 resources 裡的 scanplate.json 自宣告 → 有就是內嵌掃描庫，回傳疊加參數；沒有回傳 null。
+ * 每個 db 只開一次並快取。取代母區對「chanyaoscan」的硬編碼，之後任何掃描庫靠資料接上。
+ */
+async function scanPlateCfg(db: string): Promise<ScanPlateCfg | null> {
+  if (scanPlateCache.has(db)) return scanPlateCache.get(db) ?? null;
+  let out: ScanPlateCfg | null = null;
+  try {
+    const r: any = await readerFor(db);
+    const resC = r?.containers?.get?.('resources');
+    if (resC) {
+      const idx: number = resC.names.indexOf('scanplate.json');
+      if (idx >= 0) {
+        const { bytes } = await r.resourceBytes(idx);
+        const j = JSON.parse(new TextDecoder('utf-8').decode(bytes as Uint8Array));
+        out = { cells: j.cells ?? 33, mt: j.mt ?? 0.03, mb: j.mb ?? 0.03, ml: j.ml ?? 0.02, mr: j.mr ?? 0.02 };
+      }
+    }
+  } catch { out = null; }
+  scanPlateCache.set(db, out);
+  return out;
+}
+
+/** 掃描庫索引（每 db 一次）：printed→掃描錨點、掃描錨點→文字頁 id。
+ *  掃描庫文字很小（數個 block），直接掃 block 文字抓 `<頁 n="印刷頁" id="{NN}d{pdf}"/>` 與回連 `<聯 i="chanyao?…">`。
+ *  不依賴 DOM 頁標：虛擬捲動下頁標常不在視窗內（實測 data-xref 24 條、含 pageBreak 0 條）。 */
+const scanIdxCache = new Map<string, { byPrinted: Map<number, string>; textPageOf: Map<string, string> } | null>();
+async function scanIndexOf(db: string): Promise<{ byPrinted: Map<number, string>; textPageOf: Map<string, string> } | null> {
+  const hit = scanIdxCache.get(db);
+  if (hit !== undefined) return hit;
+  let out: { byPrinted: Map<number, string>; textPageOf: Map<string, string> } | null = null;
+  try {
+    const r: any = await readerFor(db);
+    const idxAny: any = await anchorIndex(r);
+    const nBlocks: number = idxAny?.bv?.length ?? 0;
+    if (nBlocks > 0) {
+      const byPrinted = new Map<number, string>();
+      const textPageOf = new Map<string, string>();
+      let lastId = '';
+      for (let b = 0; b < nBlocks; b++) {
+        const text: string = await r.sourceText(b);
+        const re = /<頁[^>]*?n="(\d+)"[^>]*?id="([^"]+)"|<聯 i="chanyao\?([^"]+)"/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(text))) {
+          if (m[2]) { lastId = m[2]!; const pr = +m[1]!; if (!byPrinted.has(pr)) byPrinted.set(pr, lastId); }
+          else if (m[3] && lastId && !textPageOf.has(lastId)) textPageOf.set(lastId, m[3]!);
+        }
+      }
+      out = { byPrinted, textPageOf };
+    }
+  } catch { out = null; }
+  scanIdxCache.set(db, out);
+  return out;
+}
+
+/** 本頁各欄（每欄＝一個源碼行，右起）與其漢字數——從文字庫源碼算，不依賴 DOM（虛擬捲動也成立）。 */
+async function pageLinesFromSource(pageId: string): Promise<{ va: number; han: number }[] | null> {
+  const mp = mapper, r = reader;
+  if (!mp || !r) return null;
+  const pageVa = await anchorVa(r, pageId);
+  if (pageVa == null) return null;
+  const vas: number[] = mp.linesVirtual ?? [];
+  const i0 = vas.findIndex((v) => v >= pageVa);
+  if (i0 < 0) return null;
+  // 跳過本頁的頁標列（頁標自成一行、無漢字；實測 raw 14473/14486）
+  let start = i0;
+  for (let i = i0; i < Math.min(vas.length, i0 + 8); i++) {
+    const l = await mp.lineText(i);
+    if (l.includes(`id="${pageId}"`)) { start = i + 1; break; }
+  }
+  const out: { va: number; han: number }[] = [];
+  for (let i = start; i < vas.length && out.length < 80; i++) {
+    const l = await mp.lineText(i);
+    if (/<頁[\s>]/.test(l)) break; // 下一頁的頁標 → 本頁結束
+    const han = (l.replace(/<[^>]*>/g, '').match(/\p{Script=Han}/gu) || []).length;
+    if (han > 0) out.push({ va: vas[i]!, han });
+  }
+  return out.length ? out : null;
+}
+
+/** 由文字頁 id（`{冊}p{印刷頁}`／敘 `{冊}ps{k}`）直接推導掃描目標：db=chanyao{冊}、錨點=掃描庫中 n=印刷頁 的那頁。
+ *  全程不依賴 DOM——引用/選取本來就拿得到 pageId，虛擬捲動、敘頁都成立。 */
+async function scanTargetForPage(pageId: string): Promise<{ db: string; anchor: string; cfg: ScanPlateCfg; textPageId: string } | null> {
+  let m = /^(\d+)p(\d+)$/.exec(pageId);
+  if (m) {
+    const vol = +m[1]!, printed = +m[2]!;
+    if (vol < 1 || printed < 1) return null;
+    const db = `chanyao${vol}`;
+    const idx = await scanIndexOf(db);
+    if (!idx) return null;
+    const anchor = idx.byPrinted.get(printed);
+    if (!anchor) return null;
+    const cfg = await scanPlateCfg(db);
+    if (!cfg) return null;
+    return { db, anchor, cfg, textPageId: idx.textPageOf.get(anchor) ?? pageId };
+  }
+  m = /^(\d+)ps(\d+)$/.exec(pageId);
+  if (m) {
+    // 敘頁：{N}ps{k} → 掃描 pdf 5+k（建庫規則：1ps1→06、1ps2→07、1ps3→08…）
+    const vol = +m[1]!, k = +m[2]!;
+    const db = `chanyao${vol}`;
+    const cfg = await scanPlateCfg(db);
+    if (!cfg) return null;
+    const pad = String(vol).padStart(2, '0');
+    return { db, anchor: `${pad}d${String(5 + k).padStart(4, '0')}`, cfg, textPageId: pageId };
+  }
+  return null;
+}
+
+/** 異步決定選單「查看圖版」按鈕是否顯示：由 info.pageId 直接推導（不走 DOM 頁標）。 */
+async function resolveScanPlateButton(info: SelInfo): Promise<void> {
+  const t = await scanTargetForPage(info.pageId);
+  if (pending !== info) return; // 選單已換到別的選取
+  const b = document.querySelector<HTMLButtonElement>('#selMenu [data-sel="scanplate"]');
+  if (b) b.hidden = !t;
+}
+
+/**
+ * 選取區→圖版（2026-11-19，2026-11-20 通用化）：開選取處所屬頁的掃描圖（任意內嵌掃描庫，
+ * 依 resources/scanplate.json 自宣告判定），把選取到的行疊成半透明直欄（本文一行＝圖一直欄，
+ * 右起）。只在「從選取區開圖版」時疊加；從 <頁> 開不疊。cells/邊框來自該庫自宣告。
+ */
+async function openScanPlate(info: SelInfo): Promise<void> {
+  const st = await scanTargetForPage(info.pageId);
+  if (!st) { setStatus('這一頁沒有對應的掃描圖（' + info.pageId + '）', 'warn'); return; }
+  const { db, anchor, cfg } = st;
+  const r = await readerFor(db);
+  if (!r) { setStatus('無法開啟 ' + db + '.adb', 'warn'); return; }
+  const va = await anchorVa(r, anchor);
+  if (va == null) { setStatus('掃描庫找不到頁 ' + anchor, 'err'); return; }
+  // 幾何：從文字庫「源碼行」取本頁各欄（每行漢字數），不依賴 DOM 頁標（虛擬捲動/敘頁都成立）。
+  const rects: { x: number; y: number; w: number; h: number }[] = [];
+  const lines = await pageLinesFromSource(info.pageId);
+  if (lines) {
+    const N = Math.max(1, lines.length);
+    const CELLS = Math.max(1, cfg.cells); // 每欄字格數（該庫自宣告）
+    const { mt: MT, mb: MB, ml: ML, mr: MR } = cfg;
+    const areaW = 1 - ML - MR, areaH = 1 - MT - MB, colW = areaW / N;
+    const colOf = (ln: number): number => {
+      const va = mapper?.linesVirtual?.[ln];
+      return va == null ? -1 : lines.findIndex((L) => L.va === va);
+    };
+    const c0 = colOf(info.startLine);
+    const c1 = colOf(info.endLine) >= 0 ? colOf(info.endLine) : c0; // 跨頁選取的尾頁不在本頁 → 只到起欄底
+    if (c0 >= 0) {
+      for (let c = Math.min(c0, c1); c <= Math.max(c0, c1); c++) {
+        const L = lines[c];
+        if (!L) continue;
+        let rA = c === c0 ? info.hanPrefix : 0;
+        let rB = c === c1 ? info.hanPrefixEnd - 1 : CELLS - 1;
+        rA = Math.min(CELLS - 1, Math.max(0, rA));
+        rB = Math.min(CELLS - 1, Math.max(rA, rB));
+        rects.push({
+          x: (1 - MR) - (c + 1) * colW,
+          w: colW,
+          y: MT + (rA / CELLS) * areaH,
+          h: ((rB - rA + 1) / CELLS) * areaH,
+        });
+      }
+    }
+  }
+  // 直接畫在右欄（開該掃描頁的分頁＋疊加），不用會蓋住本文的 #imgView 彈窗
+  openForeignTab(db, va, db.slice(0, 4) + ' ' + anchor, false, anchor, '', '', rects);
+  setStatus(`已在右欄開啟掃描圖 ${anchor}，疊 ${rects.length} 段`, 'info');
+}
+
+let scanPlateClickBound = false;
+
+/** 讀右欄掃描圖現存疊加框（.scanRect），比例座標 0..1。 */
+function scanPlateOverlayRects(wrap: HTMLElement): { x: number; y: number; w: number; h: number }[] {
+  const ov = wrap.querySelector<HTMLElement>('.scanOverlay');
+  if (!ov) return [];
+  return [...ov.querySelectorAll<HTMLElement>('.scanRect')].map((s) => ({
+    x: (parseFloat(s.style.left) || 0) / 100, y: (parseFloat(s.style.top) || 0) / 100,
+    w: (parseFloat(s.style.width) || 0) / 100, h: (parseFloat(s.style.height) || 0) / 100,
+  }));
+}
+function addScanOverlayRect(wrap: HTMLElement, r: { x: number; y: number; w: number; h: number }): void {
+  let ov = wrap.querySelector<HTMLElement>('.scanOverlay');
+  if (!ov) { ov = document.createElement('span'); ov.className = 'scanOverlay'; wrap.appendChild(ov); }
+  const s = document.createElement('span'); s.className = 'scanRect';
+  s.style.left = (r.x * 100).toFixed(3) + '%'; s.style.top = (r.y * 100).toFixed(3) + '%';
+  s.style.width = (r.w * 100).toFixed(3) + '%'; s.style.height = (r.h * 100).toFixed(3) + '%';
+  ov.appendChild(s);
+}
+
+/** 掃描圖上一個點擊點 (x,y 0..1) → 反查成左欄本文一個漢字（該字頁內漢字序 a、文字庫/頁錨點）＋該格矩形。
+ *  欄=本掃描圖對應本文頁的內容行（右起），格內 row→該行第幾個字。幾何從文字庫源碼行算，不依賴 DOM。 */
+async function charUnderScanPoint(
+  img: HTMLImageElement, x: number, y: number,
+): Promise<{ a: number; db: string; anchor: string; rect: { x: number; y: number; w: number; h: number } } | null> {
+  const mp = mapper, rd = reader;
+  if (!mp || !rd) return null;
+  const name = (img.getAttribute('alt') || img.getAttribute('title') || '');
+  const scanAnchor = img.getAttribute('data-scananchor') || name.replace(/\.(png|jpe?g|gif|svg|webp)$/i, '');
+  const scanDb = img.getAttribute('data-scandb') || '';
+  const cfg = await scanPlateCfg(scanDb);
+  if (!cfg) return null;
+  const idx = await scanIndexOf(scanDb);
+  if (!idx) return null;
+  const textPageId = idx.textPageOf.get(scanAnchor);
+  if (!textPageId) return null;
+  const lines = await pageLinesFromSource(textPageId);
+  if (!lines) return null;
+  const N = Math.max(1, lines.length);
+  const { mt: MT, mb: MB, ml: ML, mr: MR, cells } = cfg;
+  const areaW = 1 - ML - MR, areaH = 1 - MT - MB, colW = areaW / N;
+  const c = Math.min(N - 1, Math.max(0, Math.floor((1 - MR - x) / colW)));
+  const r = Math.min(cells - 1, Math.max(0, Math.floor((y - MT) / areaH * cells)));
+  const line = lines[c];
+  if (!line) return null;
+  const charInLine = Math.min(line.han - 1, r);
+  let a = charInLine;
+  for (let k = 0; k < c; k++) a += lines[k]!.han;
+  const rect = { x: (1 - MR) - (c + 1) * colW, w: colW, y: MT + (charInLine / cells) * areaH, h: (1 / cells) * areaH };
+  return { a, db: rd.header.dbname, anchor: textPageId, rect };
+}
+
+/** 掃描圖版手勢（右欄通用，從 <頁> 或選取區開圖皆可）：
+ *  - 點「已塗色」的格 → 開大圖 #imgView（連現存塗色一起放大）。
+ *  - 點「沒塗色」的格 → 反查該格對應本文一個漢字、選取+捲入視窗，並塗上該格（再點一次即開大圖）。 */
+function bindScanPlateClick(): void {
+  if (scanPlateClickBound) return; scanPlateClickBound = true;
+  document.addEventListener('click', async (ev) => {
+    const img = (ev.target as Element | null)?.closest?.('#textBody img.scanPlate') as HTMLImageElement | null;
+    if (!img) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const box = img.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    const x = (ev.clientX - box.left) / box.width, y = (ev.clientY - box.top) / box.height;
+    let wrap = img.closest('.scanPlateWrap') as HTMLElement | null;
+    if (!wrap) { // 裸圖（從 <頁> 開、無疊加層）：包一層 scanPlateWrap 以便塗色
+      wrap = document.createElement('span'); wrap.className = 'scanPlateWrap';
+      img.parentNode?.insertBefore(wrap, img); wrap.appendChild(img);
+    }
+    const rects = scanPlateOverlayRects(wrap);
+    const src = img.currentSrc || img.src;
+    const name = img.getAttribute('alt') || img.getAttribute('title') || 'scan.png';
+    if (rects.some((rr) => x >= rr.x && x <= rr.x + rr.w && y >= rr.y && y <= rr.y + rr.h)) {
+      const bytes = await fetch(src).then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b)).catch(() => new Uint8Array());
+      openImageView(name, src, bytes, rects); // 已有塗色：開大圖
+      return;
+    }
+    const hit = await charUnderScanPoint(img, x, y);
+    if (!hit) { setStatus('左欄目前沒顯示這一頁，無法反查文字（請先開對應本文頁）', 'warn'); return; }
+    await openCharPosition({ db: hit.db, anchor: hit.anchor, a: hit.a, b: hit.a }); // 選取單字+捲入
+    addScanOverlayRect(wrap, hit.rect); // 塗這格，下次點同格即看大圖
+    setStatus('已選取對應文字，再點同一格看大圖', 'info');
+  }, true);
+}
+
 /** 選單動作（第一層三組＋書籤）。動態產生的第二層項目也用同一個入口。 */
 async function runAction(action: string): Promise<void> {
   const info = pending ?? await selectionInfo();
@@ -1247,6 +1541,7 @@ async function runAction(action: string): Promise<void> {
   else if (action === 'gloss' && glossQuery) await openDictLookup(glossQuery);
   else if (action === 'plateT' && plateUrls.taisho) await openExternalUrl(plateUrls.taisho);
   else if (action === 'plateK' && plateUrls.goryeo) await openExternalUrl(plateUrls.goryeo);
+  else if (action === 'scanplate') await openScanPlate(info);
   else if (action === 'textT' || action === 'textK') {
     // 開另一藏經文並選同段：讀大正藏→開高麗藏經文；讀高麗藏→開大正藏經文。
     const startAddr = await addressAtLine(info.startLine, info.hanPrefix);
@@ -1316,6 +1611,7 @@ export function initBookmarks(): void {
   if (inited) return;
   inited = true;
   installSelectAutoScroll();
+  bindScanPlateClick();
   // 開庫＋目錄樹建好後，回到最後加入的書籤（作者 2026-10-31）
   document.addEventListener('accelon26:tree-ready', () => { void resumeLastBookmark(); });
   const menu = $id('selMenu');

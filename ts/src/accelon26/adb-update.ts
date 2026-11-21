@@ -236,9 +236,13 @@ async function findItems(m: Manifest): Promise<UpdateItem[]> {
     } else if (sameSize.length === 1) {
       localIndex = sameSize[0].i;    // 大小已能唯一對到某一版，不必算 sha
     }
-    const behind = localSize !== latestSize
+    // 本地檔的修改時間比清單最新一版的 buildTime 還新＝使用者自己重建的最新版，
+    // 不該提示「更新」（點下去會蓋掉本地、把內容退回線上那一版）。作者 2026-11-19。
+    const latestMs = Date.parse(latest.buildTime ?? '');
+    const localNewer = Number.isFinite(latestMs) && (entry.file.lastModified ?? 0) > latestMs;
+    const behind = !localNewer && (localSize !== latestSize
       ? true
-      : (sha ? sha !== latestSha : false);
+      : (sha ? sha !== latestSha : false));
     const total = latestSize || entry.file.size;
     const status = db.status || 'available';
     // 施工中／整修中的庫：manifest 仍記錄版本，但不提供下載。

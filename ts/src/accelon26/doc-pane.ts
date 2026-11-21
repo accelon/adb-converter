@@ -457,6 +457,8 @@ function bindInlineImageZoom(): void {
     }
     const img = el?.closest?.('#docText img.inlineImg, #textBody img.inlineImg') as HTMLImageElement | null;
     if (!img) return;
+    // 掃描圖版（.scanPlate）交給 bookmarks 的「點選文字／看大圖」手勢處理，這裡不要搶（否則單擊就放大、無法反查文字）。
+    if (img.classList.contains('scanPlate')) return;
     ev.preventDefault();
     ev.stopPropagation();
     const name = img.getAttribute('alt') || img.getAttribute('title') || 'inline.png';
