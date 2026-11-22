@@ -1494,11 +1494,22 @@ async function renderTerms(): Promise<void> {
     // 繁簡通檢：詞條名也要通（「菩萨」找得到「菩薩」）
     const matchOne = (needle: string): boolean => {
       if (variantSearchOn()) {
-        const re = variantNamePattern(needle);
-        if (re) return re.test(n);
+        // 繁簡通檢：展開變體後仍要套「開頭／中間／結尾」（mid 不錨定、再排除頭尾）
+        const re = variantNamePattern(needle, mode === 'mid' ? 'any' : mode);
+        if (re) {
+          if (!re.test(n)) return false;
+          if (mode === 'mid') {
+            const s = variantNamePattern(needle, 'start');
+            const e = variantNamePattern(needle, 'end');
+            if ((s && s.test(n)) || (e && e.test(n))) return false;
+          }
+          return true;
+        }
+        // 無可展開變體：退回一般字串比對，仍要吃 mode（原本 n.includes 漏掉 → 通檢開著時「開頭」失效）
+        return modeMatch(n, needle, mode);
       }
       const re = namePattern(needle, mode);
-      return re ? re.test(n) : n.includes(needle);
+      return re ? re.test(n) : modeMatch(n, needle, mode);
     };
     if (!multiQ) {
       if (!variantSearchOn() && !namePattern(q, mode)) return modeMatch(n, q, mode);

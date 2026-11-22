@@ -1212,7 +1212,7 @@ export class Accelon3Renderer {
           // 詞頭前的小色塊（`<詞 t="術語">`）。色相與 `<例 t>` 走同一張 scheme 順序表，
           // 所以同一類別在分區標題與詞頭色塊上顏色一致。旧库无 t → 空串 → 不渲染，行为不变。
           if (word.liLabel) {
-            const v = liVars(liHueFor(word.liLabel, this.liPalette));
+            const v = liVars(liHueFor(word.liLabel, this.liPalette), this.liPalette);
             html += `<span class="dictLi" style="${v.vars}">${esc(word.liLabel)}</span>`;
           }
           if (word.homograph) this.homographPending = word.homograph;

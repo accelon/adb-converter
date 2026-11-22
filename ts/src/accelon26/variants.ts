@@ -87,8 +87,10 @@ export function queryHasVariants(text: string): boolean {
   return false;
 }
 
-/** 名詞分頁用：把查詢字串換成「同組任一字」的樣式（`.` 仍是任一字元） */
-export function variantNamePattern(text: string): RegExp | null {
+/** 名詞分頁用：把查詢字串換成「同組任一字」的樣式（`.` 仍是任一字元）。
+ *  `mode`（開頭／結尾）加錨點，讓繁簡通檢也吃「開頭／中間／結尾」三態（作者 2026-11：
+ *  通檢開著時「開頭」模式原本被忽略、退化成「含字」）。mid／any 不錨定。 */
+export function variantNamePattern(text: string, mode: string = 'any'): RegExp | null {
   const chars = [...text];
   if (!chars.length) return null;
   let body = '';
@@ -100,7 +102,9 @@ export function variantNamePattern(text: string): RegExp | null {
     used = true;
     body += '[' + [...group].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('') + ']';
   }
-  return used ? new RegExp(body) : null;
+  if (!used) return null;
+  const anchored = mode === 'start' ? '^' + body : mode === 'end' ? body + '$' : body;
+  return new RegExp(anchored);
 }
 
 /** 診斷：表的規模（測試／hover 用） */
