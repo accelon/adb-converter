@@ -27,7 +27,7 @@
  * paths respect that by bucketing each element by `floor(pa / srcblocksize)`.
  */
 import { AdbReader, binarySearchLE, type Container } from './adb';
-import { Tokenizer, isSkipTag, normalize, tokenProfileOf } from '../tokenize';
+import { Tokenizer, isSkipTag, parseTag, normalize, tokenProfileOf } from '../tokenize';
 import { decodeXmlEntities } from '../xml-entities';
 import { tntTrim } from '../unicode';
 
@@ -445,10 +445,14 @@ export class VaPaMapper {
         // before yields the previous token's start and shifts every PA.
         const pa = paStart + tk.offset * 2;
         if (raw.charCodeAt(0) === 0x3c) {
-          const name = tagNameOf(raw);
-          const isClose = name.startsWith('/');
-          const short = isClose ? name.slice(1) : name;
-          const skip = isSkipTag(short);
+          // 356/hanyu3 VA 對齊：skip 判定與 index-builder 同源（用 parseTag，
+          //   認底線 `_X` 標籤＝skip＝0 VA），否則閱讀端對 `</_名> <_名>` 進 4、
+          //   與建檔端分叉 → 高 VA 命中漂到空槽（搜「境」無本文）。
+          const inner = raw.slice(1, raw.length - 1);
+          const pt = parseTag(inner);
+          const name = pt.name;
+          const isClose = pt.kind === 'close';
+          const skip = pt.skip;                              // parseTag 已含底線 `_X`＋白名單
           const units = this.costOf(name, isClose, skip, raw);
           positions.push({
             va, pa, paEnd: pa + raw.length * 2, vaUnits: units,
