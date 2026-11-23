@@ -32,6 +32,13 @@ if (env.MIRROR_HOST) targets.push({ id: 'mirror', label: '鏡像', host: env.MIR
   docroot: (env.MIRROR_DOCROOT || DOCROOT).replace(/\/+$/, ''),
   hostkey: resolve(LOCAL, `hostkey-${env.MIRROR_HOST}.txt`) });
 
+// 2026-11-23 22:10 加：主站 adb 尚未補完時，manifest/fuyan.html 只能先推鏡像，
+// 否則主站會變成「新 manifest＋舊 adb」的 sha 不符（11-20 紅字事故同款）。
+const ONLY = process.argv.includes('--mirror-only') ? 'mirror'
+  : process.argv.includes('--primary-only') ? 'primary' : '';
+const chosen = ONLY ? targets.filter((t) => t.id === ONLY) : targets;
+if (!chosen.length) die('沒有符合的站');
+
 const locals = PAGES.map((p) => {
   const lp = resolve(ROOT, 'www/adb', p);
   if (!existsSync(lp)) die('找不到 ' + lp);
@@ -48,7 +55,7 @@ function sh(cmd: string[], label: string): string {
   return out;
 }
 
-for (const t of targets) {
+for (const t of chosen) {
   console.log(`\n=== ${t.label} https://${t.host}/ ===`);
   if (!existsSync(t.hostkey)) die(`缺少 ${t.hostkey}`);
   const fp = readFileSync(t.hostkey, 'utf8').trim();
