@@ -1,23 +1,26 @@
 /**
- * 閱讀態「假光標 + 鍵盤導航 + Shift 選取」（作者 2026-11-22）。
+ * 閱讀態「假光標 + 鍵盤導航 + Shift 選取」（作者 2026-11-22/24）。
  *
- * 目標（作者定）：只要一個假光標、不編輯；#docText 取得 focus 自動開啟，失去 focus
- * 不消失，點擊 #docText 把光標移到點處；←→↑↓ / PgUp/PgDn / Home/End 移動，Shift+鍵選取。
+ * 只要假光標、不編輯；#docText 取得 focus 自動開啟、失去 focus 不消失、點擊 docText 移動光標；
+ * ←→↑↓ / PgUp/PgDn / Home/End 移動、Shift+鍵選取。刻意不用 contenteditable（會動搖整個
+ * getSelection/caretRangeFromPoint 座標模型）。光標＝原生 Selection 折疊 Range + 自繪豎線；
+ * Shift 用 selection.extend() 產生真實選區 → 現有引用/掃描/注號全部讀 getSelection() 自動兼容。
  *
- * 不用 contenteditable（會動搖整個 getSelection/caretRangeFromPoint 座標模型）。光標用
- * 「原生 Selection 的折疊 Range」表示，另畫一條自訂閃爍豎線；Shift 移動用 selection.extend()
- * 產生真實選區 → 現有引用複製／掃描疊加／注號定位全部讀 getSelection()，自動兼容。
- * 光標狀態存 (line, col) 而非 live Range，虛擬捲動重繪後可重貼。
+ * 2026-11-24 迭代：
+ *  (1)(2) ↑↓ 改為「幾何找上/下方最近 DOM 行 → caretRangeFromPoint 吸附最接近的可停靠字元」，
+ *         不再用 line±1（修「善現 p.348 按 ↓ 沒作用」——腳注版面 line+1 未必存在）。
+ *  (3) 閃爍改純 CSS 淡入淡出（無 JS timer）。
+ *  (5) 連按方向鍵時光標恆亮（加 .solid 停動畫），閒置 600ms 才恢復淡入淡出。
+ *  (4) 粗細/顏色由 CSS 變數 --caret-w / --caret-color 控制（設置→閱讀 可調，見 ui.ts）。
  *
- * 幾何/滾動以 `#docText .docBody`（真正的 scroller）為準；focus/鍵/點擊掛在 `#docText`。
- *
- * 刻意不 import viewer（避免新增 import 循環）——用原生 querySelector 取元素。
+ * 刻意不 import viewer（避免新增 import 循環）。
  */
 
 let bound = false;
 let bar: HTMLElement | null = null;
 let caret: { line: number; col: number } | null = null;
 let active = false;
+let solidTimer = 0;
 
 const pane = (): HTMLElement | null => document.getElementById('docText');
 const scroller = (): HTMLElement | null => pane()?.querySelector<HTMLElement>('.docBody') ?? pane();
@@ -47,7 +50,7 @@ function rangeAt(line: number, col: number): Range | null {
   }
   const last = nodes[nodes.length - 1];
   const r = document.createRange();
-  if (last) { r.setStart(last, last.textContent?.length ?? 0); } else { r.selectNodeContents(el); }
+  if (last) r.setStart(last, last.textContent?.length ?? 0); else r.selectNodeContents(el);
   r.collapse(false); return r;
 }
 
@@ -65,6 +68,9 @@ function posFromRange(r: Range): { line: number; col: number } | null {
   }
   return { line, col: acc };
 }
+
+const caretRangeAt = (x: number, y: number): Range | null =>
+  (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }).caretRangeFromPoint?.(x, y) ?? null;
 
 function ensureBar(): HTMLElement | null {
   const sc = scroller();
@@ -135,18 +141,42 @@ function scrollIntoViewIfNeeded(): void {
   else if (rr.bottom > sr.bottom) sc.scrollTop += (rr.bottom - sr.bottom) + 8;
 }
 
-function move(dx: number, dy: number, extend: boolean): void {
+function moveH(dx: number, extend: boolean): void {
   if (!caret) return;
   let { line, col } = caret;
-  if (dx !== 0) {
-    col += dx;
-    if (col < 0) { const p = line - 1; if (lineEl(p)) { line = p; col = lineLen(p); } else col = 0; }
-    else { const len = lineLen(line); if (col > len) { const nx = line + 1; if (lineEl(nx)) { line = nx; col = 0; } else col = len; } }
-  } else if (dy !== 0) {
-    const target = line + dy;
-    if (lineEl(target)) { line = target; col = Math.min(col, lineLen(target)); }
-  }
+  col += dx;
+  if (col < 0) { const p = line - 1; if (lineEl(p)) { line = p; col = lineLen(p); } else col = 0; }
+  else { const len = lineLen(line); if (col > len) { const nx = line + 1; if (lineEl(nx)) { line = nx; col = 0; } else col = len; } }
   setCaret(line, col, extend);
+  scrollIntoViewIfNeeded();
+}
+
+/**
+ * ↑↓：找幾何上最近的一行（不靠 line±1），用 caretRangeFromPoint 落在該行、與目前 X 最接近的
+ * 可停靠字元。找不到就退回該行行首/行尾。（修 p.348 腳注 ↓ 無作用。）
+ */
+function moveV(dir: number, extend: boolean): void {
+  if (!caret) return;
+  const cur = rangeAt(caret.line, caret.col)?.getBoundingClientRect() ?? lineEl(caret.line)?.getBoundingClientRect();
+  if (!cur || (!cur.height && !cur.width)) { moveH(dir > 0 ? 1 : -1, extend); return; }
+  const x = cur.left + cur.width / 2;
+  const sc = scroller(); if (!sc) return;
+  const cand = Array.from(sc.querySelectorAll<HTMLElement>('.docLine[id^="L"]'))
+    .map((el) => ({ el, line: Number(el.id.slice(1)), r: el.getBoundingClientRect() }))
+    .filter((z) => Number.isFinite(z.line) && z.r.height > 0);
+  let best: typeof cand[number] | null = null;
+  for (const z of cand) {
+    if (dir > 0 ? z.r.top >= cur.bottom - 1 : z.r.bottom <= cur.top + 1) {
+      if (!best || (dir > 0 ? z.r.top < best.r.top : z.r.bottom > best.r.bottom)) best = z;
+    }
+  }
+  if (!best) return;                                   // 該方向已無行（頁首/頁尾）
+  const h = Math.min(best.r.height, cur.height || best.r.height);
+  const y = dir > 0 ? best.r.top + h / 2 : best.r.bottom - h / 2;
+  const r = caretRangeAt(x, y);
+  const p = r && posFromRange(r);
+  if (p && p.line === best.line) setCaret(p.line, p.col, extend);
+  else setCaret(best.line, dir > 0 ? 0 : lineLen(best.line), extend);   // 吸附失敗→該行首/尾
   scrollIntoViewIfNeeded();
 }
 
@@ -168,6 +198,14 @@ function toEdge(where: 'start' | 'end' | 'lineStart' | 'lineEnd', extend: boolea
   lineEl(line)?.scrollIntoView({ block: where === 'start' ? 'start' : 'end' });
 }
 
+/** 連按導航鍵時恆亮：加 .solid、重設閒置計時器，600ms 沒再按才恢復淡入淡出。 */
+function markSolid(): void {
+  const b = ensureBar(); if (!b) return;
+  b.classList.add('solid');
+  if (solidTimer) window.clearTimeout(solidTimer);
+  solidTimer = window.setTimeout(() => { bar?.classList.remove('solid'); }, 600);
+}
+
 export function initCaretMode(): void {
   if (bound) return;
   const box = pane(); if (!box) return;
@@ -178,22 +216,20 @@ export function initCaretMode(): void {
     active = true;
     if (!caret) {
       let vis = visibleLines();
-      if (!vis.length) vis = allLines();      // 佈局未就绪/無可見行時退回全文首行，別不落光標
+      if (!vis.length) vis = allLines();
       if (vis.length) setCaret(vis[0], 0, false);
     }
     drawBar();
   });
 
-  // 點擊：把光標移到點處；注號／頁碼／連結等互動元素交給既有 handler，不在此設光標
   box.addEventListener('mousedown', (ev) => {
     const tgt = ev.target as Element | null;
     if (tgt?.closest?.('a,button,.noteRef,.noteBack,.pageBreak,.pageMark,[data-xref],[data-embed],.embedChip,.nodeLink,.docTable')) return;
-    const r = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }).caretRangeFromPoint?.(ev.clientX, ev.clientY);
+    const r = caretRangeAt(ev.clientX, ev.clientY);
     const p = r && posFromRange(r);
-    if (p) setCaret(p.line, p.col, ev.shiftKey);
+    if (p) { setCaret(p.line, p.col, ev.shiftKey); markSolid(); }
   });
 
-  // 鍵盤：只在 #docText 焦點內、非 Alt（Alt+←→ 留翻頁）時接管方向/導航鍵
   box.addEventListener('keydown', (ev) => {
     if (!active || !caret || ev.altKey) return;
     const t = ev.target as HTMLElement | null;
@@ -201,22 +237,21 @@ export function initCaretMode(): void {
     const shift = ev.shiftKey;
     let handled = true;
     switch (ev.key) {
-      case 'ArrowLeft': move(-1, 0, shift); break;
-      case 'ArrowRight': move(1, 0, shift); break;
-      case 'ArrowUp': move(0, -1, shift); break;
-      case 'ArrowDown': move(0, 1, shift); break;
+      case 'ArrowLeft': moveH(-1, shift); break;
+      case 'ArrowRight': moveH(1, shift); break;
+      case 'ArrowUp': moveV(-1, shift); break;
+      case 'ArrowDown': moveV(1, shift); break;
       case 'Home': toEdge(ev.ctrlKey ? 'start' : 'lineStart', shift); break;
       case 'End': toEdge(ev.ctrlKey ? 'end' : 'lineEnd', shift); break;
       case 'PageUp': pageDir(-1, shift); break;
       case 'PageDown': pageDir(1, shift); break;
       default: handled = false;
     }
-    if (handled) { ev.preventDefault(); ev.stopPropagation(); }
+    if (handled) { ev.preventDefault(); ev.stopPropagation(); markSolid(); }
   });
 }
 
-/** 重繪後重貼光標（doc-pane rerenderDoc 呼叫）。行不在 DOM 就留狀態、下次捲動再畫。 */
 export function caretReanchor(): void { if (caret) drawBar(); }
 
-/** 測試／除錯用。 */
-export const caretDebug = (): { active: boolean; caret: typeof caret } => ({ active, caret });
+export const caretDebug = (): { active: boolean; caret: typeof caret; solid: boolean } =>
+  ({ active, caret, solid: !!bar?.classList.contains('solid') });

@@ -938,12 +938,19 @@
   }
   /* the middle pane only ever scrolls its document body */
   #docText { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
-  /* 閱讀態假光標（caret-mode.ts）：純視覺，不編輯；點/鍵移動。 */
+  /* 閱讀態假光標（caret-mode.ts）：純視覺，不編輯；點/鍵移動。粗細/顏色由 CSS 變數控制（設置→閱讀）。 */
+  :root { --caret-w: 2px; --caret-color: var(--accent); }
   #docText:focus-visible { outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: -1px; }
-  #caretBar { position: absolute; width: 2px; background: var(--accent); pointer-events: none; z-index: 6;
-    animation: caretBlink 1.05s step-end infinite; }
+  #caretBar { position: absolute; width: var(--caret-w, 2px); background: var(--caret-color, var(--accent));
+    pointer-events: none; z-index: 6; animation: caretFade 1.1s ease-in-out infinite; }
+  #caretBar.solid { animation: none; opacity: 1; }        /* 連按導航鍵時恆亮 */
   #caretBar[hidden] { display: none; }
-  @keyframes caretBlink { 50% { opacity: 0; } }
+  @keyframes caretFade { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+  /* 設置→閱讀 的光標預覽：依目前主題底色顯示 --caret-w/--caret-color 效果 */
+  .caretPreview { position: relative; display: inline-block; width: 4.5em; height: 1.6em; background: var(--bg);
+    border: 1px solid var(--line); border-radius: 4px; vertical-align: middle; overflow: hidden; }
+  .caretPreview::after { content: ""; position: absolute; left: 1.4em; top: .2em; bottom: .2em;
+    width: var(--caret-w, 2px); background: var(--caret-color, var(--accent)); animation: caretFade 1.1s ease-in-out infinite; }
 
   /* document tabs: one per linked node. Ctrl/cmd + a linking click opens a new
      one instead of replacing the current one. */
@@ -2832,6 +2839,23 @@
           <span>共享本文分頁（docTab）</span>
           <span class="setHint">開啟後所有 adb 共用同一條本文分頁；每個分頁記住自己的庫，點分頁會自動切回那個 adb（預設關，各庫各自一組；作者 2026-11-01）</span>
         </label>
+        <div class="setRow">
+          <span>光標粗細</span>
+          <select id="setCaretW" title="閱讀態假光標的寬度（作者 2026-11-24）">
+            <option value="1">1 px（細）</option>
+            <option value="2">2 px（預設）</option>
+            <option value="3">3 px</option>
+            <option value="4">4 px（粗）</option>
+          </select>
+          <span class="setHint">點正文後那個閃爍光標的寬度。</span>
+        </div>
+        <div class="setRow">
+          <span>光標顏色</span>
+          <input type="color" id="setCaretColor" value="#2f6fd0" title="閱讀態假光標顏色" style="width:2.4em;height:1.8em;padding:0;border:1px solid var(--line);border-radius:4px;background:none">
+          <span class="caretPreview" id="caretPreview" aria-hidden="true"></span>
+          <button type="button" class="mini" id="setCaretReset" title="回復跟主題一致的預設色">跟主題</button>
+          <span class="setHint">右邊是依目前主題底色的光標預覽；粗細/顏色存 localStorage、立即生效。</span>
+        </div>
       </section>
     </div>
     <!-- ---- 進階（作者 2026-11-01：從「介面」獨立成頁） ---- -->

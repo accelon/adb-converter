@@ -320,6 +320,22 @@ function initVariantAuto(): void {
   setVariantAuto(readVariantAuto());
 }
 
+// ---- 閱讀態假光標樣式（粗細/顏色，作者 2026-11-24）----
+const CARET_W_KEY = 'accelon26.caretW';
+const CARET_C_KEY = 'accelon26.caretColor';
+function caretW(): number { const v = Number(localStorage.getItem(CARET_W_KEY)); return v >= 1 && v <= 8 ? v : 2; }
+function caretColor(): string { try { return localStorage.getItem(CARET_C_KEY) || ''; } catch { return ''; } }   // ''＝跟主題(--accent)
+function applyCaretStyle(): void {
+  const root = document.documentElement.style;
+  root.setProperty('--caret-w', caretW() + 'px');
+  const c = caretColor();
+  if (c) root.setProperty('--caret-color', c); else root.removeProperty('--caret-color');
+}
+function setCaretW(px: number): void { try { localStorage.setItem(CARET_W_KEY, String(px)); } catch { /* 私密 */ } applyCaretStyle(); }
+function setCaretColor(hex: string): void { try { if (hex) localStorage.setItem(CARET_C_KEY, hex); else localStorage.removeItem(CARET_C_KEY); } catch { /* 私密 */ } applyCaretStyle(); }
+/** 開機套用已存的光標粗細/顏色到 CSS 變數。 */
+function initCaretStyle(): void { applyCaretStyle(); }
+
 // ---------------------------------------------------------------- 設置（齒輪）
 /**
  * 設置彈窗（作者 2026-10）：原本的 🧑‍💻 與「繁簡」按鈕都收進來。
@@ -330,8 +346,8 @@ function initVariantAuto(): void {
  */
 let settingsOpen = false;
 
-export function settingsState(): { open: boolean; advanced: boolean; variants: boolean; variantAuto: boolean; simMode: number } {
-  return { open: settingsOpen, advanced, variants: variantSearchOn(), variantAuto: variantAutoOn(), simMode: simModeOf() };
+export function settingsState(): { open: boolean; advanced: boolean; variants: boolean; variantAuto: boolean; simMode: number; caretW: number; caretColor: string } {
+  return { open: settingsOpen, advanced, variants: variantSearchOn(), variantAuto: variantAutoOn(), simMode: simModeOf(), caretW: caretW(), caretColor: caretColor() };
 }
 
 /**
@@ -374,6 +390,10 @@ function updateSettingsUi(): void {
   if (gl) gl.checked = glyphsEnabled();
   const tm = $('#setTrailMax') as HTMLSelectElement | null;
   if (tm) tm.value = String(trailMaxOf());
+  const cw = $('#setCaretW') as HTMLSelectElement | null;
+  if (cw) cw.value = String(caretW());
+  const cc = $('#setCaretColor') as HTMLInputElement | null;
+  if (cc) { const c = caretColor(); cc.value = c || getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#2f6fd0'; }
   const tmode = $('#setTermMode') as HTMLSelectElement | null;
   if (tmode) tmode.value = termModeOf();
   const lt = $('#setLineTip') as HTMLInputElement | null;
@@ -505,6 +525,17 @@ function initSettings(): void {
     const n = Number((ev.target as HTMLSelectElement).value) || 0;
     setTrailMax(n);
     setStatus(n ? '路徑每層最多 ' + n + ' 字' : '路徑每層不限字數', 'info');
+  });
+  // 閱讀態假光標粗細/顏色（作者 2026-11-24）：存 localStorage、套 CSS 變數、預覽即時跟
+  ($('#setCaretW') as HTMLSelectElement | null)?.addEventListener('change', (ev) => {
+    setCaretW(Number((ev.target as HTMLSelectElement).value) || 2);
+    setStatus(`光標粗細 ${(ev.target as HTMLSelectElement).value} px`, 'info');
+  });
+  ($('#setCaretColor') as HTMLInputElement | null)?.addEventListener('input', (ev) => {
+    setCaretColor((ev.target as HTMLInputElement).value);
+  });
+  ($('#setCaretReset') as HTMLElement | null)?.addEventListener('click', () => {
+    setCaretColor(''); updateSettingsUi(); setStatus('光標顏色回復跟主題', 'info');
   });
   // 術語顯示（作者 2026-10-31）：hover／inline／off
   ($('#setTermMode') as HTMLSelectElement | null)?.addEventListener('change', (ev) => {
@@ -1751,6 +1782,7 @@ function boot() {
   // 設置（齒輪）：主題、進階模式、繁簡通檢、文字顯示
   initVariants();
   initVariantAuto();
+  initCaretStyle();
   initSettings();
   // 更新鏡像（作者 2026-10-29）：設定頁的選項＋自動探測；選好後 adb 清單重新讀
   initUpdateMirrorUi();
