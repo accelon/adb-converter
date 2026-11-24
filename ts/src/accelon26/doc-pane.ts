@@ -11,6 +11,7 @@ import { PAGE, openImageView } from './panes';
 import { cursorPending, hasRealmNeighbor, nodeContaining, paintTreeActive, pinnedHit, revealHit, setCursorPending, setPinnedHit, stepRealm, syncCursorFromScroll } from './link';
 import { paintHit } from './paint';
 import { Accelon3Renderer, LEVEL_MAX_SCALE, LEVEL_STEP_PX, renderPageBlocks, tableHtml, tagChromaIndex, tierContext, type RenderBlock } from './render_accelon3';
+import { caretReanchor } from './caret-mode';
 import { upgradeDocGlyphs } from './glyph';
 import { ancestorTrail, currentNodeAt, siblingsOf } from './scopes';
 import { tagColorOf } from './tag-style';
@@ -139,6 +140,7 @@ function svgTextOf(name: string): string | null {
 /** 重畫目前這一頁（切換渲染模式用） */
 export function rerenderDoc(): void {  const s = docSession();
   if (s) renderDoc(s);
+  caretReanchor();   // 重繪後把假光標按 (line,col) 重貼
 }
 
 /**

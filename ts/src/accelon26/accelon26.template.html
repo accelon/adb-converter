@@ -938,6 +938,12 @@
   }
   /* the middle pane only ever scrolls its document body */
   #docText { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+  /* 閱讀態假光標（caret-mode.ts）：純視覺，不編輯；點/鍵移動。 */
+  #docText:focus-visible { outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: -1px; }
+  #caretBar { position: absolute; width: 2px; background: var(--accent); pointer-events: none; z-index: 6;
+    animation: caretBlink 1.05s step-end infinite; }
+  #caretBar[hidden] { display: none; }
+  @keyframes caretBlink { 50% { opacity: 0; } }
 
   /* document tabs: one per linked node. Ctrl/cmd + a linking click opens a new
      one instead of replacing the current one. */

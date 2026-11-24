@@ -2436,6 +2436,7 @@ function boot() {
   initMap();        // 左欄「對照」：高麗藏 ⇄ 大正藏 位置換算（goryeo_taisho.adb）
   initRevList();    // 反鏈清單抽屜
   initBookmarks();  // 左欄書籤＋選取文字選單
+  initCaretMode();  // 閱讀態假光標＋鍵盤導航＋Shift 選取（#docText focus 自動開）
   initAdbUpdate();  // #dbTabs 的資料庫更新（New）＋下載對話盒
   setEnsureRight(() => setSide('right', true));
   setOpenInMain((db, opts) => openInMain(db, opts));   // 右欄跨庫分頁 Ctrl+點 → 中間開啟
@@ -2535,6 +2536,7 @@ export function installDebugApi(): void {
   setCols: (left: number, right: number) => saveCols(left, right),
   /** 繁簡通檢：回傳切換後的值 */
   setVariants, toggleVariants, variantsOn: () => variantSearchOn(),
+  caretDebug: () => caretDebug(),
   variantAutoOn: () => variantAutoOn(), setVariantAuto: applyVariantAuto,
   /** 顯示原始文件（不渲染）：測試／指令用 */
   setRenderRaw, renderRawOn, rerenderDoc,
@@ -2833,6 +2835,7 @@ import { initHeatTab, renderHeatTab, syncHeatTab } from './heat-tab';
 import { initRevList } from './rev-list';
 import { initBookmarks, renderBookmarks } from './bookmarks';
 import { bookmarkState, citationForSelection, citationHtmlForSelection, citationDebug } from './bookmarks';
+import { initCaretMode, caretDebug } from './caret-mode';
 import { initVaultImport, vaultImportState } from './vault-import';
 import { initAdbStore, openAdbStore } from './adb-store';
 import { initStudyIndex, refreshStudyIndexButton } from './study-index';
