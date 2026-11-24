@@ -51,6 +51,15 @@ export function cleanCell(raw: string): string {
   return s;
 }
 
+/**
+ * 管線表專用：只把「半形」空白折成一個並去首尾（`| a | b |` 的排版留白），
+ * 全形空格 U+3000 當一般文字**原樣保留**——科判靠它做干支與科名之間的間隔
+ * 與欄內對齊，不能像框線字藝術那樣當成 OCR 填充刪掉（作者 2026-11-25）。
+ */
+export function cleanPipeCell(raw: string): string {
+  return raw.replace(/[ \t]+/g, ' ').trim();
+}
+
 /* ------------------------------------------------------------------ *
  * 管線表
  * ------------------------------------------------------------------ */
@@ -82,7 +91,9 @@ export function splitPipeRow(line: string): string[] {
   const t = s.trim();
   if (t.startsWith('|') && out.length && out[0].trim() === '') out.shift();
   if (t.endsWith('|') && out.length && out[out.length - 1].trim() === '') out.pop();
-  return out.map((c) => c.trim());
+  // 格內只修掉作者排版用的「半形」空白（`| a | b |` 的留白）；全形空格 U+3000 當
+  // 一般文字保留——科判靠它做干支與科名之間的間隔、以及欄內對齊（作者 2026-11-25）。
+  return out.map((c) => c.replace(/^[ \t]+/, '').replace(/[ \t]+$/, ''));
 }
 
 /** `---`、`:---:`、`---:` 這一類對齊列（至少一個 -，只能有 | : - 空白） */
@@ -149,7 +160,7 @@ function parsePipe(lines: string[]): TableData | null {
     if (cells.length < 2) return null;
     if (!cols) cols = cells.length;
     else if (cells.length !== cols) return null;
-    rows.push({ cells: cells.map(cleanCell), at: i });
+    rows.push({ cells: cells.map(cleanPipeCell), at: i });
   }
   if (!cols || rows.length < 1) return null;
   if (rows.filter((r) => !r.page).length < 2 && !header) return null;
