@@ -60,10 +60,23 @@ export const FMT_TAGS: Record<string, string> = {
   粗: 'fmt-bold', _粗: 'fmt-bold',
   經: 'fmt-kai', _經: 'fmt-kai',
   上標: 'fmt-sup',
+  // 作者 2026-11-25：科判對照表兩欄經文文字差異，標準 diff 三色——
+  // 除=少(remove)紅、加=多(add)綠、異=替換(replace)黃。
+  除: 'fmt-del', _除: 'fmt-del',
+  加: 'fmt-ins', _加: 'fmt-ins',
+  異: 'fmt-rep', _異: 'fmt-rep',
 };
 
 /** `<例 t="…"/>`：詞書的體例分區標記（cyd 等）。 */
 export const EXAMPLE_TAGS = new Set(['例', '_例']);
+
+/**
+ * 非樹層級（作者 2026-11-25，科判對照表 定案）：像 `<表科 lv="N">` 這種——要「依 lv 縮排＋上色」、
+ * 但**永不進目錄樹**、也不需要 `nav="0"`。做法：把這些標籤補進 `depthOf`（過渲染閘門、走 lv 上色），
+ * 但它們**不在 `<樹 t=…>` 清單**裡，所以建樹時絕不會為它們生成節點。
+ * 與 `<科>`（正文科判、進樹）互不干擾——`<科>` 行為完全不變。
+ */
+export const NON_TREE_TIERS = new Set(['表科']);
 
 /** 找下一個 tag 的 `>`，但跳過屬性引號內的 `>`（`<彈 t="…<x>…">` 才不會被切斷）。 */
 function findTagEnd(text: string, from: number): number {
@@ -333,8 +346,16 @@ export const LEVEL_MAX_SCALE = 1.8;
  *
  * 有界走訪（預設 20,000 個節點）：fgdict 的樹可以到 88k 個實例，但前兩萬個就足以
  * 決定每個層級用哪個標籤、最深到哪裡 —— 這個結果只用來排版，不需要百分之百完整。
+ *
+ * `declaredTiers`（作者 2026-11-25，科判對照表）：`<樹 t=…>` 宣告過、但**一個節點都沒進樹**
+ * 的標籤——全部實例都帶 `nav="0"`（要縮排與換色、卻不進目錄）就在這一類。原本因為
+ * `depthOf` 查不到，標籤整支被丟掉、文字淪為無樣式本文。這裡照宣告順序補深度，
+ * **不動 `levels`**（字級仍跟真實樹走，其他庫一個像素都不變）；只有「宣告了但樹裡沒有」
+ * 的標籤會被補，已有節點的標籤完全不受影響。
  */
-export function computeTierContext(roots: TreeNode[], limit = 20000): RenderContext {
+export function computeTierContext(
+  roots: TreeNode[], limit = 20000, declaredTiers?: readonly string[],
+): RenderContext {
   const depthOf = new Map<string, number>();
   const tagChroma = new Map<string, number>();
   let levels = 0;
@@ -351,6 +372,20 @@ export function computeTierContext(roots: TreeNode[], limit = 20000): RenderCont
     }
   };
   walk(roots, 0);
+  if (declaredTiers) {
+    for (let i = 0; i < declaredTiers.length; i++) {
+      const tag = declaredTiers[i];
+      if (!tag || depthOf.has(tag)) continue;
+      depthOf.set(tag, i);
+      if (!tagChroma.has(tag)) tagChroma.set(tag, tagChroma.size);
+    }
+  }
+  // 非樹層級（表科）：補進 depthOf 讓渲染閘門不丟它、走 lv 上色；不在 t= 清單 → 永不成樹節點。
+  for (const tag of NON_TREE_TIERS) {
+    if (depthOf.has(tag)) continue;
+    depthOf.set(tag, levels);
+    if (!tagChroma.has(tag)) tagChroma.set(tag, tagChroma.size);
+  }
   return { depthOf, levels, tagChroma };
 }
 

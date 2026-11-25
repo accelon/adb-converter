@@ -21,6 +21,11 @@ function tableExportHtml(table: HTMLTableElement): string {
   return '<!DOCTYPE html>\n<html lang="zh-Hant"><head><meta charset="utf-8">'
     + `<title>${escHtml(title)}</title>\n<style>\n`
     + 'body { font-family: "DFKai-SB","BiauKai","標楷體","PMingLiU",serif; background:#fff; color:#000; margin:24px; }\n'
+    // 厚觀法師 2026-11-25 07:55（408 三）：下載的檔案裡「天干地支／吉藏科判」要新細明體，
+    // 否則與標楷體的經文混在一起不好讀。科判在資料端是 `<科>`（渲染後 span 帶 data-tag="科"，
+    // class 被剝掉但 data-tag 留著），所以只命中科判；經文仍是 `<經>`（內聯楷體）不受影響，
+    // 其他表（如〈28普賢〉咒語對照表）沒有 `<科>`，字型完全照舊。
+    + '[data-tag="科"] { font-family: "PMingLiU","新細明體","MingLiU",serif; }\n'
     + 'table { border-collapse: collapse; }\n'
     + 'caption { text-align:left; font-weight:bold; padding:0 0 8px; }\n'
     + 'th, td { border:1px solid #444; padding:5px 10px; text-align:left; vertical-align:top; white-space:pre-wrap; }\n'

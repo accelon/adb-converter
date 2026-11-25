@@ -237,7 +237,8 @@ async function loadDirectoryTrees() {
   // panes driven by their own scopes and never look at dirTrees.
   dirActive = dirTrees.length ? 0 : -1;
   // 內文渲染要知道「每個標籤在第幾層」與「樹有幾層」——從剛建好的樹算一次（有界走訪）。
-  setTierContext(dirTrees.length ? computeTierContext(dirTrees[0].roots) : null);
+  setTierContext(dirTrees.length
+    ? computeTierContext(dirTrees[0].roots, 20000, dirTrees[0].tree.tiers) : null);
   // 文件順序（DFS）：上一頁／下一頁在邊界時要跳到「上／下一個 text node」
   dirOrder = dirTrees.length ? [...iterNodes(dirTrees[0].roots)] : [];
   syncTreeTabs();
@@ -503,7 +504,7 @@ export async function selectDirTree(i: number): Promise<void> {
   if (i !== dirActive) dirActive = i;                     // ensure 期間可能已切過
   const d = dirTrees[i];
   if (!d) return;
-  setTierContext(computeTierContext(d.roots));
+  setTierContext(computeTierContext(d.roots, 20000, d.tree.tiers));
   dirOrder = [...iterNodes(d.roots)];
   void renderDirTree();
 }
