@@ -114,6 +114,7 @@ function setCaret(line: number, col: number, extend: boolean): void {
     else { sel.removeAllRanges(); sel.addRange(r); }
   }
   drawBar();
+  if (!extend) { persistCaretSoon(); caretHover(); }   // 落點（不是拖曳選取）才記憶＋套用 hover
 }
 
 const lineLen = (line: number): number => { const el = lineEl(line); return el ? textNodesOf(el).reduce((a, n) => a + (n.textContent?.length ?? 0), 0) : 0; };
@@ -152,8 +153,10 @@ function moveH(dx: number, extend: boolean): void {
 }
 
 /**
- * ↑↓：找幾何上最近的一行（不靠 line±1），用 caretRangeFromPoint 落在該行、與目前 X 最接近的
- * 可停靠字元。找不到就退回該行行首/行尾。（修 p.348 腳注 ↓ 無作用。）
+ * ↑↓（2026-11-25 改版）：直接找**幾何上最近的一個 DOM text node**（含軟折行的單一視覺行片段），
+ * 在該片段與目前 X 交會處用 caretRangeFromPoint 吸附；這樣軟折行（一段 .docLine 佔好幾個視覺行）
+ * 不會因为「整行 rect 太高、y 落到空白帶→回退到行首」而跳過頭。
+ * 找不到可用位置時退回「上下最近的真實字」；該方向完全沒有字才不動。
  */
 function moveV(dir: number, extend: boolean): void {
   if (!caret) return;
@@ -161,23 +164,63 @@ function moveV(dir: number, extend: boolean): void {
   if (!cur || (!cur.height && !cur.width)) { moveH(dir > 0 ? 1 : -1, extend); return; }
   const x = cur.left + cur.width / 2;
   const sc = scroller(); if (!sc) return;
-  const cand = Array.from(sc.querySelectorAll<HTMLElement>('.docLine[id^="L"]'))
-    .map((el) => ({ el, line: Number(el.id.slice(1)), r: el.getBoundingClientRect() }))
-    .filter((z) => Number.isFinite(z.line) && z.r.height > 0);
-  let best: typeof cand[number] | null = null;
-  for (const z of cand) {
-    if (dir > 0 ? z.r.top >= cur.bottom - 1 : z.r.bottom <= cur.top + 1) {
-      if (!best || (dir > 0 ? z.r.top < best.r.top : z.r.bottom > best.r.bottom)) best = z;
-    }
+
+  // 收集本頁所有文字節點的視覺行片段（Range.getClientRects 會把軟折一行拆成多段）
+  type Frag = { rect: DOMRect; node: Text };
+  const all: Frag[] = [];
+  const walker = document.createTreeWalker(sc, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const t = n as Text;
+    if (!t.textContent || !t.parentElement?.closest?.('.docLine[id^="L"]')) continue;
+    const rr = document.createRange(); rr.selectNodeContents(t);
+    for (const rect of Array.from(rr.getClientRects())) { if (rect.height > 0 && rect.width > 0) all.push({ rect, node: t }); }
   }
-  if (!best) return;                                   // 該方向已無行（頁首/頁尾）
-  const h = Math.min(best.r.height, cur.height || best.r.height);
-  const y = dir > 0 ? best.r.top + h / 2 : best.r.bottom - h / 2;
-  const r = caretRangeAt(x, y);
-  const p = r && posFromRange(r);
-  if (p && p.line === best.line) setCaret(p.line, p.col, extend);
-  else setCaret(best.line, dir > 0 ? 0 : lineLen(best.line), extend);   // 吸附失敗→該行首/尾
+  // caret 的折疊 rect 高有時失真（0 或超小字）：用全頁字高中位數兜底再算「本行中線」
+  const hs = all.map((z) => z.rect.height).sort((a, b) => a - b);
+  const rowH = Math.max(cur.height, hs.length ? hs[Math.floor(hs.length / 2)] : 18);
+  // 「下一行」以本行中線為界：caret 折疊 rect 常比行盒矮，若用 cur.bottom，同視覺行的
+  // sup／上標小字（只低幾 px）會被誤當成下一行（2026-11-25 軟折行修正）。
+  const frags = all.filter((z) => (dir > 0 ? z.rect.top > cur.top + rowH * 0.6 : z.rect.bottom < cur.bottom - rowH * 0.6));
+  if (!frags.length) return;                             // 該方向已無字（頁首／頁尾）
+  const near = (r: DOMRect): number => (dir > 0 ? r.top - cur.bottom : cur.top - r.bottom);
+  frags.sort((a, b) => near(a.rect) - near(b.rect)
+    || Math.abs(a.rect.left + a.rect.width / 2 - x) - Math.abs(b.rect.left + b.rect.width / 2 - x));
+  const r0 = frags[0].rect;
+  const hit = caretRangeAt(x, r0.top + r0.height / 2);   // 最近視覺行片段的中央
+  const p = hit && posFromRange(hit);
+  if (p) { setCaret(p.line, p.col, extend); scrollIntoViewIfNeeded(); return; }
+  // 吸附失敗：直接在候選文字節點裡找與 X 最接近的字元
+  const q = snapToText(frags[0].node, x);
+  if (q) setCaret(q.line, q.col, extend);
+  else { const fr = frags[0]; const lp = fr.node.parentElement?.closest?.('.docLine[id^="L"]') as HTMLElement | null;
+         const line = lp ? Number(lp.id.slice(1)) : NaN;
+         if (!Number.isFinite(line)) return;
+         setCaret(line, dir > 0 ? 0 : lineLen(line), extend); }
   scrollIntoViewIfNeeded();
+}
+
+/** 在文字節點內找與螢幕 X 最接近的字元停靠點（caretRangeFromPoint 失效時的後備）。 */
+function snapToText(node: Text, x: number): { line: number; col: number } | null {
+  const lp = node.parentElement?.closest?.('.docLine[id^="L"]') as HTMLElement | null;
+  if (!lp) return null;
+  const line = Number(lp.id.slice(1));
+  if (!Number.isFinite(line)) return null;
+  const text = node.textContent ?? '';
+  let best = -1, bestD = Infinity;
+  const probe = document.createRange();
+  for (let i = 0; i <= text.length; i++) {
+    try { probe.setStart(node, Math.min(i, text.length)); probe.collapse(true); } catch { continue; }
+    const rects = probe.getClientRects();
+    const r = rects.length ? rects[0] : null;
+    const rx = r ? r.left : x;                            // 行尾折疊 Range：比對節點尾端
+    const d = Math.abs(rx - x);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  if (best < 0) return null;
+  const acc = textNodesOf(lp);
+  let col = 0;
+  for (const n of acc) { if (n === node) break; col += n.textContent?.length ?? 0; }
+  return { line, col: col + best };
 }
 
 function pageDir(dir: number, extend: boolean): void {
@@ -206,11 +249,159 @@ function markSolid(): void {
   solidTimer = window.setTimeout(() => { bar?.classList.remove('solid'); }, 600);
 }
 
+// ───────────────────────────────────────────────────────────────────────────────
+// 2026-11-24 追加（作者）：光標位置「跳至」引用、跨重啟記憶、停在 術／註／聯 等同 hover。
+// 仍然刻意不 import viewer／doc-pane（避免循環）：狀態列用 ui 在開機時注入的 hook。
+// ───────────────────────────────────────────────────────────────────────────────
+
+type StatusHook = (msg: string, kind?: 'info' | 'err') => void;
+let statusHook: StatusHook | null = null;
+/** ui.ts 開機時注入 setStatus，讓 F9／還原能回報（caret-mode 不直接 import viewer）。 */
+export function setCaretStatus(fn: StatusHook): void { statusHook = fn; }
+const say = (msg: string, kind: 'info' | 'err' = 'info'): void => { try { statusHook?.(msg, kind); } catch { /* 沒接上就靜默 */ } };
+
+/** 目前開啟的庫名（用 ui 掛在 window 上的 state()，不 import viewer）。 */
+function dbNameOf(): string {
+  const st = (window as unknown as { __accelon26?: { state?: () => Record<string, unknown> } }).__accelon26?.state?.();
+  return String(st?.db ?? '');
+}
+
+// —— 跨重啟記憶：每個庫各存 {line, col}（light，独立於 lastRead 的選取區）——
+const CP_PREFIX = 'accelon26.caret.pos.v1|';
+let persistTimer = 0;
+let restoredFor = '';        // 這個庫這次開啓已嘗試過還原（成功或放棄），避免打擾後續導覽
+
+function persistCaretSoon(): void {
+  if (persistTimer) window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(persistCaretNow, 350);
+}
+function persistCaretNow(): void {
+  if (!caret) return;
+  const db = dbNameOf();
+  if (!db) return;           // 開庫事件還沒送到：不要覆蓋上一個庫
+  try { localStorage.setItem(CP_PREFIX + db, JSON.stringify({ line: caret.line, col: caret.col, at: Date.now() })); } catch { /* 無痕 */ }
+}
+function readStoredCaret(db: string): { line: number; col: number } | null {
+  let raw = '';
+  try { raw = localStorage.getItem(CP_PREFIX + db) || ''; } catch { return null; }
+  if (!raw) return null;
+  try {
+    const o = JSON.parse(raw);
+    return o && Number.isFinite(o.line) ? { line: o.line | 0, col: (o.col | 0) } : null;
+  } catch { return null; }
+}
+/**
+ * 還原上次的光標：等「那一行已经在目前 DOM」才落下。renderDoc（含 ensurePage → 那一頁）
+ * 之後 DOM 才會有該行，所以用幾次重試兜住開庫／還原的分頁時序；放棄後本庫不再打擾。
+ */
+function scheduleRestore(attempts = 5): void {
+  const db = dbNameOf();
+  if (!db) { if (attempts > 0) window.setTimeout(() => scheduleRestore(attempts - 1), 200); return; }
+  if (restoredFor === db) return;
+  const pos = readStoredCaret(db);
+  if (pos && lineEl(pos.line)) { setCaret(pos.line, pos.col, false); restoredFor = db; return; }
+  if (attempts > 0) window.setTimeout(() => scheduleRestore(attempts - 1), 200);
+  else restoredFor = db;
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* file://／權限，退回 execCommand */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy'); ta.remove(); return ok;
+  } catch { return false; }
+}
+/** 光標位置的可複製字串 `#L<行>:<欄>@<庫>`；沒有光標、或那一行不在目前 DOM → null。 */
+export function caretRefString(): string | null {
+  if (!caret) return null;
+  if (!lineEl(caret.line)) return null;
+  const db = dbNameOf();
+  return '#L' + caret.line + ':' + caret.col + (db ? '@' + db : '');
+}
+/**
+ * F9：#docText 有光標、且那一行目前就在 DOM 時，把光標位置複製成可貼回「跳至」的
+ * `#L<行>:<欄>@<庫>`（`lineJumpTarget` 認得 `:欄`，貼上 Enter 會跳那一行、再落下光標）。
+ * 回傳 true＝已接手（成敗都已在狀態列提示）；回傳 false＝沒有可用光標，交回元素檢查器。
+ */
+export async function caretCopyRef(): Promise<boolean> {
+  const text = caretRefString();
+  if (text == null) return false;
+  const ok = await copyText(text);
+  say(ok ? '已複製光標位置：' + text + '（貼到搜尋框可跳回）' : '複製失敗：' + text, ok ? 'info' : 'err');
+  return true;
+}
+
+// —— 停在 術／註／聯＝等同 hover ——
+let hoverHost: Element | null = null;
+let caretTipEl: HTMLElement | null = null;
+
+/** 光標落點所在的「會 hover 的元素」：註／聯 的連結、術語 span。找不到回 null。 */
+function hoverHostForCaret(): Element | null {
+  if (!caret) return null;
+  const r = rangeAt(caret.line, caret.col);
+  if (!r) return null;
+  // 折疊 Range 的 startContainer 有時落在 element 邊界（一個 span 之前）；往「前一個字」靠，
+  // 取緊貼光標左側那個字，才和肉眼看到的光標位置一致。
+  let node: Node | null = r.startContainer;
+  let off = r.startOffset;
+  if (node && node.nodeType !== Node.TEXT_NODE) {
+    const kids = node.childNodes;
+    const prev = kids[off > 0 ? off - 1 : Math.min(off, kids.length - 1)] ?? null;
+    if (prev) { node = prev.nodeType === Node.TEXT_NODE ? prev : (prev.textContent ? null : prev); if (!node) return null; off = 0; }
+  }
+  const el = node ? (node.nodeType === Node.TEXT_NODE ? node.parentElement : node as Element) : null;
+  if (!el) return null;
+  return el.closest('a.noteRef, a.noteBack, .term, a.entryLink, a[data-xref], a[data-link]');
+}
+function clearCaretTip(): void { caretTipEl?.remove(); caretTipEl = null; }
+function showCaretTip(text: string): void {
+  clearCaretTip();
+  if (!text) return;
+  const sc = scroller(); const host = hoverHost;
+  const rect = host?.getBoundingClientRect?.();
+  if (!sc || !rect || (!rect.width && !rect.height)) return;
+  const tip = document.createElement('div');
+  tip.id = 'caretTip';
+  tip.setAttribute('aria-hidden', 'true');
+  tip.textContent = text;
+  sc.appendChild(tip);
+  caretTipEl = tip;
+  const sr = sc.getBoundingClientRect();
+  const w = tip.offsetWidth || 120;
+  const left = Math.max(2, Math.min(rect.left - sr.left + sc.scrollLeft, sr.width - w - 4));
+  let top = rect.top - sr.top + sc.scrollTop - tip.offsetHeight - 6;
+  if (top < sc.scrollTop + 2) top = rect.bottom - sr.top + sc.scrollTop + 6;   // 上方不夠就改下面
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
+}
+/** 光標移動後：換了元素才觸發，註走既有浮面板（合成 mouseover/mouseout），術／聯用自繪气泡。 */
+function caretHover(): void {
+  const host = hoverHostForCaret();
+  if (host === hoverHost) return;                    // 同一個元素：不重複觸發
+  if (hoverHost?.matches?.('a.noteRef, a.noteBack')) {
+    try { hoverHost.dispatchEvent(new MouseEvent('mouseout', { bubbles: true })); } catch { /* noop */ }
+  }
+  clearCaretTip();
+  hoverHost = host;
+  if (!host) return;
+  if (host.matches('a.noteRef, a.noteBack')) {       // 註：滑過用的浮動面板，委派監聽會接住
+    try { host.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); } catch { /* noop */ }
+    return;
+  }
+  const title = host.getAttribute('title') || '';     // 術／聯：原生 title 提示 → 自繪重現
+  if (title) showCaretTip(title);
+}
+
 export function initCaretMode(): void {
   if (bound) return;
   const box = pane(); if (!box) return;
   bound = true;
   box.tabIndex = 0;
+  // 換庫：清掉這次已還原紀錄，稍後重試把上次的光標落回（那一行進 DOM 後才成）。
+  window.addEventListener('accelon26:db', () => { restoredFor = ''; hoverHost = null; clearCaretTip(); window.setTimeout(() => scheduleRestore(), 0); });
+  window.setTimeout(() => scheduleRestore(), 0);   // 首開（db 事件已過）也試一次
 
   box.addEventListener('focus', () => {
     active = true;
@@ -252,6 +443,20 @@ export function initCaretMode(): void {
 }
 
 export function caretReanchor(): void { if (caret) drawBar(); }
+
+/** 貼「跳至」引用（#L<行>:<欄>@<庫）進來時：跳那一頁後把光標落到該行該欄並捲進視窗。 */
+export function caretJumpTo(line: number, col: number): void {
+  if (!lineEl(line)) return;                          // 那一行不在目前 DOM：跳頁已由呼叫端處理
+  restoredFor = dbNameOf();                           // 使用者主動定位，不再被自動還原打擾
+  setCaret(line, col, false);
+  const sc = scroller();
+  if (sc) {
+    const r = rangeAt(line, col)?.getBoundingClientRect();
+    const sr = sc.getBoundingClientRect();
+    if (r) { if (r.top < sr.top) sc.scrollTop -= (sr.top - r.top) + 12; else if (r.bottom > sr.bottom) sc.scrollTop += (r.bottom - sr.bottom) + 12; }
+  }
+  markSolid();
+}
 
 export const caretDebug = (): { active: boolean; caret: typeof caret; solid: boolean } =>
   ({ active, caret, solid: !!bar?.classList.contains('solid') });

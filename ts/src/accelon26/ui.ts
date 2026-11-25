@@ -2090,7 +2090,8 @@ function boot() {
         break;
       case 'F9':
         ev.preventDefault();
-        toggleInspect((msg, kind) => setStatus(msg, kind ?? 'info'));
+        // #docText 有光標時：F9 先複製光標位置（可貼回「跳至」跳回）；沒有才走元素檢查器
+        void caretCopyRef().then((handled) => { if (!handled) toggleInspect((msg, kind) => setStatus(msg, kind ?? 'info')); });
         break;
     }
   }, true);
@@ -2137,13 +2138,14 @@ function boot() {
   });
 
 
-  // #行號（可帶 @db）＝跳到那一行；輸入時不搜尋，等 Enter（作者 2026-10-25）
-  const lineJumpTarget = (q: string): { line: number; db: string | null } | null => {
-    const m = /^#(?:L)?(\d+)(?:@([^\s@]+))?$/i.exec(q.trim());
-    return m ? { line: Number(m[1]), db: m[2] || null } : null;
+  // #行號（可帶 @db）＝跳到那一行；輸入時不搜尋，等 Enter（作者 2026-10-25）。
+  // 加上 `:欄`（F9 複製光標位置用的語法）＝跳那一行後再落光標到該欄（作者 2026-11-24）。
+  const lineJumpTarget = (q: string): { line: number; col: number | null; db: string | null } | null => {
+    const m = /^#(?:L)?(\d+)(?::(\d+))?(?:@([^\s@]+))?$/i.exec(q.trim());
+    return m ? { line: Number(m[1]), col: m[2] != null ? Number(m[2]) : null, db: m[3] || null } : null;
   };
-  setJumpLineHook((line) => void jumpToLine({ line, db: null }));
-  const jumpToLine = async (target: { line: number; db: string | null }): Promise<void> => {
+  setJumpLineHook((line) => void jumpToLine({ line, col: null, db: null }));
+  const jumpToLine = async (target: { line: number; col: number | null; db: string | null }): Promise<void> => {
     if (!reader || !mapper) { setStatus('請先開啟 adb', 'err'); return; }
     const now = (reader.header.dbname || '').toLowerCase();
     if (target.db && target.db.toLowerCase() !== now) {
@@ -2161,14 +2163,20 @@ function boot() {
       const b = boundsOfRealm(ctxOf(act), act.realm);
       if (target.line >= b.first && target.line <= b.last) {
         await ensurePage(act, target.line);
-        requestAnimationFrame(() => document.getElementById('L' + target.line)?.scrollIntoView({ block: 'center' }));
-        setStatus('跳到第 ' + fmtInt(target.line) + ' 行', 'info');
+        requestAnimationFrame(() => {
+          document.getElementById('L' + target.line)?.scrollIntoView({ block: 'center' });
+          if (target.col != null) caretJumpTo(target.line, target.col);
+        });
+        setStatus(target.col != null ? '跳到第 ' + fmtInt(target.line) + ' 行、光標第 ' + fmtInt(target.col) + ' 字' : '跳到第 ' + fmtInt(target.line) + ' 行', 'info');
         return;
       }
     }
     await showLine(target.line, v[target.line]);
-    requestAnimationFrame(() => document.getElementById('L' + target.line)?.scrollIntoView({ block: 'center' }));
-    setStatus('跳到第 ' + fmtInt(target.line) + ' 行', 'info');
+    requestAnimationFrame(() => {
+      document.getElementById('L' + target.line)?.scrollIntoView({ block: 'center' });
+      if (target.col != null) caretJumpTo(target.line, target.col);
+    });
+    setStatus(target.col != null ? '跳到第 ' + fmtInt(target.line) + ' 行、光標第 ' + fmtInt(target.col) + ' 字' : '跳到第 ' + fmtInt(target.line) + ' 行', 'info');
   };
   /**
    * 全文搜尋的 Enter：直接跳到第一筆（2026-10-31）。
@@ -2469,6 +2477,7 @@ function boot() {
   initRevList();    // 反鏈清單抽屜
   initBookmarks();  // 左欄書籤＋選取文字選單
   initCaretMode();  // 閱讀態假光標＋鍵盤導航＋Shift 選取（#docText focus 自動開）
+  setCaretStatus((msg, kind) => setStatus(msg, kind ?? 'info'));   // F9／還原光標的回報走同一條狀態列
   initAdbUpdate();  // #dbTabs 的資料庫更新（New）＋下載對話盒
   setEnsureRight(() => setSide('right', true));
   setOpenInMain((db, opts) => openInMain(db, opts));   // 右欄跨庫分頁 Ctrl+點 → 中間開啟
@@ -2569,6 +2578,10 @@ export function installDebugApi(): void {
   /** 繁簡通檢：回傳切換後的值 */
   setVariants, toggleVariants, variantsOn: () => variantSearchOn(),
   caretDebug: () => caretDebug(),
+  /** F9／驗證用：目前光標位置的可跳至字串（無光標或該行不在 DOM→null） */
+  caretRef: () => caretRefString(),
+  /** 驗證用：直接把光標落到 (line,col)，等同貼「跳至」引用落點 */
+  caretJumpTo: (line: number, col: number) => caretJumpTo(line, col),
   variantAutoOn: () => variantAutoOn(), setVariantAuto: applyVariantAuto,
   /** 顯示原始文件（不渲染）：測試／指令用 */
   setRenderRaw, renderRawOn, rerenderDoc,
@@ -2867,7 +2880,7 @@ import { initHeatTab, renderHeatTab, syncHeatTab } from './heat-tab';
 import { initRevList } from './rev-list';
 import { initBookmarks, renderBookmarks } from './bookmarks';
 import { bookmarkState, citationForSelection, citationHtmlForSelection, citationDebug } from './bookmarks';
-import { initCaretMode, caretDebug } from './caret-mode';
+import { initCaretMode, caretDebug, caretCopyRef, caretJumpTo, caretRefString, setCaretStatus } from './caret-mode';
 import { initVaultImport, vaultImportState } from './vault-import';
 import { initAdbStore, openAdbStore } from './adb-store';
 import { initStudyIndex, refreshStudyIndexButton } from './study-index';
