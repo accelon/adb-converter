@@ -22,10 +22,13 @@ function tableExportHtml(table: HTMLTableElement): string {
     + `<title>${escHtml(title)}</title>\n<style>\n`
     + 'body { font-family: "DFKai-SB","BiauKai","標楷體","PMingLiU",serif; background:#fff; color:#000; margin:24px; }\n'
     // 厚觀法師 2026-11-25 07:55（408 三）：下載的檔案裡「天干地支／吉藏科判」要新細明體，
-    // 否則與標楷體的經文混在一起不好讀。科判在資料端是 `<科>`（渲染後 span 帶 data-tag="科"，
-    // class 被剝掉但 data-tag 留著），所以只命中科判；經文仍是 `<經>`（內聯楷體）不受影響，
-    // 其他表（如〈28普賢〉咒語對照表）沒有 `<科>`，字型完全照舊。
-    + '[data-tag="科"] { font-family: "PMingLiU","新細明體","MingLiU",serif; }\n'
+    // 否則與標楷體的經文混在一起不好讀。科判在資料端是 `<科>` 或 `<表科>`（渲染後 span 帶
+    // data-tag="…"，class 被剝掉但 data-tag 留著），所以只命中科判；經文仍是 `<經>`（內聯楷體）
+    // 不受影響，其他表（如〈28普賢〉咒語對照表）沒有科判標籤，字型完全照舊。
+    // 2026-11-26 實查修正：《維摩經講義》各品末的三家對照表用的標籤是 **`表科`**（1,545 處），
+    // 全書 `<表>` 區塊裡沒有任何裸 `<科>`——原本只寫 `[data-tag="科"]` 會一處都打不中，
+    // 法師換了新版下載出來照舊是標楷體。兩種都列，才蓋到附錄表與正文兩種寫法。
+    + '[data-tag="表科"],[data-tag="科"] { font-family: "PMingLiU","新細明體","MingLiU",serif; }\n'
     + 'table { border-collapse: collapse; }\n'
     + 'caption { text-align:left; font-weight:bold; padding:0 0 8px; }\n'
     + 'th, td { border:1px solid #444; padding:5px 10px; text-align:left; vertical-align:top; white-space:pre-wrap; }\n'
