@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "description": "abx - Accelon3 .adb to XML exporter (TypeScript/Bun prototype)",
   "type": "module",
-  "bin": { "abx": "./src/cli.ts" },
+  "bin": {
+    "abx": "./src/cli.ts"
+  },
   "scripts": {
     "export": "bun run src/cli.ts export",
     "inspect": "bun run src/cli.ts inspect",
@@ -31,7 +33,11 @@
     "sync:norms": "bun run tools/sync-agent-norms.ts",
     "check:norms": "bun run tools/sync-agent-norms.ts --check"
   },
-  "engines": { "bun": ">=1.1" },
-  "license": "Apache-2.0"
+  "engines": {
+    "bun": ">=1.1"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "cos-nodejs-sdk-v5": "^3.0.0"
+  }
 }
-

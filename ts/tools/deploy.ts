@@ -12,6 +12,36 @@
  *   cd ts && bun run tools/deploy.ts --check-adb     # 只比對站上 adb 與 manifest 的 sha256
  *   cd ts && bun run tools/deploy.ts --site --allow-adb-mismatch  # 明知不一致仍先上傳（少用）
  *
+ * 海外慢線（作者 2026-11-25／2026-11-27）：**人在海外時，以下為預設**——
+ *   cd ts && bun run tools/deploy.ts                 # 整組直推鏡像 nissaya＝發佈成功；
+ *                                                    #   再請主站 shutonggui 從鏡像公網 curl 拉齊
+ *                                                    #   （主站拉取失敗不翻發佈，只提示重試口令）
+ *   cd ts && bun run tools/deploy.ts --no-primary    # 只推鏡像 nissaya，主站完全不碰
+ *   cd ts && bun run tools/deploy.ts --pull-primary  # 事後只補「主站向鏡像拉齊」這一步
+ *   cd ts && bun run tools/deploy.ts --push          # 人在對岸時：兩站都直推＋完整驗證（舊預設）
+ *   cd ts && bun run tools/deploy.ts --setup-key     # 一次性：產生並裝好部署金鑰（rsync 前置）
+ *   cd ts && bun run tools/deploy.ts --rsync         # 大檔改走 rsync：斷線可續傳／只傳差異
+ *   cd ts && bun run tools/deploy.ts --pull-from https://中轉站/accelon26/  # 請伺服器 curl 來拉，
+ *                                                    #   本機不再上傳；中轉站需與站上一樣的目錄結構
+ *   cd ts && bun run tools/deploy.ts --cos           # 強制走騰訊雲 COS 中轉（見下方「COS 中轉」）
+ *   cd ts && bun run tools/deploy.ts --no-cos        # 強制不走 COS（回到主站向鏡像公網拉齊）
+ *   cd ts && bun run tools/deploy.ts --only adb/fuyan.html --rsync --primary-only  # 只精準換上
+ *                                                    #   指定的 www/ 相對路徑（不重生／不碰 exe／adb 預檢）
+ *   # rsync 需本機與站上都有 rsync；任一邊缺、或還沒 --setup-key，就自動逐檔退回 pscp。
+ *   # --pull-from 對 versions.json 會把 url 改指各站自己；.adb 本體仍由 publish-adb.ts 管。
+ *
+ * COS 中轉（2026-11-27 量測後加入）：海外→廣州的公網上行只有 2～6 KB/s，而主站向鏡像
+ * （境外機）公網 curl 也只有約 50 KB/s，所以發佈整包要 70～180 分鐘。實測比較：
+ *   本機 → 廣州桶（全球加速域名 PUT）      20 MB ＝ 7.27 MB/s
+ *   廣州機 → 同地域桶（169.254.*，內網 GET） 20 MB ＝ 87 MB/s、免費
+ * 所以海外發佈改成：本機把「站上與本機不同」的檔 putObject 進桶 → 簽 15 分鐘的預簽名 GET
+ * → 主站伺服端內網拉齊。站上不放任何憑證（只有短期簽名 URL），桶維持私有讀寫。
+ * 憑證在 `.local/cos.env`（同 .gitignore，內容不印出）：COS_SECRET_ID／COS_SECRET_KEY（只給
+ * COS 權限的子賬號密鑰）、COS_BUCKET、COS_REGION（預設 ap-guangzhou）。沒這檔就照舊走鏡像。
+ * 位置自動判定：對主站做 TCP 連線計時，<120ms 視為人在國內 → 兩站直推、不碰 COS
+ * （`--push` 強制直推、`--cos` 強制中轉、`--no-cos` 關閉自動）。
+ * ⚠ 給桶加一條生命週期規則：`deploy/` 前綴 1 天後過期刪除（腳本只傳不刪，靠規則清理）。
+ *
  * 為什麼要兩個站：大陸使用者一般連不到 nissaya.cn；海外使用者連 nissaya.cn 比較快。
  * 程式會探測兩站並讓使用者選（見 ts/src/accelon26/mirror.ts），所以兩邊的 versions.json
  * 要各自指向自己的 exe（鏡像的 `url` 不能指回主站）。
@@ -49,6 +79,49 @@ const SITE = WITH_SITE || SITE_ONLY;
 const NO_ADB = args.includes('--no-adb');
 const CHECK_ADB = args.includes('--check-adb');
 const ALLOW_ADB_MISMATCH = args.includes('--allow-adb-mismatch');
+// 海外慢線新增（作者 2026-11-25，皆為選配、不改變預設 pscp 路徑）：
+//   --rsync            大檔（exe／zip）改用 rsync 傳輸：斷線可續傳、只傳差異。本機與伺服器
+//                      都要有 rsync；任一邊缺就自動退回 pscp。建議先跑一次 --setup-key。
+//   --setup-key        一次性：在本機產生 .local/deploy_ed25519 金鑰，並用現有密碼把公鑰裝到
+//                      站上 ~/.ssh/authorized_keys（冪等，已存在就不重複加）。之後 rsync 走金鑰、
+//                      免再寫密碼檔。
+//   --pull-from <URL>  不在本機上傳，改成請伺服器用 curl 從公開中轉站「拉」同一組檔案
+//                      （繞開你 overseas→國內的上行瓶頸）。中轉站需與站上同樣目錄結構。
+//   --rsync-bin <路徑> 指定 rsync 執行檔（預設 PATH 上的 rsync）
+//   --ssh-bin   <路徑> rsync 遠端 shell 用的 ssh（預設 PATH 上的 ssh）
+//   --rsync                    大檔（exe／zip）嘗試走 rsync 斷線續傳；任一步失敗自動改 pscp 重傳。
+//                              （註：本機 choco 版 cwRsync 在自動化／非互動環境下 spawn 會出
+//                              dup()/cygwin-ssh 讀不到金鑰，實務上多半會退回 pscp。）
+//   --pscp                     （保留）明確用 pscp；目前為預設。
+const USE_RSYNC = args.includes('--rsync');
+const SETUP_KEY = args.includes('--setup-key');
+const RSYNC_BIN = opt('rsync-bin', 'rsync');
+const SSH_BIN = opt('ssh-bin', 'ssh');
+const PULL_FROM = opt('pull-from', '').replace(/\/+$/, '');
+//   --only a/b.html,c.json   精準上傳（相對 www/ 的路徑，逗號分隔）：不重生 changelog/manifest/
+//                            index、不碰 exe、不做 adb-sha 預檢——只把這些檔 .tmp→mv 原子換上。
+//                            用於「只發 fuyan.html、不驚動別線未發布 adb」的單檔場景。
+const ONLY = opt('only', '');
+//   --probe                    診斷：對選定站點回報 rsync／curl／os（不上传、不重生）。
+const PROBE = args.includes('--probe');
+//   （海外模式，作者 2026-11-27 起預設）
+//   預設＝鏡像 nissaya.cn 直推整組＋驗證通過＝發佈成功；主站 shutonggui.cn 從鏡像公網
+//   伺服端 curl 拉齊（非致命，失敗只提示重試口令，不再從海外下載整包來比對）。
+//   --push        放棄海外模式，回到舊「兩站都直推＋完整驗證」（人在對岸時用）。
+//   --no-primary  只推鏡像，主站連拉都不做（之後另跑 --pull-primary）。
+//   --pull-primary 只請主站從鏡像拉整組（補齊上次沒拉好的；不推鏡像）。
+const PUSH_ALL = args.includes('--push');
+const NO_PRIMARY = args.includes('--no-primary');
+const PULL_PRIMARY = args.includes('--pull-primary');
+//   --relay                    海外兩跳法：先把整組直推鏡像（nissaya，海外→海外快），核對鏡像每個
+//                              檔都 == 本機 sha 後，再讓主站從鏡像 --pull-from 拉（伺服器端 curl，
+//                              繞開你 overseas 的上行瓶頸）。核對不過就中止、不 pull（防倒退）。
+const RELAY = args.includes('--relay');
+//   --cos／--no-cos          主站拉齊那一步要不要走騰訊雲 COS 中轉（詳見檔案頭「COS 中轉」）。
+//                            不加則自動：沒有 .local/cos.env 就不走；主站 TCP <120ms（人在國內）直推。
+const COS_FORCE = args.includes('--cos');
+const COS_OFF = args.includes('--no-cos');
+const DEPLOY_KEY = resolve(LOCAL, 'deploy_ed25519');
 if (MIRROR_ONLY && PRIMARY_ONLY) {
   console.error('✗ --mirror-only 與 --primary-only 不能同時用');
   process.exit(2);
@@ -150,17 +223,24 @@ function sh(cmd: string[], label: string): string {
 const RUN_ID = process.pid;
 const pwPath = (t: Target): string => resolve(LOCAL, `.pw-${t.id}-${RUN_ID}.tmp`);
 
+// 本機 rsync 是否存在（探一次）。rsync 走金鑰免密碼，需先 --setup-key。
+let _rsyncLocalChecked = false, _rsyncLocal = false;
+function rsyncLocalOk(): boolean {
+  if (!_rsyncLocalChecked) {
+    try { _rsyncLocal = Bun.spawnSync({ cmd: [RSYNC_BIN, '--version'] }).exitCode === 0; } catch { _rsyncLocal = false; }
+    _rsyncLocalChecked = true;
+  }
+  return _rsyncLocal;
+}
+
 function makeTransport(t: Target) {
   const fingerprint = hostFingerprint(t);
   const pwFile = pwPath(t);
   writeFileSync(pwFile, t.pass + '\n', { mode: 0o600 });
-  const upload = (localPath: string, remotePath: string): void => {
-    sh([PSCP, '-batch', '-P', t.port, '-hostkey', fingerprint, '-pwfile', pwFile, localPath,
-      t.user + '@' + t.host + ':' + remotePath], `[${t.label}] 上傳 ${remotePath}`);
-  };
+
   const remote = (script: string, label: string): string => {
     const f = resolve(LOCAL, `.remote-${t.id}-${RUN_ID}.sh`);
-    writeFileSync(f, script);
+    writeFileSync(f, script, { mode: 0o600 });  // COS 模式時檔內含 15 分鐘預簽名 URL，別留成全員可讀
     try {
       return sh([PLINK, '-batch', '-ssh', '-P', t.port, '-l', t.user, '-hostkey', fingerprint,
         '-pwfile', pwFile, '-m', f, t.host], `[${t.label}] ${label}`);
@@ -168,8 +248,85 @@ function makeTransport(t: Target) {
       rmSync(f, { force: true });
     }
   };
+
+  const pscpUpload = (localPath: string, remotePath: string): void => {
+    sh([PSCP, '-batch', '-P', t.port, '-hostkey', fingerprint, '-pwfile', pwFile, localPath,
+      t.user + '@' + t.host + ':' + remotePath], `[${t.label}] 上傳 ${remotePath}`);
+  };
+
+  // rsync（選配 --rsync）：本機有 rsync ＋ 有部署金鑰 ＋ 站上有 rsync 才啟用；否則逐檔退回 pscp。
+  let rsyncOn = false;
+  if (USE_RSYNC) {
+    if (!existsSync(DEPLOY_KEY)) console.error(`[${t.label}] ⚠ 還沒有部署金鑰（先跑 --setup-key）→ 這站用 pscp`);
+    else if (!rsyncLocalOk()) console.error(`[${t.label}] ⚠ 本機找不到 rsync（${RSYNC_BIN}）→ 這站用 pscp`);
+    else {
+      try { rsyncOn = remote(`command -v rsync >/dev/null 2>&1 && echo YES || echo NO`, '探站上 rsync').trim().endsWith('YES'); } catch { rsyncOn = false; }
+      if (!rsyncOn) console.error(`[${t.label}] ⚠ 站上沒有 rsync → 這站用 pscp`);
+    }
+  }
+  const rsyncUpload = (localPath: string, remotePath: string): void => {
+    const rsh = `${SSH_BIN} -i "${DEPLOY_KEY}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -p ${t.port}`;
+    sh([RSYNC_BIN, '-a', '--partial', '--info=progress2', '-z', '--timeout=180', '-e', rsh,
+      localPath, `${t.user}@${t.host}:${remotePath}`], `[${t.label}] rsync 上傳 ${remotePath}`);
+  };
+  // 選 rsync 就嘗試；任一檔 rsync 失敗 → 立即退回 pscp 重傳該檔（絕不讓 --rsync 拖垮整次發佈）。
+  const upload = (localPath: string, remotePath: string): void => {
+    if (rsyncOn) {
+      try { rsyncUpload(localPath, remotePath); return; }
+      catch (e) { console.error(`[${t.label}] ⚠ rsync 失敗（${String((e as Error)?.message ?? e).split('\n')[0]}）→ 改用 pscp 重傳 ${remotePath}`); rsyncOn = false; }
+    }
+    pscpUpload(localPath, remotePath);
+  };
+  if (rsyncOn) console.log(`[${t.label}] 傳輸=rsync（斷線可續傳；失敗自動退 pscp）`);
+
   const done = (): void => { rmSync(pwFile, { force: true }); };
   return { upload, remote, done };
+}
+
+// ---- 部署金鑰（rsync 免密碼用）：本機產生一對，公鑰用現有密碼裝到站上 --------------
+function ensureKeyPair(): void {
+  if (existsSync(DEPLOY_KEY)) return;
+  const SSH_KEYGEN = 'C:\\Program Files\\Git\\usr\\bin\\ssh-keygen.exe';
+  if (!existsSync(SSH_KEYGEN)) die('找不到 ssh-keygen（' + SSH_KEYGEN + '）');
+  sh([SSH_KEYGEN, '-t', 'ed25519', '-N', '', '-f', DEPLOY_KEY, '-C', 'accelon26-deploy'], '產生部署金鑰');
+  console.log('已產生部署金鑰 ' + DEPLOY_KEY);
+}
+function installPubkey(t: Target): void {
+  const pub = readFileSync(DEPLOY_KEY + '.pub', 'utf8').trim();
+  const tr = makeTransport(t);
+  try {
+    tr.remote(
+      `mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`
+      + ` && grep -qxF '${pub}' ~/.ssh/authorized_keys || echo '${pub}' >> ~/.ssh/authorized_keys`,
+      '裝公鑰 ' + t.host);
+    console.log(`[${t.label}] 公鑰已在 ${t.user}@${t.host}（冪等，重複跑不會加兩次）`);
+  } finally { tr.done(); }
+}
+
+// --setup-key：裝好金鑰就結束（rsync 的前置）。放在 makeTransport 之後，避開 const TDZ。
+if (SETUP_KEY) {
+  ensureKeyPair();
+  for (const t of chosen) installPubkey(t);
+  console.log('\n部署金鑰已裝到：' + chosen.map((t) => t.host).join('、'));
+  console.log('之後上傳加 --rsync 即可斷線續傳／只傳差異（缺 rsync 的站會自動退回 pscp）。');
+  process.exit(0);
+}
+
+// --probe：只診斷站上有沒有 rsync／curl、OS，不上傳。
+if (PROBE) {
+  for (const t of chosen) {
+    const tr = makeTransport(t);
+    try {
+      const out = tr.remote(
+        `printf 'rsync='; (command -v rsync >/dev/null 2>&1 && rsync --version 2>/dev/null | head -1) || echo 'NO'; `
+        + `printf 'curl='; (command -v curl >/dev/null 2>&1 && curl --version 2>/dev/null | head -1) || echo 'NO'; `
+        + `printf 'os='; (head -1 /etc/os-release 2>/dev/null) || uname -a`,
+        'probe ' + t.host);
+      console.log(`\n[${t.label}] ${t.host}\n${out}`);
+    } catch (e) { console.error(`[${t.label}] probe 失敗：` + String((e as Error)?.message ?? e)); }
+    finally { tr.done(); }
+  }
+  process.exit(0);
 }
 
 // ---- 站上 adb 本體與 manifest 的一致性（作者 2026-11-09）------------------------
@@ -254,7 +411,7 @@ const fileSha = (p: string): string => createHash('sha256').update(readFileSync(
 const EXE = resolve(opt('exe', resolve(ROOT, 'accelon3', 'accelon26.exe')));
 const MANIFEST = resolve(opt('manifest', resolve(ROOT, 'accelon3', 'versions.json')));
 let manifest: { buildTime: string; url: string; size: number; sha256: string } | null = null;
-if (!SITE_ONLY) {
+if (!SITE_ONLY && !PULL_FROM && !ONLY) {
   if (!existsSync(MANIFEST)) die('找不到 ' + MANIFEST + '（先跑 tools/release.ts）');
   manifest = JSON.parse(readFileSync(MANIFEST, 'utf8')) as { buildTime: string; url: string; size: number; sha256: string };
   if (!existsSync(EXE)) die('找不到 ' + EXE);
@@ -273,6 +430,27 @@ function manifestFor(t: Target): string {
   const path = resolve(LOCAL, `.versions-${t.id}.json`);
   writeFileSync(path, JSON.stringify(m, null, 2) + '\n');
   return path;
+}
+
+/** 發佈集裡某個相對路徑對應的本機檔。versions.json 各站 url 不同，要給站才解得出來
+ *  （不給＝不參與逐檔雜湊比對，兩跳法就是靠這個跳過它）。缺檔回 null。 */
+function localFileFor(rel: string, t?: Target): string | null {
+  if (rel === 'accelon26.exe') return EXE;
+  if (rel === 'versions.json') return t ? manifestFor(t) : null;
+  const p = resolve(ROOT, 'www', rel);
+  return existsSync(p) ? p : null;
+}
+
+/** 一次 SSH 取得站上一批檔案的 sha256（缺檔的列會被過濾掉）。 */
+function remoteShaMap(tr: ReturnType<typeof makeTransport>, t: Target, rels: string[]): Map<string, string> {
+  const map = new Map<string, string>();
+  if (!rels.length) return map;
+  const out = tr.remote(`cd '${t.docroot}' && sha256sum ${rels.map((r) => `'${r}'`).join(' ')} 2>&1 || true`, '站上 sha 核對');
+  for (const line of out.split(/\r?\n/)) {
+    const mm = /^([0-9a-f]{64})\s+\*?(.+)$/.exec(line.trim());
+    if (mm) map.set(mm[2].trim(), mm[1].toLowerCase());
+  }
+  return map;
 }
 
 // ---- 官網（所有站一樣的檔案） ----------------------------------------------------
@@ -303,7 +481,7 @@ function adbNames(): string[] {
 // 改版說明（changelog）與歷史版本頁（releases）**一定要重生**：它們是桌面版發布的一部分。
 // 以前這一整段被 `!NO_ADB` 綁住，`--no-adb`（只發桌面版、adb 由各工作區發）時就會漏掉，
 // 線上 changelog 因此還停在上一版的時間（2026-11-02 實際踩過）。
-if (SITE && !CHECK_ONLY) {
+if (SITE && !CHECK_ONLY && !PULL_FROM) {
   for (const tool of ['make-changelog.ts', 'make-releases.ts']) {
     const gen = Bun.spawnSync({ cmd: ['bun', 'run', 'tools/' + tool], cwd: resolve(ROOT, 'ts'), stdout: 'inherit', stderr: 'inherit' });
     if (gen.exitCode !== 0) die(tool + ' 產生失敗');
@@ -342,13 +520,20 @@ async function deployTarget(t: Target): Promise<void> {
     }
     if (!CHECK_ONLY && !SITE_ONLY) {
       const m = manifest!;
-      tr!.upload(EXE, t.docroot + '/accelon26.exe.tmp');
-      tr!.remote(`cd '${t.docroot}' && chmod 644 'accelon26.exe.tmp' && [ -f accelon26.exe ] && cp -f accelon26.exe accelon26.exe.prev; mv -f 'accelon26.exe.tmp' 'accelon26.exe' && ls -l accelon26.exe`, '換上新的 exe');
-      console.log(`[${t.label}] exe 已就位 build ${m.buildTime}`);
       const localManifest = manifestFor(t);
-      tr!.upload(localManifest, t.docroot + '/versions.json.tmp');
-      const out = tr!.remote(`cd '${t.docroot}' && chmod 644 'versions.json.tmp' && [ -f versions.json ] && cp -f versions.json versions.json.prev; mv -f 'versions.json.tmp' versions.json && cat versions.json`, '換上新的 versions.json');
-      console.log(`[${t.label}] versions.json → ${(JSON.parse(out) as { url?: string }).url}`);
+      // 站上已經是本版的 exe＋versions.json 就整段跳過：海外那條線每個檔案都要重傳一次太貴，
+      // 而發佈常常只是補網頁、桌面版沒動（比對在站上算 sha，不下載）。
+      const on = remoteShaMap(tr!, t, ['accelon26.exe', 'versions.json']);
+      if (on.get('accelon26.exe') === fileSha(EXE).toLowerCase() && on.get('versions.json') === fileSha(localManifest).toLowerCase()) {
+        console.log(`[${t.label}] exe 與 versions.json 已是本版（build ${m.buildTime}）→ 跳過上傳`);
+      } else {
+        tr!.upload(EXE, t.docroot + '/accelon26.exe.tmp');
+        tr!.remote(`cd '${t.docroot}' && chmod 644 'accelon26.exe.tmp' && [ -f accelon26.exe ] && cp -f accelon26.exe accelon26.exe.prev; mv -f 'accelon26.exe.tmp' 'accelon26.exe' && ls -l accelon26.exe`, '換上新的 exe');
+        console.log(`[${t.label}] exe 已就位 build ${m.buildTime}`);
+        tr!.upload(localManifest, t.docroot + '/versions.json.tmp');
+        const out = tr!.remote(`cd '${t.docroot}' && chmod 644 'versions.json.tmp' && [ -f versions.json ] && cp -f versions.json versions.json.prev; mv -f 'versions.json.tmp' versions.json && cat versions.json`, '換上新的 versions.json');
+        console.log(`[${t.label}] versions.json → ${(JSON.parse(out) as { url?: string }).url}`);
+      }
     }
     if (SITE) {
       const siteDir = resolve(ROOT, 'www');
@@ -405,6 +590,214 @@ async function deployTarget(t: Target): Promise<void> {
   }
 }
 
+// ---- 拉模式（--pull-from）：請伺服器用 curl 從公開中轉站抓，繞開本機 overseas 上行 ----
+function pullRelList(): string[] {
+  const rel: string[] = [];
+  if (!SITE_ONLY) rel.push('accelon26.exe', 'versions.json');
+  if (SITE) {
+    for (const n of siteNames()) rel.push(n);
+    for (const n of siteZipNames()) rel.push(n);
+    for (const n of releaseNames()) rel.push('releases/' + n);
+    if (!NO_ADB) for (const n of adbNames()) rel.push('adb/' + n);
+  }
+  return rel;
+}
+async function pullTarget(t: Target, base: string): Promise<void> {
+  const baseU = base.replace(/\/+$/, '') + '/';
+  const rel = pullRelList();
+  console.log(`[${t.label}] 從中轉站拉 ${rel.length} 個檔（來源 ${baseU}）`);
+  const tr = makeTransport(t);
+  try {
+    for (const r of rel) {
+      const url = baseU + r;
+      const tmp = `${t.docroot}/${r}.tmp`;
+      const dst = `${t.docroot}/${r}`;
+      // 原子替換：先 curl 到 .tmp，再 mv。versions.json 的 url 改指本站自己（鏡像不能指回中轉）。
+      const steps = [
+        `set -e`,
+        `mkdir -p "$(dirname '${dst}')"`,
+        `curl -fL --retry 3 --connect-timeout 20 -o '${tmp}' '${url}'`,
+        `chmod 644 '${tmp}'`,
+      ];
+      if (r === 'versions.json') steps.push(`sed -i 's#"url"[[:space:]]*:[[:space:]]*"[^"]*"#"url": "${t.base}accelon26.exe"#' '${tmp}'`);
+      steps.push(`mv -f '${tmp}' '${dst}'`);
+      tr.remote(steps.join(' && '), '拉 ' + r);
+      console.log(`[${t.label}] ← ${url}`);
+    }
+    console.log(`[${t.label}] 拉取完成`);
+  } catch (e) {
+    failures.push(t.label + '（pull）：' + String((e as Error)?.message ?? e));
+  } finally { tr.done(); }
+}
+
+// ---- COS 中轉：本機經全球加速域名 putObject → 站上預簽名 GET 內網拉齊（2026-11-27）----
+// 量測依據：海外→廣州公網上行 2～6 KB/s；本機→廣州桶（加速域名）7.27 MB/s；
+// 廣州機→同地域桶（DNS 169.254.*.*，內網、免費）87 MB/s。站上只拿到 15 分鐘的簽名 URL，
+// 不放任何密鑰。
+interface CosCfg { put: any; get: any; bucket: string; region: string }
+
+async function loadCos(): Promise<CosCfg | null> {
+  const p = resolve(LOCAL, 'cos.env');
+  if (!existsSync(p)) return COS_FORCE ? die('--cos 需要 ' + p + '（COS_SECRET_ID／COS_SECRET_KEY／COS_BUCKET）') : null;
+  const e: Record<string, string> = {};
+  for (const line of readFileSync(p, 'utf8').split(/\r?\n/)) {
+    const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+    if (m) e[m[1].toUpperCase()] = m[2].trim().replace(/^["']|["']$/g, '');
+  }
+  if (!e.COS_SECRET_ID || !e.COS_SECRET_KEY || !e.COS_BUCKET) {
+    if (COS_FORCE) die(p + ' 的 COS_SECRET_ID／COS_SECRET_KEY／COS_BUCKET 有空值');
+    console.log('· .local/cos.env 不完整 → 主站改向鏡像公網拉齊');
+    return null;
+  }
+  const COS = ((await import('cos-nodejs-sdk-v5')) as any).default;
+  // 加速域名必須由 SDK 自己組 host 並配套簽名（UseAccelerate）；事後換域名會 SignatureDoesNotMatch。
+  return {
+    put: new COS({ SecretId: e.COS_SECRET_ID, SecretKey: e.COS_SECRET_KEY, UseAccelerate: true }),
+    get: new COS({ SecretId: e.COS_SECRET_ID, SecretKey: e.COS_SECRET_KEY }),
+    bucket: e.COS_BUCKET,
+    region: e.COS_REGION || 'ap-guangzhou',
+  };
+}
+
+/** 上傳一個本機檔到桶：先走分塊上傳（大檔不進記憶體），不行再整檔 putObject。 */
+async function cosPut(cfg: CosCfg, key: string, file: string): Promise<void> {
+  const base = { Bucket: cfg.bucket, Region: cfg.region, Key: key };
+  try {
+    await new Promise<void>((res, rej) => cfg.put.sliceUploadFile({ ...base, FilePath: file }, (e: unknown) => (e ? rej(e) : res())));
+    return;
+  } catch (e) {
+    console.log('  · sliceUploadFile 失敗（' + JSON.stringify(e).slice(0, 160) + '）→ 改整檔 putObject');
+  }
+  await new Promise<void>((res, rej) => cfg.put.putObject({ ...base, Body: readFileSync(file) },
+    (e: unknown) => (e ? rej(new Error('putObject ' + key + '：' + JSON.stringify(e).slice(0, 200))) : res())));
+}
+
+/** 站上下內網用的 15 分鐘預簽名 GET（普通廣州域名，站上解析到 169.254.*＝內網）。 */
+function cosGetUrl(cfg: CosCfg, key: string): Promise<string> {
+  return new Promise((res, rej) => cfg.get.getObjectUrl({ Bucket: cfg.bucket, Region: cfg.region, Key: key, Method: 'GET', Expires: 900, Sign: true },
+    (e: unknown, d: { Url?: string } | undefined) => (e || !d?.Url) ? rej(new Error('COS 簽名失敗：' + JSON.stringify(e).slice(0, 200))) : res(d.Url)));
+}
+
+// 位置自動判定：主站 TCP 連線時間。實測馬來西亞→廣州 460～570ms、國內→國內 <40ms，取 120ms 為界。
+let _near: boolean | null = null, _nearMs = 0;
+async function primaryIsNear(t: Target): Promise<boolean> {
+  if (_near !== null) return _near;
+  for (const url of [t.base + 'versions.json', t.base]) {
+    try {
+      const p = Bun.spawn(['curl', '-s', '--noproxy', '*', '-r', '0-0', '-m', '10', '-o', '/dev/null',
+        // 只要 time_connect（TCP 握手）；抓 1 byte 而不是 -I，避免 HEAD＋-o 的 write error
+        '-w', '%{time_connect}', url], { stdout: 'pipe', stderr: 'ignore' });
+      const ms = Number((await new Response(p.stdout).text()).trim()) * 1000;
+      await p.exited;
+      if (Number.isFinite(ms) && ms > 0) { _nearMs = ms; _near = ms < 120; return _near; }
+    } catch { /* 換下一個 url 再試 */ }
+  }
+  console.log('· 探不到主站連線時間 → 依海外模式處理');
+  _near = false;
+  return false;
+}
+
+/** 這次該不該用 COS 中轉：--no-cos 關掉；--cos 強制；否則桶沒設或人在國內就不用。 */
+async function cosFor(t: Target): Promise<CosCfg | null> {
+  if (COS_OFF) return null;
+  const cfg = await loadCos();
+  if (!cfg) return null;
+  if (!COS_FORCE && await primaryIsNear(t)) {
+    console.log(`主站 ${t.host} TCP 連線 ${_nearMs.toFixed(0)}ms → 判定人在國內，直推不繞 COS`);
+    return null;
+  }
+  return cfg;
+}
+
+/** 只把「站上與本機不同」的檔經桶換上主站；全一樣就整段跳過，一次 SSH 都不多花。
+ *  回 false 代表這步沒做完（桶、站上 curl 或 sha 任一關卡出問題），呼叫端該退回向鏡像拉齊。 */
+async function pullViaCos(t: Target, cfg: CosCfg): Promise<boolean> {
+  const rel = pullRelList();
+  const tr = makeTransport(t);
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+  const made: string[] = [];
+  let ok = true;
+  try {
+    const have = remoteShaMap(tr, t, rel.filter((r) => localFileFor(r, t) !== null));
+    const todo: Array<[string, string]> = [];
+    const want = new Map<string, string>();
+    for (const r of rel) {
+      const lp = localFileFor(r, t);
+      if (!lp) { failures.push(`${t.label} ${r}：本機找不到對應檔案`); ok = false; continue; }
+      const sha = fileSha(lp).toLowerCase();
+      want.set(r, sha);
+      if (have.get(r) === sha) continue;
+      todo.push([r, lp]);
+    }
+    console.log(`[${t.label}] COS 中轉 ${cfg.bucket}：${rel.length} 檔中 ${todo.length} 檔需要更新` +
+      (todo.length === rel.length ? '' : `（${rel.length - todo.length} 檔已是本版，跳過）`));
+    if (!todo.length) return true;
+    const urls = new Map<string, string>();
+    const t0 = Date.now();
+    let bytes = 0;
+    for (const [r, lp] of todo) {
+      const key = `deploy/${stamp}/${r}`;
+      await cosPut(cfg, key, lp);
+      made.push(key);
+      urls.set(r, await cosGetUrl(cfg, key));
+      bytes += statSync(lp).size;
+      console.log(`  ↑ ${r}（${(statSync(lp).size / 1048576).toFixed(1)} MiB，累計 ${(bytes / 1048576).toFixed(1)} MiB）`);
+    }
+    const secs = (Date.now() - t0) / 1000;
+    console.log(`  本機→廣州桶 ${cfg.region}（加速域名）：${(bytes / 1048576).toFixed(1)} MiB／${secs.toFixed(1)}s ≈ ${(bytes / 1048576 / secs).toFixed(2)} MB/s`);
+    // 一個 SSH 批次拉完（海外→站上的 handshake 本身 0.5s，逐檔打太貴）；先 .tmp 再 mv，原子替換。
+    const steps: string[] = ['set -e'];
+    for (const [r] of todo) {
+      const dst = `${t.docroot}/${r}`, tmp = `${dst}.cos.tmp`;
+      steps.push(`mkdir -p "$(dirname '${dst}')"`, `curl -fsSL --retry 3 --connect-timeout 20 -m 600 -o '${tmp}' '${urls.get(r)}'`,
+        `chmod 644 '${tmp}'`, `mv -f '${tmp}' '${dst}'`);
+    }
+    steps.push(`sha256sum ${todo.map(([r]) => `'${r}'`).join(' ')}`);
+    const out = tr.remote(steps.join(' && '), 'COS 內網拉齊');
+    const got = new Map<string, string>();
+    for (const line of out.split(/\r?\n/)) {
+      const mm = /^([0-9a-f]{64})\s+\*?(.+)$/.exec(line.trim());
+      if (mm) got.set(mm[2].trim().replace(/^\.?\//, ''), mm[1].toLowerCase());
+    }
+    for (const [r] of todo) {
+      const g = got.get(r) ?? '';
+      if (g === want.get(r)) console.log(`[${t.label}] ✓ ${r}（${(statSync(localFileFor(r, t)!).size / 1048576).toFixed(1)} MiB，內網拉齊）`);
+      else { failures.push(`${t.label} ${r}：拉齊後 sha 不符（站上 ${g.slice(0, 12)}… ≠ 本機 ${String(want.get(r)).slice(0, 12)}…）`); ok = false; }
+    }
+  } catch (e) {
+    console.warn('  ⚠ ' + t.label + '（COS 中轉）：' + String((e as Error)?.message ?? e));
+    ok = false;
+  } finally {
+    tr.done();
+    rmSync(resolve(LOCAL, `.versions-${t.id}.json`), { force: true });
+    if (made.length) console.log(`  ⚠ 桶裡留了 ${made.length} 個對象（前綴 deploy/${stamp}/）；靠生命週期規則 1 天後清除`);
+  }
+  return ok;
+}
+
+// ---- 單檔精準上傳（--only）：不重生、不碰 exe／manifest、不做 adb 預檢 ----------
+async function onlyPush(t: Target, rels: string[]): Promise<void> {
+  const tr = makeTransport(t);
+  try {
+    for (const rel of rels) {
+      const local = resolve(ROOT, 'www', rel);
+      if (!existsSync(local)) { failures.push(`${t.label}：本地缺少 www/${rel}`); continue; }
+      const tmp = `${t.docroot}/${rel}.tmp`;
+      const dst = `${t.docroot}/${rel}`;
+      tr.remote(`mkdir -p "$(dirname '${dst}')"`, '建立目錄 ' + rel);
+      tr.upload(local, tmp);                                    // --rsync 時走 rsync，否則 pscp
+      const out = tr.remote(`chmod 644 '${tmp}' && mv -f '${tmp}' '${dst}' && sha256sum '${dst}'`, '換上 ' + rel);
+      const remoteSha = out.trim().split(/\s+/)[0].toLowerCase();
+      const localSha = fileSha(local).toLowerCase();
+      const ok = remoteSha === localSha;
+      console.log(`[${t.label}] ${USE_RSYNC ? 'rsync' : 'pscp'} ${rel}（${statSync(local).size} B）sha ${localSha.slice(0, 12)}… ${ok ? '✓ 一致' : '✗ 與站上不符'}`);
+      if (!ok) failures.push(`${t.label} ${rel}：上傳後 sha 不符`);
+    }
+  } catch (e) {
+    failures.push(t.label + '（only）：' + String((e as Error)?.message ?? e));
+  } finally { tr.done(); }
+}
+
 // ---- 驗證：從真正的網址抓回來比對 ------------------------------------------------
 async function verifyTarget(t: Target): Promise<void> {
   if (SITE_ONLY) {
@@ -456,14 +849,172 @@ async function verifyTarget(t: Target): Promise<void> {
   console.log(`[${t.label}] ✓ versions.json 與 exe 都是 build ${online.buildTime}（${(buf.byteLength / 1048576).toFixed(1)} MiB，sha256 ${got.slice(0, 12)}…）`);
 }
 
+// ---- 兩跳法（--relay）：鏡像先直推 → 核對 → 主站從鏡像 pull --------------------------------
+if (RELAY) {
+  const mirror = targets.find((t) => t.id === 'mirror');
+  const primary = targets.find((t) => t.id === 'primary');
+  if (!mirror) die('--relay 需要 server.env 有 MIRROR_HOST（鏡像＝中转站）');
+  if (MIRROR_ONLY || PRIMARY_ONLY) die('--relay 同時處理兩站，請不要加 --primary-only／--mirror-only');
+  console.log(`\n=== 兩跳法 1/3：整組直推鏡像 ${mirror.host}（海外→海外，較快）===`);
+  await deployTarget(mirror);                       // 依目前 SITE／NO_ADB／SITE_ONLY 旗標推整組到鏡像
+  const rels = pullRelList();
+  console.log(`\n=== 兩跳法 2/3：核對鏡像 ${rels.length} 個檔都 == 本機（防止 pull 到較舊版造成倒退）===`);
+  let mism: string[] = [];
+  const mt = makeTransport(mirror);
+  try {
+    const toHash = rels.filter((r) => localFileFor(r) !== null);
+    const onMirror = remoteShaMap(mt, mirror, toHash);
+    for (const r of toHash) {
+      const lp = localFileFor(r)!;
+      const want = fileSha(lp).toLowerCase(); const got = onMirror.get(r);
+      if (!got) mism.push(`${r}：鏡像上沒有（pscp 可能未成功）`);
+      else if (got !== want) mism.push(`${r}：鏡像 ${got.slice(0, 12)}… ≠ 本機 ${want.slice(0, 12)}…`);
+    }
+  } finally { mt.done(); }
+  if (mism.length) {
+    console.error('\n✗ 鏡像與本機不一致，已中止（不會 pull，避免把主站倒退）：');
+    for (const x of mism) console.error('  - ' + x);
+    process.exit(1);
+  }
+  console.log(`  ✓ 鏡像 ${toHash.length} 檔全部與本機一致`);
+  console.log(`\n=== 兩跳法 3/3：主站 ${primary.host} 從鏡像 pull（伺服器端 curl）===`);
+  await pullTarget(primary!, mirror.base);           // primary 從鏡像公開網址拉整組；versions.json url 改指主站
+  console.log('\n驗證主站線上…');
+  const urls = pullRelList();
+  let bad = 0;
+  for (const u of urls) {
+    try { const r = await fetch(primary!.base + u, { method: 'HEAD', headers: { 'cache-control': 'no-cache' } }); if (!r.ok) { failures.push(`主站 ${primary!.base}${u} HTTP ${r.status}`); bad++; } }
+    catch (e) { failures.push(`主站 ${primary!.base}${u}：` + String((e as Error)?.message ?? e)); bad++; }
+  }
+  if (!bad) console.log(`[主站] ✓ ${urls.length} 檔都在線上`);
+  console.log('\n（.adb 本體不在 pull 集內；大 adb 另用 publish-adb --files …，或讓主站從鏡像 curl adb/<檔>.adb。）');
+  if (failures.length) { console.error('\n✗ 兩跳法有問題：\n  - ' + failures.join('\n  - ')); process.exit(1); }
+  console.log(`\n✓ 兩跳法完成：鏡像 ${mirror.base} 已同步、主站 ${primary!.base} 已從鏡像拉齊`);
+  process.exit(0);
+}
+
+// ---- 海外模式（2026-11-27 起預設）：鏡像推完＝發佈成功；主站伺服端向鏡像拉齊 ----
+/** 輕量線上核對：HEAD versions.json／exe 都在＋（可用時）SSH 伺服器端 exe sha，不下載整包。 */
+async function lightVerify(t: Target): Promise<{ ok: boolean; why: string[] }> {
+  const why: string[] = [];
+  try {
+    const vr = await fetch(t.base + 'versions.json', { headers: { 'cache-control': 'no-cache' } });
+    if (!vr.ok) why.push('versions.json HTTP ' + vr.status);
+    const er = await fetch(t.base + 'accelon26.exe', { method: 'HEAD', headers: { 'cache-control': 'no-cache' } });
+    if (!er.ok) why.push('accelon26.exe HTTP ' + er.status);
+    else if (manifest) {
+      try {
+        const tr = makeTransport(t);
+        try {
+          const sha = tr.remote(`cd '${t.docroot}' && sha256sum accelon26.exe`, '主站 exe sha').trim().split(/\s+/)[0].toLowerCase();
+          if (sha !== manifest.sha256.toLowerCase()) why.push(`站上 exe sha ${sha.slice(0, 12)}… ≠ 本版 ${manifest.sha256.slice(0, 12)}…`);
+        } finally { tr.done(); }
+      } catch { /* 沒 SSH 就只信 HEAD */ }
+    }
+  } catch (e) { why.push(String((e as Error)?.message ?? e)); }
+  return { ok: why.length === 0, why };
+}
+
+if (PULL_PRIMARY) {
+  const mirror = targets.find((t) => t.id === 'mirror');
+  const primary = targets.find((t) => t.id === 'primary');
+  if (!mirror || !primary) die('--pull-primary 需要 server.env 同時有 HOST 與 MIRROR_HOST');
+  const cfg = await cosFor(primary);
+  console.log(`=== 主站 ${primary.host} 補齊（${cfg ? '本機經 COS 桶，站上內網拉齊' : '從鏡像 ' + mirror.base + ' 公網拉整組'}；不推鏡像）===`);
+  let pulled = false;
+  if (cfg) {
+    pulled = await pullViaCos(primary, cfg);
+    if (!pulled) console.warn('⚠ COS 中轉沒做完 → 退回主站向鏡像公網拉齊');
+  }
+  if (!pulled) await pullTarget(primary, mirror.base);
+  const v = await lightVerify(primary);
+  if (v.ok) console.log(`\n✓ 主站已拉齊 ${primary.base}`);
+  else { console.error('\n✗ 主站仍未對齊：' + v.why.join('；') + '\n  稍後重試：bun run tools/deploy.ts --pull-primary'); process.exit(1); }
+  process.exit(0);
+}
+
+const mirrorT = targets.find((t) => t.id === 'mirror');
+const primaryT = targets.find((t) => t.id === 'primary');
+let OVERSEAS = !CHECK_ONLY && !ONLY && !PULL_FROM && !RELAY && !MIRROR_ONLY && !PRIMARY_ONLY &&
+               !PUSH_ALL && !!mirrorT && !!primaryT;
+// 人在國內（主站 TCP <120ms）時不必繞鏡像，兩站都直推＝旧的預設行為。
+if (OVERSEAS && !COS_FORCE && !COS_OFF && await primaryIsNear(primaryT!)) {
+  console.log(`\n=== 主站 ${primaryT!.host} TCP 連線 ${_nearMs.toFixed(0)}ms → 判定人在國內：兩站直推（不走鏡像、不碰 COS）===`);
+  OVERSEAS = false;
+}
+if (OVERSEAS && mirrorT && primaryT) {
+  console.log(`\n=== 海外模式 1/2：整組直推鏡像 ${mirrorT.base}（exe／versions.json／網頁／adb 皆算；驗證鏡像＝發佈成功）===`);
+  await deployTarget(mirrorT);
+  try { await verifyTarget(mirrorT); }
+  catch (e) { die('鏡像驗證失敗（發佈未完成）：' + String((e as Error)?.message ?? e)); }
+  console.log(`\n✓ 發佈成功：鏡像 ${mirrorT.base}（含網頁）已是這一版`);
+  if (NO_PRIMARY) {
+    console.log('  主站依 --no-primary 未處理；要補齊時跑：bun run tools/deploy.ts --pull-primary');
+    process.exit(0);
+  }
+  console.log(`\n=== 海外模式 2/2：補齊主站 ${primaryT.host}（失敗不翻發佈）===`);
+  const f0 = failures.length;
+  const cfg = await cosFor(primaryT);
+  const viaCos = cfg ? await pullViaCos(primaryT, cfg) : false;
+  if (cfg && !viaCos) console.warn('  ⚠ COS 中轉沒做完 → 退回主站向鏡像公網拉齊');
+  if (!viaCos) await pullTarget(primaryT, mirrorT.base);  // 舊路：伺服端向鏡像 curl（對岸約 50 KB/s）
+  const pullNotes = failures.splice(f0);             // 主站拉取問題轉為提示，不算發佈失敗
+  for (const m of pullNotes) console.warn('  ⚠ ' + m);
+  const v = await lightVerify(primaryT);
+  if (v.ok) console.log(`  ✓ 主站已同步 ${primaryT.base}`);
+  else {
+    console.warn('  ⚠ 主站這次沒拉齊：' + v.why.join('；'));
+    console.warn('  檔都在鏡像上，隨時補拉：bun run tools/deploy.ts --pull-primary');
+  }
+  console.log(`\n✓ 發佈完成（判定＝鏡像）：${mirrorT.base}；主站 ${v.ok ? '已同步' : '待補拉'}`);
+  process.exit(0);
+}
+
 // ---- 主流程 --------------------------------------------------------------------
 if (!CHECK_ONLY) {
-  for (const t of chosen) await deployTarget(t);
-  for (const t of chosen) rmSync(resolve(LOCAL, `.versions-${t.id}.json`), { force: true });
+  if (ONLY) {
+    const rels = ONLY.split(',').map((s) => s.trim()).filter(Boolean);
+    if (!rels.length) die('--only 沒有指定檔案');
+    console.log(`單檔精準上傳：${rels.join('、')} → ${chosen.map((t) => t.label).join('、')}${USE_RSYNC ? '（rsync）' : '（pscp）'}`);
+    for (const t of chosen) await onlyPush(t, rels);
+  } else if (PULL_FROM) {
+    for (const t of chosen) await pullTarget(t, PULL_FROM);
+  } else {
+    for (const t of chosen) await deployTarget(t);
+    for (const t of chosen) rmSync(resolve(LOCAL, `.versions-${t.id}.json`), { force: true });
+  }
 }
-console.log('\n驗證線上…');
-for (const t of chosen) {
-  try { await verifyTarget(t); } catch (e) { failures.push(t.label + ' 驗證：' + String((e as Error)?.message ?? e)); }
+// 驗證：--only 已在 onlyPush 內逐檔比對 sha，不再整站抓；拉模式只 HEAD 存在性；推模式完整驗證。
+if (ONLY) {
+  console.log('\n驗證線上（--only：HEAD 存在性）…');
+  for (const t of chosen) {
+    for (const rel of ONLY.split(',').map((s) => s.trim()).filter(Boolean)) {
+      try {
+        const r = await fetch(t.base + rel, { method: 'HEAD', headers: { 'cache-control': 'no-cache' } });
+        if (!r.ok) failures.push(`${t.label} ${t.base}${rel} HTTP ${r.status}`);
+        else console.log(`[${t.label}] ✓ ${rel} 在線（${r.headers.get('content-length')} B）`);
+      } catch (e) { failures.push(`${t.label} ${t.base}${rel}：` + String((e as Error)?.message ?? e)); }
+    }
+  }
+} else if (PULL_FROM) {
+  console.log('\n驗證線上（拉模式：HEAD 存在性）…');
+  for (const t of chosen) {
+    const urls = pullRelList();
+    if (SITE_ONLY) for (const n of siteZipNames()) if (!urls.includes(n)) urls.push(n);
+    let bad = 0;
+    for (const u of urls) {
+      try {
+        const r = await fetch(t.base + u, { method: 'HEAD', headers: { 'cache-control': 'no-cache' } });
+        if (!r.ok) { failures.push(`${t.label} ${t.base}${u} HTTP ${r.status}`); bad++; }
+      } catch (e) { failures.push(`${t.label} ${t.base}${u}：` + String((e as Error)?.message ?? e)); bad++; }
+    }
+    if (!bad) console.log(`[${t.label}] ✓ ${urls.length} 個檔都在線上`);
+  }
+} else {
+  console.log('\n驗證線上…');
+  for (const t of chosen) {
+    try { await verifyTarget(t); } catch (e) { failures.push(t.label + ' 驗證：' + String((e as Error)?.message ?? e)); }
+  }
 }
 if (failures.length) {
   console.error('\n✗ 有問題：');
